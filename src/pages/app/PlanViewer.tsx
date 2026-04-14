@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   ArrowLeft, MousePointer2, Square, Ruler, Type, Maximize2, ZoomIn, ZoomOut,
   RotateCcw, Download, Upload, Trash2, Eye, EyeOff, Copy, Move,
@@ -85,7 +84,7 @@ export function PlanViewer() {
     <div className="h-[calc(100vh-7rem)] flex flex-col gap-2">
       {/* Top bar */}
       <div className="flex items-center gap-3 shrink-0">
-        <Link to="/app/projects/prj_1"><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
+        <button onClick={() => window.history.back()}><ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" /></button>
         <div className="flex-1 min-w-0">
           <h1 className="text-base font-bold truncate">Plan RDC - Residence du Lac</h1>
           <p className="text-xs text-muted-foreground">Av. de Cour 42, Lausanne</p>

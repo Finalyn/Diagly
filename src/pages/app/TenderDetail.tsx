@@ -14,7 +14,7 @@ export function TenderDetail() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
-        <Link to={`/app/projects/${tender.projectId}`}><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
+        <button onClick={() => window.history.back()}><ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" /></button>
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{tender.title}</h1>
@@ -111,7 +111,7 @@ export function TenderDetail() {
       <Card>
         <CardHeader><CardTitle>Description de l'appel d'offres</CardTitle></CardHeader>
         <CardContent>
-          <Textarea defaultValue={`Appel d'offres pour ${tender.title}\n\nProjet : ${project?.name}\nAdresse : ${project?.address}, ${project?.city}\n\nMerci de nous faire parvenir votre meilleure offre.`} rows={6} />
+          <Textarea defaultValue={`Appel d'offres pour ${tender.title}\n\nDiagnostic : ${project?.name}\nAdresse : ${project?.address}, ${project?.city}\n\nMerci de nous faire parvenir votre meilleure offre.`} rows={6} />
         </CardContent>
       </Card>
 

@@ -17,7 +17,6 @@ import { ProjectDiagnostic } from '@/pages/app/ProjectDiagnostic'
 import { ProjectMetres } from '@/pages/app/ProjectMetres'
 import { ProjectPlans } from '@/pages/app/ProjectPlans'
 import { ProjectRapports } from '@/pages/app/ProjectRapports'
-import { ProjectAO } from '@/pages/app/ProjectAO'
 import { ProjectCECB } from '@/pages/app/ProjectCECB'
 import { ProjectPlanning } from '@/pages/app/ProjectPlanning'
 import { DiagnosticDetail } from '@/pages/app/DiagnosticDetail'
@@ -33,7 +32,6 @@ import { ApartmentDetail } from '@/pages/app/ApartmentDetail'
 import { TenderDetail } from '@/pages/app/TenderDetail'
 import { CFCManager } from '@/pages/app/CFCManager'
 import { PlanningPage } from '@/pages/app/PlanningPage'
-import { CECBPage } from '@/pages/app/CECBPage'
 import { SettingsPage } from '@/pages/app/SettingsPage'
 
 function App() {
@@ -63,12 +61,11 @@ function App() {
           <Route path="projects/:id" element={<ProjectDetail />} />
           <Route path="projects/:id/edit" element={<ProjectEdit />} />
           <Route path="projects/:id/diagnostic" element={<ProjectDiagnostic />} />
-          <Route path="projects/:id/metres" element={<ProjectMetres />} />
+          <Route path="projects/:id/couts" element={<ProjectMetres />} />
           <Route path="projects/:id/plans" element={<ProjectPlans />} />
           <Route path="projects/:id/rapports" element={<ProjectRapports />} />
-          <Route path="projects/:id/ao" element={<ProjectAO />} />
           <Route path="projects/:id/cecb" element={<ProjectCECB />} />
-          <Route path="projects/:id/planning" element={<ProjectPlanning />} />
+          <Route path="projects/:id/calendrier" element={<ProjectPlanning />} />
 
           {/* Diagnostic editor */}
           <Route path="diagnostic/:id" element={<DiagnosticDetail />} />
@@ -94,7 +91,6 @@ function App() {
           {/* Global tools */}
           <Route path="cfc" element={<CFCManager />} />
           <Route path="planning" element={<PlanningPage />} />
-          <Route path="cecb" element={<CECBPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

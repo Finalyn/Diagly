@@ -13,7 +13,7 @@ export function ProjectEdit() {
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">Modifier le projet</h1>
+          <h1 className="text-2xl font-bold">Modifier le diagnostic</h1>
           <p className="text-muted-foreground">{project.name}</p>
         </div>
         <Button><Save className="mr-2 h-4 w-4" />Enregistrer</Button>
@@ -24,7 +24,7 @@ export function ProjectEdit() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="text-sm font-medium mb-1 block">Nom du projet</label>
+              <label className="text-sm font-medium mb-1 block">Nom du diagnostic</label>
               <Input defaultValue={project.name} />
             </div>
             <div>
@@ -59,14 +59,12 @@ export function ProjectEdit() {
             <div>
               <label className="text-sm font-medium mb-1 block">Statut</label>
               <Select defaultValue={project.status}>
-                <option value="CREATED">Cree</option>
-                <option value="VISIT_PLANNED">Visite planifiee</option>
-                <option value="DIAGNOSTIC_IN_PROGRESS">Diagnostic en cours</option>
-                <option value="REPORT_DRAFT">Rapport brouillon</option>
-                <option value="REPORT_DONE">Rapport termine</option>
-                <option value="TENDER_OPEN">Appel d'offres</option>
-                <option value="WORK_IN_PROGRESS">Travaux en cours</option>
-                <option value="CLOSED">Cloture</option>
+                <option value="NON_PLANIFIE">Non planifie</option>
+                <option value="PLANIFIE">Planifie</option>
+                <option value="EN_COURS">En cours</option>
+                <option value="EN_REVUE">En revue</option>
+                <option value="TERMINE">Termine</option>
+                <option value="ARCHIVE">Archive</option>
               </Select>
             </div>
           </div>
@@ -74,7 +72,7 @@ export function ProjectEdit() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Dimensions et metres</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Dimensions et surfaces</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-3 gap-4">
             <div>

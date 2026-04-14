@@ -59,7 +59,7 @@ export function DiagnosticDetail() {
   return (
     <div className="h-[calc(100vh-7rem)] flex flex-col gap-4">
       <div className="flex items-center gap-4 shrink-0">
-        <Link to={`/app/projects/${diagnostic.projectId}`}><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
+        <button onClick={() => window.history.back()}><ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" /></button>
         <div className="flex-1">
           <h1 className="text-xl font-bold">Diagnostic</h1>
           <p className="text-sm text-muted-foreground">{diagnostic.items.length} elements diagnostiques</p>

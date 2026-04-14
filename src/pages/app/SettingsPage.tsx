@@ -95,8 +95,8 @@ export function SettingsPage() {
             <CardContent>
               <div className="grid grid-cols-3 gap-4">
                 {[
-                  { name: 'Starter', price: '49', features: ['5 projets', '1 utilisateur', 'Rapports PDF'], current: false },
-                  { name: 'Pro', price: '129', features: ['Projets illimites', '5 utilisateurs', 'CRM batiments', 'CECB'], current: true },
+                  { name: 'Starter', price: '49', features: ['5 diagnostics', '1 utilisateur', 'Rapports PDF'], current: false },
+                  { name: 'Pro', price: '129', features: ['Diagnostics illimites', '5 utilisateurs', 'CRM batiments', 'CECB'], current: true },
                   { name: 'Studio', price: '290', features: ['Tout Pro', 'Utilisateurs illimites', 'API', 'Support prioritaire'], current: false },
                 ].map(plan => (
                   <div key={plan.name} className={`p-6 rounded-lg border-2 ${plan.current ? 'border-primary bg-primary/5' : 'border-muted'}`}>
@@ -119,7 +119,7 @@ export function SettingsPage() {
             <CardHeader><CardTitle>Preferences de notification</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               {[
-                { label: 'Nouveau devis recu', desc: 'Quand une entreprise repond a un appel d\'offres' },
+                { label: 'Nouveau rapport genere', desc: 'Quand un rapport PDF est pret' },
                 { label: 'Rapport genere', desc: 'Quand un rapport PDF est pret' },
                 { label: 'Rappel de visite', desc: '24h avant une visite planifiee' },
                 { label: 'Modifications equipe', desc: 'Quand un membre modifie un diagnostic' },

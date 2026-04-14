@@ -5,7 +5,7 @@ import { formatCHF } from '@/lib/utils'
 
 const stats = [
   { label: 'Utilisateurs', value: 47, icon: Users, color: 'text-blue-600 bg-blue-50', trend: '+12%' },
-  { label: 'Projets actifs', value: 156, icon: FolderKanban, color: 'text-green-600 bg-green-50', trend: '+8%' },
+  { label: 'Diagnostics actifs', value: 156, icon: FolderKanban, color: 'text-green-600 bg-green-50', trend: '+8%' },
   { label: 'Batiments geres', value: 89, icon: Building2, color: 'text-violet-600 bg-violet-50', trend: '+15%' },
   { label: 'Rapports generes', value: 342, icon: FileText, color: 'text-orange-600 bg-orange-50', trend: '+23%' },
 ]
@@ -126,7 +126,7 @@ export function AdminStats() {
                   <div className="flex-1">
                     <p className="font-medium">{user.name}</p>
                     <div className="flex gap-4 text-sm text-muted-foreground">
-                      <span>{user.projects} projets</span>
+                      <span>{user.projects} diagnostics</span>
                       <span>{user.reports} rapports</span>
                     </div>
                   </div>

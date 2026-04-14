@@ -27,7 +27,7 @@ export function ProjectNew() {
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
         <div>
-          <h1 className="text-2xl font-bold">Nouveau projet</h1>
+          <h1 className="text-2xl font-bold">Nouveau diagnostic</h1>
           <p className="text-muted-foreground">Etape {step} sur 3</p>
         </div>
       </div>
@@ -39,7 +39,7 @@ export function ProjectNew() {
               {s < step ? <Check className="h-4 w-4" /> : s}
             </div>
             <span className={`text-sm ${s === step ? 'font-medium' : 'text-muted-foreground'}`}>
-              {s === 1 ? 'Informations' : s === 2 ? 'Metres' : 'Recapitulatif'}
+              {s === 1 ? 'Informations' : s === 2 ? 'Surfaces' : 'Recapitulatif'}
             </span>
             {s < 3 && <div className="w-12 h-0.5 bg-muted mx-1" />}
           </div>
@@ -48,11 +48,11 @@ export function ProjectNew() {
 
       {step === 1 && (
         <Card>
-          <CardHeader><CardTitle>Informations du projet</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Informations du diagnostic</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="text-sm font-medium mb-1 block">Nom du projet</label>
+                <label className="text-sm font-medium mb-1 block">Nom du diagnostic</label>
                 <Input value={form.name} onChange={e => update('name', e.target.value)} placeholder="Ex: Renovation Residence du Lac" />
               </div>
               <div className="col-span-2">
@@ -119,7 +119,7 @@ export function ProjectNew() {
       {step === 2 && (
         <div className="space-y-6">
           <Card>
-            <CardHeader><CardTitle>Surfaces et metres</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Surfaces</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -212,7 +212,7 @@ export function ProjectNew() {
           <ArrowLeft className="mr-2 h-4 w-4" />{step > 1 ? 'Precedent' : 'Annuler'}
         </Button>
         <Button onClick={() => step < 3 ? setStep(step + 1) : navigate('/app/projects')}>
-          {step < 3 ? <>Suivant<ArrowRight className="ml-2 h-4 w-4" /></> : <><Check className="mr-2 h-4 w-4" />Creer le projet</>}
+          {step < 3 ? <>Suivant<ArrowRight className="ml-2 h-4 w-4" /></> : <><Check className="mr-2 h-4 w-4" />Creer le diagnostic</>}
         </Button>
       </div>
     </div>

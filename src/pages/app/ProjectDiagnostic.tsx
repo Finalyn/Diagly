@@ -24,18 +24,41 @@ export function ProjectDiagnostic() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Diagnostic</h1>
-          <p className="text-muted-foreground">{diagnostic.items.length} elements - Visite du {diagnostic.visitDate ? formatDate(diagnostic.visitDate) : 'Non planifiee'}</p>
+          <h1 className="text-xl md:text-2xl font-bold">Diagnostic</h1>
+          <p className="text-muted-foreground text-sm">{diagnostic.items.length} elements - Visite du {diagnostic.visitDate ? formatDate(diagnostic.visitDate) : 'Non planifiee'}</p>
         </div>
         <Link to={`/app/diagnostic/${diagnostic.id}`}>
-          <Button><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir l'editeur</Button>
+          <Button className="w-full sm:w-auto"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir l'editeur</Button>
         </Link>
       </div>
 
-      <Card>
+      {/* Mobile: cards layout */}
+      <div className="md:hidden space-y-3">
+        {diagnostic.items.map(item => (
+          <Card key={item.id}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-mono text-xs text-muted-foreground">{item.cfcCode}</span>
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[item.priority]}`}>{item.priority}</span>
+              </div>
+              <p className="font-medium text-sm mb-2">{item.cfcLabel}</p>
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className={`h-2 w-2 rounded-full ${stateColors[item.state]}`} />
+                  <span className="text-muted-foreground">{stateLabels[item.state]}</span>
+                </div>
+                <span className="font-bold">{formatCHF(item.estimatedCost)}</span>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Desktop: table layout */}
+      <Card className="hidden md:block">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -64,13 +87,13 @@ export function ProjectDiagnostic() {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end gap-8">
+      <div className="flex flex-wrap justify-end gap-4 md:gap-8">
         {(['I', 'II', 'III'] as const).map(p => {
           const items = diagnostic.items.filter(i => i.priority === p)
           const total = items.reduce((s, i) => s + i.estimatedCost, 0)
-          return <div key={p} className="text-right"><p className="text-xs text-muted-foreground">Priorite {p}</p><p className="font-bold">{formatCHF(total)}</p></div>
+          return <div key={p} className="text-right"><p className="text-xs text-muted-foreground">Priorite {p}</p><p className="font-bold text-sm md:text-base">{formatCHF(total)}</p></div>
         })}
-        <div className="text-right"><p className="text-xs text-muted-foreground">Total</p><p className="text-lg font-bold">{formatCHF(totalDiag)}</p></div>
+        <div className="text-right"><p className="text-xs text-muted-foreground">Total</p><p className="text-base md:text-lg font-bold">{formatCHF(totalDiag)}</p></div>
       </div>
     </div>
   )

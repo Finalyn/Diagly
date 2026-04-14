@@ -17,7 +17,7 @@ export function DiagnosticItemDetail() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
-        <Link to={`/app/diagnostic/${diagnostic.id}`}><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
+        <button onClick={() => window.history.back()}><ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" /></button>
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <span className="font-mono text-lg text-muted-foreground">{item.cfcCode}</span>

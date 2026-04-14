@@ -87,7 +87,7 @@ export function Landing() {
               <div className="p-4 space-y-3">
                 <div className="grid grid-cols-4 gap-3">
                   {[
-                    { label: 'Projets actifs', value: '12', color: 'from-blue-500 to-blue-600' },
+                    { label: 'Diagnostics actifs', value: '12', color: 'from-blue-500 to-blue-600' },
                     { label: 'Priorite I', value: '7', color: 'from-red-500 to-red-600' },
                     { label: 'Budget total', value: '2.4M', color: 'from-green-500 to-green-600' },
                     { label: 'CECB', value: '4', color: 'from-violet-500 to-violet-600' },
@@ -151,7 +151,7 @@ export function Landing() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {[
               { value: '500+', label: 'Professionnels actifs' },
-              { value: '2 800', label: 'Projets realises' },
+              { value: '2 800', label: 'Diagnostics realises' },
               { value: '15k+', label: 'Diagnostics terrain' },
               { value: '98%', label: 'Clients satisfaits' },
             ].map(stat => (
@@ -169,14 +169,14 @@ export function Landing() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <p className="text-sm font-semibold text-blue-600 mb-2">Fonctionnalites</p>
-            <h2 className="text-4xl font-bold text-gray-900">Tout pour vos projets de renovation</h2>
-            <p className="text-gray-600 mt-4 max-w-2xl mx-auto">De la premiere visite au rapport final, Diagly centralise chaque etape de vos projets de renovation en Suisse.</p>
+            <h2 className="text-4xl font-bold text-gray-900">Tout pour vos diagnostics de renovation</h2>
+            <p className="text-gray-600 mt-4 max-w-2xl mx-auto">De la premiere visite au rapport final, Diagly centralise chaque etape de vos diagnostics de renovation en Suisse.</p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
               { icon: ClipboardCheck, title: 'Diagnostic terrain', desc: 'Evaluez chaque element du batiment sur votre smartphone. Etats, priorites et couts calcules automatiquement.', color: 'bg-blue-100 text-blue-600' },
-              { icon: Ruler, title: 'Metres automatiques', desc: 'Calcul automatique des surfaces (facade, toiture, echafaudage) selon les codes CFC suisses.', color: 'bg-violet-100 text-violet-600' },
+              { icon: Ruler, title: 'Calcul des couts', desc: 'Estimation automatique des couts de renovation selon les codes CFC suisses.', color: 'bg-violet-100 text-violet-600' },
               { icon: Camera, title: 'Plans PDF interactifs', desc: 'Importez vos plans, mesurez des surfaces et longueurs, annotez et exportez en PDF annote.', color: 'bg-orange-100 text-orange-600' },
               { icon: Building2, title: 'CRM Parc immobilier', desc: 'Gerez vos batiments, historique des travaux par appartement, suivi des locataires.', color: 'bg-green-100 text-green-600' },
               { icon: FileText, title: 'Rapports PDF', desc: 'Generez des rapports diagnostics et devis quantitatifs professionnels en un clic.', color: 'bg-red-100 text-red-600' },
@@ -272,7 +272,7 @@ export function Landing() {
               </div>
               <div className="order-1 lg:order-2">
                 <div className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-violet-600 text-white font-bold text-lg mb-4">2</div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-3">Metres et calculs automatiques</h3>
+                <h3 className="text-2xl font-bold text-gray-900 mb-3">Couts et devis automatiques</h3>
                 <p className="text-gray-600 leading-relaxed mb-6">Les surfaces et quantites sont calculees automatiquement a partir des dimensions du batiment. Facades, toiture, echafaudage, fenetres - tout est recalcule en temps reel.</p>
                 <ul className="space-y-3">
                   {['Calcul facade, toiture, echafaudage', 'Slider % fenetres (10-60%)', 'Codes CFC avec prix suisses', 'Total HT + honoraires + reserve + TVA 8.1%'].map(item => (
@@ -289,10 +289,10 @@ export function Landing() {
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div>
                 <div className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-orange-500 text-white font-bold text-lg mb-4">3</div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-3">Rapports et appels d'offres</h3>
-                <p className="text-gray-600 leading-relaxed mb-6">Generez des rapports PDF professionnels, envoyez vos appels d'offres et comparez les devis recus. Tout est centralise dans votre espace projet.</p>
+                <h3 className="text-2xl font-bold text-gray-900 mb-3">Rapports et devis</h3>
+                <p className="text-gray-600 leading-relaxed mb-6">Generez des rapports PDF professionnels, Tout est centralise dans votre espace diagnostic.</p>
                 <ul className="space-y-3">
-                  {['Rapport diagnostic PDF complet', 'Devis quantitatif par CFC', 'Envoi AO et comparatif', 'Suivi planning Gantt'].map(item => (
+                  {['Rapport diagnostic PDF complet', 'Devis par CFC', 'Export et partage', 'Suivi calendrier'].map(item => (
                     <li key={item} className="flex items-center gap-3 text-sm">
                       <div className="h-5 w-5 rounded-full bg-orange-100 flex items-center justify-center shrink-0"><Check className="h-3 w-3 text-orange-600" /></div>
                       {item}
@@ -304,8 +304,8 @@ export function Landing() {
                 {[
                   { name: 'Rapport diagnostic', type: 'PDF', status: 'Genere', color: 'bg-green-100 text-green-700' },
                   { name: 'Devis estimatif', type: 'PDF', status: 'Genere', color: 'bg-green-100 text-green-700' },
-                  { name: 'AO Lot 1 - Toiture', type: 'AO', status: '3 offres recues', color: 'bg-blue-100 text-blue-700' },
-                  { name: 'AO Lot 2 - Facade', type: 'AO', status: 'En attente', color: 'bg-yellow-100 text-yellow-700' },
+                  { name: 'Estimation CECB', type: 'CECB', status: 'Genere', color: 'bg-green-100 text-green-700' },
+                  { name: 'Photos diagnostic', type: 'ZIP', status: '24 photos', color: 'bg-blue-100 text-blue-700' },
                 ].map(doc => (
                   <div key={doc.name} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
                     <FileText className="h-5 w-5 text-red-500 shrink-0" />
@@ -358,8 +358,8 @@ export function Landing() {
 
           <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {[
-              { name: 'Starter', price: '49', desc: 'Pour les independants', features: ['5 projets actifs', '1 utilisateur', 'Diagnostic terrain', 'Rapports PDF', 'Calcul metres'], highlight: false },
-              { name: 'Pro', price: '129', desc: 'Pour les petites equipes', features: ['Projets illimites', '5 utilisateurs', 'Tout Starter', 'CRM batiments', 'Estimation CECB', 'Appels d\'offres', 'Plans interactifs'], highlight: true },
+              { name: 'Starter', price: '49', desc: 'Pour les independants', features: ['5 diagnostics actifs', '1 utilisateur', 'Diagnostic terrain', 'Rapports PDF', 'Calcul des couts'], highlight: false },
+              { name: 'Pro', price: '129', desc: 'Pour les petites equipes', features: ['Diagnostics illimites', '5 utilisateurs', 'Tout Starter', 'CRM batiments', 'Estimation CECB', 'Plans interactifs'], highlight: true },
               { name: 'Studio', price: '290', desc: 'Pour les grands bureaux', features: ['Tout Pro', 'Utilisateurs illimites', 'API REST', 'SSO / SAML', 'Account manager dedie'], highlight: false },
             ].map(plan => (
               <div key={plan.name} className={`rounded-2xl p-8 ${plan.highlight ? 'bg-white shadow-xl shadow-blue-100/50 border-2 border-blue-500 relative scale-105' : 'bg-white border border-gray-200'}`}>
@@ -388,7 +388,7 @@ export function Landing() {
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {[
-              { name: 'Marc Dubois', role: 'Architecte, Lausanne', quote: 'Diagly a divise par 3 le temps de nos diagnostics terrain. L\'arborescence CFC et le calcul automatique des metres sont un vrai gain de productivite.' },
+              { name: 'Marc Dubois', role: 'Architecte, Lausanne', quote: 'Diagly a divise par 3 le temps de nos diagnostics terrain. L\'arborescence CFC et le calcul automatique des couts sont un vrai gain de productivite.' },
               { name: 'Anne Schneider', role: 'Regie immobiliere, Geneve', quote: 'Le CRM batiments nous permet de suivre tout l\'historique des interventions par appartement. Indispensable pour notre parc de 200 logements.' },
               { name: 'Pierre Muller', role: 'Directeur de travaux, Fribourg', quote: 'Les rapports PDF generes automatiquement sont tres professionnels. Mes clients sont impressionnes par la qualite et la rapidite.' },
             ].map(t => (

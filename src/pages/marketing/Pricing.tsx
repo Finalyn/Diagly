@@ -3,8 +3,8 @@ import { ClipboardCheck, Check, ArrowLeft } from 'lucide-react'
 import { Button, Card, Badge } from '@/components/ui'
 
 const plans = [
-  { name: 'Starter', price: 49, desc: 'Pour les independants', features: ['5 projets actifs', '1 utilisateur', 'Diagnostic terrain', 'Rapports PDF', 'Calcul metres', 'Support email'], cta: 'Commencer', highlight: false },
-  { name: 'Pro', price: 129, desc: 'Pour les petites equipes', features: ['Projets illimites', '5 utilisateurs', 'Tout Starter', 'CRM batiments', 'Estimation CECB', 'Appels d\'offres', 'Plans interactifs', 'Support prioritaire'], cta: 'Essai gratuit 14 jours', highlight: true },
+  { name: 'Starter', price: 49, desc: 'Pour les independants', features: ['5 diagnostics actifs', '1 utilisateur', 'Diagnostic terrain', 'Rapports PDF', 'Calcul des couts', 'Support email'], cta: 'Commencer', highlight: false },
+  { name: 'Pro', price: 129, desc: 'Pour les petites equipes', features: ['Diagnostics illimites', '5 utilisateurs', 'Tout Starter', 'CRM batiments', 'Estimation CECB', 'Plans interactifs', 'Support prioritaire'], cta: 'Essai gratuit 14 jours', highlight: true },
   { name: 'Studio', price: 290, desc: 'Pour les grands bureaux', features: ['Tout Pro', 'Utilisateurs illimites', 'API REST', 'Export donnees', 'SSO / SAML', 'Account manager dedie', 'Formation equipe'], cta: 'Contacter les ventes', highlight: false },
 ]
 

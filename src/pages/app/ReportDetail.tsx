@@ -17,7 +17,7 @@ export function ReportDetail() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
-        <Link to={`/app/projects/${project.id}`}><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
+        <button onClick={() => window.history.back()}><ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" /></button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold">Rapport diagnostic</h1>
           <p className="text-muted-foreground">{project.name} - Genere le {formatDate(new Date())}</p>

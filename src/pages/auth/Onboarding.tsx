@@ -6,7 +6,7 @@ import { Button, Card, CardContent, Input, Select } from '@/components/ui'
 const steps = [
   { icon: Building2, title: 'Votre entreprise', desc: 'Configurez les informations de votre societe.' },
   { icon: Users, title: 'Votre equipe', desc: 'Invitez vos collaborateurs.' },
-  { icon: ClipboardCheck, title: 'Premier projet', desc: 'Creez votre premier projet de diagnostic.' },
+  { icon: ClipboardCheck, title: 'Premier diagnostic', desc: 'Creez votre premier diagnostic.' },
 ]
 
 export function Onboarding() {
@@ -97,7 +97,7 @@ export function Onboarding() {
             {step === 2 && (
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Nom du projet</label>
+                  <label className="text-sm font-medium mb-1 block">Nom du diagnostic</label>
                   <Input placeholder="Ex: Renovation Residence du Lac" />
                 </div>
                 <div>

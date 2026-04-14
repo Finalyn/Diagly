@@ -8,43 +8,38 @@ type ViewMode = 'month' | 'week' | 'gantt'
 const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
 const events = [
-  { id: 1, day: 9, endDay: 9, title: 'Reunion chantier - Residence du Lac', type: 'project', time: '08:30 - 10:00', person: 'Sophie Berger', location: 'Av. de Cour 42, Lausanne' },
+  { id: 1, day: 9, endDay: 9, title: 'Reunion chantier - Residence du Lac', type: 'visite', time: '08:30 - 10:00', person: 'Sophie Berger', location: 'Av. de Cour 42, Lausanne' },
   { id: 2, day: 11, endDay: 11, title: 'Visite diagnostic - Hotel Beau-Rivage', type: 'diagnostic', time: '09:00 - 16:00', person: 'Sophie Berger', location: 'Quai du Mont-Blanc 8, Montreux' },
-  { id: 3, day: 14, endDay: 14, title: 'Reunion coordination - Ecole Paquis', type: 'project', time: '14:00 - 15:30', person: 'Marc Dubois', location: 'Rue de Zurich 18, Geneve' },
+  { id: 3, day: 14, endDay: 14, title: 'Reunion coordination - Ecole Paquis', type: 'visite', time: '14:00 - 15:30', person: 'Marc Dubois', location: 'Rue de Zurich 18, Geneve' },
   { id: 4, day: 16, endDay: 18, title: 'Diagnostic complet - Immeuble Grand-Rue', type: 'diagnostic', time: '08:00 - 17:00', person: 'Sophie Berger', location: 'Grand-Rue 15, Fribourg' },
-  { id: 5, day: 18, endDay: 18, title: 'Depot AO Lot 1 - Immeuble Grand-Rue', type: 'tender', time: '10:00', person: 'Julie Favre', location: '' },
-  { id: 6, day: 21, endDay: 21, title: 'Visite chantier - Centre Numa Droz', type: 'project', time: '09:00 - 11:00', person: 'Marc Dubois', location: 'Rue Numa-Droz 2, Neuchatel' },
-  { id: 7, day: 22, endDay: 22, title: 'Suivi travaux toiture - Residence du Lac', type: 'work', time: '08:00 - 12:00', person: 'Sophie Berger', location: 'Av. de Cour 42, Lausanne' },
-  { id: 8, day: 23, endDay: 23, title: 'Remise rapport - Ecole Paquis', type: 'report', time: '16:00', person: 'Julie Favre', location: '' },
-  { id: 9, day: 25, endDay: 25, title: 'Reunion proprietaire - Les Tilleuls', type: 'project', time: '17:00 - 18:00', person: 'Sophie Berger', location: 'Rue des Tilleuls 8, Lausanne' },
-  { id: 10, day: 28, endDay: 30, title: 'Formation equipe - Nouvel outil CECB', type: 'other', time: '09:00 - 12:00', person: 'Tous', location: 'Bureau' },
+  { id: 5, day: 18, endDay: 18, title: 'Remise rapport - Ecole Paquis', type: 'rapport', time: '10:00', person: 'Julie Favre', location: '' },
+  { id: 6, day: 21, endDay: 21, title: 'Visite chantier - Centre Numa Droz', type: 'visite', time: '09:00 - 11:00', person: 'Marc Dubois', location: 'Rue Numa-Droz 2, Neuchatel' },
+  { id: 7, day: 22, endDay: 22, title: 'Suivi travaux toiture - Residence du Lac', type: 'travaux', time: '08:00 - 12:00', person: 'Sophie Berger', location: 'Av. de Cour 42, Lausanne' },
+  { id: 8, day: 25, endDay: 25, title: 'Reunion proprietaire - Les Tilleuls', type: 'visite', time: '17:00 - 18:00', person: 'Sophie Berger', location: 'Rue des Tilleuls 8, Lausanne' },
+  { id: 9, day: 28, endDay: 30, title: 'Formation equipe CECB', type: 'autre', time: '09:00 - 12:00', person: 'Tous', location: 'Bureau' },
 ]
 
 const typeConfig: Record<string, { bg: string; text: string; label: string }> = {
   diagnostic: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Diagnostic' },
-  project: { bg: 'bg-green-100', text: 'text-green-800', label: 'Reunion' },
-  tender: { bg: 'bg-violet-100', text: 'text-violet-800', label: 'Appel d\'offres' },
-  report: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Rapport' },
-  work: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Travaux' },
-  other: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Autre' },
+  visite: { bg: 'bg-green-100', text: 'text-green-800', label: 'Visite' },
+  rapport: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Rapport' },
+  travaux: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Travaux' },
+  autre: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Autre' },
 }
 
-const ganttProjects = [
+const ganttDiagnostics = [
   { name: 'Residence du Lac', phases: [
     { label: 'Diagnostic', start: 1, end: 8, color: 'bg-blue-400' },
     { label: 'Rapport', start: 9, end: 12, color: 'bg-orange-400' },
-    { label: 'AO', start: 13, end: 18, color: 'bg-violet-400' },
     { label: 'Travaux toiture', start: 19, end: 30, color: 'bg-yellow-400' },
   ]},
   { name: 'Ecole Paquis', phases: [
     { label: 'Rapport final', start: 1, end: 5, color: 'bg-orange-400' },
-    { label: 'AO fenetres', start: 6, end: 15, color: 'bg-violet-400' },
     { label: 'Travaux', start: 20, end: 30, color: 'bg-yellow-400' },
   ]},
   { name: 'Immeuble Grand-Rue', phases: [
     { label: 'Diagnostic', start: 14, end: 18, color: 'bg-blue-400' },
     { label: 'Rapport', start: 19, end: 24, color: 'bg-orange-400' },
-    { label: 'AO', start: 25, end: 30, color: 'bg-violet-400' },
   ]},
   { name: 'Hotel Beau-Rivage', phases: [
     { label: 'Visite prealable', start: 11, end: 11, color: 'bg-green-400' },
@@ -53,9 +48,9 @@ const ganttProjects = [
 ]
 
 const teamMembers = [
-  { name: 'Sophie Berger', role: 'DT', events: 6 },
-  { name: 'Marc Dubois', role: 'Architecte', events: 3 },
-  { name: 'Julie Favre', role: 'Assistante', events: 2 },
+  { name: 'Sophie Berger', role: 'DT', events: 5 },
+  { name: 'Marc Dubois', role: 'Architecte', events: 2 },
+  { name: 'Julie Favre', role: 'Assistante', events: 1 },
 ]
 
 export function PlanningPage() {
@@ -65,7 +60,7 @@ export function PlanningPage() {
   const [filterType, setFilterType] = useState('')
 
   const daysInMonth = 30
-  const firstDayOffset = 2 // Wednesday
+  const firstDayOffset = 2
 
   const filteredEvents = events.filter(e => {
     if (filterPerson && e.person !== filterPerson && e.person !== 'Tous') return false
@@ -77,7 +72,7 @@ export function PlanningPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Planning</h1>
+          <h1 className="text-2xl font-bold">Calendrier</h1>
           <p className="text-muted-foreground">{filteredEvents.length} evenements en avril 2026</p>
         </div>
         <div className="flex items-center gap-2">
@@ -178,9 +173,8 @@ export function PlanningPage() {
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <div className="min-w-[900px]">
-                {/* Header days */}
                 <div className="flex border-b">
-                  <div className="w-48 shrink-0 px-4 py-2 text-xs font-medium text-muted-foreground border-r">Projet</div>
+                  <div className="w-48 shrink-0 px-4 py-2 text-xs font-medium text-muted-foreground border-r">Diagnostic</div>
                   <div className="flex-1 flex">
                     {Array.from({ length: 30 }, (_, i) => (
                       <div key={i} className={cn('flex-1 text-center text-[10px] py-2 border-r border-border/50', (i + 1) === 9 && 'bg-primary/10 font-bold')}>
@@ -189,23 +183,22 @@ export function PlanningPage() {
                     ))}
                   </div>
                 </div>
-                {/* Rows */}
-                {ganttProjects.map(project => (
-                  <div key={project.name} className="flex border-b hover:bg-muted/30">
-                    <div className="w-48 shrink-0 px-4 py-3 text-sm font-medium border-r truncate">{project.name}</div>
+                {ganttDiagnostics.map(diag => (
+                  <div key={diag.name} className="flex border-b hover:bg-muted/30">
+                    <div className="w-48 shrink-0 px-4 py-3 text-sm font-medium border-r truncate">{diag.name}</div>
                     <div className="flex-1 relative h-10">
-                      {project.phases.map((phase, i) => (
+                      {ganttDiagnostics.map((_, mi) => (
+                        <div key={mi} className="absolute top-0 bottom-0 border-r border-border/30" style={{ left: `${(mi / 30) * 100}%` }} />
+                      ))}
+                      <div className="absolute top-0 bottom-0 w-0.5 bg-primary/60 z-10" style={{ left: `${(8.5 / 30) * 100}%` }} />
+                      {diag.phases.map((phase, i) => (
                         <div
                           key={i}
                           className={cn('absolute top-1.5 h-7 rounded text-[10px] text-white font-medium flex items-center px-2 truncate', phase.color)}
                           style={{ left: `${((phase.start - 1) / 30) * 100}%`, width: `${((phase.end - phase.start + 1) / 30) * 100}%` }}
                           title={phase.label}
-                        >
-                          {phase.label}
-                        </div>
+                        >{phase.label}</div>
                       ))}
-                      {/* Today marker */}
-                      <div className="absolute top-0 bottom-0 w-0.5 bg-primary z-10" style={{ left: `${(8.5 / 30) * 100}%` }} />
                     </div>
                   </div>
                 ))}
@@ -215,9 +208,8 @@ export function PlanningPage() {
               {[
                 { label: 'Diagnostic', color: 'bg-blue-400' },
                 { label: 'Rapport', color: 'bg-orange-400' },
-                { label: 'Appel d\'offres', color: 'bg-violet-400' },
                 { label: 'Travaux', color: 'bg-yellow-400' },
-                { label: 'Reunion', color: 'bg-green-400' },
+                { label: 'Visite', color: 'bg-green-400' },
               ].map(l => (
                 <div key={l.label} className="flex items-center gap-1.5">
                   <div className={cn('h-3 w-3 rounded-sm', l.color)} />{l.label}
@@ -229,7 +221,6 @@ export function PlanningPage() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Team workload */}
         <Card>
           <CardHeader><CardTitle className="text-sm">Charge equipe</CardTitle></CardHeader>
           <CardContent className="space-y-3">
@@ -246,7 +237,6 @@ export function PlanningPage() {
           </CardContent>
         </Card>
 
-        {/* Upcoming */}
         <Card className="lg:col-span-2">
           <CardHeader><CardTitle className="text-sm">Prochains evenements</CardTitle></CardHeader>
           <CardContent className="space-y-2">
@@ -266,7 +256,6 @@ export function PlanningPage() {
         </Card>
       </div>
 
-      {/* Event detail modal */}
       {selectedEvent && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setSelectedEvent(null)}>
           <Card className="w-full max-w-md" onClick={e => e.stopPropagation()}>

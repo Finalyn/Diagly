@@ -41,7 +41,7 @@ export function AdminUsers() {
                 <TableHead>Entreprise</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Plan</TableHead>
-                <TableHead className="text-right">Projets</TableHead>
+                <TableHead className="text-right">Diagnostics</TableHead>
                 <TableHead>Derniere activite</TableHead>
                 <TableHead></TableHead>
               </TableRow>

@@ -29,7 +29,7 @@ export function BuildingDetail() {
         <TabsList>
           <TabsTrigger value="overview">Vue d'ensemble</TabsTrigger>
           <TabsTrigger value="apartments">Appartements</TabsTrigger>
-          <TabsTrigger value="projects">Projets lies</TabsTrigger>
+          <TabsTrigger value="projects">Diagnostics lies</TabsTrigger>
           <TabsTrigger value="history">Historique</TabsTrigger>
         </TabsList>
 
@@ -116,7 +116,7 @@ export function BuildingDetail() {
 
         <TabsContent value="projects">
           <Card>
-            <CardHeader><CardTitle>Projets lies</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Diagnostics lies</CardTitle></CardHeader>
             <CardContent>
               {linkedProjects.length > 0 ? linkedProjects.map(p => (
                 <Link key={p.id} to={`/app/projects/${p.id}`} className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50">
@@ -124,7 +124,7 @@ export function BuildingDetail() {
                   <div className="flex-1"><p className="font-medium">{p.name}</p><p className="text-sm text-muted-foreground">{p.buildingType} - {p.yearBuilt}</p></div>
                   <Badge variant="outline">{p.status}</Badge>
                 </Link>
-              )) : <p className="text-muted-foreground py-8 text-center">Aucun projet lie a ce batiment.</p>}
+              )) : <p className="text-muted-foreground py-8 text-center">Aucun diagnostic lie a ce batiment.</p>}
             </CardContent>
           </Card>
         </TabsContent>

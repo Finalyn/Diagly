@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom'
 import { MapPin, Calendar, Building2, Edit3 } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Progress } from '@/components/ui'
-import { mockProjects, mockDiagnostics, mockTenders, statusLabels, statusColors } from '@/data/mock'
+import { mockProjects, mockDiagnostics, statusLabels, statusColors } from '@/data/mock'
 import { formatCHF } from '@/lib/utils'
 import { computeProjectMetrics } from '@/lib/formulas'
 import { Link } from 'react-router-dom'
@@ -10,8 +10,6 @@ export function ProjectDetail() {
   const { id } = useParams()
   const project = mockProjects.find(p => p.id === id) ?? mockProjects[0]
   const diagnostic = mockDiagnostics.find(d => d.projectId === project.id)
-  const tenders = mockTenders.filter(t => t.projectId === project.id)
-
   const metrics = computeProjectMetrics({
     perimeter: project.perimeter ?? 0, nbFloors: project.nbFloors ?? 1, floorHeight: project.floorHeight ?? 2.7,
     builtArea: project.builtArea ?? 0, floorArea: project.floorArea ?? 0, facadeArea: project.facadeArea,
@@ -26,24 +24,24 @@ export function ProjectDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">{project.name}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl md:text-2xl font-bold">{project.name}</h1>
             <Badge className={`${statusColors[project.status]} text-white`}>{statusLabels[project.status]}</Badge>
           </div>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+          <div className="flex flex-wrap items-center gap-3 text-xs md:text-sm text-muted-foreground mt-1">
             <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{project.address}, {project.city} ({project.canton})</span>
             {project.yearBuilt && <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{project.yearBuilt}</span>}
             <span className="flex items-center gap-1"><Building2 className="h-3.5 w-3.5" />{project.buildingType}</span>
           </div>
         </div>
-        <Link to={`/app/projects/${project.id}/edit`}><Button variant="outline"><Edit3 className="mr-2 h-4 w-4" />Modifier</Button></Link>
+        <Link to={`/app/projects/${project.id}/edit`} className="shrink-0"><Button variant="outline" className="w-full sm:w-auto"><Edit3 className="mr-2 h-4 w-4" />Modifier</Button></Link>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 md:gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle>Metres calcules</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Surfaces calculees</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3">
               {[
@@ -67,8 +65,8 @@ export function ProjectDetail() {
           <CardContent className="space-y-4">
             {[
               { label: 'Diagnostic', progress: diagnostic ? (diagnostic.status === 'COMPLETED' ? 100 : 60) : 0 },
-              { label: 'Rapport', progress: project.status === 'REPORT_DONE' ? 100 : project.status === 'REPORT_DRAFT' ? 50 : 0 },
-              { label: "Appels d'offres", progress: tenders.length > 0 ? 40 : 0 },
+              { label: 'Rapport', progress: project.status === 'TERMINE' ? 100 : project.status === 'EN_REVUE' ? 50 : 0 },
+              { label: 'Couts', progress: diagnostic ? 80 : 0 },
             ].map(p => (
               <div key={p.label}>
                 <div className="flex justify-between text-sm mb-1">
@@ -87,7 +85,7 @@ export function ProjectDetail() {
         </Card>
       </div>
 
-      <div className="grid gap-4 grid-cols-4">
+      <div className="grid gap-3 md:gap-4 grid-cols-2 lg:grid-cols-4">
         {[
           { label: 'Appartements', value: project.nbApartments ?? '-' },
           { label: 'Etages', value: project.nbFloors ?? '-' },

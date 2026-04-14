@@ -6,39 +6,29 @@ import { cn } from '@/lib/utils'
 const projectEvents = [
   { id: 1, title: 'Visite diagnostic facade', date: '14 avril 2026', time: '09:00 - 12:00', person: 'Sophie Berger', status: 'planifie' },
   { id: 2, title: 'Reunion coordination chantier', date: '18 avril 2026', time: '14:00 - 15:30', person: 'Sophie Berger', status: 'planifie' },
-  { id: 3, title: 'Reception offres toiture', date: '22 avril 2026', time: '10:00', person: 'Julie Favre', status: 'en_attente' },
+  { id: 3, title: 'Remise rapport diagnostic', date: '22 avril 2026', time: '10:00', person: 'Julie Favre', status: 'en_attente' },
   { id: 4, title: 'Debut travaux toiture', date: '5 mai 2026', time: '08:00', person: 'Sophie Berger', status: 'planifie' },
   { id: 5, title: 'Controle intermediaire', date: '20 mai 2026', time: '09:00 - 11:00', person: 'Marc Dubois', status: 'planifie' },
 ]
 
-// Gantt: mois de Nov 2025 a Sept 2026 = 11 mois
 const months = ['Nov', 'Dec', 'Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aout', 'Sep']
 const totalMonths = months.length
+const currentMonthIndex = 5
 
 const ganttTasks = [
-  { label: 'Diagnostic terrain', category: 'Diagnostic', startMonth: 0, duration: 2.5, progress: 100, color: 'bg-blue-500', deps: [] },
-  { label: 'Analyse labo amiante', category: 'Diagnostic', startMonth: 1, duration: 1.5, progress: 100, color: 'bg-blue-400', deps: [] },
-  { label: 'Rapport diagnostic', category: 'Rapport', startMonth: 2.5, duration: 2, progress: 85, color: 'bg-orange-500', deps: ['Diagnostic terrain'] },
-  { label: 'Devis estimatif', category: 'Rapport', startMonth: 3, duration: 1.5, progress: 60, color: 'bg-orange-400', deps: [] },
-  { label: 'AO Lot 1 - Toiture', category: 'Appels d\'offres', startMonth: 4.5, duration: 1.5, progress: 30, color: 'bg-violet-500', deps: ['Rapport diagnostic'] },
-  { label: 'AO Lot 2 - Facade', category: 'Appels d\'offres', startMonth: 5, duration: 1.5, progress: 10, color: 'bg-violet-400', deps: [] },
-  { label: 'AO Lot 3 - Fenetres', category: 'Appels d\'offres', startMonth: 5, duration: 2, progress: 5, color: 'bg-violet-400', deps: [] },
-  { label: 'Attribution marches', category: 'Appels d\'offres', startMonth: 6.5, duration: 0.5, progress: 0, color: 'bg-violet-600', deps: ['AO Lot 1 - Toiture'] },
-  { label: 'Echafaudage', category: 'Travaux', startMonth: 6.5, duration: 1, progress: 0, color: 'bg-yellow-500', deps: [] },
-  { label: 'Travaux toiture', category: 'Travaux', startMonth: 7, duration: 2, progress: 0, color: 'bg-yellow-400', deps: ['Echafaudage'] },
-  { label: 'Travaux facade', category: 'Travaux', startMonth: 7.5, duration: 2.5, progress: 0, color: 'bg-yellow-400', deps: [] },
-  { label: 'Remplacement fenetres', category: 'Travaux', startMonth: 8, duration: 2, progress: 0, color: 'bg-yellow-400', deps: [] },
-  { label: 'Peinture interieure', category: 'Travaux', startMonth: 9, duration: 1.5, progress: 0, color: 'bg-yellow-300', deps: ['Remplacement fenetres'] },
-  { label: 'Nettoyage / reception', category: 'Cloture', startMonth: 10, duration: 0.8, progress: 0, color: 'bg-green-500', deps: [] },
+  { label: 'Diagnostic terrain', category: 'Diagnostic', startMonth: 0, duration: 2.5, progress: 100, color: 'bg-blue-500' },
+  { label: 'Analyse labo', category: 'Diagnostic', startMonth: 1, duration: 1.5, progress: 100, color: 'bg-blue-400' },
+  { label: 'Rapport diagnostic', category: 'Rapport', startMonth: 2.5, duration: 2, progress: 85, color: 'bg-orange-500' },
+  { label: 'Devis estimatif', category: 'Rapport', startMonth: 3, duration: 1.5, progress: 60, color: 'bg-orange-400' },
+  { label: 'Travaux toiture', category: 'Travaux', startMonth: 7, duration: 2, progress: 0, color: 'bg-yellow-400' },
+  { label: 'Travaux facade', category: 'Travaux', startMonth: 7.5, duration: 2.5, progress: 0, color: 'bg-yellow-400' },
+  { label: 'Remplacement fenetres', category: 'Travaux', startMonth: 8, duration: 2, progress: 0, color: 'bg-yellow-400' },
+  { label: 'Nettoyage / reception', category: 'Cloture', startMonth: 10, duration: 0.8, progress: 0, color: 'bg-green-500' },
 ]
-
-// Current month marker (Avril = index 5)
-const currentMonthIndex = 5
 
 const categoryColors: Record<string, string> = {
   'Diagnostic': 'bg-blue-500',
   'Rapport': 'bg-orange-500',
-  'Appels d\'offres': 'bg-violet-500',
   'Travaux': 'bg-yellow-500',
   'Cloture': 'bg-green-500',
 }
@@ -50,11 +40,11 @@ export function ProjectPlanning() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Planning du projet</h1>
-        <Button><Plus className="mr-2 h-4 w-4" />Ajouter une tache</Button>
+        <h1 className="text-2xl font-bold">Calendrier du diagnostic</h1>
+        <Button><Plus className="mr-2 h-4 w-4" />Ajouter un evenement</Button>
       </div>
 
-      {/* Gantt Chart */}
+      {/* Gantt */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -70,77 +60,44 @@ export function ProjectPlanning() {
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
           <div className="min-w-[800px]">
-            {/* Month headers */}
             <div className="flex border-b">
               <div className="w-52 shrink-0 px-4 py-2 text-xs font-medium text-muted-foreground border-r bg-muted/30">Tache</div>
               <div className="flex-1 flex">
                 {months.map((m, i) => (
-                  <div key={m} className={cn(
-                    'flex-1 text-center text-xs py-2 border-r border-border/50 font-medium',
-                    i === currentMonthIndex && 'bg-primary/5 text-primary font-bold'
-                  )}>{m}</div>
+                  <div key={m} className={cn('flex-1 text-center text-xs py-2 border-r border-border/50 font-medium', i === currentMonthIndex && 'bg-primary/5 text-primary font-bold')}>{m}</div>
                 ))}
               </div>
             </div>
-
-            {/* Tasks grouped by category */}
             {categories.map(cat => (
               <div key={cat}>
-                {/* Category header */}
                 <div className="flex border-b bg-muted/20">
                   <div className="w-52 shrink-0 px-4 py-1.5 text-[11px] font-semibold text-muted-foreground border-r flex items-center gap-2">
-                    <div className={cn('h-2 w-2 rounded-sm', categoryColors[cat])} />
-                    {cat}
+                    <div className={cn('h-2 w-2 rounded-sm', categoryColors[cat])} />{cat}
                   </div>
                   <div className="flex-1" />
                 </div>
-                {/* Tasks */}
                 {ganttTasks.filter(t => t.category === cat).map(task => (
-                  <div key={task.label} className="flex border-b hover:bg-muted/20 group">
+                  <div key={task.label} className="flex border-b hover:bg-muted/20">
                     <div className="w-52 shrink-0 px-4 py-2 text-xs border-r flex items-center gap-2">
                       <span className="truncate">{task.label}</span>
                       {task.progress === 100 && <span className="text-[9px] text-green-600 font-medium shrink-0">Termine</span>}
                     </div>
                     <div className="flex-1 relative h-9">
-                      {/* Grid lines */}
-                      {months.map((_, i) => (
-                        <div key={i} className="absolute top-0 bottom-0 border-r border-border/30" style={{ left: `${(i / totalMonths) * 100}%` }} />
-                      ))}
-                      {/* Today marker */}
                       <div className="absolute top-0 bottom-0 w-0.5 bg-primary/60 z-20" style={{ left: `${((currentMonthIndex + 0.3) / totalMonths) * 100}%` }} />
-                      {/* Task bar */}
-                      <div
-                        className={cn('absolute top-1.5 h-6 rounded flex items-center overflow-hidden cursor-pointer transition-shadow hover:shadow-md', task.color)}
-                        style={{
-                          left: `${(task.startMonth / totalMonths) * 100}%`,
-                          width: `${(task.duration / totalMonths) * 100}%`,
-                        }}
-                      >
-                        {/* Progress fill */}
-                        {task.progress > 0 && task.progress < 100 && (
-                          <div className="absolute inset-0 bg-black/15" style={{ width: `${task.progress}%` }} />
-                        )}
-                        <span className="text-[10px] text-white font-medium px-2 truncate relative z-10">
-                          {task.label}
-                        </span>
+                      <div className={cn('absolute top-1.5 h-6 rounded flex items-center overflow-hidden cursor-pointer', task.color)}
+                        style={{ left: `${(task.startMonth / totalMonths) * 100}%`, width: `${(task.duration / totalMonths) * 100}%` }}>
+                        {task.progress > 0 && task.progress < 100 && <div className="absolute inset-0 bg-black/15" style={{ width: `${task.progress}%` }} />}
+                        <span className="text-[10px] text-white font-medium px-2 truncate relative z-10">{task.label}</span>
                       </div>
-                      {/* Dependency arrow (simplified) */}
-                      {task.deps.length > 0 && (
-                        <div className="absolute top-4 w-2 h-0.5 bg-gray-400 -left-0" style={{ left: `calc(${(task.startMonth / totalMonths) * 100}% - 8px)` }}>
-                          <div className="absolute right-0 -top-1 w-0 h-0 border-l-4 border-l-gray-400 border-y-[3px] border-y-transparent" />
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
               </div>
             ))}
-
-            {/* Summary row */}
             <div className="flex border-b bg-muted/30">
-              <div className="w-52 shrink-0 px-4 py-2 text-xs font-bold border-r">Duree totale du projet</div>
+              <div className="w-52 shrink-0 px-4 py-2 text-xs font-bold border-r">Duree totale</div>
               <div className="flex-1 relative h-9">
-                <div className="absolute top-2.5 h-4 rounded-full bg-gradient-to-r from-blue-500 via-violet-500 to-yellow-500 opacity-20"
+                <div className="absolute top-2.5 h-4 rounded-full bg-gradient-to-r from-blue-500 via-orange-400 to-yellow-400 opacity-20"
                   style={{ left: `${(0 / totalMonths) * 100}%`, width: `${(10.8 / totalMonths) * 100}%` }} />
                 <span className="absolute top-2 text-[10px] font-medium text-muted-foreground" style={{ left: `${(11 / totalMonths) * 100}%` }}>~11 mois</span>
               </div>
@@ -149,7 +106,7 @@ export function ProjectPlanning() {
         </CardContent>
       </Card>
 
-      {/* Events list */}
+      {/* Events */}
       <Card>
         <CardHeader><CardTitle>Evenements a venir</CardTitle></CardHeader>
         <CardContent className="space-y-3">

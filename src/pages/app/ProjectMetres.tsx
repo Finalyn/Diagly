@@ -16,7 +16,7 @@ export function ProjectMetres() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Metres et devis quantitatif</h1>
+      <h1 className="text-2xl font-bold">Couts et devis</h1>
 
       {diagnostic ? (
         <Card>
@@ -48,7 +48,7 @@ export function ProjectMetres() {
           </CardContent>
         </Card>
       ) : (
-        <Card><CardContent className="py-16 text-center text-muted-foreground">Aucun diagnostic realise. Les metres seront disponibles apres le diagnostic.</CardContent></Card>
+        <Card><CardContent className="py-16 text-center text-muted-foreground">Aucun diagnostic realise. Les couts seront disponibles apres le diagnostic.</CardContent></Card>
       )}
 
       {diagnostic && (

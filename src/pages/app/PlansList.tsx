@@ -55,7 +55,7 @@ export function PlansList() {
           <option value="SITE">Site</option>
         </Select>
         <Select className="w-52" value={filterProject} onChange={e => setFilterProject(e.target.value)}>
-          <option value="">Tous les projets</option>
+          <option value="">Tous les diagnostics</option>
           {mockProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </Select>
         <div className="flex bg-muted p-0.5 rounded-lg">

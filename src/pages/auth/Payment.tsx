@@ -29,7 +29,7 @@ export function Payment() {
                 <Check className="h-6 w-6 text-primary" />
               </div>
               <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
-                <li>Projets illimites</li>
+                <li>Diagnostics illimites</li>
                 <li>5 utilisateurs</li>
                 <li>CRM batiments + CECB</li>
               </ul>
