@@ -170,7 +170,7 @@ export function Sidebar() {
           {filteredProjects.map(p => (
             <NavLink
               key={p.id}
-              to={`/app/projects/${p.id}/diagnostic`}
+              to={`/app/projects/${p.id}`}
               className={() => cn(
                 'flex items-start gap-2 rounded-md px-3 py-2 transition-colors',
                 p.id === projectId ? 'bg-primary/10 text-primary' : 'hover:bg-accent'
