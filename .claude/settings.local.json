@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp -r /c/Users/jackguisolan/Desktop/diagly-temp/diagly-app/* /c/Users/jackguisolan/Desktop/Diagly/)",
+      "Bash(cp /c/Users/jackguisolan/Desktop/diagly-temp/diagly-app/.gitignore /c/Users/jackguisolan/Desktop/Diagly/)",
+      "Bash(rm -rf /c/Users/jackguisolan/Desktop/diagly-temp)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
