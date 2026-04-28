@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Building2, MapPin, Calendar, Plus, Home } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Tabs, TabsList, TabsTrigger, TabsContent, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Progress } from '@/components/ui'
-import { mockBuildings, mockProjects } from '@/data/mock'
+import { mockBuildings, mockProjects, buildingTypeLabels } from '@/data/mock'
 import { formatCHF, formatDate } from '@/lib/utils'
 
 export function BuildingDetail() {
@@ -121,7 +121,7 @@ export function BuildingDetail() {
               {linkedProjects.length > 0 ? linkedProjects.map(p => (
                 <Link key={p.id} to={`/app/projects/${p.id}`} className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50">
                   <Building2 className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1"><p className="font-medium">{p.name}</p><p className="text-sm text-muted-foreground">{p.buildingType} - {p.yearBuilt}</p></div>
+                  <div className="flex-1"><p className="font-medium">{p.name}</p><p className="text-sm text-muted-foreground">{buildingTypeLabels[p.buildingType]} - {p.yearBuilt}</p></div>
                   <Badge variant="outline">{p.status}</Badge>
                 </Link>
               )) : <p className="text-muted-foreground py-8 text-center">Aucun diagnostic lie a ce batiment.</p>}

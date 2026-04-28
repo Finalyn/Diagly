@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Calendar, ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, List, CalendarDays, BarChart3 } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, List, CalendarDays } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Select } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
-type ViewMode = 'month' | 'week' | 'gantt'
+type ViewMode = 'month' | 'week'
 
 const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -26,26 +26,6 @@ const typeConfig: Record<string, { bg: string; text: string; label: string }> = 
   travaux: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Travaux' },
   autre: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Autre' },
 }
-
-const ganttDiagnostics = [
-  { name: 'Residence du Lac', phases: [
-    { label: 'Diagnostic', start: 1, end: 8, color: 'bg-blue-400' },
-    { label: 'Rapport', start: 9, end: 12, color: 'bg-orange-400' },
-    { label: 'Travaux toiture', start: 19, end: 30, color: 'bg-yellow-400' },
-  ]},
-  { name: 'Ecole Paquis', phases: [
-    { label: 'Rapport final', start: 1, end: 5, color: 'bg-orange-400' },
-    { label: 'Travaux', start: 20, end: 30, color: 'bg-yellow-400' },
-  ]},
-  { name: 'Immeuble Grand-Rue', phases: [
-    { label: 'Diagnostic', start: 14, end: 18, color: 'bg-blue-400' },
-    { label: 'Rapport', start: 19, end: 24, color: 'bg-orange-400' },
-  ]},
-  { name: 'Hotel Beau-Rivage', phases: [
-    { label: 'Visite prealable', start: 11, end: 11, color: 'bg-green-400' },
-    { label: 'Diagnostic', start: 20, end: 30, color: 'bg-blue-400' },
-  ]},
-]
 
 const teamMembers = [
   { name: 'Sophie Berger', role: 'DT', events: 5 },
@@ -82,9 +62,6 @@ export function PlanningPage() {
             </button>
             <button onClick={() => setView('week')} className={cn('px-3 py-1.5 rounded text-xs font-medium', view === 'week' ? 'bg-background shadow-sm' : 'text-muted-foreground')}>
               <List className="h-3.5 w-3.5 inline mr-1" />Semaine
-            </button>
-            <button onClick={() => setView('gantt')} className={cn('px-3 py-1.5 rounded text-xs font-medium', view === 'gantt' ? 'bg-background shadow-sm' : 'text-muted-foreground')}>
-              <BarChart3 className="h-3.5 w-3.5 inline mr-1" />Gantt
             </button>
           </div>
           <Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button>
@@ -162,59 +139,6 @@ export function PlanningPage() {
                   </button>
                 )
               })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {view === 'gantt' && (
-        <Card>
-          <CardHeader><CardTitle>Vue Gantt - Avril 2026</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <div className="min-w-[900px]">
-                <div className="flex border-b">
-                  <div className="w-48 shrink-0 px-4 py-2 text-xs font-medium text-muted-foreground border-r">Diagnostic</div>
-                  <div className="flex-1 flex">
-                    {Array.from({ length: 30 }, (_, i) => (
-                      <div key={i} className={cn('flex-1 text-center text-[10px] py-2 border-r border-border/50', (i + 1) === 9 && 'bg-primary/10 font-bold')}>
-                        {i + 1}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                {ganttDiagnostics.map(diag => (
-                  <div key={diag.name} className="flex border-b hover:bg-muted/30">
-                    <div className="w-48 shrink-0 px-4 py-3 text-sm font-medium border-r truncate">{diag.name}</div>
-                    <div className="flex-1 relative h-10">
-                      {ganttDiagnostics.map((_, mi) => (
-                        <div key={mi} className="absolute top-0 bottom-0 border-r border-border/30" style={{ left: `${(mi / 30) * 100}%` }} />
-                      ))}
-                      <div className="absolute top-0 bottom-0 w-0.5 bg-primary/60 z-10" style={{ left: `${(8.5 / 30) * 100}%` }} />
-                      {diag.phases.map((phase, i) => (
-                        <div
-                          key={i}
-                          className={cn('absolute top-1.5 h-7 rounded text-[10px] text-white font-medium flex items-center px-2 truncate', phase.color)}
-                          style={{ left: `${((phase.start - 1) / 30) * 100}%`, width: `${((phase.end - phase.start + 1) / 30) * 100}%` }}
-                          title={phase.label}
-                        >{phase.label}</div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="p-3 flex gap-4 text-xs border-t">
-              {[
-                { label: 'Diagnostic', color: 'bg-blue-400' },
-                { label: 'Rapport', color: 'bg-orange-400' },
-                { label: 'Travaux', color: 'bg-yellow-400' },
-                { label: 'Visite', color: 'bg-green-400' },
-              ].map(l => (
-                <div key={l.label} className="flex items-center gap-1.5">
-                  <div className={cn('h-3 w-3 rounded-sm', l.color)} />{l.label}
-                </div>
-              ))}
             </div>
           </CardContent>
         </Card>

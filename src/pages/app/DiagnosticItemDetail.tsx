@@ -1,7 +1,8 @@
-import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Camera, Image, Trash2, Save, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { ArrowLeft, Camera, Image, Trash2, Save, ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Input, Textarea, Select } from '@/components/ui'
-import { mockDiagnostics, mockCFCItems, stateLabels, stateColors, priorityColors } from '@/data/mock'
+import { mockDiagnostics, mockCFCItems, stateLabels, stateColors, priorityColors, priorityDescriptions, defaultStateGuide, type ElementState } from '@/data/mock'
 import { formatCHF, cn } from '@/lib/utils'
 
 export function DiagnosticItemDetail() {
@@ -13,6 +14,11 @@ export function DiagnosticItemDetail() {
   const cfcItem = mockCFCItems.find(c => c.code === item.cfcCode)
   const prevItem = itemIndex > 0 ? diagnostic.items[itemIndex - 1] : null
   const nextItem = itemIndex < diagnostic.items.length - 1 ? diagnostic.items[itemIndex + 1] : null
+
+  const [activeState, setActiveState] = useState<ElementState>(item.state)
+  const [selectedWorks, setSelectedWorks] = useState<string[]>(item.works)
+  const guide = cfcItem?.stateGuide?.[activeState] ?? defaultStateGuide[activeState]
+  const toggleWork = (w: string) => setSelectedWorks(prev => prev.includes(w) ? prev.filter(x => x !== w) : [...prev, w])
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -57,7 +63,7 @@ export function DiagnosticItemDetail() {
               <p className="text-sm font-medium mb-3">Etat de l'element</p>
               <div className="grid grid-cols-2 gap-2">
                 {(['TRES_BON', 'BON', 'MOYEN', 'MAUVAIS'] as const).map(state => (
-                  <button key={state} className={cn('py-3 rounded-lg text-sm font-medium border-2 transition-colors', item.state === state ? `${stateColors[state]} text-white border-transparent` : 'bg-background border-muted hover:border-primary/30')}>{stateLabels[state]}</button>
+                  <button key={state} type="button" onClick={() => setActiveState(state)} className={cn('py-3 rounded-lg text-sm font-medium border-2 transition-colors', activeState === state ? `${stateColors[state]} text-white border-transparent` : 'bg-background border-muted hover:border-primary/30')}>{stateLabels[state]}</button>
                 ))}
               </div>
             </div>
@@ -68,6 +74,7 @@ export function DiagnosticItemDetail() {
                   <button key={p} className={cn('flex-1 py-3 rounded-lg text-sm font-bold border-2 transition-colors', item.priority === p ? `${priorityColors[p]} border-transparent` : 'bg-background border-muted hover:border-primary/30')}>Priorite {p}</button>
                 ))}
               </div>
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{priorityDescriptions[item.priority]}</p>
             </div>
             <div>
               <p className="text-sm font-medium mb-2">Annee d'installation</p>
@@ -107,23 +114,54 @@ export function DiagnosticItemDetail() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Travaux recommandes</CardTitle></CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2 mb-4">
-            {item.works.map((w, i) => (
-              <Badge key={i} variant="secondary" className="py-1.5 px-3 text-sm">{w}<button className="ml-2 text-muted-foreground hover:text-destructive">&times;</button></Badge>
-            ))}
-          </div>
-          {cfcItem && (
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Guide d'evaluation - Etat
+            <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white', stateColors[activeState])}>{stateLabels[activeState]}</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="flex gap-3 p-4 rounded-lg bg-muted/40 border">
+            <Info className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs text-muted-foreground mb-2">Suggestions :</p>
-              <div className="flex flex-wrap gap-2">
-                {cfcItem.works.filter(w => !item.works.includes(w)).map((w, i) => (
-                  <button key={i} className="text-xs border rounded-full px-3 py-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors">+ {w}</button>
-                ))}
-              </div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground font-medium mb-1">Pourquoi cet etat ?</p>
+              <p className="text-sm leading-relaxed">{guide.criteria}</p>
             </div>
-          )}
+          </div>
+
+          <div>
+            <p className="text-sm font-medium mb-2">Travaux a realiser</p>
+            <p className="text-xs text-muted-foreground mb-3">Selectionnez les travaux applicables pour cet element.</p>
+            <div className="flex flex-wrap gap-2">
+              {selectedWorks.map(w => (
+                <Badge key={`sel-${w}`} variant="secondary" className="py-1.5 px-3 text-sm cursor-pointer" onClick={() => toggleWork(w)}>
+                  {w}<span className="ml-2 text-muted-foreground hover:text-destructive">&times;</span>
+                </Badge>
+              ))}
+            </div>
+
+            {guide.works.filter(w => !selectedWorks.includes(w)).length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs text-muted-foreground mb-2">Suggestions pour cet etat :</p>
+                <div className="flex flex-wrap gap-2">
+                  {guide.works.filter(w => !selectedWorks.includes(w)).map(w => (
+                    <button key={`g-${w}`} type="button" onClick={() => toggleWork(w)} className="text-xs border rounded-full px-3 py-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors">+ {w}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {cfcItem && cfcItem.works.filter(w => !selectedWorks.includes(w) && !guide.works.includes(w)).length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs text-muted-foreground mb-2">Autres travaux du CFC :</p>
+                <div className="flex flex-wrap gap-2">
+                  {cfcItem.works.filter(w => !selectedWorks.includes(w) && !guide.works.includes(w)).map(w => (
+                    <button key={`c-${w}`} type="button" onClick={() => toggleWork(w)} className="text-xs border rounded-full px-3 py-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors">+ {w}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 

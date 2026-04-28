@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Download, Printer, Share2, FileText } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui'
-import { mockProjects, mockDiagnostics, priorityColors, stateLabels } from '@/data/mock'
+import { mockProjects, mockDiagnostics, priorityColors, stateLabels, buildingTypeLabels } from '@/data/mock'
 import { formatCHF, formatDate } from '@/lib/utils'
 
 export function ReportDetail() {
@@ -69,7 +69,7 @@ export function ReportDetail() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4 text-sm">
-              <div><span className="text-muted-foreground">Type :</span> {project.buildingType}</div>
+              <div><span className="text-muted-foreground">Type :</span> {buildingTypeLabels[project.buildingType]}</div>
               <div><span className="text-muted-foreground">Annee :</span> {project.yearBuilt}</div>
               <div><span className="text-muted-foreground">Etages :</span> {project.nbFloors}</div>
               <div><span className="text-muted-foreground">Surface plancher :</span> {project.floorArea} m2</div>

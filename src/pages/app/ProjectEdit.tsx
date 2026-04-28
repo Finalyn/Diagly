@@ -1,7 +1,9 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Save } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Input, Select } from '@/components/ui'
-import { mockProjects } from '@/data/mock'
+import { mockProjects, buildingTypeLabels, type BuildingType } from '@/data/mock'
+
+const buildingTypeOrder: BuildingType[] = ['LOGEMENT', 'VILLA', 'CHALET', 'SCOLAIRE', 'BUREAU', 'ADMINISTRATIF', 'INDUSTRIEL', 'HOTEL', 'COMMERCIAL', 'AUTRE']
 
 export function ProjectEdit() {
   const { id } = useParams()
@@ -27,9 +29,13 @@ export function ProjectEdit() {
               <label className="text-sm font-medium mb-1 block">Nom du diagnostic</label>
               <Input defaultValue={project.name} />
             </div>
-            <div>
+            <div className="col-span-2">
               <label className="text-sm font-medium mb-1 block">Adresse</label>
               <Input defaultValue={project.address} />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Code postal</label>
+              <Input defaultValue={project.postalCode ?? ''} placeholder="1006" maxLength={4} />
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Ville</label>
@@ -48,12 +54,7 @@ export function ProjectEdit() {
             <div>
               <label className="text-sm font-medium mb-1 block">Type de batiment</label>
               <Select defaultValue={project.buildingType}>
-                <option value="LOGEMENT">Logement</option>
-                <option value="SCOLAIRE">Scolaire</option>
-                <option value="ADMINISTRATIF">Administratif</option>
-                <option value="INDUSTRIEL">Industriel</option>
-                <option value="HOTEL">Hotel</option>
-                <option value="COMMERCIAL">Commercial</option>
+                {buildingTypeOrder.map(t => <option key={t} value={t}>{buildingTypeLabels[t]}</option>)}
               </Select>
             </div>
             <div>

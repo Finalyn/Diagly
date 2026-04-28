@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Search, Filter } from 'lucide-react'
 import { Button, Card, Badge, Input, Select } from '@/components/ui'
-import { mockProjects, statusLabels, statusColors } from '@/data/mock'
+import { mockProjects, statusLabels, statusColors, buildingTypeLabels } from '@/data/mock'
 import { formatCHF } from '@/lib/utils'
 
 const tabs = ['Tous', 'En cours', 'Diagnostic', 'Rapports', 'Clotures'] as const
@@ -69,10 +69,10 @@ export function ProjectsList() {
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <div className={`sm:hidden h-2 w-2 rounded-full ${statusColors[project.status]}`} />
                     <h3 className="font-semibold text-sm md:text-base">{project.name}</h3>
-                    <Badge variant="outline" className="text-[10px] md:text-xs">{project.buildingType}</Badge>
+                    <Badge variant="outline" className="text-[10px] md:text-xs">{buildingTypeLabels[project.buildingType]}</Badge>
                     <Badge className={`${statusColors[project.status]} text-white text-[10px] md:text-xs`}>{statusLabels[project.status]}</Badge>
                   </div>
-                  <p className="text-xs md:text-sm text-muted-foreground">{project.address}, {project.city} ({project.canton})</p>
+                  <p className="text-xs md:text-sm text-muted-foreground">{project.address}, {project.postalCode ? `${project.postalCode} ` : ''}{project.city} ({project.canton})</p>
                   <div className="flex flex-wrap gap-3 md:gap-6 mt-2 text-xs md:text-sm text-muted-foreground">
                     {project.yearBuilt && <span>Construit en {project.yearBuilt}</span>}
                     {project.nbApartments !== undefined && project.nbApartments > 0 && <span>{project.nbApartments} appts</span>}

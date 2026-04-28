@@ -1,5 +1,5 @@
 export type ProjectStatus = 'NON_PLANIFIE' | 'PLANIFIE' | 'EN_COURS' | 'EN_REVUE' | 'TERMINE' | 'ARCHIVE'
-export type BuildingType = 'LOGEMENT' | 'SCOLAIRE' | 'ADMINISTRATIF' | 'INDUSTRIEL' | 'HOTEL' | 'COMMERCIAL' | 'AUTRE'
+export type BuildingType = 'LOGEMENT' | 'VILLA' | 'CHALET' | 'SCOLAIRE' | 'BUREAU' | 'ADMINISTRATIF' | 'INDUSTRIEL' | 'HOTEL' | 'COMMERCIAL' | 'AUTRE'
 export type ElementState = 'TRES_BON' | 'BON' | 'MOYEN' | 'MAUVAIS'
 export type Priority = 'I' | 'II' | 'III'
 export type DiagStatus = 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED'
@@ -7,8 +7,9 @@ export type PlanType = 'FLOOR' | 'FACADE' | 'SECTION' | 'SITE' | 'OTHER'
 export type TenderStatus = 'DRAFT' | 'SENT' | 'RECEIVED' | 'AWARDED' | 'CLOSED'
 
 export interface User { id: string; email: string; firstName: string; lastName: string; role: string; companyName: string; phone: string; plan: string }
-export interface Project { id: string; name: string; address: string; city: string; canton: string; parcelNumber?: string; yearBuilt?: number; buildingType: BuildingType; nbApartments?: number; nbFloors?: number; floorHeight?: number; nbStaircases?: number; floorArea?: number; builtArea?: number; facadeArea?: number; terrainArea?: number; perimeter?: number; windowPct: number; honoraryPct: number; reservePct: number; status: ProjectStatus; totalBudget?: number; createdAt: Date; updatedAt: Date }
-export interface CFCItem { id: string; code: string; label: string; unit: string; priceMin: number; priceMax: number; priceAvg: number; category: string; subcategory?: string; works: string[] }
+export interface Project { id: string; name: string; address: string; city: string; postalCode?: string; canton: string; parcelNumber?: string; yearBuilt?: number; buildingType: BuildingType; nbApartments?: number; nbFloors?: number; floorHeight?: number; nbStaircases?: number; floorArea?: number; builtArea?: number; facadeArea?: number; terrainArea?: number; perimeter?: number; windowPct: number; honoraryPct: number; reservePct: number; status: ProjectStatus; totalBudget?: number; createdAt: Date; updatedAt: Date }
+export interface StateGuide { criteria: string; works: string[] }
+export interface CFCItem { id: string; code: string; label: string; unit: string; priceMin: number; priceMax: number; priceAvg: number; category: string; subcategory?: string; works: string[]; stateGuide?: Partial<Record<ElementState, StateGuide>> }
 export interface DiagnosticItem { id: string; diagnosticId: string; cfcCode: string; cfcLabel: string; state: ElementState; priority: Priority; notes?: string; photos: string[]; works: string[]; estimatedCost: number; area?: number; unit?: string; yearInstalled?: number }
 export interface Diagnostic { id: string; projectId: string; visitDate?: Date; status: DiagStatus; notes?: string; items: DiagnosticItem[] }
 export interface Apartment { id: string; buildingId: string; number: string; floor: number; area?: number; rooms?: number; tenant?: string; history: WorkHistoryEntry[] }
@@ -26,16 +27,83 @@ export const statusColors: Record<ProjectStatus, string> = {
   NON_PLANIFIE: 'bg-gray-400', PLANIFIE: 'bg-blue-400', EN_COURS: 'bg-blue-500',
   EN_REVUE: 'bg-yellow-500', TERMINE: 'bg-green-500', ARCHIVE: 'bg-gray-500'
 }
+export const buildingTypeLabels: Record<BuildingType, string> = {
+  LOGEMENT: 'Logement', VILLA: 'Villa', CHALET: 'Chalet', SCOLAIRE: 'Ecole / Scolaire',
+  BUREAU: 'Bureau', ADMINISTRATIF: 'Administratif', INDUSTRIEL: 'Industriel',
+  HOTEL: 'Hotel', COMMERCIAL: 'Commercial', AUTRE: 'Autre',
+}
+
+export const roomBlocks: Record<BuildingType, string[]> = {
+  LOGEMENT: ['Entree', 'Salon / Sejour', 'Cuisine', 'Salle de bains', 'WC', 'Chambre', 'Balcon / Terrasse', 'Buanderie / Cave', 'Communs', 'Enveloppe'],
+  VILLA: ['Entree', 'Salon / Sejour', 'Cuisine', 'Salle de bains', 'WC', 'Chambre', 'Balcon / Terrasse', 'Buanderie / Cave', 'Enveloppe'],
+  CHALET: ['Entree', 'Salon / Sejour', 'Cuisine', 'Salle de bains', 'Chambre', 'Balcon / Terrasse', 'Enveloppe'],
+  SCOLAIRE: ['Hall', 'Salle de classe', 'Salle de sport / Gymnase', 'Sanitaires', 'Cantine', 'Couloirs / Escaliers', 'Enveloppe'],
+  BUREAU: ['Accueil', 'Open space / Bureaux', 'Salles de reunion', 'Sanitaires', 'Cafeteria', 'Couloirs / Escaliers', 'Enveloppe'],
+  ADMINISTRATIF: ['Accueil', 'Open space / Bureaux', 'Salles de reunion', 'Sanitaires', 'Cafeteria', 'Couloirs / Escaliers', 'Enveloppe'],
+  INDUSTRIEL: ['Hall de production', 'Bureaux', 'Sanitaires / vestiaires', 'Stockage', 'Quai', 'Enveloppe'],
+  HOTEL: ['Lobby / Reception', 'Chambre', 'Salle de bains chambre', 'Restaurant', 'Cuisine professionnelle', 'Sanitaires communs', 'Communs / Couloirs', 'Enveloppe'],
+  COMMERCIAL: ['Surface de vente', 'Reserves', 'Sanitaires', 'Communs', 'Enveloppe'],
+  AUTRE: ['Espaces principaux', 'Sanitaires', 'Communs', 'Enveloppe'],
+}
+
+export const blockCfcCodes: Record<string, string[]> = {
+  'Entree': ['411', '343', '442'],
+  'Salon / Sejour': ['411', '442', '441', '343', '321'],
+  'Cuisine': ['411', '431', '432', '461', '511', '521', '531'],
+  'Salle de bains': ['411', '432', '431', '471', '511', '512'],
+  'WC': ['411', '432', '511', '512'],
+  'Chambre': ['411', '442', '343', '321'],
+  'Balcon / Terrasse': ['271', '281', '351', '291'],
+  'Buanderie / Cave': ['411', '511', '531'],
+  'Communs': ['411', '343', '342', '351', '442', '551'],
+  'Enveloppe': ['271', '272', '281', '283', '284', '291', '311', '312', '313', '412', '321'],
+  'Hall': ['411', '343', '442', '351'],
+  'Salle de classe': ['411', '442', '343', '321', '531'],
+  'Salle de sport / Gymnase': ['411', '442', '321', '531', '523'],
+  'Sanitaires': ['411', '431', '432', '511', '512'],
+  'Cantine': ['411', '431', '432', '461', '511', '521', '531', '523'],
+  'Couloirs / Escaliers': ['411', '442', '351', '343', '551'],
+  'Accueil': ['411', '442', '343', '321'],
+  'Open space / Bureaux': ['411', '442', '321', '343', '531'],
+  'Salles de reunion': ['411', '442', '321', '343', '531'],
+  'Cafeteria': ['411', '431', '432', '461', '511', '521', '531'],
+  'Hall de production': ['411', '442', '531', '523', '551'],
+  'Bureaux': ['411', '442', '321', '343', '531'],
+  'Sanitaires / vestiaires': ['411', '431', '432', '511', '512'],
+  'Stockage': ['411', '442', '531'],
+  'Quai': ['351', '442', '531'],
+  'Lobby / Reception': ['411', '442', '343', '321', '551'],
+  'Salle de bains chambre': ['411', '432', '471', '511', '512'],
+  'Restaurant': ['411', '431', '432', '321', '343', '531', '523'],
+  'Cuisine professionnelle': ['411', '431', '432', '461', '511', '521', '531', '523'],
+  'Sanitaires communs': ['411', '431', '432', '511', '512'],
+  'Communs / Couloirs': ['411', '442', '343', '342', '351', '551'],
+  'Surface de vente': ['411', '442', '321', '343', '531', '523'],
+  'Reserves': ['411', '442', '531'],
+  'Espaces principaux': ['411', '442', '343', '321', '531'],
+}
 export const stateLabels: Record<ElementState, string> = { TRES_BON: 'Tres bon', BON: 'Bon', MOYEN: 'Moyen', MAUVAIS: 'Mauvais' }
+
+export const defaultStateGuide: Record<ElementState, StateGuide> = {
+  TRES_BON: { criteria: 'Element neuf ou recent, sans defaut visible. Aucune intervention necessaire dans les 10 prochaines annees.', works: [] },
+  BON: { criteria: 'Element fonctionnel, defauts mineurs (legere usure, salissures). Aucune intervention urgente, surveillance et entretien preventif.', works: ['Entretien preventif', 'Nettoyage'] },
+  MOYEN: { criteria: 'Element encore fonctionnel mais usure visible (fissures, decolorations, jeux). Intervention a planifier dans les 5 ans pour eviter une degradation acceleree.', works: ['Reparation locale', 'Entretien correctif', 'Mise en peinture / refection'] },
+  MAUVAIS: { criteria: 'Element en fin de vie, degradation importante ou defaut critique. Intervention urgente (securite, etancheite ou fonctionnement compromis).', works: ['Remplacement complet', 'Remise a neuf', 'Renforcement structurel'] },
+}
 export const stateColors: Record<ElementState, string> = { TRES_BON: 'bg-green-500', BON: 'bg-green-400', MOYEN: 'bg-orange-400', MAUVAIS: 'bg-red-500' }
 export const priorityColors: Record<Priority, string> = { I: 'bg-red-500 text-white', II: 'bg-orange-500 text-white', III: 'bg-green-500 text-white' }
+export const priorityDescriptions: Record<Priority, string> = {
+  I: 'Urgent - intervention dans les 12 mois (securite, etancheite ou fonction critique en jeu).',
+  II: 'A planifier sous 1 a 5 ans pour eviter une degradation acceleree ou des couts plus eleves.',
+  III: 'Entretien preventif a moyen / long terme (>5 ans), pas de risque immediat.',
+}
 
 export const mockUser: User = { id: 'usr_1', email: 'sophie.berger@diagly-demo.ch', firstName: 'Sophie', lastName: 'Berger', role: 'DT', companyName: 'Berger & Fils SA', phone: '+41 21 312 45 67', plan: 'PRO' }
 
 export const mockProjects: Project[] = [
-  { id: 'prj_1', name: 'Renovation Residence du Lac', address: 'Av. de Cour 42', city: 'Lausanne', canton: 'VD', parcelNumber: 'VD-1234', yearBuilt: 1972, buildingType: 'LOGEMENT', nbApartments: 24, nbFloors: 6, floorHeight: 2.7, nbStaircases: 2, floorArea: 3200, builtArea: 580, facadeArea: 2800, terrainArea: 1200, perimeter: 120, windowPct: 0.30, honoraryPct: 12, reservePct: 5, status: 'EN_COURS', totalBudget: 1850000, createdAt: new Date('2025-11-15'), updatedAt: new Date('2026-03-20') },
-  { id: 'prj_2', name: 'Ecole primaire des Paquis', address: 'Rue de Zurich 18', city: 'Geneve', canton: 'GE', parcelNumber: 'GE-5678', yearBuilt: 1965, buildingType: 'SCOLAIRE', nbApartments: 0, nbFloors: 3, floorHeight: 3.2, nbStaircases: 2, floorArea: 2400, builtArea: 850, facadeArea: 1920, terrainArea: 3500, perimeter: 140, windowPct: 0.35, honoraryPct: 10, reservePct: 5, status: 'TERMINE', totalBudget: 980000, createdAt: new Date('2025-09-01'), updatedAt: new Date('2026-02-10') },
-  { id: 'prj_3', name: 'Immeuble Grand-Rue', address: 'Grand-Rue 15', city: 'Fribourg', canton: 'FR', parcelNumber: 'FR-9012', yearBuilt: 1988, buildingType: 'LOGEMENT', nbApartments: 16, nbFloors: 5, floorHeight: 2.6, nbStaircases: 1, floorArea: 2100, builtArea: 420, facadeArea: 1820, terrainArea: 650, perimeter: 90, windowPct: 0.28, honoraryPct: 11, reservePct: 5, status: 'EN_REVUE', totalBudget: 720000, createdAt: new Date('2025-10-20'), updatedAt: new Date('2026-03-15') },
+  { id: 'prj_1', name: 'Renovation Residence du Lac', address: 'Av. de Cour 42', city: 'Lausanne', postalCode: '1006', canton: 'VD', parcelNumber: 'VD-1234', yearBuilt: 1972, buildingType: 'LOGEMENT', nbApartments: 24, nbFloors: 6, floorHeight: 2.7, nbStaircases: 2, floorArea: 3200, builtArea: 580, facadeArea: 2800, terrainArea: 1200, perimeter: 120, windowPct: 0.30, honoraryPct: 12, reservePct: 5, status: 'EN_COURS', totalBudget: 1850000, createdAt: new Date('2025-11-15'), updatedAt: new Date('2026-03-20') },
+  { id: 'prj_2', name: 'Ecole primaire des Paquis', address: 'Rue de Zurich 18', city: 'Geneve', postalCode: '1201', canton: 'GE', parcelNumber: 'GE-5678', yearBuilt: 1965, buildingType: 'SCOLAIRE', nbApartments: 0, nbFloors: 3, floorHeight: 3.2, nbStaircases: 2, floorArea: 2400, builtArea: 850, facadeArea: 1920, terrainArea: 3500, perimeter: 140, windowPct: 0.35, honoraryPct: 10, reservePct: 5, status: 'TERMINE', totalBudget: 980000, createdAt: new Date('2025-09-01'), updatedAt: new Date('2026-02-10') },
+  { id: 'prj_3', name: 'Immeuble Grand-Rue', address: 'Grand-Rue 15', city: 'Fribourg', postalCode: '1700', canton: 'FR', parcelNumber: 'FR-9012', yearBuilt: 1988, buildingType: 'LOGEMENT', nbApartments: 16, nbFloors: 5, floorHeight: 2.6, nbStaircases: 1, floorArea: 2100, builtArea: 420, facadeArea: 1820, terrainArea: 650, perimeter: 90, windowPct: 0.28, honoraryPct: 11, reservePct: 5, status: 'EN_REVUE', totalBudget: 720000, createdAt: new Date('2025-10-20'), updatedAt: new Date('2026-03-15') },
   { id: 'prj_4', name: 'Hotel Beau-Rivage', address: 'Quai du Mont-Blanc 8', city: 'Montreux', canton: 'VD', yearBuilt: 1955, buildingType: 'HOTEL', nbApartments: 45, nbFloors: 7, floorHeight: 3.0, nbStaircases: 3, floorArea: 5600, builtArea: 900, facadeArea: 4200, terrainArea: 2800, perimeter: 160, windowPct: 0.32, honoraryPct: 13, reservePct: 5, status: 'NON_PLANIFIE', totalBudget: 3200000, createdAt: new Date('2026-03-01'), updatedAt: new Date('2026-03-01') },
   { id: 'prj_5', name: 'Centre administratif Numa Droz', address: 'Rue Numa-Droz 2', city: 'Neuchatel', canton: 'NE', parcelNumber: 'NE-3456', yearBuilt: 1980, buildingType: 'ADMINISTRATIF', nbApartments: 0, nbFloors: 4, floorHeight: 2.8, nbStaircases: 2, floorArea: 3800, builtArea: 1050, facadeArea: 2560, terrainArea: 1800, perimeter: 130, windowPct: 0.40, honoraryPct: 10, reservePct: 5, status: 'ARCHIVE', totalBudget: 1450000, createdAt: new Date('2024-06-15'), updatedAt: new Date('2025-12-20') },
   { id: 'prj_6', name: 'Residence Les Alpes', address: 'Chemin des Cretes 12', city: 'Sion', canton: 'VS', yearBuilt: 1990, buildingType: 'LOGEMENT', nbApartments: 18, nbFloors: 5, floorHeight: 2.6, nbStaircases: 1, floorArea: 2400, builtArea: 480, windowPct: 0.28, honoraryPct: 11, reservePct: 5, status: 'EN_COURS', totalBudget: 920000, createdAt: new Date('2025-06-10'), updatedAt: new Date('2026-03-28') },
@@ -55,20 +123,40 @@ export const mockCFCItems: CFCItem[] = [
   { id: 'cfc_2', code: '221', label: 'Maconnerie', unit: 'm2', priceMin: 120, priceMax: 280, priceAvg: 195, category: 'Gros oeuvre', subcategory: 'Maconnerie', works: ['Reparation fissures', 'Rejointoiement'] },
   { id: 'cfc_3', code: '224', label: 'Beton arme', unit: 'm3', priceMin: 450, priceMax: 850, priceAvg: 620, category: 'Gros oeuvre', subcategory: 'Beton', works: ['Reparation beton', 'Renforcement structure'] },
   { id: 'cfc_4', code: '261', label: 'Echafaudage', unit: 'm2', priceMin: 25, priceMax: 55, priceAvg: 38, category: 'Gros oeuvre', subcategory: 'Echafaudage', works: ['Montage echafaudage'] },
-  { id: 'cfc_5', code: '271', label: 'Couverture et etancheite toiture', unit: 'm2', priceMin: 85, priceMax: 220, priceAvg: 145, category: 'Enveloppe', subcategory: 'Toiture', works: ['Remplacement couverture', 'Refection etancheite'] },
+  { id: 'cfc_5', code: '271', label: 'Couverture et etancheite toiture', unit: 'm2', priceMin: 85, priceMax: 220, priceAvg: 145, category: 'Enveloppe', subcategory: 'Toiture', works: ['Remplacement couverture', 'Refection etancheite'], stateGuide: {
+    TRES_BON: { criteria: 'Couverture recente (<10 ans), aucun defaut visible, ferblanterie intacte.', works: [] },
+    BON: { criteria: 'Couverture en bon etat, mousses ou salissures legeres. Pas de fuite signalee.', works: ['Nettoyage couverture', 'Demoussage', 'Controle ferblanterie'] },
+    MOYEN: { criteria: 'Quelques tuiles fissurees ou deplacees, etancheite degradee localement, traces d\'humidite ponctuelles. Risque de fuite a moyen terme.', works: ['Remplacement tuiles localisees', 'Refection etancheite ponctuelle', 'Reprise ferblanterie'] },
+    MAUVAIS: { criteria: 'Fuites averees, sous-couverture endommagee, isolation potentiellement humide. Risque structurel et thermique.', works: ['Refection complete couverture', 'Refection etancheite', 'Reprise charpente si necessaire'] },
+  } },
   { id: 'cfc_6', code: '272', label: 'Isolation thermique toiture', unit: 'm2', priceMin: 60, priceMax: 150, priceAvg: 95, category: 'Enveloppe', subcategory: 'Toiture', works: ['Pose isolation minerale', 'Pare-vapeur'] },
   { id: 'cfc_7', code: '281', label: 'Ferblanterie', unit: 'ml', priceMin: 45, priceMax: 120, priceAvg: 75, category: 'Enveloppe', subcategory: 'Ferblanterie', works: ['Remplacement gouttieres', 'Couvertines'] },
   { id: 'cfc_8', code: '283', label: 'Isolation facade', unit: 'm2', priceMin: 150, priceMax: 320, priceAvg: 230, category: 'Enveloppe', subcategory: 'Facade', works: ['Isolation par exterieur', 'Crepi sur isolation'] },
   { id: 'cfc_9', code: '284', label: 'Facade ventilee', unit: 'm2', priceMin: 280, priceMax: 500, priceAvg: 380, category: 'Enveloppe', subcategory: 'Facade', works: ['Ossature metallique', 'Parement'] },
-  { id: 'cfc_10', code: '291', label: 'Crepi facade', unit: 'm2', priceMin: 65, priceMax: 140, priceAvg: 95, category: 'Enveloppe', subcategory: 'Facade', works: ['Crepi mineral', 'Crepi synthetique'] },
-  { id: 'cfc_11', code: '311', label: 'Fenetres bois', unit: 'pce', priceMin: 1200, priceMax: 2800, priceAvg: 1900, category: 'Fenetres et portes', subcategory: 'Fenetres', works: ['Remplacement fenetres', 'Triple vitrage'] },
+  { id: 'cfc_10', code: '291', label: 'Crepi facade', unit: 'm2', priceMin: 65, priceMax: 140, priceAvg: 95, category: 'Enveloppe', subcategory: 'Facade', works: ['Crepi mineral', 'Crepi synthetique'], stateGuide: {
+    TRES_BON: { criteria: 'Crepi recent, teinte uniforme, aucune fissure, pas de salissures ni decollement.', works: [] },
+    BON: { criteria: 'Crepi en bon etat general, salissures legeres, microfissures de surface non actives.', works: ['Nettoyage haute pression', 'Traitement hydrofuge'] },
+    MOYEN: { criteria: 'Fissures visibles >0.3mm, decollements localises, taches d\'humidite ou developpement biologique (algues, mousses). Pas de risque structurel mais esthetique degradee.', works: ['Rebouchage des fissures', 'Traitement antifongique', 'Mise en peinture facade', 'Reprise localisee du crepi'] },
+    MAUVAIS: { criteria: 'Fissures structurelles, eclats importants, decollement par plaques, infiltrations averees. Crepi non protecteur, risque pour la maconnerie.', works: ['Piochage et refection complete du crepi', 'Pose isolation perimetrique', 'Etudes structurelles si fissures actives'] },
+  } },
+  { id: 'cfc_11', code: '311', label: 'Fenetres bois', unit: 'pce', priceMin: 1200, priceMax: 2800, priceAvg: 1900, category: 'Fenetres et portes', subcategory: 'Fenetres', works: ['Remplacement fenetres', 'Triple vitrage'], stateGuide: {
+    TRES_BON: { criteria: 'Fenetres recentes (<15 ans), double ou triple vitrage, joints intacts, bois en parfait etat.', works: [] },
+    BON: { criteria: 'Fenetres fonctionnelles, double vitrage, leger vieillissement de la peinture, joints encore performants.', works: ['Reprise peinture', 'Graissage ferrures'] },
+    MOYEN: { criteria: 'Simple vitrage ou double vitrage ancien (>25 ans), joints durcis, bois grise par endroits, condensations frequentes. Performance thermique mediocre.', works: ['Remplacement des joints', 'Remise en peinture', 'Etude de remplacement (Minergie)'] },
+    MAUVAIS: { criteria: 'Bois pourri, vitrage casse ou descelle, fenetre non etanche, courants d\'air importants. Performance thermique inacceptable.', works: ['Remplacement complet des fenetres', 'Pose triple vitrage', 'Reprise des tableaux et appuis'] },
+  } },
   { id: 'cfc_12', code: '312', label: 'Fenetres PVC', unit: 'pce', priceMin: 800, priceMax: 1800, priceAvg: 1250, category: 'Fenetres et portes', subcategory: 'Fenetres', works: ['Remplacement fenetres PVC'] },
   { id: 'cfc_13', code: '313', label: 'Fenetres aluminium', unit: 'pce', priceMin: 1500, priceMax: 3500, priceAvg: 2400, category: 'Fenetres et portes', subcategory: 'Fenetres', works: ['Remplacement fenetres alu'] },
   { id: 'cfc_14', code: '321', label: 'Stores et protections solaires', unit: 'pce', priceMin: 400, priceMax: 1200, priceAvg: 750, category: 'Fenetres et portes', subcategory: 'Protections', works: ['Stores a lamelles', 'Motorisation'] },
   { id: 'cfc_15', code: '342', label: 'Portes palieres', unit: 'pce', priceMin: 1800, priceMax: 3500, priceAvg: 2500, category: 'Fenetres et portes', subcategory: 'Portes', works: ['Remplacement porte paliere'] },
   { id: 'cfc_16', code: '343', label: 'Portes interieures', unit: 'pce', priceMin: 600, priceMax: 1500, priceAvg: 950, category: 'Fenetres et portes', subcategory: 'Portes', works: ['Remplacement portes'] },
   { id: 'cfc_17', code: '351', label: 'Serrurerie et metallerie', unit: 'ml', priceMin: 250, priceMax: 600, priceAvg: 400, category: 'Fenetres et portes', subcategory: 'Serrurerie', works: ['Garde-corps', 'Main courante'] },
-  { id: 'cfc_18', code: '411', label: 'Peinture interieure', unit: 'm2', priceMin: 18, priceMax: 45, priceAvg: 28, category: 'Finitions', subcategory: 'Peinture', works: ['Peinture murs', 'Peinture plafonds'] },
+  { id: 'cfc_18', code: '411', label: 'Peinture interieure', unit: 'm2', priceMin: 18, priceMax: 45, priceAvg: 28, category: 'Finitions', subcategory: 'Peinture', works: ['Peinture murs', 'Peinture plafonds'], stateGuide: {
+    TRES_BON: { criteria: 'Peinture recente (<5 ans), couleur uniforme, aucune trace, surface lisse.', works: [] },
+    BON: { criteria: 'Peinture propre, traces de mobilier ou frottements legers, pas d\'ecaillage.', works: ['Retouches localisees'] },
+    MOYEN: { criteria: 'Decoloration, salissures, petites ecailles ou microfissures, traces d\'humidite legeres. Renovation a prevoir.', works: ['Remise en peinture complete', 'Rebouchage et lissage', 'Traitement anti-humidite preventif'] },
+    MAUVAIS: { criteria: 'Ecaillage important, moisissures, support degrade. Renovation indispensable, traitement de la cause sous-jacente requis.', works: ['Decapage complet', 'Traitement antifongique', 'Reparation du support', 'Mise en peinture complete'] },
+  } },
   { id: 'cfc_19', code: '412', label: 'Peinture facade', unit: 'm2', priceMin: 35, priceMax: 85, priceAvg: 55, category: 'Finitions', subcategory: 'Peinture', works: ['Ravalement facade'] },
   { id: 'cfc_20', code: '431', label: 'Carrelage sol', unit: 'm2', priceMin: 85, priceMax: 180, priceAvg: 125, category: 'Finitions', subcategory: 'Carrelage', works: ['Pose carrelage neuf'] },
   { id: 'cfc_21', code: '432', label: 'Carrelage mural', unit: 'm2', priceMin: 95, priceMax: 200, priceAvg: 140, category: 'Finitions', subcategory: 'Carrelage', works: ['Faience salle de bains'] },
@@ -78,7 +166,12 @@ export const mockCFCItems: CFCItem[] = [
   { id: 'cfc_25', code: '471', label: 'Amenagement salle de bains', unit: 'pce', priceMin: 12000, priceMax: 30000, priceAvg: 18000, category: 'Finitions', subcategory: 'Salle de bains', works: ['Renovation complete SDB'] },
   { id: 'cfc_26', code: '511', label: 'Appareils sanitaires', unit: 'pce', priceMin: 800, priceMax: 3500, priceAvg: 1800, category: 'Installations techniques', subcategory: 'Sanitaire', works: ['Remplacement WC', 'Lavabo'] },
   { id: 'cfc_27', code: '512', label: 'Canalisations sanitaires', unit: 'ml', priceMin: 120, priceMax: 350, priceAvg: 220, category: 'Installations techniques', subcategory: 'Sanitaire', works: ['Remplacement colonnes'] },
-  { id: 'cfc_28', code: '521', label: 'Production de chaleur', unit: 'fft', priceMin: 25000, priceMax: 80000, priceAvg: 45000, category: 'Installations techniques', subcategory: 'Chauffage', works: ['Remplacement chaudiere', 'Pompe a chaleur'] },
+  { id: 'cfc_28', code: '521', label: 'Production de chaleur', unit: 'fft', priceMin: 25000, priceMax: 80000, priceAvg: 45000, category: 'Installations techniques', subcategory: 'Chauffage', works: ['Remplacement chaudiere', 'Pompe a chaleur'], stateGuide: {
+    TRES_BON: { criteria: 'Installation recente (<10 ans) a haut rendement (PAC, gaz a condensation, pellets). Conforme aux exigences cantonales.', works: [] },
+    BON: { criteria: 'Installation 10-15 ans, rendement correct, entretien regulier, pas de fuite ni de bruit anormal.', works: ['Service annuel', 'Equilibrage hydraulique'] },
+    MOYEN: { criteria: 'Installation 15-25 ans (mazout/gaz ancienne generation), rendement faible, consommation elevee. Etude de remplacement recommandee, exigences MoPEC a anticiper.', works: ['Etude de variantes (PAC, pellets, CAD)', 'Remplacement a moyen terme', 'Optimisation regulation'] },
+    MAUVAIS: { criteria: 'Installation >25 ans, pannes recurrentes, mazout non conforme MoPEC 2025/2030. Remplacement obligatoire.', works: ['Remplacement par pompe a chaleur', 'Raccordement chauffage a distance', 'Demande de subventions cantonales'] },
+  } },
   { id: 'cfc_29', code: '522', label: 'Distribution chauffage', unit: 'ml', priceMin: 85, priceMax: 200, priceAvg: 135, category: 'Installations techniques', subcategory: 'Chauffage', works: ['Conduites chauffage', 'Radiateurs'] },
   { id: 'cfc_30', code: '523', label: 'Ventilation', unit: 'm2', priceMin: 40, priceMax: 120, priceAvg: 75, category: 'Installations techniques', subcategory: 'Ventilation', works: ['VMC double flux'] },
   { id: 'cfc_31', code: '531', label: 'Installations electriques', unit: 'm2', priceMin: 55, priceMax: 150, priceAvg: 95, category: 'Installations techniques', subcategory: 'Electricite', works: ['Refection tableau', 'Cablage'] },

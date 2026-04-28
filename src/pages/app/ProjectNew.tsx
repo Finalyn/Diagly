@@ -4,12 +4,15 @@ import { ArrowLeft, ArrowRight, Check, MapPin } from 'lucide-react'
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Badge } from '@/components/ui'
 import { computeProjectMetrics } from '@/lib/formulas'
 import { formatCHF } from '@/lib/utils'
+import { buildingTypeLabels, type BuildingType } from '@/data/mock'
+
+const buildingTypeOrder: BuildingType[] = ['LOGEMENT', 'VILLA', 'CHALET', 'SCOLAIRE', 'BUREAU', 'ADMINISTRATIF', 'INDUSTRIEL', 'HOTEL', 'COMMERCIAL', 'AUTRE']
 
 export function ProjectNew() {
   const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [form, setForm] = useState({
-    name: '', address: '', city: '', canton: 'VD', yearBuilt: 1980, buildingType: 'LOGEMENT',
+    name: '', address: '', postalCode: '', city: '', canton: 'VD', yearBuilt: 1980, buildingType: 'LOGEMENT' as BuildingType,
     nbApartments: 12, nbFloors: 4, floorHeight: 2.7, nbStaircases: 1,
     honoraryPct: 12, reservePct: 5, windowPct: 0.30,
     floorArea: 1800, builtArea: 450, perimeter: 90, terrainArea: 800,
@@ -63,6 +66,10 @@ export function ProjectNew() {
                 </div>
               </div>
               <div>
+                <label className="text-sm font-medium mb-1 block">Code postal</label>
+                <Input value={form.postalCode} onChange={e => update('postalCode', e.target.value)} placeholder="1006" maxLength={4} />
+              </div>
+              <div>
                 <label className="text-sm font-medium mb-1 block">Ville</label>
                 <Input value={form.city} onChange={e => update('city', e.target.value)} />
               </div>
@@ -76,15 +83,10 @@ export function ProjectNew() {
                 <label className="text-sm font-medium mb-1 block">Annee de construction</label>
                 <Input type="number" value={form.yearBuilt} onChange={e => update('yearBuilt', +e.target.value)} />
               </div>
-              <div>
+              <div className="col-span-2">
                 <label className="text-sm font-medium mb-1 block">Type de batiment</label>
                 <Select value={form.buildingType} onChange={e => update('buildingType', e.target.value)}>
-                  <option value="LOGEMENT">Logement</option>
-                  <option value="SCOLAIRE">Scolaire</option>
-                  <option value="ADMINISTRATIF">Administratif</option>
-                  <option value="INDUSTRIEL">Industriel</option>
-                  <option value="HOTEL">Hotel</option>
-                  <option value="COMMERCIAL">Commercial</option>
+                  {buildingTypeOrder.map(t => <option key={t} value={t}>{buildingTypeLabels[t]}</option>)}
                 </Select>
               </div>
               <div>
@@ -184,9 +186,9 @@ export function ProjectNew() {
                 <h4 className="font-medium">Informations generales</h4>
                 <div className="space-y-1 text-sm">
                   <p><span className="text-muted-foreground">Nom :</span> {form.name || 'Non renseigne'}</p>
-                  <p><span className="text-muted-foreground">Adresse :</span> {form.address || 'Non renseigne'}, {form.city} ({form.canton})</p>
+                  <p><span className="text-muted-foreground">Adresse :</span> {form.address || 'Non renseigne'}, {form.postalCode} {form.city} ({form.canton})</p>
                   <p><span className="text-muted-foreground">Annee :</span> {form.yearBuilt}</p>
-                  <p><span className="text-muted-foreground">Type :</span> <Badge variant="secondary">{form.buildingType}</Badge></p>
+                  <p><span className="text-muted-foreground">Type :</span> <Badge variant="secondary">{buildingTypeLabels[form.buildingType]}</Badge></p>
                   <p><span className="text-muted-foreground">Appartements :</span> {form.nbApartments}</p>
                   <p><span className="text-muted-foreground">Etages :</span> {form.nbFloors}</p>
                 </div>

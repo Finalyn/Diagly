@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom'
 import { Calendar, Plus, Clock, User } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Badge } from '@/components/ui'
-import { cn } from '@/lib/utils'
+import { cn, formatCHF } from '@/lib/utils'
 
 const projectEvents = [
   { id: 1, title: 'Visite diagnostic facade', date: '14 avril 2026', time: '09:00 - 12:00', person: 'Sophie Berger', status: 'planifie' },
@@ -11,31 +11,105 @@ const projectEvents = [
   { id: 5, title: 'Controle intermediaire', date: '20 mai 2026', time: '09:00 - 11:00', person: 'Marc Dubois', status: 'planifie' },
 ]
 
-const months = ['Nov', 'Dec', 'Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aout', 'Sep']
-const totalMonths = months.length
-const currentMonthIndex = 5
+/* Echeancier de paiement Diagly - 24 mois.
+   Avril 2026 (0) -> Dec 2026 (8) -> Dec 2027 (20) -> Mars 2028 (23). */
+const monthLabels = ['Janv', 'Fev', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Aout', 'Sept', 'Oct', 'Nov', 'Dec']
+const echeancierMonths: { label: string; year: number }[] = [
+  ...monthLabels.slice(3).map(l => ({ label: l, year: 2026 })), // Avril -> Dec 2026
+  ...monthLabels.map(l => ({ label: l, year: 2027 })),          // Janv -> Dec 2027
+  ...monthLabels.slice(0, 3).map(l => ({ label: l, year: 2028 })), // Janv -> Mars 2028
+]
+const yearSpans: { year: number; start: number; span: number }[] = [
+  { year: 2026, start: 0, span: 9 },
+  { year: 2027, start: 9, span: 12 },
+  { year: 2028, start: 21, span: 3 },
+]
+const yearEndCols = [8, 20] // hatched separator (Dec 2026, Dec 2027)
 
-const ganttTasks = [
-  { label: 'Diagnostic terrain', category: 'Diagnostic', startMonth: 0, duration: 2.5, progress: 100, color: 'bg-blue-500' },
-  { label: 'Analyse labo', category: 'Diagnostic', startMonth: 1, duration: 1.5, progress: 100, color: 'bg-blue-400' },
-  { label: 'Rapport diagnostic', category: 'Rapport', startMonth: 2.5, duration: 2, progress: 85, color: 'bg-orange-500' },
-  { label: 'Devis estimatif', category: 'Rapport', startMonth: 3, duration: 1.5, progress: 60, color: 'bg-orange-400' },
-  { label: 'Travaux toiture', category: 'Travaux', startMonth: 7, duration: 2, progress: 0, color: 'bg-yellow-400' },
-  { label: 'Travaux facade', category: 'Travaux', startMonth: 7.5, duration: 2.5, progress: 0, color: 'bg-yellow-400' },
-  { label: 'Remplacement fenetres', category: 'Travaux', startMonth: 8, duration: 2, progress: 0, color: 'bg-yellow-400' },
-  { label: 'Nettoyage / reception', category: 'Cloture', startMonth: 10, duration: 0.8, progress: 0, color: 'bg-green-500' },
+type BarColor = 'green' | 'orange'
+interface PhaseTask { label: string; start: number; end: number; color: BarColor }
+interface PhaseGroup { code: string; label: string; tasks: PhaseTask[] }
+
+const phases: PhaseGroup[] = [
+  { code: '10', label: 'Diagnostic', tasks: [
+    { label: 'Visite et releves sur site', start: 0, end: 0, color: 'green' },
+    { label: 'Analyses techniques et CECB', start: 0, end: 1, color: 'green' },
+  ]},
+  { code: '20', label: 'Rapport et estimation', tasks: [
+    { label: 'Redaction du rapport diagnostic', start: 1, end: 2, color: 'green' },
+    { label: 'Estimation des couts par CFC', start: 2, end: 3, color: 'green' },
+    { label: 'Remise du rapport au client', start: 3, end: 3, color: 'green' },
+  ]},
+  { code: '30', label: "Appels d'offres / adjudications", tasks: [
+    { label: 'Cahier des charges entreprises', start: 4, end: 5, color: 'green' },
+    { label: 'Reception et analyse des offres', start: 5, end: 6, color: 'green' },
+    { label: 'Adjudications', start: 6, end: 7, color: 'green' },
+  ]},
+  { code: '40', label: 'Execution des travaux', tasks: [
+    { label: 'Installations de chantier', start: 8, end: 8, color: 'orange' },
+    { label: 'Toiture / etancheite', start: 9, end: 11, color: 'orange' },
+    { label: 'Facade et isolation peripherique', start: 9, end: 13, color: 'orange' },
+    { label: 'Remplacement des fenetres', start: 11, end: 13, color: 'orange' },
+    { label: 'Renovation interieure (peinture, sols)', start: 13, end: 17, color: 'orange' },
+    { label: 'Installations techniques (CVSE)', start: 14, end: 17, color: 'orange' },
+    { label: 'Cuisines et salles de bains', start: 15, end: 18, color: 'orange' },
+    { label: 'Amenagements exterieurs', start: 18, end: 20, color: 'orange' },
+  ]},
+  { code: '50', label: 'Reception et garanties', tasks: [
+    { label: 'Reception des travaux', start: 21, end: 21, color: 'green' },
+    { label: 'Suivi des garanties et retouches', start: 21, end: 23, color: 'green' },
+  ]},
 ]
 
-const categoryColors: Record<string, string> = {
-  'Diagnostic': 'bg-blue-500',
-  'Rapport': 'bg-orange-500',
-  'Travaux': 'bg-yellow-500',
-  'Cloture': 'bg-green-500',
-}
+// Monthly amounts (CHF) - mockup based on a diagnostic+renovation budget.
+// Honoraires : etalonnes sur les phases 10/20/30 + suivi travaux + reception.
+// Travaux : factures mensuelles sur la phase 40 (mois 8-20).
+const honoraryByMonth: number[] = [
+  18000, 22000, 18000, 25000,           // Avril-Juillet 2026 (diagnostic + rapport)
+  12000, 14000, 16000, 12000, 8000,     // Aout-Dec 2026 (appels d'offres)
+  9500, 9500, 9500, 9500, 9500, 9500, 9500, 9500, 9500, 9500, 9500, 9500, // 2027 (suivi travaux)
+  18000, 12000, 8000,                   // Janv-Mars 2028 (reception)
+]
+const worksByMonth: number[] = [
+  0, 0, 0, 0, 0, 0, 0, 0,               // pas de travaux avant adjudication
+  85000,                                // Dec 2026 - installations chantier
+  142000, 168000, 145000, 132000, 158000, 174000, 165000, 182000, 168000, 154000, 138000, 95000, // 2027
+  0, 0, 0,                              // 2028 = solde + retenues
+]
+
+const totalHonoraires = honoraryByMonth.reduce((s, v) => s + v, 0)
+const totalWorks = worksByMonth.reduce((s, v) => s + v, 0)
 
 export function ProjectPlanning() {
-  const { id } = useParams()
-  const categories = [...new Set(ganttTasks.map(t => t.category))]
+  useParams()
+
+  const exportEcheancier = () => {
+    const sep = ';'
+    const monthHeaders = echeancierMonths.map(m => `${m.label} ${m.year}`).join(sep)
+    const rows: string[] = []
+    rows.push(`Phases du projet${sep}${monthHeaders}`)
+    phases.forEach(phase => {
+      rows.push(`${phase.code} - ${phase.label}${sep.repeat(echeancierMonths.length)}`)
+      phase.tasks.forEach(task => {
+        const cells = echeancierMonths.map((_, i) => (task.start >= 0 && i >= task.start && i <= task.end ? (task.color === 'green' ? 'H' : 'T') : ''))
+        rows.push(`  ${task.label}${sep}${cells.join(sep)}`)
+      })
+    })
+    rows.push('')
+    rows.push(`Echeancier paiement Travaux${sep}${worksByMonth.map(v => v || '').join(sep)}`)
+    rows.push(`Echeancier paiement Honoraires${sep}${honoraryByMonth.map(v => v || '').join(sep)}`)
+    rows.push(`ECHEANCIER DE PAIEMENT TOTAL${sep}${worksByMonth.map((v, i) => (v + honoraryByMonth[i]) || '').join(sep)}`)
+    const csv = '﻿' + rows.join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `echeancier-paiement-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="space-y-6">
@@ -44,64 +118,101 @@ export function ProjectPlanning() {
         <Button><Plus className="mr-2 h-4 w-4" />Ajouter un evenement</Button>
       </div>
 
-      {/* Gantt */}
+      {/* Echeancier de paiement SIA 102 */}
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle>Diagramme de Gantt</CardTitle>
-            <div className="flex gap-3 text-xs">
-              {Object.entries(categoryColors).map(([cat, color]) => (
-                <div key={cat} className="flex items-center gap-1.5">
-                  <div className={cn('h-2.5 w-2.5 rounded-sm', color)} />{cat}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>Echeancier de paiement</CardTitle>
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <div className="flex items-center gap-1.5"><div className="h-3 w-6 rounded-sm bg-emerald-300" />Honoraires</div>
+              <div className="flex items-center gap-1.5"><div className="h-3 w-6 rounded-sm bg-orange-300" />Travaux execution</div>
+              <div className="flex items-center gap-1.5"><div className="h-3 w-6 rounded-sm bg-[repeating-linear-gradient(45deg,#e5e7eb,#e5e7eb_3px,transparent_3px,transparent_6px)] border border-border" />Fin d'annee</div>
+              <Button variant="outline" size="sm" onClick={exportEcheancier}>Exporter</Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <div className="min-w-[1100px]">
+              {/* Year header */}
+              <div className="flex border-b text-xs">
+                <div className="w-72 shrink-0 px-3 py-2 font-medium text-muted-foreground border-r">Phases du projet</div>
+                <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${echeancierMonths.length}, minmax(0, 1fr))` }}>
+                  {yearSpans.map(y => (
+                    <div key={y.year} className="text-center font-bold py-2 border-r border-l border-border/60 bg-muted/30" style={{ gridColumn: `${y.start + 1} / span ${y.span}` }}>{y.year}</div>
+                  ))}
+                </div>
+              </div>
+              {/* Month header */}
+              <div className="flex border-b text-[10px]">
+                <div className="w-72 shrink-0 px-3 py-1.5 font-medium text-muted-foreground border-r" />
+                <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${echeancierMonths.length}, minmax(0, 1fr))` }}>
+                  {echeancierMonths.map((m, i) => (
+                    <div key={i} className={cn('text-center py-1.5 border-r border-border/40 text-muted-foreground', yearEndCols.includes(i) && 'bg-muted/40')}>
+                      {m.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Phases */}
+              {phases.map(phase => (
+                <div key={phase.code}>
+                  <div className="flex bg-muted/50 text-xs border-y">
+                    <div className="w-72 shrink-0 px-3 py-1.5 font-semibold border-r flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-muted-foreground tabular-nums">{phase.code}</span>
+                      <span>{phase.label}</span>
+                    </div>
+                    <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${echeancierMonths.length}, minmax(0, 1fr))` }}>
+                      {echeancierMonths.map((_, i) => (
+                        <div key={i} className={cn('border-r border-border/40', yearEndCols.includes(i) && 'bg-[repeating-linear-gradient(45deg,#e5e7eb,#e5e7eb_3px,transparent_3px,transparent_6px)]')} />
+                      ))}
+                    </div>
+                  </div>
+                  {phase.tasks.map((task, ti) => (
+                    <div key={ti} className="flex border-b text-xs hover:bg-muted/30">
+                      <div className={cn('w-72 shrink-0 px-3 py-1.5 border-r truncate', task.color === 'orange' && 'italic')}>{task.label}</div>
+                      <div className="flex-1 relative grid h-7" style={{ gridTemplateColumns: `repeat(${echeancierMonths.length}, minmax(0, 1fr))` }}>
+                        {echeancierMonths.map((_, i) => (
+                          <div key={i} className={cn('border-r border-border/40', yearEndCols.includes(i) && 'bg-[repeating-linear-gradient(45deg,#e5e7eb,#e5e7eb_3px,transparent_3px,transparent_6px)]')} />
+                        ))}
+                        {task.start >= 0 && task.end >= 0 && (
+                          <div
+                            className={cn('absolute top-1.5 h-4 rounded-sm', task.color === 'green' ? 'bg-emerald-300' : 'bg-orange-300')}
+                            style={{ left: `${(task.start / echeancierMonths.length) * 100}%`, width: `${((task.end - task.start + 1) / echeancierMonths.length) * 100}%` }}
+                            title={task.label}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+              {/* Payment rows */}
+              {[
+                { label: 'Echeancier de paiement travaux', values: worksByMonth, bold: false, italic: true },
+                { label: 'Echeancier de paiement Honoraires', values: honoraryByMonth, bold: false, italic: true },
+                { label: 'ECHEANCIER DE PAIEMENT TOTAL', values: worksByMonth.map((v, i) => v + honoraryByMonth[i]), bold: true, italic: false },
+              ].map((row, ri) => (
+                <div key={ri} className={cn('flex border-b text-[10px]', row.bold && 'border-t-2 border-foreground/60 bg-muted/40 font-bold')}>
+                  <div className={cn('w-72 shrink-0 px-3 py-1.5 border-r', row.italic && 'italic text-muted-foreground')}>{row.label}</div>
+                  <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${echeancierMonths.length}, minmax(0, 1fr))` }}>
+                    {row.values.map((v, i) => (
+                      <div key={i} className={cn('text-center py-1.5 border-r border-border/40 tabular-nums', yearEndCols.includes(i) && 'bg-muted/40', v === 0 && 'text-muted-foreground/40')}>
+                        {v > 0 ? v.toLocaleString('fr-CH', { useGrouping: true }) : ''}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="p-0 overflow-x-auto">
-          <div className="min-w-[800px]">
-            <div className="flex border-b">
-              <div className="w-52 shrink-0 px-4 py-2 text-xs font-medium text-muted-foreground border-r bg-muted/30">Tache</div>
-              <div className="flex-1 flex">
-                {months.map((m, i) => (
-                  <div key={m} className={cn('flex-1 text-center text-xs py-2 border-r border-border/50 font-medium', i === currentMonthIndex && 'bg-primary/5 text-primary font-bold')}>{m}</div>
-                ))}
-              </div>
-            </div>
-            {categories.map(cat => (
-              <div key={cat}>
-                <div className="flex border-b bg-muted/20">
-                  <div className="w-52 shrink-0 px-4 py-1.5 text-[11px] font-semibold text-muted-foreground border-r flex items-center gap-2">
-                    <div className={cn('h-2 w-2 rounded-sm', categoryColors[cat])} />{cat}
-                  </div>
-                  <div className="flex-1" />
-                </div>
-                {ganttTasks.filter(t => t.category === cat).map(task => (
-                  <div key={task.label} className="flex border-b hover:bg-muted/20">
-                    <div className="w-52 shrink-0 px-4 py-2 text-xs border-r flex items-center gap-2">
-                      <span className="truncate">{task.label}</span>
-                      {task.progress === 100 && <span className="text-[9px] text-green-600 font-medium shrink-0">Termine</span>}
-                    </div>
-                    <div className="flex-1 relative h-9">
-                      <div className="absolute top-0 bottom-0 w-0.5 bg-primary/60 z-20" style={{ left: `${((currentMonthIndex + 0.3) / totalMonths) * 100}%` }} />
-                      <div className={cn('absolute top-1.5 h-6 rounded flex items-center overflow-hidden cursor-pointer', task.color)}
-                        style={{ left: `${(task.startMonth / totalMonths) * 100}%`, width: `${(task.duration / totalMonths) * 100}%` }}>
-                        {task.progress > 0 && task.progress < 100 && <div className="absolute inset-0 bg-black/15" style={{ width: `${task.progress}%` }} />}
-                        <span className="text-[10px] text-white font-medium px-2 truncate relative z-10">{task.label}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-            <div className="flex border-b bg-muted/30">
-              <div className="w-52 shrink-0 px-4 py-2 text-xs font-bold border-r">Duree totale</div>
-              <div className="flex-1 relative h-9">
-                <div className="absolute top-2.5 h-4 rounded-full bg-gradient-to-r from-blue-500 via-orange-400 to-yellow-400 opacity-20"
-                  style={{ left: `${(0 / totalMonths) * 100}%`, width: `${(10.8 / totalMonths) * 100}%` }} />
-                <span className="absolute top-2 text-[10px] font-medium text-muted-foreground" style={{ left: `${(11 / totalMonths) * 100}%` }}>~11 mois</span>
-              </div>
-            </div>
+
+          <div className="p-3 flex flex-wrap gap-6 text-xs border-t bg-muted/20">
+            <div><span className="text-muted-foreground">Total honoraires :</span> <span className="font-bold">{formatCHF(totalHonoraires)}</span></div>
+            <div><span className="text-muted-foreground">Total travaux :</span> <span className="font-bold">{formatCHF(totalWorks)}</span></div>
+            <div className="ml-auto"><span className="text-muted-foreground">Total general :</span> <span className="font-bold text-foreground">{formatCHF(totalHonoraires + totalWorks)}</span></div>
           </div>
         </CardContent>
       </Card>

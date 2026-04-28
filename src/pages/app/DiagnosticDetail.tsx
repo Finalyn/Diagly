@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { ArrowLeft, ChevronRight, ChevronDown, Camera, Image } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Textarea } from '@/components/ui'
-import { mockDiagnostics, cfcCategories, stateLabels, stateColors, priorityColors, type ElementState, type Priority, type DiagnosticItem } from '@/data/mock'
+import { mockDiagnostics, mockCFCItems, cfcCategories, stateLabels, stateColors, priorityColors, priorityDescriptions, defaultStateGuide } from '@/data/mock'
 import { formatCHF } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
@@ -132,6 +132,11 @@ export function DiagnosticDetail() {
                       )}>{stateLabels[state]}</button>
                     ))}
                   </div>
+                  {(() => {
+                    const cfc = mockCFCItems.find(c => c.code === selectedItem.cfcCode)
+                    const guide = cfc?.stateGuide?.[selectedItem.state] ?? defaultStateGuide[selectedItem.state]
+                    return <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{guide.criteria}</p>
+                  })()}
                 </div>
 
                 <div>
@@ -144,6 +149,7 @@ export function DiagnosticDetail() {
                       )}>Priorite {p}</button>
                     ))}
                   </div>
+                  <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{priorityDescriptions[selectedItem.priority]}</p>
                 </div>
 
                 <div>
