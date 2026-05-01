@@ -36,7 +36,7 @@ import { SettingsPage } from '@/pages/app/SettingsPage'
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         {/* Marketing */}
         <Route path="/" element={<Landing />} />
