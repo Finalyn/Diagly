@@ -1,99 +1,157 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { lazy, Suspense, useEffect, type ComponentType } from 'react'
+import { Loader2 } from 'lucide-react'
+import { api } from '@/lib/api'
+import { setMarketCoeff } from '@/lib/diagnostic-auto'
 import { AppLayout } from '@/components/layout/AppLayout'
-import { Landing } from '@/pages/marketing/Landing'
-import { Pricing } from '@/pages/marketing/Pricing'
+import { useIsMobile } from '@/lib/use-mobile'
+import { ProtectedRoute } from '@/components/ProtectedRoute'
+// Entrée : chargée immédiatement pour un premier affichage rapide.
+import { Soon } from '@/pages/marketing/Soon'
 import { Login } from '@/pages/auth/Login'
-import { Register } from '@/pages/auth/Register'
-import { ForgotPassword } from '@/pages/auth/ForgotPassword'
-import { ResetPassword } from '@/pages/auth/ResetPassword'
-import { Onboarding } from '@/pages/auth/Onboarding'
-import { Payment } from '@/pages/auth/Payment'
-import { Dashboard } from '@/pages/app/Dashboard'
-import { ProjectsList } from '@/pages/app/ProjectsList'
-import { ProjectNew } from '@/pages/app/ProjectNew'
-import { ProjectDetail } from '@/pages/app/ProjectDetail'
-import { ProjectEdit } from '@/pages/app/ProjectEdit'
-import { ProjectDiagnostic } from '@/pages/app/ProjectDiagnostic'
-import { ProjectMetres } from '@/pages/app/ProjectMetres'
-import { ProjectPlans } from '@/pages/app/ProjectPlans'
-import { ProjectRapports } from '@/pages/app/ProjectRapports'
-import { ProjectCECB } from '@/pages/app/ProjectCECB'
-import { ProjectPlanning } from '@/pages/app/ProjectPlanning'
-import { DiagnosticDetail } from '@/pages/app/DiagnosticDetail'
-import { DiagnosticItemDetail } from '@/pages/app/DiagnosticItemDetail'
-import { PlansList } from '@/pages/app/PlansList'
-import { PlanViewer } from '@/pages/app/PlanViewer'
-import { ReportDetail } from '@/pages/app/ReportDetail'
-import { BuildingsList } from '@/pages/app/BuildingsList'
-import { BuildingNew } from '@/pages/app/BuildingNew'
-import { BuildingDetail } from '@/pages/app/BuildingDetail'
-import { ApartmentNew } from '@/pages/app/ApartmentNew'
-import { ApartmentDetail } from '@/pages/app/ApartmentDetail'
-import { TenderDetail } from '@/pages/app/TenderDetail'
-import { CFCManager } from '@/pages/app/CFCManager'
-import { PlanningPage } from '@/pages/app/PlanningPage'
-import { SettingsPage } from '@/pages/app/SettingsPage'
+import { OAuthCallback } from '@/pages/auth/OAuthCallback'
+
+// Pages chargées à la demande (code-splitting) -> bundle initial léger, meilleur en 3G.
+const named = <M extends Record<string, unknown>, K extends keyof M>(p: Promise<M>, k: K) =>
+  p.then((m) => ({ default: m[k] as ComponentType }))
+
+const Register = lazy(() => named(import('@/pages/auth/Register'), 'Register'))
+const ForgotPassword = lazy(() => named(import('@/pages/auth/ForgotPassword'), 'ForgotPassword'))
+const ResetPassword = lazy(() => named(import('@/pages/auth/ResetPassword'), 'ResetPassword'))
+const Onboarding = lazy(() => named(import('@/pages/auth/Onboarding'), 'Onboarding'))
+const Payment = lazy(() => named(import('@/pages/auth/Payment'), 'Payment'))
+const Dashboard = lazy(() => named(import('@/pages/app/Dashboard'), 'Dashboard'))
+const ProjectsList = lazy(() => named(import('@/pages/app/ProjectsList'), 'ProjectsList'))
+const ProjectNew = lazy(() => named(import('@/pages/app/ProjectNew'), 'ProjectNew'))
+const ProjectDetail = lazy(() => named(import('@/pages/app/ProjectDetail'), 'ProjectDetail'))
+const ProjectEdit = lazy(() => named(import('@/pages/app/ProjectEdit'), 'ProjectEdit'))
+const ProjectDiagnostic = lazy(() => named(import('@/pages/app/ProjectDiagnostic'), 'ProjectDiagnostic'))
+const ProjectMetres = lazy(() => named(import('@/pages/app/ProjectMetres'), 'ProjectMetres'))
+const ProjectPlans = lazy(() => named(import('@/pages/app/ProjectPlans'), 'ProjectPlans'))
+const ProjectRapports = lazy(() => named(import('@/pages/app/ProjectRapports'), 'ProjectRapports'))
+const ProjectCECB = lazy(() => named(import('@/pages/app/ProjectCECB'), 'ProjectCECB'))
+const ProjectPlanning = lazy(() => named(import('@/pages/app/ProjectPlanning'), 'ProjectPlanning'))
+const DiagnosticDetail = lazy(() => named(import('@/pages/app/DiagnosticDetail'), 'DiagnosticDetail'))
+const DiagnosticItemDetail = lazy(() => named(import('@/pages/app/DiagnosticItemDetail'), 'DiagnosticItemDetail'))
+const PlansList = lazy(() => named(import('@/pages/app/PlansList'), 'PlansList'))
+const PlanViewer = lazy(() => named(import('@/pages/app/PlanViewer'), 'PlanViewer'))
+const ReportDetail = lazy(() => named(import('@/pages/app/ReportDetail'), 'ReportDetail'))
+const BuildingsList = lazy(() => named(import('@/pages/app/BuildingsList'), 'BuildingsList'))
+const BuildingNew = lazy(() => named(import('@/pages/app/BuildingNew'), 'BuildingNew'))
+const BuildingDetail = lazy(() => named(import('@/pages/app/BuildingDetail'), 'BuildingDetail'))
+const ApartmentNew = lazy(() => named(import('@/pages/app/ApartmentNew'), 'ApartmentNew'))
+const ApartmentDetail = lazy(() => named(import('@/pages/app/ApartmentDetail'), 'ApartmentDetail'))
+const TenderDetail = lazy(() => named(import('@/pages/app/TenderDetail'), 'TenderDetail'))
+const CFCManager = lazy(() => named(import('@/pages/app/CFCManager'), 'CFCManager'))
+const PlanningPage = lazy(() => named(import('@/pages/app/PlanningPage'), 'PlanningPage'))
+const SettingsPage = lazy(() => named(import('@/pages/app/SettingsPage'), 'SettingsPage'))
+const Integrations = lazy(() => named(import('@/pages/app/Integrations'), 'Integrations'))
+const TeamManagement = lazy(() => named(import('@/pages/app/TeamManagement'), 'TeamManagement'))
+const JoinOrg = lazy(() => named(import('@/pages/app/JoinOrg'), 'JoinOrg'))
+const Support = lazy(() => named(import('@/pages/app/Support'), 'Support'))
+const SupportTicket = lazy(() => named(import('@/pages/app/SupportTicket'), 'SupportTicket'))
+const NewSupportRequest = lazy(() => named(import('@/pages/app/NewSupportRequest'), 'NewSupportRequest'))
+const PublicReport = lazy(() => named(import('@/pages/PublicReport'), 'PublicReport'))
+const DashboardPreview = lazy(() => named(import('@/pages/DashboardPreview'), 'DashboardPreview'))
+
+// Arrivée : liste des diagnostics sur mobile (app épurée), tableau de bord sur desktop.
+function HomeRedirect() {
+  const mobile = useIsMobile()
+  return <Navigate to={mobile ? '/app/projects' : '/app/dashboard'} replace />
+}
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center py-32 text-muted-foreground">
+      <Loader2 className="h-6 w-6 animate-spin" />
+    </div>
+  )
+}
 
 function App() {
+  // Indexe les prix du catalogue sur le marché suisse (indice OFS) au démarrage.
+  useEffect(() => {
+    api.market.index().then((m) => setMarketCoeff(m.coeff)).catch(() => {})
+  }, [])
+
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
-      <Routes>
-        {/* Marketing */}
-        <Route path="/" element={<Landing />} />
-        <Route path="/tarifs" element={<Pricing />} />
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          {/* Public : page « bientôt disponible » (l'app reste accessible via /login) */}
+          <Route path="/" element={<Soon />} />
+          <Route path="/tarifs" element={<Navigate to="/" replace />} />
 
-        {/* Auth */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/register/payment" element={<Payment />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password/:token" element={<ResetPassword />} />
-        <Route path="/onboarding" element={<Onboarding />} />
+          {/* Raccourci : /dashboard -> app (redirige vers /login si non connecté) */}
+          <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />
 
-        {/* App */}
-        <Route path="/app" element={<AppLayout />}>
-          <Route index element={<Navigate to="/app/dashboard" replace />} />
-          <Route path="dashboard" element={<Dashboard />} />
+          {/* Auth */}
+          {/* Rapport client public (lecture seule, sans auth) */}
+          <Route path="/share/:token" element={<PublicReport />} />
 
-          {/* Projects */}
-          <Route path="projects" element={<ProjectsList />} />
-          <Route path="projects/new" element={<ProjectNew />} />
-          <Route path="projects/:id" element={<ProjectDetail />} />
-          <Route path="projects/:id/edit" element={<ProjectEdit />} />
-          <Route path="projects/:id/diagnostic" element={<ProjectDiagnostic />} />
-          <Route path="projects/:id/couts" element={<ProjectMetres />} />
-          <Route path="projects/:id/plans" element={<ProjectPlans />} />
-          <Route path="projects/:id/rapports" element={<ProjectRapports />} />
-          <Route path="projects/:id/cecb" element={<ProjectCECB />} />
-          <Route path="projects/:id/calendrier" element={<ProjectPlanning />} />
+          {/* Vitrine design (mockup, sans auth) */}
+          <Route path="/preview" element={<DashboardPreview />} />
 
-          {/* Diagnostic editor */}
-          <Route path="diagnostic/:id" element={<DiagnosticDetail />} />
-          <Route path="diagnostic/:id/item/:itemId" element={<DiagnosticItemDetail />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/oauth-callback" element={<OAuthCallback />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/register/payment" element={<Payment />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
+          <Route path="/onboarding" element={<Onboarding />} />
 
-          {/* Plans */}
-          <Route path="plans" element={<PlansList />} />
-          <Route path="plans/:id" element={<PlanViewer />} />
+          {/* App (protégée par auth) */}
+          <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+            <Route index element={<HomeRedirect />} />
+            <Route path="dashboard" element={<Dashboard />} />
 
-          {/* Reports */}
-          <Route path="reports/:id" element={<ReportDetail />} />
+            {/* Projects */}
+            <Route path="projects" element={<ProjectsList />} />
+            <Route path="projects/new" element={<ProjectNew />} />
+            <Route path="projects/:id" element={<ProjectDetail />} />
+            <Route path="projects/:id/edit" element={<ProjectEdit />} />
+            <Route path="projects/:id/diagnostic" element={<ProjectDiagnostic />} />
+            <Route path="projects/:id/couts" element={<ProjectMetres />} />
+            <Route path="projects/:id/variantes" element={<ProjectRapports />} />
+            <Route path="projects/:id/plans" element={<ProjectPlans />} />
+            <Route path="projects/:id/rapports" element={<ProjectRapports />} />
+            <Route path="projects/:id/cecb" element={<ProjectCECB />} />
+            <Route path="projects/:id/calendrier" element={<ProjectPlanning />} />
 
-          {/* Buildings */}
-          <Route path="buildings" element={<BuildingsList />} />
-          <Route path="buildings/new" element={<BuildingNew />} />
-          <Route path="buildings/:id" element={<BuildingDetail />} />
-          <Route path="buildings/:id/apartments/new" element={<ApartmentNew />} />
-          <Route path="buildings/:id/apartments/:aptId" element={<ApartmentDetail />} />
+            {/* Diagnostic editor */}
+            <Route path="diagnostic/:id" element={<DiagnosticDetail />} />
+            <Route path="diagnostic/:id/item/:itemId" element={<DiagnosticItemDetail />} />
 
-          {/* Tenders */}
-          <Route path="tenders/:id" element={<TenderDetail />} />
+            {/* Plans */}
+            <Route path="plans" element={<PlansList />} />
+            <Route path="plans/:id" element={<PlanViewer />} />
 
-          {/* Global tools */}
-          <Route path="cfc" element={<CFCManager />} />
-          <Route path="planning" element={<PlanningPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-        </Route>
-      </Routes>
+            {/* Reports */}
+            <Route path="reports/:id" element={<ReportDetail />} />
+
+            {/* Buildings */}
+            <Route path="buildings" element={<BuildingsList />} />
+            <Route path="buildings/new" element={<BuildingNew />} />
+            <Route path="buildings/:id" element={<BuildingDetail />} />
+            <Route path="buildings/:id/apartments/new" element={<ApartmentNew />} />
+            <Route path="buildings/:id/apartments/:aptId" element={<ApartmentDetail />} />
+
+            {/* Tenders */}
+            <Route path="tenders/:id" element={<TenderDetail />} />
+
+            {/* Global tools */}
+            <Route path="cfc" element={<CFCManager />} />
+            <Route path="planning" element={<PlanningPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="integrations" element={<Integrations />} />
+            <Route path="team" element={<TeamManagement />} />
+            <Route path="join/:token" element={<JoinOrg />} />
+            <Route path="support" element={<Support />} />
+            <Route path="support/new" element={<NewSupportRequest />} />
+            <Route path="support/:id" element={<SupportTicket />} />
+          </Route>
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }

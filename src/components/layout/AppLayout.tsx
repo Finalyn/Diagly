@@ -1,45 +1,84 @@
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet, useLocation, Navigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
+import { DiagnosticTabs } from './DiagnosticTabs'
+import { MobileNav } from './MobileNav'
+import { OfflineIndicator } from '@/components/OfflineIndicator'
+import { AssistantWidget } from '@/components/AssistantWidget'
+import { useIsMobile } from '@/lib/use-mobile'
 import { useEffect, useRef, useState } from 'react'
-import { Menu, X } from 'lucide-react'
+
+// Fond villa (dashboard uniquement) — fondu sur les bords gauche + bas, aucune ligne de coupure
+const DASH_MASK = 'linear-gradient(to right, transparent 40%, #000 66%), linear-gradient(to bottom, #000 36%, transparent 52%)'
+
+// Routes accessibles sur mobile (app épurée : liste, éditeur, base de données, paramètres).
+// Tout le reste (dashboard, coûts, variantes, rapports, plans, parc, équipe, intégrations…)
+// est réservé au desktop et redirigé vers la liste des diagnostics.
+function isMobileAllowed(pathname: string): boolean {
+  if (pathname === '/app' || pathname === '/app/projects' || pathname === '/app/projects/new') return true
+  if (/^\/app\/projects\/[^/]+$/.test(pathname)) return true // fiche projet -> redirige vers l'éditeur
+  if (pathname.startsWith('/app/diagnostic/')) return true    // éditeur de diagnostic + item
+  if (pathname === '/app/cfc') return true                    // base de données
+  if (pathname.startsWith('/app/settings')) return true       // paramètres
+  if (pathname.startsWith('/app/join/')) return true          // acceptation d'invitation
+  return false
+}
 
 export function AppLayout() {
   const location = useLocation()
+  const onDashboard = location.pathname === '/app/dashboard'
+  const projMatch = location.pathname.match(/^\/app\/projects\/([^/]+)(?:\/|$)/)
+  const diagProjectId = projMatch && projMatch[1] !== 'new' ? projMatch[1] : null
   const mainRef = useRef<HTMLDivElement>(null)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     mainRef.current?.scrollTo(0, 0)
-    setMobileMenuOpen(false)
   }, [location.pathname])
 
+  // Garde mobile : toute route hors du parcours mobile redirige vers la liste des diagnostics.
+  if (isMobile && !isMobileAllowed(location.pathname)) {
+    return <Navigate to="/app/projects" replace />
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:block">
-        <Sidebar />
+    <div className="flex h-dvh overflow-hidden bg-muted">
+      {/* Colonne gauche : panneau unique (desktop) */}
+      <div className="hidden lg:flex lg:flex-col gap-3 pl-3 py-3 w-[17.5rem] shrink-0">
+        <Sidebar onOpenAssistant={() => setAssistantOpen(true)} />
       </div>
 
-      {/* Mobile overlay */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
-          <div className="relative w-72 h-full">
-            <Sidebar />
-            <button onClick={() => setMobileMenuOpen(false)} className="absolute top-3 right-3 h-8 w-8 rounded-full bg-white/90 flex items-center justify-center shadow">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+      {/* Zone principale */}
+      <div className="relative flex flex-1 flex-col min-w-0 overflow-hidden p-3">
+        {onDashboard && (
+          <div
+            className="pointer-events-none absolute inset-0 z-0 bg-no-repeat"
+            style={{
+              backgroundImage: 'url(/preview-bg.jpg)',
+              backgroundSize: '70%',
+              backgroundPosition: '100% 0%',
+              WebkitMaskImage: DASH_MASK,
+              WebkitMaskComposite: 'source-in',
+              maskImage: DASH_MASK,
+              maskComposite: 'intersect',
+            }}
+          />
+        )}
+        <div className={`relative z-10 flex min-h-0 flex-1 flex-col ${onDashboard ? 'px-2 pt-1 sm:px-4 lg:px-8 lg:pt-4' : ''}`}>
+          <TopBar />
+          <OfflineIndicator />
+          {diagProjectId && !isMobile && <DiagnosticTabs projectId={diagProjectId} />}
+          <main ref={mainRef} className={`flex-1 overflow-y-auto overscroll-none pb-24 lg:pb-16 ${onDashboard ? 'mt-6 lg:mt-8' : 'mt-3'}`}>
+            <Outlet />
+          </main>
         </div>
-      )}
-
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar onMenuClick={() => setMobileMenuOpen(true)} />
-        <main ref={mainRef} className="flex-1 overflow-y-auto bg-gray-50/50 p-4 md:p-6">
-          <Outlet />
-        </main>
       </div>
+
+      {/* Navigation mobile épurée */}
+      <MobileNav onToggleAssistant={() => setAssistantOpen((o) => !o)} assistantOpen={assistantOpen} />
+
+      <AssistantWidget open={assistantOpen} onOpenChange={setAssistantOpen} />
     </div>
   )
 }

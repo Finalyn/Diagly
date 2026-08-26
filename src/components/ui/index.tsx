@@ -9,16 +9,16 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 export function Button({ className, variant = 'default', size = 'default', ...props }: ButtonProps) {
   return (
     <button className={cn(
-      'inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
-      variant === 'default' && 'bg-primary text-primary-foreground hover:bg-primary/90',
+      'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
+      variant === 'default' && 'bg-white/80 supports-[backdrop-filter]:bg-white/60 backdrop-blur border border-black/10 text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-white hover:border-black/[0.14]',
       variant === 'secondary' && 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-      variant === 'outline' && 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+      variant === 'outline' && 'border border-black/10 bg-white/60 backdrop-blur hover:bg-white',
       variant === 'ghost' && 'hover:bg-accent hover:text-accent-foreground',
       variant === 'destructive' && 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-      variant === 'link' && 'text-primary underline-offset-4 hover:underline',
+      variant === 'link' && 'text-foreground underline-offset-4 hover:underline',
       size === 'default' && 'h-10 px-4 py-2 text-sm',
-      size === 'sm' && 'h-9 rounded-md px-3 text-xs',
-      size === 'lg' && 'h-11 rounded-md px-8 text-base',
+      size === 'sm' && 'h-9 rounded-lg px-3 text-xs',
+      size === 'lg' && 'h-11 rounded-xl px-8 text-base',
       size === 'icon' && 'h-10 w-10',
       className
     )} {...props} />
@@ -27,7 +27,7 @@ export function Button({ className, variant = 'default', size = 'default', ...pr
 
 // Card
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('rounded-lg border bg-card text-card-foreground shadow-sm', className)} {...props} />
+  return <div className={cn('rounded-2xl border border-black/[0.06] bg-card text-card-foreground shadow-[0_1px_2px_rgba(0,0,0,0.03),0_12px_32px_-16px_rgba(0,0,0,0.10)]', className)} {...props} />
 }
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn('flex flex-col space-y-1.5 p-6', className)} {...props} />
@@ -129,10 +129,10 @@ export function TableBody({ className, ...props }: React.HTMLAttributes<HTMLTabl
 export function TableRow({ className, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
   return <tr className={cn('border-b transition-colors hover:bg-muted/50', className)} {...props} />
 }
-export function TableHead({ className, ...props }: React.HTMLAttributes<HTMLTableCellElement>) {
+export function TableHead({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return <th className={cn('h-12 px-4 text-left align-middle font-medium text-muted-foreground', className)} {...props} />
 }
-export function TableCell({ className, ...props }: React.HTMLAttributes<HTMLTableCellElement>) {
+export function TableCell({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
   return <td className={cn('p-4 align-middle', className)} {...props} />
 }
 
@@ -150,7 +150,7 @@ export function Avatar({ name, size = 'md', className }: { name: string; size?: 
   const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
   return (
     <div className={cn(
-      'inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground font-medium',
+      'inline-flex items-center justify-center rounded-full bg-secondary text-foreground border border-black/[0.06] font-semibold',
       size === 'sm' && 'h-8 w-8 text-xs',
       size === 'md' && 'h-10 w-10 text-sm',
       size === 'lg' && 'h-12 w-12 text-base',

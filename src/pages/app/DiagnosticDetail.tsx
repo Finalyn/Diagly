@@ -1,193 +1,1041 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, ChevronDown, Camera, Image } from 'lucide-react'
-import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Textarea } from '@/components/ui'
-import { mockDiagnostics, mockCFCItems, cfcCategories, stateLabels, stateColors, priorityColors, priorityDescriptions, defaultStateGuide } from '@/data/mock'
-import { formatCHF } from '@/lib/utils'
-import { cn } from '@/lib/utils'
+import { useMemo, useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  ArrowLeft, Loader2, AlertCircle, Search, Plus, Check, ImagePlus, X, ArrowRight, ScanSearch, Trash2, ChevronDown,
+} from 'lucide-react'
+import {
+  Button, Card, CardHeader, CardTitle, CardContent, Badge, Textarea, Input,
+} from '@/components/ui'
+import { useGuideMode, GUIDE_MODE_LABELS, type GuideMode } from '@/lib/use-guide-mode'
+import { DiagnosticGuide } from '@/components/DiagnosticGuide'
+import { stateLabels, stateColors, priorityColors, priorityDescriptions } from '@/data/mock'
+import { formatCHF, cn } from '@/lib/utils'
+import { groupItemsByCategory } from '@/lib/cfc'
+import { computeProjectMetrics, roofSurface } from '@/lib/formulas'
+import {
+  STATE_PRIORITY, workForState, priceForState, computeQuantity, computeCost, computeCostFromPrice,
+  type QuantityContext,
+} from '@/lib/diagnostic-auto'
+import { api, ApiError } from '@/lib/api'
+import { ProjectSectionsMenu } from '@/components/ProjectSectionsMenu'
+import { CameraCapture } from '@/components/CameraCapture'
+import { useIsMobile } from '@/lib/use-mobile'
+import type {
+  ApiCatalogItem, ApiDiagnosticItem, ElementState, Priority,
+} from '@/lib/api-types'
 
-function TreeNode({ node, level, diagnosed, onSelect, selected }: {
-  node: { code: string; label: string; children?: { code: string; label: string; children?: { code: string; label: string }[] }[] }
-  level: number
-  diagnosed: Set<string>
-  onSelect: (code: string) => void
-  selected: string | null
-}) {
-  const [open, setOpen] = useState(level < 2)
-  const hasChildren = node.children && node.children.length > 0
-  const isDiagnosed = diagnosed.has(node.code)
-  const isLeaf = !hasChildren
+// ---------- Helpers ----------
 
-  return (
-    <div>
-      <button
-        onClick={() => { if (hasChildren) setOpen(!open); if (isLeaf) onSelect(node.code) }}
-        className={cn(
-          'flex items-center gap-2 w-full text-left px-2 py-1.5 rounded text-sm hover:bg-muted/50 transition-colors',
-          selected === node.code && 'bg-primary/10 text-primary',
-        )}
-        style={{ paddingLeft: `${level * 16 + 8}px` }}
-      >
-        {hasChildren ? (open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />) : <span className="w-3.5" />}
-        {isLeaf && isDiagnosed && <span className={`h-2 w-2 rounded-full shrink-0 ${diagnosed.has(node.code) ? 'bg-green-500' : ''}`} />}
-        {isLeaf && !isDiagnosed && <span className="h-2 w-2 rounded-full shrink-0 bg-gray-300" />}
-        <span className="text-xs text-muted-foreground font-mono mr-1">{node.code}</span>
-        <span className="truncate">{node.label}</span>
-      </button>
-      {open && hasChildren && node.children!.map(child => (
-        <TreeNode key={child.code} node={child} level={level + 1} diagnosed={diagnosed} onSelect={onSelect} selected={selected} />
-      ))}
-    </div>
-  )
+const STATES: ElementState[] = ['TRES_BON', 'BON', 'MOYEN', 'MAUVAIS']
+const PRIORITIES: Priority[] = ['I', 'II', 'III']
+
+// Année d'intervention par défaut (déduite de la priorité), utilisée comme placeholder tant
+// que le diagnostiqueur ne l'a pas saisie. Doit rester en phase avec deriveInterventionYear() serveur.
+function deriveInterventionYearClient(priority: Priority | null): number {
+  const base = new Date().getFullYear()
+  return priority === 'I' ? base : priority === 'II' ? base + 3 : priority === 'III' ? base + 7 : base + 5
 }
 
+/** Coût numérique à partir d'un champ Decimal stocké en string (ou null). */
+const toNum = (v: string | null | undefined): number => (v ? Number(v) : 0)
+
+/** Forme du cache de la liste d'éléments (queryKey ['diagnostic-items', id]). */
+type ItemsData = { items: ApiDiagnosticItem[]; count: number }
+
+// ---------- Component ----------
+
 export function DiagnosticDetail() {
-  const { id } = useParams()
-  const diagnostic = mockDiagnostics.find(d => d.id === id) ?? mockDiagnostics[0]
-  const [selectedCode, setSelectedCode] = useState<string | null>(diagnostic.items[0]?.cfcCode ?? null)
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const isMobile = useIsMobile()
 
-  const diagnosedCodes = new Set(diagnostic.items.map(i => i.cfcCode))
-  const selectedItem = diagnostic.items.find(i => i.cfcCode === selectedCode) ?? null
+  // ----- queries -----
+  const diagQuery = useQuery({
+    queryKey: ['diagnostic', id],
+    queryFn: () => api.diagnostics.get(id!),
+    enabled: !!id,
+  })
 
-  const totalCost = diagnostic.items.reduce((s, i) => s + i.estimatedCost, 0)
-  const costByPriority = {
-    I: diagnostic.items.filter(i => i.priority === 'I').reduce((s, i) => s + i.estimatedCost, 0),
-    II: diagnostic.items.filter(i => i.priority === 'II').reduce((s, i) => s + i.estimatedCost, 0),
-    III: diagnostic.items.filter(i => i.priority === 'III').reduce((s, i) => s + i.estimatedCost, 0),
+  const itemsQuery = useQuery({
+    queryKey: ['diagnostic-items', id],
+    queryFn: () => api.diagnostics.listItems(id!),
+    enabled: !!id,
+  })
+
+  const catalogQuery = useQuery({
+    queryKey: ['cfc-items'],
+    queryFn: () => api.cfc.items(),
+    staleTime: 60 * 60 * 1000, // 1h — catalogue stable
+  })
+
+  // Projet (pour les surfaces qui servent au calcul auto des quantités).
+  const projectId = diagQuery.data?.diagnostic.projectId
+  const projectQuery = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: () => api.projects.get(projectId!),
+    enabled: !!projectId,
+  })
+
+  const qtyCtx = useMemo<QuantityContext>(() => {
+    const p = projectQuery.data?.project
+    const m = computeProjectMetrics({
+      perimeter: p?.perimeter ?? 0,
+      nbFloors: p?.nbFloors ?? 1,
+      floorHeight: p?.floorHeight ?? 2.7,
+      builtArea: p?.builtArea ?? 0,
+      floorArea: p?.floorArea ?? 0,
+      facadeArea: p?.facadeArea ?? undefined,
+      windowPct: (p?.windowPct ?? 30) / 100,
+      nbApartments: p?.nbApartments ?? 0,
+    })
+    return {
+      builtArea: p?.builtArea ?? 0,
+      floorArea: p?.floorArea ?? 0,
+      terrainArea: p?.terrainArea ?? 0,
+      perimeter: p?.perimeter ?? 0,
+      nbApartments: p?.nbApartments ?? 0,
+      nbFloors: p?.nbFloors ?? 0,
+      facade: m.facade,
+      windows: m.windows,
+      roof: roofSurface(p?.roofType, p?.builtArea) ?? 0, // 0 si type non précisé → toiture manuelle
+      scaffolding: m.scaffolding,
+      commons: m.commons,
+    }
+  }, [projectQuery.data])
+
+  // ----- local UI state -----
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [guideMode, setGuideMode] = useGuideMode()
+
+  // ----- mutations -----
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['diagnostic', id] })
+    queryClient.invalidateQueries({ queryKey: ['diagnostic-items', id] })
+    queryClient.invalidateQueries({ queryKey: ['project'] }) // garde le compteur du résumé à jour
+  }
+
+  // Cache de la liste affichée : mis à jour de façon optimiste pour que la saisie
+  // apparaisse instantanément (et fonctionne hors-ligne, la mutation partant en file).
+  const itemsKey = ['diagnostic-items', id] as const
+  const setItemsCache = (fn: (d: ItemsData) => ItemsData) =>
+    queryClient.setQueryData<ItemsData>(itemsKey, (old) => (old ? fn(old) : old))
+  const snapshotItems = () => queryClient.getQueryData<ItemsData>(itemsKey)
+
+  const addItem = useMutation({
+    mutationFn: (input: { catalog: ApiCatalogItem; state?: ElementState | null }) => {
+      const { catalog, state } = input
+      const quantity = computeQuantity(catalog, qtyCtx)
+      // Ajout « non évalué » par défaut : ni état, ni coût tant que le diagnostiqueur n'a pas choisi.
+      const cost = state ? computeCost(catalog, state, quantity) : undefined
+      const work = state ? workForState(catalog, state) : null
+      return api.diagnostics.createItem(id!, {
+        cfcCode: catalog.cfcCode ?? 'N/A',
+        cfcLabel: catalog.description,
+        catalogItemId: catalog.id,
+        state: state ?? null,
+        priority: state ? STATE_PRIORITY[state] : null,
+        works: work && work !== 'Néant' ? [work] : [],
+        photos: [],
+        area: quantity,                              // quantité auto (surfaces) conservée
+        unit: catalog.unit ?? undefined,
+        estimatedCost: (cost ?? undefined) as unknown as string | undefined,
+      })
+    },
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: itemsKey })
+      const prev = snapshotItems()
+      const { catalog, state } = input
+      const quantity = computeQuantity(catalog, qtyCtx)
+      const cost = state ? computeCost(catalog, state, quantity) : undefined
+      const work = state ? workForState(catalog, state) : null
+      const now = new Date().toISOString()
+      const temp: ApiDiagnosticItem = {
+        id: `temp-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+        diagnosticId: id!,
+        cfcCode: catalog.cfcCode ?? 'N/A',
+        cfcLabel: catalog.description,
+        catalogItemId: catalog.id,
+        state: state ?? null,
+        priority: state ? STATE_PRIORITY[state] : null,
+        notes: null,
+        works: work && work !== 'Néant' ? [work] : [],
+        photos: [],
+        area: quantity ?? null,
+        unit: catalog.unit ?? null,
+        yearInstalled: null,
+        interventionYear: null,
+        estimatedCost: cost != null ? String(cost) : null,
+        improvement: null,
+        improvementCost: null,
+        norms: null,
+        normsCost: null,
+        createdAt: now,
+        updatedAt: now,
+      }
+      setItemsCache((d) => ({ items: [...d.items, temp], count: d.count + 1 }))
+      setSelectedItemId(temp.id)
+      return { prev }
+    },
+    onError: (_e, _v, ctx) => { if (ctx?.prev) queryClient.setQueryData(itemsKey, ctx.prev) },
+    onSuccess: (res) => {
+      invalidateAll()
+      setSelectedItemId(res.item.id)
+    },
+  })
+
+  const updateItem = useMutation({
+    mutationFn: (input: { itemId: string; data: Partial<ApiDiagnosticItem> }) =>
+      api.diagnostics.updateItem(input.itemId, input.data),
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: itemsKey })
+      const prev = snapshotItems()
+      setItemsCache((d) => ({
+        ...d,
+        items: d.items.map((it) => (it.id === input.itemId ? { ...it, ...input.data } : it)),
+      }))
+      return { prev }
+    },
+    onError: (_e, _v, ctx) => { if (ctx?.prev) queryClient.setQueryData(itemsKey, ctx.prev) },
+    onSuccess: () => invalidateAll(),
+  })
+
+  const deleteItem = useMutation({
+    mutationFn: (itemId: string) => api.diagnostics.deleteItem(itemId),
+    onMutate: async (itemId) => {
+      await queryClient.cancelQueries({ queryKey: itemsKey })
+      const prev = snapshotItems()
+      setItemsCache((d) => ({ items: d.items.filter((it) => it.id !== itemId), count: Math.max(0, d.count - 1) }))
+      setSelectedItemId(null)
+      return { prev }
+    },
+    onError: (_e, _v, ctx) => { if (ctx?.prev) queryClient.setQueryData(itemsKey, ctx.prev) },
+    onSuccess: () => {
+      invalidateAll()
+      setSelectedItemId(null)
+    },
+  })
+
+  // Suppression du diagnostic entier (depuis le menu Sections).
+  const deleteDiagnostic = useMutation({
+    mutationFn: () => api.diagnostics.delete(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+      navigate(projectId ? `/app/projects/${projectId}` : '/app/dashboard')
+    },
+  })
+  const handleDeleteDiagnostic = () => {
+    if (window.confirm('Supprimer définitivement ce diagnostic et tous ses éléments ? Le bâtiment ne sera pas supprimé.')) {
+      deleteDiagnostic.mutate()
+    }
+  }
+
+  // ----- derived data -----
+  const items = itemsQuery.data?.items ?? []
+  const catalogItems = catalogQuery.data?.items ?? []
+
+  // map for fast lookup
+  const itemsByCatalogId = useMemo(() => {
+    const m = new Map<number, ApiDiagnosticItem>()
+    for (const it of items) {
+      if (it.catalogItemId != null) m.set(it.catalogItemId, it)
+    }
+    return m
+  }, [items])
+
+  // groupe le catalogue par catégorie (ordre de visite Feuil2), avec recherche
+  const grouped = useMemo(() => {
+    const q = search.toLowerCase().trim()
+    const filtered = q
+      ? catalogItems.filter(c =>
+          c.description.toLowerCase().includes(q)
+          || (c.cfcCode?.toLowerCase().includes(q) ?? false)
+          || (c.category?.toLowerCase().includes(q) ?? false))
+      : catalogItems
+    return groupItemsByCategory(filtered)
+  }, [catalogItems, search])
+
+  // selected
+  const selectedDiagItem = items.find(i => i.id === selectedItemId) ?? null
+  const selectedCatalog = selectedDiagItem?.catalogItemId
+    ? catalogItems.find(c => c.id === selectedDiagItem.catalogItemId) ?? null
+    : null
+
+  // Pas d'auto-sélection : au chargement, l'éditeur reste vide tant qu'on ne
+  // choisit pas un élément (évite de retomber toujours sur le premier).
+
+  // ----- totals -----
+  const totalCost = items.reduce((s, i) => s + toNum(i.estimatedCost), 0)
+  const costByPriority: Record<Priority, number> = {
+    I:   items.filter(i => i.priority === 'I').reduce((s, i) => s + toNum(i.estimatedCost), 0),
+    II:  items.filter(i => i.priority === 'II').reduce((s, i) => s + toNum(i.estimatedCost), 0),
+    III: items.filter(i => i.priority === 'III').reduce((s, i) => s + toNum(i.estimatedCost), 0),
+  }
+
+  // ----- loading / error states -----
+  if (diagQuery.isLoading || itemsQuery.isLoading || catalogQuery.isLoading) {
+    return (
+      <div className="flex items-center justify-center py-32 text-muted-foreground">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />Chargement…
+      </div>
+    )
+  }
+  if (diagQuery.isError || !diagQuery.data) {
+    return (
+      <Card>
+        <CardContent className="py-16 text-center">
+          <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+          <p className="text-sm text-red-700">
+            {(diagQuery.error as ApiError | null)?.message ?? 'Diagnostic introuvable'}
+          </p>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
     <div className="h-[calc(100vh-7rem)] flex flex-col gap-4">
-      <div className="flex items-center gap-4 shrink-0">
-        <button onClick={() => window.history.back()}><ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" /></button>
-        <div className="flex-1">
-          <h1 className="text-xl font-bold">Diagnostic</h1>
-          <p className="text-sm text-muted-foreground">{diagnostic.items.length} elements diagnostiques</p>
+      {/* Header (masqué sur mobile pendant l'édition d'un élément) */}
+      <div className={cn('space-y-3 shrink-0', isMobile && selectedItemId && 'hidden')}>
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold truncate">Diagnostic</h1>
+            <p className="text-sm text-muted-foreground truncate">
+              {items.length} élément{items.length !== 1 ? 's' : ''} diagnostiqué{items.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          {projectId && !isMobile && <ProjectSectionsMenu projectId={projectId} onDeleteDiagnostic={handleDeleteDiagnostic} />}
         </div>
-        <div className="flex gap-4 text-sm">
-          {(['I', 'II', 'III'] as const).map(p => (
-            <div key={p} className="text-center">
+        <div className="flex gap-4 text-sm overflow-x-auto pb-1">
+          {PRIORITIES.map(p => (
+            <div key={p} className="text-center shrink-0">
               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[p]}`}>{p}</span>
               <p className="font-semibold mt-1">{formatCHF(costByPriority[p])}</p>
             </div>
           ))}
-          <div className="text-center pl-4 border-l">
+          <div className="text-center pl-4 border-l shrink-0">
             <span className="text-xs text-muted-foreground">Total</span>
             <p className="text-lg font-bold">{formatCHF(totalCost)}</p>
           </div>
         </div>
+
+        <GuideModeToggle mode={guideMode} onChange={setGuideMode} />
       </div>
 
-      <div className="flex gap-4 flex-1 min-h-0">
-        <Card className="w-80 shrink-0 overflow-y-auto">
-          <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm">Arborescence CFC</CardTitle>
+      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
+        {/* ===== Catalogue : plein écran sur mobile (masqué pendant l'édition), colonne à gauche sur desktop ===== */}
+        <Card className={cn(
+          'w-full overflow-hidden flex flex-col',
+          isMobile ? (selectedItemId ? 'hidden' : 'flex-1 min-h-0') : 'lg:w-96 shrink-0',
+        )}>
+          <CardHeader className="py-3 px-4 shrink-0 border-b">
+            <CardTitle className="text-sm">Catalogue CFC</CardTitle>
+            <div className="relative mt-2">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                className="pl-7 h-8 text-sm"
+                placeholder="Rechercher un élément…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
           </CardHeader>
-          <CardContent className="px-2 py-0 pb-4">
-            {cfcCategories.map(cat => (
-              <TreeNode key={cat.code} node={cat} level={0} diagnosed={diagnosedCodes} onSelect={setSelectedCode} selected={selectedCode} />
+          <CardContent className="px-2 py-0 pb-4 overflow-y-auto flex-1">
+            {grouped.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-4">Aucun résultat</p>
+            )}
+            {grouped.map((group) => (
+              <div key={group.category} className="mb-3">
+                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sticky top-0 bg-card">
+                  {group.category}
+                </div>
+                {group.items.map(c => {
+                  const existing = itemsByCatalogId.get(c.id)
+                  const isAdded = !!existing
+                  const isSelected = existing?.id === selectedItemId
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        if (existing) setSelectedItemId(existing.id)
+                        else addItem.mutate({ catalog: c })
+                      }}
+                      disabled={addItem.isPending}
+                      className={cn(
+                        'flex items-start gap-2 w-full text-left rounded hover:bg-muted/50 transition-colors',
+                        isMobile ? 'px-3 py-2.5 text-sm' : 'px-2 py-1.5 text-xs',
+                        isSelected && 'bg-primary/10 text-primary',
+                      )}
+                    >
+                      <span className={cn(
+                        'h-2 w-2 rounded-full shrink-0 mt-1.5',
+                        isAdded ? 'bg-green-500' : 'bg-gray-300',
+                      )} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1">
+                          {c.cfcCode && <span className="font-mono text-muted-foreground">{c.cfcCode}</span>}
+                          <span className="truncate font-medium">{c.description}</span>
+                        </div>
+                        {existing && (
+                          <div className="flex gap-1 mt-0.5">
+                            {existing.state ? (
+                              <>
+                                <span className={cn('text-[10px] px-1.5 rounded text-white', stateColors[existing.state])}>{stateLabels[existing.state]}</span>
+                                {existing.priority && <span className={cn('text-[10px] px-1.5 rounded', priorityColors[existing.priority])}>{existing.priority}</span>}
+                              </>
+                            ) : (
+                              <span className="text-[10px] px-1.5 rounded bg-muted text-muted-foreground">À évaluer</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {!isAdded && <Plus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                      {isAdded && !isSelected && <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />}
+                    </button>
+                  )
+                })}
+              </div>
             ))}
           </CardContent>
         </Card>
 
-        <div className="flex-1 overflow-y-auto">
-          {selectedItem ? (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-lg text-muted-foreground">{selectedItem.cfcCode}</span>
-                  <CardTitle>{selectedItem.cfcLabel}</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <p className="text-sm font-medium mb-3">Photos</p>
-                  {selectedItem.photos.length > 0 ? (
-                    <div className="flex gap-3">
-                      {selectedItem.photos.map((_, i) => (
-                        <div key={i} className="h-32 w-44 rounded-lg bg-muted flex items-center justify-center border">
-                          <Image className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                      ))}
-                      <button className="h-32 w-32 rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors">
-                        <Camera className="h-6 w-6 mb-1" />
-                        <span className="text-xs">Ajouter</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <button className="h-32 w-full rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-colors">
-                      <Camera className="h-6 w-6 mb-1" />
-                      <span className="text-sm">Ajouter des photos</span>
-                    </button>
-                  )}
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium mb-3">Etat de l'element</p>
-                  <div className="flex gap-2">
-                    {(['TRES_BON', 'BON', 'MOYEN', 'MAUVAIS'] as const).map(state => (
-                      <button key={state} className={cn(
-                        'flex-1 py-3 rounded-lg text-sm font-medium border-2 transition-colors',
-                        selectedItem.state === state ? `${stateColors[state]} text-white border-transparent` : 'bg-background border-muted hover:border-primary/30'
-                      )}>{stateLabels[state]}</button>
-                    ))}
-                  </div>
-                  {(() => {
-                    const cfc = mockCFCItems.find(c => c.code === selectedItem.cfcCode)
-                    const guide = cfc?.stateGuide?.[selectedItem.state] ?? defaultStateGuide[selectedItem.state]
-                    return <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{guide.criteria}</p>
-                  })()}
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium mb-3">Priorite</p>
-                  <div className="flex gap-2">
-                    {(['I', 'II', 'III'] as const).map(p => (
-                      <button key={p} className={cn(
-                        'px-6 py-3 rounded-lg text-sm font-bold border-2 transition-colors',
-                        selectedItem.priority === p ? `${priorityColors[p]} border-transparent` : 'bg-background border-muted hover:border-primary/30'
-                      )}>Priorite {p}</button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{priorityDescriptions[selectedItem.priority]}</p>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium mb-2">Travaux recommandes</p>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedItem.works.map((w, i) => <Badge key={i} variant="secondary">{w}</Badge>)}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-sm font-medium mb-1">Annee d'installation</p>
-                    <p className="text-lg font-semibold">{selectedItem.yearInstalled ?? '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium mb-1">Quantite</p>
-                    <p className="text-lg font-semibold">{selectedItem.area ? `${selectedItem.area} ${selectedItem.unit}` : '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium mb-1">Cout estime</p>
-                    <p className="text-lg font-bold text-primary">{formatCHF(selectedItem.estimatedCost)}</p>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium mb-2">Notes</p>
-                  <Textarea defaultValue={selectedItem.notes ?? ''} placeholder="Ajouter des notes..." rows={3} />
-                </div>
-              </CardContent>
-            </Card>
+        {/* ===== Éditeur : plein écran sur mobile (visible quand un élément est sélectionné) ===== */}
+        <div className={cn('flex-1 overflow-y-auto overflow-x-hidden min-w-0', isMobile && !selectedItemId && 'hidden')}>
+          {selectedDiagItem ? (
+            <ItemEditor
+              item={selectedDiagItem}
+              catalog={selectedCatalog}
+              qtyCtx={qtyCtx}
+              mobile={isMobile}
+              guideMode={guideMode}
+              projectId={projectId}
+              onBack={() => setSelectedItemId(null)}
+              onUpdate={(data) => updateItem.mutate({ itemId: selectedDiagItem.id, data })}
+              onDelete={() => deleteItem.mutate(selectedDiagItem.id)}
+              isMutating={updateItem.isPending}
+              isDeleting={deleteItem.isPending}
+            />
           ) : (
-            <Card>
-              <CardContent className="py-16 text-center">
-                <p className="text-muted-foreground">Selectionnez un element CFC dans l'arborescence pour voir ou modifier son diagnostic.</p>
-              </CardContent>
-            </Card>
+            !isMobile && (
+              <Card>
+                <CardContent className="py-16 text-center">
+                  <p className="text-muted-foreground">
+                    Cliquez sur un élément du catalogue à gauche pour l'ajouter au diagnostic.
+                  </p>
+                </CardContent>
+              </Card>
+            )
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------- ItemEditor ----------
+
+/** Réduit une image (photo terrain) en data URL JPEG compacte (sous la limite API). */
+function downscaleImage(file: File, maxDim = 1280, quality = 0.7): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+      const w = Math.round(img.width * scale)
+      const h = Math.round(img.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return reject(new Error('canvas'))
+      ctx.drawImage(img, 0, 0, w, h)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
+/** En-tête d'étape mobile : pastille numérotée + libellé, pour guider pas à pas. */
+function StepHeader({ n, label }: { n: number; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{n}</span>
+      <p className="text-sm font-semibold">{label}</p>
+    </div>
+  )
+}
+
+interface ItemEditorProps {
+  item: ApiDiagnosticItem
+  catalog: ApiCatalogItem | null
+  qtyCtx: QuantityContext
+  guideMode: GuideMode
+  projectId?: string
+  onUpdate: (data: Partial<ApiDiagnosticItem>) => void
+  onDelete: () => void
+  isMutating: boolean
+  isDeleting: boolean
+  mobile?: boolean
+  onBack?: () => void
+}
+
+/** Sélecteur d'état guidé : chaque état avec sa description (Feuille 3). Fallback = boutons simples. */
+function StateGuide({ item, catalog, onApply, isMutating }: {
+  item: ApiDiagnosticItem; catalog: ApiCatalogItem | null
+  onApply: (s: ElementState) => void; isMutating: boolean
+}) {
+  const descOf = (s: ElementState) => s === 'TRES_BON' ? catalog?.descTbe : s === 'BON' ? catalog?.descBon : s === 'MOYEN' ? catalog?.descMoyen : catalog?.descMauvais
+  const hasDesc = !!(catalog && (catalog.descTbe || catalog.descBon || catalog.descMoyen || catalog.descMauvais))
+  if (!hasDesc) {
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        {STATES.map(state => (
+          <button key={state} onClick={() => onApply(state)} disabled={isMutating}
+            className={cn('py-3 rounded-xl text-sm font-medium border-2 transition-colors',
+              item.state === state ? `${stateColors[state]} text-white border-transparent` : 'bg-background border-muted hover:border-primary/30')}>
+            {stateLabels[state]}
+          </button>
+        ))}
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-2">
+      {STATES.map(state => {
+        const desc = descOf(state)
+        const selected = item.state === state
+        return (
+          <button key={state} onClick={() => onApply(state)} disabled={isMutating}
+            className={cn('w-full rounded-xl border-2 p-3 text-left transition-colors',
+              selected ? `${stateColors[state]} border-transparent` : 'bg-background border-muted hover:border-primary/30')}>
+            <div className="flex items-center gap-2">
+              <span className={cn('inline-block h-2.5 w-2.5 rounded-full', selected ? 'bg-white' : stateColors[state])} />
+              <span className={cn('text-sm font-semibold', selected && 'text-white')}>{stateLabels[state]}</span>
+            </div>
+            {desc && <p className={cn('mt-1 text-xs leading-snug', selected ? 'text-white/90' : 'text-muted-foreground')}>{desc}</p>}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Saisie guidée « ajout d'isolation d'épaisseur à définir » : épaisseur (cm) + prix au m² -> coût = surface × prix. */
+function InsulationInputs({ value, quantity, onChange }: {
+  value: string | null; quantity: number | undefined
+  onChange: (work: string | null, cost: number | null) => void
+}) {
+  const ep = value?.match(/([\d.,]+)\s*cm/i)?.[1] ?? ''
+  const prix = value?.match(/([\d.,]+)\s*CHF\s*\/\s*m/i)?.[1] ?? ''
+  const surface = quantity ?? 0
+  const n = (s: string) => { const v = Number(String(s).replace(',', '.')); return Number.isFinite(v) ? v : NaN }
+  const compose = (epv: string, prixv: string) => {
+    const p = n(prixv)
+    const c = Number.isFinite(p) && surface > 0 ? Math.round(p * surface) : null
+    const text = `Ajout d'isolation${epv ? ` — épaisseur ${epv} cm` : ''}${prixv ? ` · ${prixv} CHF/m²` : ''}`
+    onChange(text, c)
+  }
+  const p = n(prix)
+  const preview = Number.isFinite(p) && surface > 0 ? Math.round(p * surface) : null
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">Épaisseur d'isolation (cm)</label>
+          <Input type="number" step="0.5" defaultValue={ep} placeholder="ex. 16" onBlur={(e) => compose(e.target.value, prix)} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">Prix (CHF/m²)</label>
+          <Input type="number" defaultValue={prix} placeholder="ex. 120" onBlur={(e) => compose(ep, e.target.value)} />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Surface {surface > 0 ? `${surface} m²` : '— (à saisir sur l’élément)'}{preview != null ? ` → coût estimé ${preview.toLocaleString('fr-CH')} CHF` : ''}
+      </p>
+    </div>
+  )
+}
+
+/** Un bloc d'enveloppe (Amélioration ou Remise aux normes) : retenable, éditable, chiffré. */
+function PerfBlock({ label, catalogWork, catalogPrice, value, cost, quantity, onChange, isMutating }: {
+  label: string; catalogWork: string | null; catalogPrice: string | null
+  value: string | null; cost: string | null; quantity: number | undefined
+  onChange: (work: string | null, cost: number | null) => void; isMutating: boolean
+}) {
+  const has = !!catalogWork && catalogWork !== 'Néant'
+  const retained = value != null
+  if (!has && !retained) return null
+  const costNum = cost != null ? Number(cost) : null
+  const isInsulation = /isolation|isolant|épaisseur/i.test(`${catalogWork ?? ''} ${value ?? ''}`)
+  const toggle = () => {
+    if (retained) onChange(null, null)
+    else onChange(has ? catalogWork! : '', computeCostFromPrice(catalogPrice, quantity) ?? null)
+  }
+  return (
+    <div className={cn('rounded-lg border p-3', retained ? 'border-primary/30 bg-primary/[0.03]' : 'bg-muted/10')}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium">{label}</p>
+        <button type="button" onClick={toggle} disabled={isMutating}
+          className={cn('rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+            retained ? 'bg-primary/10 text-primary hover:bg-primary/15' : 'bg-muted text-muted-foreground hover:bg-muted/70')}>
+          {retained ? 'Retenu · retirer' : 'Ajouter'}
+        </button>
+      </div>
+      {!retained && has && <p className="mt-1 text-xs text-muted-foreground">{catalogWork}{catalogPrice ? ` · ${catalogPrice}` : ''}</p>}
+      {retained && (isInsulation
+        ? <InsulationInputs value={value} quantity={quantity} onChange={onChange} />
+        : (
+          <div className="mt-2 space-y-2">
+            <Textarea key={`w-${label}-${value === '' ? 'e' : 'f'}`} defaultValue={value ?? ''} rows={2} placeholder="Travaux à réaliser…"
+              onBlur={(e) => { if ((e.target.value || '') !== (value ?? '')) onChange(e.target.value || '', costNum) }} />
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 text-xs text-muted-foreground">Coût (CHF)</span>
+              <Input type="number" className="w-36" key={`c-${label}-${cost}`} defaultValue={cost ?? ''}
+                onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : null; if (v !== costNum) onChange(value ?? '', v) }} />
+            </div>
+          </div>
+        ))}
+    </div>
+  )
+}
+
+/** Enveloppes distinctes Amélioration + Remise aux normes (dimension « performance » du diag). */
+function PerformanceEnvelopes({ item, catalog, quantity, onUpdate, isMutating }: {
+  item: ApiDiagnosticItem; catalog: ApiCatalogItem | null; quantity: number | undefined
+  onUpdate: (data: Partial<ApiDiagnosticItem>) => void; isMutating: boolean
+}) {
+  const anyImp = (!!catalog?.workImprovement && catalog.workImprovement !== 'Néant') || item.improvement != null
+  const anyNorms = (!!catalog?.workNorms && catalog.workNorms !== 'Néant') || item.norms != null
+  if (!anyImp && !anyNorms) return null
+  return (
+    <div className="space-y-2.5">
+      <p className="text-sm font-medium">Amélioration &amp; remise aux normes</p>
+      <PerfBlock key={`imp-${item.id}`} label="Amélioration" catalogWork={catalog?.workImprovement ?? null} catalogPrice={catalog?.priceImprovement ?? null}
+        value={item.improvement} cost={item.improvementCost} quantity={quantity} isMutating={isMutating}
+        onChange={(w, c) => onUpdate({ improvement: w, improvementCost: (c as unknown as string | null) })} />
+      <PerfBlock key={`norm-${item.id}`} label="Remise aux normes" catalogWork={catalog?.workNorms ?? null} catalogPrice={catalog?.priceNorms ?? null}
+        value={item.norms} cost={item.normsCost} quantity={quantity} isMutating={isMutating}
+        onChange={(w, c) => onUpdate({ norms: w, normsCost: (c as unknown as string | null) })} />
+    </div>
+  )
+}
+
+function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack }: ItemEditorProps) {
+  const [notes, setNotes] = useState(item.notes ?? '')
+  const [showManual, setShowManual] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false) // options expertes repliées (mobile)
+  const [viewer, setViewer] = useState<string | null>(null) // photo affichée en grand
+
+  // Si on change d'item, reset l'état local
+  useEffect(() => { setNotes(item.notes ?? ''); setShowManual(false); setShowAdvanced(false) }, [item.id, item.notes])
+
+  // Applique une note suggérée par le guide (ajoute à la suite si une note existe déjà).
+  const applyGuideNote = (n: string) => {
+    const merged = notes.trim() ? `${notes.trim()}\n${n}` : n
+    setNotes(merged)
+    onUpdate({ notes: merged })
+  }
+
+  const suggestedPrice = catalog && item.state ? priceForState(catalog, item.state) : null
+  // Quantité dérivée des surfaces (undefined si formule non reconnue, ex. mètres linéaires).
+  const autoQty = catalog ? computeQuantity(catalog, qtyCtx) : undefined
+
+  // Backfill : un élément sans quantité mais calculable → on la pose automatiquement (une fois).
+  useEffect(() => {
+    if (catalog && item.area == null && autoQty != null) {
+      if (item.state) {
+        const cost = computeCost(catalog, item.state, autoQty)
+        onUpdate({ area: autoQty, estimatedCost: (cost ?? undefined) as unknown as string })
+      } else {
+        onUpdate({ area: autoQty }) // élément non évalué : quantité seule, pas de coût
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id])
+
+  // Changer l'état recalcule automatiquement travaux, priorité et coût.
+  const applyState = (state: ElementState) => {
+    const quantity = item.area ?? autoQty ?? undefined
+    const patch: Partial<ApiDiagnosticItem> = { state, priority: STATE_PRIORITY[state] }
+    if (quantity != null && item.area == null) patch.area = quantity
+    if (catalog) {
+      const work = workForState(catalog, state)
+      patch.works = work && work !== 'Néant' ? [work as string] : []
+      // Coût = prix de l'état × quantité (indépendant du texte de travail ; états sans prix -> coût 0)
+      const cost = computeCost(catalog, state, quantity)
+      patch.estimatedCost = (cost ?? 0) as unknown as string
+    }
+    onUpdate(patch)
+  }
+
+  // Changer la quantité recalcule le coût.
+  const applyQuantity = (v: number | undefined) => {
+    const patch: Partial<ApiDiagnosticItem> = { area: v ?? null }
+    const cost = item.state ? computeCost(catalog, item.state, v) : undefined
+    if (cost != null) patch.estimatedCost = cost as unknown as string | null
+    onUpdate(patch)
+  }
+
+  // Part (%) de la surface auto (ex. fenêtres réparties bois/métal) → quantité.
+  const currentPct = autoQty && item.area != null ? Math.round((item.area / autoQty) * 100) : undefined
+  const applyPercent = (pct: number | undefined) => {
+    if (autoQty == null || pct == null) return
+    const area = Math.round((autoQty * pct) / 100)
+    applyQuantity(area > 0 ? area : undefined)
+  }
+
+  const addPhotos = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const urls = await Promise.all(Array.from(files).map(f => downscaleImage(f)))
+    onUpdate({ photos: [...item.photos, ...urls] })
+  }
+  const removePhoto = (i: number) => onUpdate({ photos: item.photos.filter((_, idx) => idx !== i) })
+
+  // Panneau du guide IA (rendu identique mobile / desktop), masqué si mode "off".
+  const guide = guideMode !== 'off'
+    ? (
+      <DiagnosticGuide
+        photos={item.photos}
+        item={{ cfcCode: item.cfcCode, cfcLabel: item.cfcLabel, state: item.state }}
+        projectId={projectId}
+        mode={guideMode}
+        onApplyState={applyState}
+        onApplyNote={applyGuideNote}
+      />
+    )
+    : null
+
+  // ----- Rendu mobile : flux terrain ultra simple (photo -> état -> suivant) -----
+  if (mobile) {
+    const anyImp = (!!catalog?.workImprovement && catalog.workImprovement !== 'Néant') || item.improvement != null
+    const anyNorms = (!!catalog?.workNorms && catalog.workNorms !== 'Néant') || item.norms != null
+    return (
+      <div className="flex flex-col h-full relative">
+        <div className="flex items-center gap-2 mb-3 shrink-0">
+          <button onClick={onBack} className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground shrink-0">
+            <ArrowLeft className="h-5 w-5" />Retour
+          </button>
+          <div className="flex-1 min-w-0 text-center">
+            <p className="text-base font-semibold truncate leading-tight">{item.cfcLabel}</p>
+            {catalog?.category && <p className="text-[11px] text-muted-foreground truncate">{catalog.category}</p>}
+          </div>
+          <button onClick={onDelete} disabled={isDeleting} title="Retirer cet élément" className="shrink-0 rounded-lg p-2 text-red-600 hover:bg-red-50">
+            {isDeleting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-6 pb-28 px-0.5">
+          {/* Étape 1 — photo */}
+          <section className="space-y-3">
+            <StepHeader n={1} label="Prendre une photo" />
+            <CameraCapture onCapture={(url) => onUpdate({ photos: [...item.photos, url] })} />
+            {item.photos.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto -mx-1 px-1">
+                {item.photos.map((src, i) => (
+                  <div key={i} className="relative h-16 w-16 rounded-lg overflow-hidden border shrink-0">
+                    <button type="button" onClick={() => setViewer(src)} className="block h-full w-full">
+                      <img src={src} alt="" className="h-full w-full object-cover" />
+                    </button>
+                    <button onClick={() => removePhoto(i)} className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded p-0.5 z-10">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Aide IA (facultative) */}
+          {guide}
+
+          {/* Étape 2 — état : le seul vrai choix */}
+          <section className="space-y-3">
+            <StepHeader n={2} label="Évaluer l'état" />
+            <StateGuide item={item} catalog={catalog} onApply={applyState} isMutating={isMutating} />
+          </section>
+
+          {/* Résultat automatique (priorité + coût) */}
+          <div className="rounded-xl border bg-muted/20 p-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Priorité · coût (auto)</p>
+              <div className="flex items-center gap-2 mt-1">
+                {item.priority
+                  ? <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold', priorityColors[item.priority])}>P{item.priority}</span>
+                  : <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Non évalué</span>}
+                {item.works.length > 0 && <span className="text-xs text-muted-foreground truncate">{item.works.join(' · ')}</span>}
+              </div>
+            </div>
+            <p className="text-lg font-bold text-primary shrink-0">{item.estimatedCost ? formatCHF(toNum(item.estimatedCost)) : '—'}</p>
+          </div>
+
+          {/* Options avancées repliées : l'écran reste simple par défaut */}
+          <div className="border-t pt-3">
+            <button type="button" onClick={() => setShowAdvanced(v => !v)} className="flex w-full items-center justify-between text-sm font-medium text-muted-foreground">
+              <span>Options avancées{(anyImp || anyNorms) ? ' · amélioration, normes, notes' : ' · notes'}</span>
+              <ChevronDown className={cn('h-4 w-4 transition-transform', showAdvanced && 'rotate-180')} />
+            </button>
+            {showAdvanced && (
+              <div className="mt-4 space-y-5">
+                <PerformanceEnvelopes item={item} catalog={catalog} quantity={item.area ?? autoQty ?? undefined} onUpdate={onUpdate} isMutating={isMutating} />
+                <div>
+                  <p className="text-sm font-medium mb-2">Notes</p>
+                  <Textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    onBlur={() => { if (notes !== (item.notes ?? '')) onUpdate({ notes: notes || null }) }}
+                    placeholder="Observations terrain…"
+                    rows={2}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onBack}
+          className="absolute bottom-24 right-4 flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg active:scale-95 transition-transform z-10"
+        >
+          Suivant <ArrowRight className="h-5 w-5" />
+        </button>
+
+        {viewer && (
+          <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setViewer(null)}>
+            <img src={viewer} alt="" className="max-h-full max-w-full object-contain rounded-lg" />
+            <button
+              type="button"
+              onClick={() => setViewer(null)}
+              aria-label="Fermer"
+              className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/20 text-white flex items-center justify-center"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-lg text-muted-foreground">{item.cfcCode}</span>
+            <CardTitle>{item.cfcLabel}</CardTitle>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onDelete}
+            disabled={isDeleting}
+            title="Retirer cet élément du diagnostic"
+            className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+          >
+            {isDeleting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1.5 h-4 w-4" />}
+            Retirer
+          </Button>
+        </div>
+        {catalog?.category && (
+          <Badge variant="outline" className="w-fit mt-1">{catalog.category}</Badge>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* 1. État — le seul vrai choix du diagnostiqueur */}
+        <div>
+          <p className="text-sm font-medium mb-3">État constaté</p>
+          <StateGuide item={item} catalog={catalog} onApply={applyState} isMutating={isMutating} />
+        </div>
+
+        {/* 2. Photos */}
+        <div>
+          <p className="text-sm font-medium mb-2">Photos</p>
+          <div className="flex flex-wrap gap-2">
+            {item.photos.map((src, i) => (
+              <div key={i} className="relative h-20 w-20 rounded-lg overflow-hidden border group">
+                <img src={src} alt="" className="h-full w-full object-cover" />
+                <button
+                  onClick={() => removePhoto(i)}
+                  className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+            <label className="h-20 w-20 rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-primary/40 text-muted-foreground">
+              <ImagePlus className="h-5 w-5" />
+              <span className="text-[10px]">Ajouter</span>
+              <input type="file" accept="image/*" capture="environment" multiple className="hidden"
+                onChange={(e) => { addPhotos(e.target.files); e.target.value = '' }} />
+            </label>
+          </div>
+        </div>
+
+        {/* Guide IA */}
+        {guide}
+
+        {/* 3. Résultat automatique (travaux, priorité, coût) */}
+        <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold">Calculé automatiquement</p>
+            <button onClick={() => setShowManual(v => !v)} className="text-xs text-primary hover:underline">
+              {showManual ? 'Masquer' : 'Modifier'}
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div>
+              <p className="text-xs text-muted-foreground">Priorité</p>
+              {item.priority
+                ? <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold mt-0.5', priorityColors[item.priority])}>{item.priority}</span>
+                : <span className="mt-0.5 inline-block text-xs font-medium text-muted-foreground">—</span>}
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Quantité</p>
+              {item.area != null ? (
+                <p className="font-semibold mt-0.5">{item.area} {catalog?.unit?.replace(/^CHF\s*\/?\s*/i, '') ?? ''}</p>
+              ) : (
+                <p className="font-medium text-amber-600 mt-0.5 text-xs">à saisir</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Coût estimé</p>
+              {item.estimatedCost ? (
+                <p className="font-semibold text-primary mt-0.5">{formatCHF(toNum(item.estimatedCost))}</p>
+              ) : suggestedPrice ? (
+                <p className="font-medium text-muted-foreground mt-0.5 text-xs">{suggestedPrice} {catalog?.unit ?? ''}</p>
+              ) : (
+                <p className="font-semibold mt-0.5">—</p>
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Travaux</p>
+            <p className="text-sm mt-0.5">{item.works.length > 0 ? item.works.join(' · ') : '—'}</p>
+          </div>
+
+          {/* Réglages manuels (repliés par défaut) */}
+          {showManual && (
+            <div className="pt-3 border-t space-y-4">
+              <div>
+                <p className="text-xs font-medium mb-2">Forcer la priorité</p>
+                <div className="flex gap-2">
+                  {PRIORITIES.map(p => (
+                    <button
+                      key={p}
+                      onClick={() => onUpdate({ priority: p })}
+                      disabled={isMutating}
+                      className={cn(
+                        'px-4 py-2 rounded-lg text-sm font-bold border-2 transition-colors',
+                        item.priority === p ? `${priorityColors[p]} border-transparent` : 'bg-background border-muted hover:border-primary/30',
+                      )}
+                    >Priorité {p}</button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">{item.priority ? priorityDescriptions[item.priority] : 'Non évalué'}</p>
+              </div>
+
+              {/* Part (%) d'une surface partagée (ex. fenêtres bois/métal) */}
+              {autoQty != null && (
+                <div>
+                  <p className="text-xs font-medium mb-1">
+                    Part de la surface — {autoQty} {catalog?.unit?.replace(/^CHF\s*\/?\s*/i, '') ?? ''} au total
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number" min="0" max="100" className="w-24"
+                      key={`pct-${item.id}-${currentPct}`}
+                      defaultValue={currentPct ?? 100}
+                      onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : undefined; if (v != null && v !== currentPct) applyPercent(v) }}
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                    <span className="text-xs text-muted-foreground">
+                      → utile si plusieurs éléments se partagent cette surface (bois / métal / synthétique…)
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-xs font-medium mb-1">Quantité</p>
+                  <Input type="number" key={`qty-${item.id}-${item.area}`} defaultValue={item.area ?? ''}
+                    onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : undefined; if (v !== (item.area ?? undefined)) applyQuantity(v) }} />
+                </div>
+                <div>
+                  <p className="text-xs font-medium mb-1">Année d'installation</p>
+                  <Input type="number" defaultValue={item.yearInstalled ?? ''}
+                    onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : undefined; if (v !== (item.yearInstalled ?? undefined)) onUpdate({ yearInstalled: v ?? null }) }} />
+                </div>
+                <div>
+                  <p className="text-xs font-medium mb-1">Année d'intervention</p>
+                  <Input type="number" key={`iy-${item.id}-${item.interventionYear}`} defaultValue={item.interventionYear ?? ''}
+                    placeholder={String(deriveInterventionYearClient(item.priority))}
+                    onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : undefined; if (v !== (item.interventionYear ?? undefined)) onUpdate({ interventionYear: v ?? null }) }} />
+                </div>
+                <div>
+                  <p className="text-xs font-medium mb-1">Coût estimé (CHF)</p>
+                  <Input type="number" defaultValue={item.estimatedCost ?? ''}
+                    onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : undefined; if (v !== (item.estimatedCost ? Number(item.estimatedCost) : undefined)) onUpdate({ estimatedCost: (v ?? null) as unknown as string | null }) }} />
+                </div>
+              </div>
+              {catalog && (
+                <p className="text-[11px] text-muted-foreground">
+                  Catalogue : {catalog.quantityFormula ?? '—'} · prix {suggestedPrice ? `${suggestedPrice} ${catalog.unit ?? ''}` : '—'}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Amélioration & remise aux normes */}
+        <PerformanceEnvelopes item={item} catalog={catalog} quantity={item.area ?? autoQty ?? undefined} onUpdate={onUpdate} isMutating={isMutating} />
+
+        {/* 4. Notes */}
+        <div>
+          <p className="text-sm font-medium mb-2">Notes</p>
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            onBlur={() => { if (notes !== (item.notes ?? '')) onUpdate({ notes: notes || null }) }}
+            placeholder="Observations terrain, remarques…"
+            rows={3}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------- Sélecteur du mode de guide ----------
+
+function GuideModeToggle({ mode, onChange }: { mode: GuideMode; onChange: (m: GuideMode) => void }) {
+  const opts: GuideMode[] = ['off', 'ask', 'always']
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <ScanSearch className="h-3.5 w-3.5 text-primary" />Guide IA
+      </span>
+      <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+        {opts.map((m) => (
+          <button
+            key={m}
+            onClick={() => onChange(m)}
+            className={cn(
+              'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+              mode === m ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {GUIDE_MODE_LABELS[m]}
+          </button>
+        ))}
       </div>
     </div>
   )

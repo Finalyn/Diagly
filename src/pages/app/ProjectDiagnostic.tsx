@@ -1,9 +1,12 @@
-import { useParams, Link } from 'react-router-dom'
-import { ClipboardCheck, Plus, AlertTriangle, Building2, ArrowRight } from 'lucide-react'
+import { useState } from 'react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { ClipboardCheck, Plus, AlertTriangle, Building2, ArrowRight, Loader2, AlertCircle, Trash2 } from 'lucide-react'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { Button, Card, CardHeader, CardTitle, CardContent, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui'
-import { mockProjects, mockDiagnostics, stateLabels, stateColors, priorityColors } from '@/data/mock'
+import { stateLabels, stateColors, priorityColors } from '@/data/mock'
 import { formatCHF, formatDate } from '@/lib/utils'
+import { api, ApiError } from '@/lib/api'
 
 const priorityCircleColors: Record<string, { bg: string; ring: string }> = {
   I: { bg: 'bg-red-500', ring: 'ring-red-200' },
@@ -11,36 +14,61 @@ const priorityCircleColors: Record<string, { bg: string; ring: string }> = {
   III: { bg: 'bg-green-500', ring: 'ring-green-200' },
 }
 
+const toNum = (v: string | null | undefined): number => (v ? Number(v) : 0)
+
 export function ProjectDiagnostic() {
-  const { id } = useParams()
-  const project = mockProjects.find(p => p.id === id) ?? mockProjects[0]
-  const diagnostic = mockDiagnostics.find(d => d.projectId === project.id)
-  const items = diagnostic?.items ?? []
-  const totalDiag = items.reduce((s, i) => s + i.estimatedCost, 0)
-  const pI = items.filter(i => i.priority === 'I')
-  const pII = items.filter(i => i.priority === 'II')
-  const pIII = items.filter(i => i.priority === 'III')
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const stateDistribution = [
-    { name: 'Mauvais', value: items.filter(i => i.state === 'MAUVAIS').length, color: '#ef4444' },
-    { name: 'Moyen', value: items.filter(i => i.state === 'MOYEN').length, color: '#fb923c' },
-    { name: 'Bon', value: items.filter(i => i.state === 'BON').length, color: '#4ade80' },
-    { name: 'Tres bon', value: items.filter(i => i.state === 'TRES_BON').length, color: '#22c55e' },
-  ].filter(s => s.value > 0)
+  const projectQuery = useQuery({
+    queryKey: ['project', id],
+    queryFn: () => api.projects.get(id!),
+    enabled: !!id,
+  })
 
-  const priorityData = [
-    { name: 'I', fullName: 'Priorite I', count: pI.length, cost: pI.reduce((s, i) => s + i.estimatedCost, 0), color: '#ef4444' },
-    { name: 'II', fullName: 'Priorite II', count: pII.length, cost: pII.reduce((s, i) => s + i.estimatedCost, 0), color: '#fb923c' },
-    { name: 'III', fullName: 'Priorite III', count: pIII.length, cost: pIII.reduce((s, i) => s + i.estimatedCost, 0), color: '#22c55e' },
-  ]
+  const diagnostic = projectQuery.data?.diagnostics[0]
 
-  const topCFC = [...items].sort((a, b) => b.estimatedCost - a.estimatedCost).slice(0, 5)
+  const itemsQuery = useQuery({
+    queryKey: ['diagnostic-items', diagnostic?.id],
+    queryFn: () => api.diagnostics.listItems(diagnostic!.id),
+    enabled: !!diagnostic,
+  })
 
-  const statCards = [
-    { label: 'Elements', value: items.length, icon: ClipboardCheck, color: 'text-blue-600 bg-blue-50' },
-    { label: 'Priorite I', value: pI.length, icon: AlertTriangle, color: 'text-red-600 bg-red-50' },
-    { label: 'Cout estime', value: formatCHF(totalDiag), icon: Building2, color: 'text-green-600 bg-green-50' },
-  ]
+  const createDiag = useMutation({
+    mutationFn: () => api.projects.createDiagnostic(id!, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', id] }),
+  })
+
+  const deleteDiag = useMutation({
+    mutationFn: () => api.diagnostics.delete(diagnostic!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] })
+      queryClient.invalidateQueries({ queryKey: ['diagnostic-items', diagnostic?.id] })
+      navigate(`/app/projects/${id}`)
+    },
+  })
+
+  if (projectQuery.isLoading) {
+    return (
+      <div className="flex items-center justify-center py-32 text-muted-foreground">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />Chargement…
+      </div>
+    )
+  }
+  if (projectQuery.isError || !projectQuery.data) {
+    return (
+      <Card>
+        <CardContent className="py-16 text-center">
+          <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+          <p className="text-sm text-red-700">
+            {(projectQuery.error as ApiError | null)?.message ?? 'Projet introuvable'}
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
 
   if (!diagnostic) {
     return (
@@ -48,26 +76,58 @@ export function ProjectDiagnostic() {
         <CardContent className="py-16 text-center">
           <ClipboardCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-1">Aucun diagnostic</h3>
-          <p className="text-sm text-muted-foreground mb-4">Commencez par effectuer un diagnostic du batiment.</p>
-          <Button><Plus className="mr-2 h-4 w-4" />Demarrer un diagnostic</Button>
+          <p className="text-sm text-muted-foreground mb-4">Commencez par créer un diagnostic du bâtiment.</p>
+          <Button onClick={() => createDiag.mutate()} disabled={createDiag.isPending}>
+            {createDiag.isPending
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Création…</>
+              : <><Plus className="mr-2 h-4 w-4" />Démarrer un diagnostic</>}
+          </Button>
         </CardContent>
       </Card>
     )
   }
+
+  const items = itemsQuery.data?.items ?? []
+  const totalDiag = items.reduce((s, i) => s + toNum(i.estimatedCost), 0)
+  const pI   = items.filter(i => i.priority === 'I')
+  const pII  = items.filter(i => i.priority === 'II')
+  const pIII = items.filter(i => i.priority === 'III')
+
+  const stateDistribution = [
+    { name: 'Mauvais',  value: items.filter(i => i.state === 'MAUVAIS').length,  color: '#ef4444' },
+    { name: 'Moyen',    value: items.filter(i => i.state === 'MOYEN').length,    color: '#fb923c' },
+    { name: 'Bon',      value: items.filter(i => i.state === 'BON').length,      color: '#4ade80' },
+    { name: 'Très bon', value: items.filter(i => i.state === 'TRES_BON').length, color: '#22c55e' },
+  ].filter(s => s.value > 0)
+
+  const priorityData = [
+    { name: 'I',   fullName: 'Priorité I',   count: pI.length,   cost: pI.reduce((s, i) => s + toNum(i.estimatedCost), 0),   color: '#ef4444' },
+    { name: 'II',  fullName: 'Priorité II',  count: pII.length,  cost: pII.reduce((s, i) => s + toNum(i.estimatedCost), 0),  color: '#fb923c' },
+    { name: 'III', fullName: 'Priorité III', count: pIII.length, cost: pIII.reduce((s, i) => s + toNum(i.estimatedCost), 0), color: '#22c55e' },
+  ]
+
+  const topCFC = [...items].sort((a, b) => toNum(b.estimatedCost) - toNum(a.estimatedCost)).slice(0, 5)
+
+  const statCards = [
+    { label: 'Éléments',    value: items.length,            icon: ClipboardCheck,  color: 'text-blue-600 bg-blue-50' },
+    { label: 'Priorité I',  value: pI.length,               icon: AlertTriangle,   color: 'text-red-600 bg-red-50' },
+    { label: 'Coût estimé', value: formatCHF(totalDiag),    icon: Building2,       color: 'text-green-600 bg-green-50' },
+  ]
 
   return (
     <div className="space-y-4 md:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl md:text-2xl font-bold">Diagnostic</h1>
-          <p className="text-muted-foreground text-sm">{diagnostic.items.length} elements - Visite du {diagnostic.visitDate ? formatDate(diagnostic.visitDate) : 'Non planifiee'}</p>
+          <p className="text-muted-foreground text-sm">
+            {items.length} élément{items.length !== 1 ? 's' : ''} — Visite du {diagnostic.visitDate ? formatDate(new Date(diagnostic.visitDate)) : 'Non planifiée'}
+          </p>
         </div>
         <Link to={`/app/diagnostic/${diagnostic.id}`}>
-          <Button className="w-full sm:w-auto"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir l'editeur</Button>
+          <Button className="w-full sm:w-auto"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir l'éditeur</Button>
         </Link>
       </div>
 
-      {/* Stats inline */}
       <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3 md:gap-6">
         {statCards.map((stat, i) => (
           <div key={stat.label} className="flex items-baseline gap-2 p-3 md:p-0 rounded-lg bg-white md:bg-transparent border md:border-0">
@@ -78,144 +138,224 @@ export function ProjectDiagnostic() {
         ))}
       </div>
 
-      {/* Charts */}
-      {items.length > 0 && (
-        <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <CardHeader><CardTitle>Couts par priorite</CardTitle></CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={priorityData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                  <XAxis type="number" tickFormatter={(v: number) => `${v / 1000}k`} tick={{ fontSize: 12 }} />
-                  <YAxis type="category" dataKey="fullName" tick={{ fontSize: 12 }} width={80} />
-                  <Tooltip formatter={(value) => formatCHF(Number(value))} />
-                  <Bar dataKey="cost" name="Cout estime" radius={[0, 6, 6, 0]}>
-                    {priorityData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader><CardTitle>Etat des elements</CardTitle></CardHeader>
-            <CardContent>
-              {stateDistribution.length > 0 ? (
-                <>
-                  <ResponsiveContainer width="100%" height={140}>
-                    <PieChart>
-                      <Pie data={stateDistribution} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3} dataKey="value">
-                        {stateDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="flex flex-wrap justify-center gap-2 mt-1">
-                    {stateDistribution.map(s => (
-                      <div key={s.name} className="flex items-center gap-1.5 text-xs">
-                        <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: s.color }} />
-                        {s.name} ({s.value})
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground py-8 text-center">Aucune donnee.</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+      {itemsQuery.isLoading && (
+        <Card><CardContent className="py-12 text-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></CardContent></Card>
       )}
 
-      {/* Top items */}
-      {topCFC.length > 0 && (
+      {!itemsQuery.isLoading && items.length === 0 && (
         <Card>
-          <CardHeader><CardTitle>Elements les plus couteux</CardTitle></CardHeader>
-          <CardContent>
-            <div className="space-y-1">
-              {topCFC.map((item, i) => {
-                const pc = priorityCircleColors[item.priority]
-                return (
-                  <Link key={item.id} to={`/app/diagnostic/${diagnostic.id}/item/${item.id}`} className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                    <span className="text-sm font-bold text-muted-foreground w-5">{i + 1}</span>
-                    <div className={`h-7 w-7 rounded-full ${pc.bg} ring-2 ${pc.ring} flex items-center justify-center shrink-0`}>
-                      <span className="text-[10px] font-bold text-white">{item.priority}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{item.cfcLabel}</p>
-                      <p className="text-xs text-muted-foreground">CFC {item.cfcCode}</p>
-                    </div>
-                    <span className="font-bold text-sm">{formatCHF(item.estimatedCost)}</span>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
-                  </Link>
-                )
-              })}
-            </div>
+          <CardContent className="py-16 text-center">
+            <ClipboardCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-1">Aucun élément observé</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Ouvrez l'éditeur pour ajouter des éléments CFC depuis le catalogue.
+            </p>
+            <Link to={`/app/diagnostic/${diagnostic.id}`}>
+              <Button><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir l'éditeur</Button>
+            </Link>
           </CardContent>
         </Card>
       )}
 
-      {/* Mobile: cards layout */}
-      <div className="md:hidden space-y-3">
-        {diagnostic.items.map(item => (
-          <Card key={item.id}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-mono text-xs text-muted-foreground">{item.cfcCode}</span>
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[item.priority]}`}>{item.priority}</span>
-              </div>
-              <p className="font-medium text-sm mb-2">{item.cfcLabel}</p>
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5">
-                  <span className={`h-2 w-2 rounded-full ${stateColors[item.state]}`} />
-                  <span className="text-muted-foreground">{stateLabels[item.state]}</span>
+      {items.length > 0 && (
+        <>
+          <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader><CardTitle>Coûts par priorité</CardTitle></CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={priorityData} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                    <XAxis type="number" tickFormatter={(v: number) => `${v / 1000}k`} tick={{ fontSize: 12 }} />
+                    <YAxis type="category" dataKey="fullName" tick={{ fontSize: 12 }} width={80} />
+                    <Tooltip formatter={(value) => formatCHF(Number(value))} />
+                    <Bar dataKey="cost" name="Coût estimé" radius={[0, 6, 6, 0]}>
+                      {priorityData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle>État des éléments</CardTitle></CardHeader>
+              <CardContent>
+                {stateDistribution.length > 0 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={140}>
+                      <PieChart>
+                        <Pie data={stateDistribution} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3} dataKey="value">
+                          {stateDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex flex-wrap justify-center gap-2 mt-1">
+                      {stateDistribution.map(s => (
+                        <div key={s.name} className="flex items-center gap-1.5 text-xs">
+                          <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+                          {s.name} ({s.value})
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-8 text-center">Aucune donnée.</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {topCFC.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Éléments les plus coûteux</CardTitle></CardHeader>
+              <CardContent>
+                <div className="space-y-1">
+                  {topCFC.map((item, i) => {
+                    const pc = item.priority ? priorityCircleColors[item.priority] : { bg: 'bg-gray-400', ring: 'ring-gray-200' }
+                    return (
+                      <Link key={item.id} to={`/app/diagnostic/${diagnostic.id}`} className="flex items-center gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                        <span className="text-sm font-bold text-muted-foreground w-5">{i + 1}</span>
+                        <div className={`h-7 w-7 rounded-full ${pc.bg} ring-2 ${pc.ring} flex items-center justify-center shrink-0`}>
+                          <span className="text-[10px] font-bold text-white">{item.priority ?? '—'}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{item.cfcLabel}</p>
+                          <p className="text-xs text-muted-foreground">CFC {item.cfcCode}</p>
+                        </div>
+                        <span className="font-bold text-sm">{formatCHF(toNum(item.estimatedCost))}</span>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                      </Link>
+                    )
+                  })}
                 </div>
-                <span className="font-bold">{formatCHF(item.estimatedCost)}</span>
-              </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="md:hidden space-y-3">
+            {items.map(item => (
+              <Card key={item.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-mono text-xs text-muted-foreground">{item.cfcCode}</span>
+                    {item.priority
+                      ? <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[item.priority]}`}>{item.priority}</span>
+                      : <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">À évaluer</span>}
+                  </div>
+                  <p className="font-medium text-sm mb-2">{item.cfcLabel}</p>
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`h-2 w-2 rounded-full ${item.state ? stateColors[item.state] : 'bg-gray-300'}`} />
+                      <span className="text-muted-foreground">{item.state ? stateLabels[item.state] : 'À évaluer'}</span>
+                    </div>
+                    <span className="font-bold">{formatCHF(toNum(item.estimatedCost))}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <Card className="hidden md:block">
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Code CFC</TableHead>
+                    <TableHead>Élément</TableHead>
+                    <TableHead>État</TableHead>
+                    <TableHead>Priorité</TableHead>
+                    <TableHead>Quantité</TableHead>
+                    <TableHead className="text-right">Coût estimé</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map(item => (
+                    <TableRow key={item.id} className="hover:bg-muted/50">
+                      <TableCell className="font-mono text-sm">{item.cfcCode}</TableCell>
+                      <TableCell className="font-medium">{item.cfcLabel}</TableCell>
+                      <TableCell>
+                        <span className={`inline-block h-2.5 w-2.5 rounded-full ${item.state ? stateColors[item.state] : 'bg-gray-300'} mr-2`} />
+                        {item.state ? stateLabels[item.state] : 'À évaluer'}
+                      </TableCell>
+                      <TableCell>
+                        {item.priority
+                          ? <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[item.priority]}`}>{item.priority}</span>
+                          : <span className="text-xs text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell>{item.area ? `${item.area} ${item.unit ?? ''}` : '-'}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCHF(toNum(item.estimatedCost))}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
-        ))}
-      </div>
 
-      {/* Desktop: table layout */}
-      <Card className="hidden md:block">
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Code CFC</TableHead>
-                <TableHead>Element</TableHead>
-                <TableHead>Etat</TableHead>
-                <TableHead>Priorite</TableHead>
-                <TableHead>Quantite</TableHead>
-                <TableHead className="text-right">Cout estime</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {diagnostic.items.map(item => (
-                <TableRow key={item.id} className="cursor-pointer hover:bg-muted/50">
-                  <TableCell className="font-mono text-sm">{item.cfcCode}</TableCell>
-                  <TableCell className="font-medium">{item.cfcLabel}</TableCell>
-                  <TableCell><span className={`inline-block h-2.5 w-2.5 rounded-full ${stateColors[item.state]} mr-2`} />{stateLabels[item.state]}</TableCell>
-                  <TableCell><span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[item.priority]}`}>{item.priority}</span></TableCell>
-                  <TableCell>{item.area ? `${item.area} ${item.unit}` : '-'}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCHF(item.estimatedCost)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="flex flex-wrap justify-end gap-4 md:gap-8">
+            {(['I', 'II', 'III'] as const).map(p => {
+              const pItems = items.filter(i => i.priority === p)
+              const total = pItems.reduce((s, i) => s + toNum(i.estimatedCost), 0)
+              return (
+                <div key={p} className="text-right">
+                  <p className="text-xs text-muted-foreground">Priorité {p}</p>
+                  <p className="font-bold text-sm md:text-base">{formatCHF(total)}</p>
+                </div>
+              )
+            })}
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Total</p>
+              <p className="text-base md:text-lg font-bold">{formatCHF(totalDiag)}</p>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Zone de danger : suppression du diagnostic */}
+      <Card className="border-red-200">
+        <CardHeader>
+          <CardTitle className="text-red-600 flex items-center gap-2 text-base">
+            <AlertTriangle className="h-5 w-5" />Zone de danger
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Supprimer ce diagnostic</p>
+              <p className="text-xs text-muted-foreground">
+                Supprime définitivement le diagnostic et ses {items.length} élément{items.length !== 1 ? 's' : ''} (observations, photos, coûts).
+                Le bâtiment, lui, n'est pas supprimé. Action irréversible.
+              </p>
+            </div>
+            {!confirmDelete ? (
+              <Button
+                variant="outline"
+                onClick={() => setConfirmDelete(true)}
+                className="text-red-600 border-red-200 hover:bg-red-50 shrink-0"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />Supprimer
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="ghost" onClick={() => setConfirmDelete(false)} disabled={deleteDiag.isPending}>Annuler</Button>
+                <Button
+                  onClick={() => deleteDiag.mutate()}
+                  disabled={deleteDiag.isPending}
+                  className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                >
+                  {deleteDiag.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                  Confirmer la suppression
+                </Button>
+              </div>
+            )}
+          </div>
+          {deleteDiag.isError && (
+            <p className="text-xs text-red-600 mt-2">
+              {(deleteDiag.error as ApiError | null)?.message ?? 'Échec de la suppression.'}
+            </p>
+          )}
         </CardContent>
       </Card>
-
-      <div className="flex flex-wrap justify-end gap-4 md:gap-8">
-        {(['I', 'II', 'III'] as const).map(p => {
-          const items = diagnostic.items.filter(i => i.priority === p)
-          const total = items.reduce((s, i) => s + i.estimatedCost, 0)
-          return <div key={p} className="text-right"><p className="text-xs text-muted-foreground">Priorite {p}</p><p className="font-bold text-sm md:text-base">{formatCHF(total)}</p></div>
-        })}
-        <div className="text-right"><p className="text-xs text-muted-foreground">Total</p><p className="text-base md:text-lg font-bold">{formatCHF(totalDiag)}</p></div>
-      </div>
     </div>
   )
 }

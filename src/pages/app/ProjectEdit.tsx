@@ -1,14 +1,130 @@
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Save } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Save, Loader2, AlertCircle } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Input, Select } from '@/components/ui'
-import { mockProjects, buildingTypeLabels, type BuildingType } from '@/data/mock'
+import { buildingTypeLabels, type BuildingType } from '@/data/mock'
+import { api, ApiError } from '@/lib/api'
+import type { ApiProject, ProjectStatus } from '@/lib/api-types'
 
 const buildingTypeOrder: BuildingType[] = ['LOGEMENT', 'VILLA', 'CHALET', 'SCOLAIRE', 'BUREAU', 'ADMINISTRATIF', 'INDUSTRIEL', 'HOTEL', 'COMMERCIAL', 'AUTRE']
 
+type FormState = {
+  name: string
+  address: string
+  postalCode: string
+  city: string
+  canton: string
+  yearBuilt: string
+  buildingType: BuildingType
+  status: ProjectStatus
+  nbApartments: string
+  nbFloors: string
+  floorHeight: string
+  nbStaircases: string
+  floorArea: string
+  builtArea: string
+  facadeArea: string
+  terrainArea: string
+  perimeter: string
+  windowPct: string
+  honoraryPct: string
+  reservePct: string
+}
+
+const fromProject = (p: ApiProject): FormState => ({
+  name: p.name,
+  address: p.address,
+  postalCode: p.postalCode ?? '',
+  city: p.city,
+  canton: p.canton,
+  yearBuilt: p.yearBuilt?.toString() ?? '',
+  buildingType: p.buildingType as BuildingType,
+  status: p.status,
+  nbApartments: p.nbApartments?.toString() ?? '',
+  nbFloors: p.nbFloors?.toString() ?? '',
+  floorHeight: p.floorHeight?.toString() ?? '',
+  nbStaircases: p.nbStaircases?.toString() ?? '',
+  floorArea: p.floorArea?.toString() ?? '',
+  builtArea: p.builtArea?.toString() ?? '',
+  facadeArea: p.facadeArea?.toString() ?? '',
+  terrainArea: p.terrainArea?.toString() ?? '',
+  perimeter: p.perimeter?.toString() ?? '',
+  windowPct: p.windowPct.toString(),
+  honoraryPct: p.honoraryPct.toString(),
+  reservePct: p.reservePct.toString(),
+})
+
+const toPayload = (f: FormState) => ({
+  name: f.name,
+  address: f.address,
+  postalCode: f.postalCode || undefined,
+  city: f.city,
+  canton: f.canton,
+  buildingType: f.buildingType,
+  status: f.status,
+  yearBuilt: f.yearBuilt ? Number(f.yearBuilt) : undefined,
+  nbApartments: f.nbApartments ? Number(f.nbApartments) : undefined,
+  nbFloors: f.nbFloors ? Number(f.nbFloors) : undefined,
+  floorHeight: f.floorHeight ? Number(f.floorHeight) : undefined,
+  nbStaircases: f.nbStaircases ? Number(f.nbStaircases) : undefined,
+  floorArea: f.floorArea ? Number(f.floorArea) : undefined,
+  builtArea: f.builtArea ? Number(f.builtArea) : undefined,
+  facadeArea: f.facadeArea ? Number(f.facadeArea) : undefined,
+  terrainArea: f.terrainArea ? Number(f.terrainArea) : undefined,
+  perimeter: f.perimeter ? Number(f.perimeter) : undefined,
+  windowPct: f.windowPct ? Number(f.windowPct) : undefined,
+  honoraryPct: f.honoraryPct ? Number(f.honoraryPct) : undefined,
+  reservePct: f.reservePct ? Number(f.reservePct) : undefined,
+})
+
 export function ProjectEdit() {
-  const { id } = useParams()
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const project = mockProjects.find(p => p.id === id) ?? mockProjects[0]
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState<FormState | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['project', id],
+    queryFn: () => api.projects.get(id!),
+    enabled: !!id,
+  })
+
+  useEffect(() => {
+    if (data?.project) setForm(fromProject(data.project))
+  }, [data])
+
+  const update = useMutation({
+    mutationFn: () => api.projects.update(id!, toPayload(form!)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      navigate(`/app/projects/${id}`)
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Erreur de sauvegarde'),
+  })
+
+  if (isLoading || !form) {
+    return (
+      <div className="flex items-center justify-center py-32 text-muted-foreground">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />Chargement…
+      </div>
+    )
+  }
+  if (isError || !data) {
+    return (
+      <Card>
+        <CardContent className="py-16 text-center">
+          <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+          <p className="text-sm text-red-700">Projet introuvable</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const set = <K extends keyof FormState>(field: K, value: FormState[K]) =>
+    setForm(prev => prev ? { ...prev, [field]: value } : prev)
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -16,56 +132,60 @@ export function ProjectEdit() {
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold">Modifier le diagnostic</h1>
-          <p className="text-muted-foreground">{project.name}</p>
+          <p className="text-muted-foreground">{data.project.name}</p>
         </div>
-        <Button><Save className="mr-2 h-4 w-4" />Enregistrer</Button>
+        <Button onClick={() => { setError(null); update.mutate() }} disabled={update.isPending}>
+          {update.isPending
+            ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Enregistrement…</>
+            : <><Save className="mr-2 h-4 w-4" />Enregistrer</>}
+        </Button>
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Informations generales</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Informations générales</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="text-sm font-medium mb-1 block">Nom du diagnostic</label>
-              <Input defaultValue={project.name} />
+              <Input value={form.name} onChange={e => set('name', e.target.value)} />
             </div>
             <div className="col-span-2">
               <label className="text-sm font-medium mb-1 block">Adresse</label>
-              <Input defaultValue={project.address} />
+              <Input value={form.address} onChange={e => set('address', e.target.value)} />
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Code postal</label>
-              <Input defaultValue={project.postalCode ?? ''} placeholder="1006" maxLength={4} />
+              <Input value={form.postalCode} onChange={e => set('postalCode', e.target.value)} maxLength={4} />
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Ville</label>
-              <Input defaultValue={project.city} />
+              <Input value={form.city} onChange={e => set('city', e.target.value)} />
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Canton</label>
-              <Select defaultValue={project.canton}>
+              <Select value={form.canton} onChange={e => set('canton', e.target.value)}>
                 {['VD', 'GE', 'FR', 'NE', 'VS', 'BE', 'JU'].map(c => <option key={c}>{c}</option>)}
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Annee de construction</label>
-              <Input type="number" defaultValue={project.yearBuilt} />
+              <label className="text-sm font-medium mb-1 block">Année de construction</label>
+              <Input type="number" value={form.yearBuilt} onChange={e => set('yearBuilt', e.target.value)} />
             </div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Type de batiment</label>
-              <Select defaultValue={project.buildingType}>
+              <label className="text-sm font-medium mb-1 block">Type de bâtiment</label>
+              <Select value={form.buildingType} onChange={e => set('buildingType', e.target.value as BuildingType)}>
                 {buildingTypeOrder.map(t => <option key={t} value={t}>{buildingTypeLabels[t]}</option>)}
               </Select>
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Statut</label>
-              <Select defaultValue={project.status}>
-                <option value="NON_PLANIFIE">Non planifie</option>
-                <option value="PLANIFIE">Planifie</option>
+              <Select value={form.status} onChange={e => set('status', e.target.value as ProjectStatus)}>
+                <option value="NON_PLANIFIE">Non planifié</option>
+                <option value="PLANIFIE">Planifié</option>
                 <option value="EN_COURS">En cours</option>
                 <option value="EN_REVUE">En revue</option>
-                <option value="TERMINE">Termine</option>
-                <option value="ARCHIVE">Archive</option>
+                <option value="TERMINE">Terminé</option>
+                <option value="ARCHIVE">Archivé</option>
               </Select>
             </div>
           </div>
@@ -74,71 +194,43 @@ export function ProjectEdit() {
 
       <Card>
         <CardHeader><CardTitle>Dimensions et surfaces</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent>
           <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="text-sm font-medium mb-1 block">Nombre d'appartements</label>
-              <Input type="number" defaultValue={project.nbApartments} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Nombre d'etages</label>
-              <Input type="number" defaultValue={project.nbFloors} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Hauteur d'etage (m)</label>
-              <Input type="number" step="0.1" defaultValue={project.floorHeight} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Surface plancher (m2)</label>
-              <Input type="number" defaultValue={project.floorArea} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Surface batie (m2)</label>
-              <Input type="number" defaultValue={project.builtArea} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Surface facade (m2)</label>
-              <Input type="number" defaultValue={project.facadeArea} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Surface terrain (m2)</label>
-              <Input type="number" defaultValue={project.terrainArea} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Perimetre (ml)</label>
-              <Input type="number" defaultValue={project.perimeter} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">% fenetres</label>
-              <Input type="number" defaultValue={Math.round(project.windowPct * 100)} />
-            </div>
+            <div><label className="text-sm font-medium mb-1 block">Nombre d'appartements</label><Input type="number" value={form.nbApartments} onChange={e => set('nbApartments', e.target.value)} /></div>
+            <div><label className="text-sm font-medium mb-1 block">Nombre d'étages</label><Input type="number" value={form.nbFloors} onChange={e => set('nbFloors', e.target.value)} /></div>
+            <div><label className="text-sm font-medium mb-1 block">Hauteur d'étage (m)</label><Input type="number" step="0.1" value={form.floorHeight} onChange={e => set('floorHeight', e.target.value)} /></div>
+            <div><label className="text-sm font-medium mb-1 block">Surface plancher (m²)</label><Input type="number" value={form.floorArea} onChange={e => set('floorArea', e.target.value)} /></div>
+            <div><label className="text-sm font-medium mb-1 block">Surface bâtie (m²)</label><Input type="number" value={form.builtArea} onChange={e => set('builtArea', e.target.value)} /></div>
+            <div><label className="text-sm font-medium mb-1 block">Surface façade (m²)</label><Input type="number" value={form.facadeArea} onChange={e => set('facadeArea', e.target.value)} /></div>
+            <div><label className="text-sm font-medium mb-1 block">Surface terrain (m²)</label><Input type="number" value={form.terrainArea} onChange={e => set('terrainArea', e.target.value)} /></div>
+            <div><label className="text-sm font-medium mb-1 block">Périmètre (ml)</label><Input type="number" value={form.perimeter} onChange={e => set('perimeter', e.target.value)} /></div>
+            <div><label className="text-sm font-medium mb-1 block">% fenêtres</label><Input type="number" value={form.windowPct} onChange={e => set('windowPct', e.target.value)} /></div>
           </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Parametres financiers</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Paramètres financiers</CardTitle></CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="text-sm font-medium mb-1 block">Honoraires (%)</label>
-              <Input type="number" defaultValue={project.honoraryPct} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Reserve (%)</label>
-              <Input type="number" defaultValue={project.reservePct} />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Nombre de cages</label>
-              <Input type="number" defaultValue={project.nbStaircases} />
-            </div>
+            <div><label className="text-sm font-medium mb-1 block">Honoraires (%)</label><Input type="number" value={form.honoraryPct} onChange={e => set('honoraryPct', e.target.value)} /></div>
+            <div><label className="text-sm font-medium mb-1 block">Réserve (%)</label><Input type="number" value={form.reservePct} onChange={e => set('reservePct', e.target.value)} /></div>
+            <div><label className="text-sm font-medium mb-1 block">Nombre de cages</label><Input type="number" value={form.nbStaircases} onChange={e => set('nbStaircases', e.target.value)} /></div>
           </div>
         </CardContent>
       </Card>
 
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      )}
+
       <div className="flex justify-end gap-3">
-        <Button variant="outline" onClick={() => navigate(-1)}>Annuler</Button>
-        <Button onClick={() => navigate(`/app/projects/${project.id}`)}><Save className="mr-2 h-4 w-4" />Enregistrer les modifications</Button>
+        <Button variant="outline" onClick={() => navigate(-1)} disabled={update.isPending}>Annuler</Button>
+        <Button onClick={() => { setError(null); update.mutate() }} disabled={update.isPending}>
+          {update.isPending
+            ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Enregistrement…</>
+            : <><Save className="mr-2 h-4 w-4" />Enregistrer les modifications</>}
+        </Button>
       </div>
     </div>
   )

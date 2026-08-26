@@ -1,3 +1,22 @@
+import type { RoofType } from './api-types'
+
+/**
+ * Surface de toiture selon le type. null si type non précisé (on ne présume pas)
+ * ou si la surface bâtie est inconnue.
+ *  - plate : surface bâtie
+ *  - en pente : surface bâtie × 1.35
+ *  - mixte : moyenne des deux
+ */
+export function roofSurface(roofType: RoofType | null | undefined, builtArea: number | null | undefined): number | null {
+  if (!builtArea || builtArea <= 0) return null
+  switch (roofType) {
+    case 'PLATE': return Math.round(builtArea)
+    case 'PENTE': return Math.round(builtArea * 1.35)
+    case 'MIXTE': return Math.round(builtArea * 1.175)
+    default: return null
+  }
+}
+
 export function computeProjectMetrics(input: {
   perimeter: number
   nbFloors: number

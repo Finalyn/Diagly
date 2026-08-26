@@ -1,47 +1,34 @@
-import { Link } from 'react-router-dom'
-import { Plus, Building2, MapPin, Calendar } from 'lucide-react'
-import { Button, Card, Badge } from '@/components/ui'
-import { mockBuildings } from '@/data/mock'
+import { Construction } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui'
 
+/**
+ * Parc immobilier : module en cours de refonte. On n'affiche volontairement
+ * qu'un écran "en travaux" (pas de stats/filtres/liste) tant qu'il n'est pas prêt.
+ */
 export function BuildingsList() {
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Parc immobilier</h1>
-          <p className="text-muted-foreground">{mockBuildings.length} batiments</p>
-        </div>
-        <Link to="/app/buildings/new">
-          <Button><Plus className="mr-2 h-4 w-4" />Ajouter un batiment</Button>
-        </Link>
+    <div className="space-y-4 md:space-y-6">
+      <div>
+        <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2 flex-wrap">
+          Parc immobilier
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 px-2.5 py-0.5 text-xs font-semibold">
+            <Construction className="h-3.5 w-3.5" />En travaux
+          </span>
+        </h1>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {mockBuildings.map(building => (
-          <Link key={building.id} to={`/app/buildings/${building.id}`}>
-            <Card className="hover:shadow-md transition-shadow">
-              <div className="p-6">
-                <div className="flex items-start gap-4">
-                  <div className="h-12 w-12 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                    <Building2 className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg">{building.name}</h3>
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
-                      <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{building.address}, {building.city}</span>
-                      {building.yearBuilt && <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{building.yearBuilt}</span>}
-                    </div>
-                    <div className="flex gap-3 mt-3">
-                      <Badge variant="secondary">{building.apartments.length} appartements</Badge>
-                      <Badge variant="outline">{building.apartments.filter(a => a.history.length > 0).length} avec historique</Badge>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </Link>
-        ))}
-      </div>
+      <Card>
+        <CardContent className="py-20 text-center">
+          <div className="mx-auto h-16 w-16 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mb-4">
+            <Construction className="h-8 w-8" />
+          </div>
+          <h2 className="text-lg font-semibold mb-1">Bientôt disponible</h2>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Le module Parc immobilier est en cours de construction : gestion des bâtiments,
+            appartements, locataires et suivi détaillé. Il arrive prochainement.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   )
 }

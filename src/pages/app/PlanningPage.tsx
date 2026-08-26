@@ -1,206 +1,193 @@
-import { useState } from 'react'
-import { Calendar, ChevronLeft, ChevronRight, Plus, Clock, MapPin, User, List, CalendarDays } from 'lucide-react'
-import { Button, Card, CardHeader, CardTitle, CardContent, Badge, Select } from '@/components/ui'
+import { useMemo, useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { ChevronLeft, ChevronRight, Plus, Loader2, Trash2, X, MapPin } from 'lucide-react'
+import { Button, Input, Select, Textarea } from '@/components/ui'
+import { api } from '@/lib/api'
+import type { ApiEvent, EventCategory } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
 
-type ViewMode = 'month' | 'week'
+const CATEGORIES: Record<EventCategory, { label: string; color: string }> = {
+  VISITE: { label: 'Visite', color: '#3b82f6' },
+  REUNION: { label: 'Réunion', color: '#a855f7' },
+  TRAVAUX: { label: 'Travaux', color: '#f59e0b' },
+  ECHEANCE: { label: 'Échéance', color: '#ef4444' },
+  APPEL: { label: 'Appel', color: '#22c55e' },
+  AUTRE: { label: 'Autre', color: '#64748b' },
+}
+const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
-const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+const keyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const eventColor = (e: ApiEvent) => e.color || CATEGORIES[e.category]?.color || '#64748b'
+const two = (n: number) => String(n).padStart(2, '0')
 
-const events = [
-  { id: 1, day: 9, endDay: 9, title: 'Reunion chantier - Residence du Lac', type: 'visite', time: '08:30 - 10:00', person: 'Sophie Berger', location: 'Av. de Cour 42, Lausanne' },
-  { id: 2, day: 11, endDay: 11, title: 'Visite diagnostic - Hotel Beau-Rivage', type: 'diagnostic', time: '09:00 - 16:00', person: 'Sophie Berger', location: 'Quai du Mont-Blanc 8, Montreux' },
-  { id: 3, day: 14, endDay: 14, title: 'Reunion coordination - Ecole Paquis', type: 'visite', time: '14:00 - 15:30', person: 'Marc Dubois', location: 'Rue de Zurich 18, Geneve' },
-  { id: 4, day: 16, endDay: 18, title: 'Diagnostic complet - Immeuble Grand-Rue', type: 'diagnostic', time: '08:00 - 17:00', person: 'Sophie Berger', location: 'Grand-Rue 15, Fribourg' },
-  { id: 5, day: 18, endDay: 18, title: 'Remise rapport - Ecole Paquis', type: 'rapport', time: '10:00', person: 'Julie Favre', location: '' },
-  { id: 6, day: 21, endDay: 21, title: 'Visite chantier - Centre Numa Droz', type: 'visite', time: '09:00 - 11:00', person: 'Marc Dubois', location: 'Rue Numa-Droz 2, Neuchatel' },
-  { id: 7, day: 22, endDay: 22, title: 'Suivi travaux toiture - Residence du Lac', type: 'travaux', time: '08:00 - 12:00', person: 'Sophie Berger', location: 'Av. de Cour 42, Lausanne' },
-  { id: 8, day: 25, endDay: 25, title: 'Reunion proprietaire - Les Tilleuls', type: 'visite', time: '17:00 - 18:00', person: 'Sophie Berger', location: 'Rue des Tilleuls 8, Lausanne' },
-  { id: 9, day: 28, endDay: 30, title: 'Formation equipe CECB', type: 'autre', time: '09:00 - 12:00', person: 'Tous', location: 'Bureau' },
-]
-
-const typeConfig: Record<string, { bg: string; text: string; label: string }> = {
-  diagnostic: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Diagnostic' },
-  visite: { bg: 'bg-green-100', text: 'text-green-800', label: 'Visite' },
-  rapport: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Rapport' },
-  travaux: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Travaux' },
-  autre: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Autre' },
+interface Draft {
+  id?: string
+  title: string
+  category: EventCategory
+  date: string
+  allDay: boolean
+  startTime: string
+  endTime: string
+  location: string
+  notes: string
+  projectId: string
 }
 
-const teamMembers = [
-  { name: 'Sophie Berger', role: 'DT', events: 5 },
-  { name: 'Marc Dubois', role: 'Architecte', events: 2 },
-  { name: 'Julie Favre', role: 'Assistante', events: 1 },
-]
-
 export function PlanningPage() {
-  const [view, setView] = useState<ViewMode>('month')
-  const [selectedEvent, setSelectedEvent] = useState<typeof events[0] | null>(null)
-  const [filterPerson, setFilterPerson] = useState('')
-  const [filterType, setFilterType] = useState('')
+  const queryClient = useQueryClient()
+  const [month, setMonth] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1) })
+  const [draft, setDraft] = useState<Draft | null>(null)
 
-  const daysInMonth = 30
-  const firstDayOffset = 2
+  // Grille : 6 semaines à partir du lundi précédant le 1er du mois.
+  const gridStart = useMemo(() => {
+    const first = new Date(month.getFullYear(), month.getMonth(), 1)
+    const wd = (first.getDay() + 6) % 7
+    const s = new Date(first); s.setDate(first.getDate() - wd)
+    return s
+  }, [month])
+  const days = useMemo(() => Array.from({ length: 42 }, (_, i) => { const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); return d }), [gridStart])
+  const rangeTo = useMemo(() => { const d = new Date(gridStart); d.setDate(gridStart.getDate() + 42); return d }, [gridStart])
 
-  const filteredEvents = events.filter(e => {
-    if (filterPerson && e.person !== filterPerson && e.person !== 'Tous') return false
-    if (filterType && e.type !== filterType) return false
-    return true
+  const { data } = useQuery({
+    queryKey: ['events', gridStart.toISOString()],
+    queryFn: () => api.events.list({ from: gridStart.toISOString(), to: rangeTo.toISOString() }),
   })
+  const events = data?.events ?? []
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => api.projects.list(), staleTime: 60_000 })
+  const projects = projectsQuery.data?.projects ?? []
+
+  const byDay = useMemo(() => {
+    const m = new Map<string, ApiEvent[]>()
+    for (const e of events) { const k = keyOf(new Date(e.startAt)); const arr = m.get(k); if (arr) arr.push(e); else m.set(k, [e]) }
+    return m
+  }, [events])
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['events'] })
+  const saveMut = useMutation({
+    mutationFn: (d: Draft) => {
+      const startAt = d.allDay ? new Date(`${d.date}T00:00`).toISOString() : new Date(`${d.date}T${d.startTime || '09:00'}`).toISOString()
+      const endAt = d.allDay ? null : d.endTime ? new Date(`${d.date}T${d.endTime}`).toISOString() : null
+      const body = { title: d.title.trim(), category: d.category, allDay: d.allDay, startAt, endAt, location: d.location.trim() || null, notes: d.notes.trim() || null, projectId: d.projectId || null }
+      return d.id ? api.events.update(d.id, body) : api.events.create(body)
+    },
+    onSuccess: () => { invalidate(); setDraft(null) },
+  })
+  const delMut = useMutation({ mutationFn: (id: string) => api.events.delete(id), onSuccess: () => { invalidate(); setDraft(null) } })
+
+  const newEvent = (date: Date) => setDraft({ title: '', category: 'VISITE', date: keyOf(date), allDay: false, startTime: '09:00', endTime: '10:00', location: '', notes: '', projectId: '' })
+  const editEvent = (e: ApiEvent) => {
+    const s = new Date(e.startAt); const en = e.endAt ? new Date(e.endAt) : null
+    setDraft({ id: e.id, title: e.title, category: e.category, date: keyOf(s), allDay: e.allDay, startTime: `${two(s.getHours())}:${two(s.getMinutes())}`, endTime: en ? `${two(en.getHours())}:${two(en.getMinutes())}` : '', location: e.location ?? '', notes: e.notes ?? '', projectId: e.projectId ?? '' })
+  }
+
+  const todayKey = keyOf(new Date())
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Calendrier</h1>
-          <p className="text-muted-foreground">{filteredEvents.length} evenements en avril 2026</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex bg-muted p-0.5 rounded-lg">
-            <button onClick={() => setView('month')} className={cn('px-3 py-1.5 rounded text-xs font-medium', view === 'month' ? 'bg-background shadow-sm' : 'text-muted-foreground')}>
-              <CalendarDays className="h-3.5 w-3.5 inline mr-1" />Mois
-            </button>
-            <button onClick={() => setView('week')} className={cn('px-3 py-1.5 rounded text-xs font-medium', view === 'week' ? 'bg-background shadow-sm' : 'text-muted-foreground')}>
-              <List className="h-3.5 w-3.5 inline mr-1" />Semaine
-            </button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl md:text-2xl font-bold">{MONTHS[month.getMonth()]} {month.getFullYear()}</h1>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))} className="p-1.5 rounded-lg border hover:bg-muted/50"><ChevronLeft className="h-4 w-4" /></button>
+            <button onClick={() => { const n = new Date(); setMonth(new Date(n.getFullYear(), n.getMonth(), 1)) }} className="px-3 py-1.5 rounded-lg border text-sm hover:bg-muted/50">Aujourd'hui</button>
+            <button onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))} className="p-1.5 rounded-lg border hover:bg-muted/50"><ChevronRight className="h-4 w-4" /></button>
           </div>
-          <Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4" /></Button>
-          <span className="font-semibold px-2 text-sm">Avril 2026</span>
-          <Button variant="outline" size="icon"><ChevronRight className="h-4 w-4" /></Button>
-          <Button><Plus className="mr-2 h-4 w-4" />Nouvel evenement</Button>
+        </div>
+        <Button onClick={() => newEvent(new Date())} className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" />Nouvel événement</Button>
+      </div>
+
+      {/* Calendrier */}
+      <div className="rounded-xl border bg-card overflow-hidden">
+        <div className="grid grid-cols-7 border-b bg-muted/30">
+          {WEEKDAYS.map((w) => <div key={w} className="px-2 py-2 text-[11px] font-semibold text-muted-foreground text-center uppercase tracking-wide">{w}</div>)}
+        </div>
+        <div className="grid grid-cols-7">
+          {days.map((d, i) => {
+            const inMonth = d.getMonth() === month.getMonth()
+            const k = keyOf(d)
+            const list = byDay.get(k) ?? []
+            const isToday = k === todayKey
+            return (
+              <div key={i} className={cn('min-h-[92px] border-b border-r p-1 last:border-r-0 [&:nth-child(7n)]:border-r-0', !inMonth && 'bg-muted/20')}>
+                <button onClick={() => newEvent(d)} className={cn('h-6 w-6 rounded-full text-xs font-medium flex items-center justify-center mb-1 hover:bg-muted', isToday ? 'bg-primary text-white' : inMonth ? 'text-foreground' : 'text-muted-foreground')}>
+                  {d.getDate()}
+                </button>
+                <div className="space-y-0.5">
+                  {list.slice(0, 3).map((e) => (
+                    <button key={e.id} onClick={() => editEvent(e)} className="w-full text-left flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium truncate hover:opacity-80" style={{ backgroundColor: eventColor(e) + '22', color: eventColor(e) }}>
+                      <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: eventColor(e) }} />
+                      <span className="truncate">{!e.allDay && `${two(new Date(e.startAt).getHours())}:${two(new Date(e.startAt).getMinutes())} `}{e.title}</span>
+                    </button>
+                  ))}
+                  {list.length > 3 && <p className="text-[10px] text-muted-foreground pl-1">+{list.length - 3}</p>}
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      <div className="flex gap-3">
-        <Select className="w-44" value={filterPerson} onChange={e => setFilterPerson(e.target.value)}>
-          <option value="">Tous les membres</option>
-          {teamMembers.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
-        </Select>
-        <Select className="w-40" value={filterType} onChange={e => setFilterType(e.target.value)}>
-          <option value="">Tous les types</option>
-          {Object.entries(typeConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </Select>
-      </div>
-
-      {view === 'month' && (
-        <Card>
-          <CardContent className="p-2">
-            <div className="grid grid-cols-7 gap-px bg-border rounded overflow-hidden">
-              {days.map(d => <div key={d} className="bg-muted p-2 text-center text-xs font-medium">{d}</div>)}
-              {Array.from({ length: firstDayOffset }, (_, i) => <div key={`e${i}`} className="bg-background p-1.5 min-h-[90px]" />)}
-              {Array.from({ length: daysInMonth }, (_, i) => {
-                const day = i + 1
-                const dayEvents = filteredEvents.filter(e => day >= e.day && day <= e.endDay)
-                const isToday = day === 9
-                return (
-                  <div key={day} className={cn('bg-background p-1.5 min-h-[90px]', isToday && 'ring-2 ring-primary ring-inset')}>
-                    <span className={cn('text-xs inline-flex h-5 w-5 items-center justify-center rounded-full', isToday && 'bg-primary text-white font-bold')}>{day}</span>
-                    <div className="mt-0.5 space-y-0.5">
-                      {dayEvents.slice(0, 2).map(e => {
-                        const config = typeConfig[e.type]
-                        return (
-                          <button key={e.id} onClick={() => setSelectedEvent(e)} className={cn('w-full text-left text-[10px] rounded px-1 py-0.5 truncate', config.bg, config.text)}>
-                            {day === e.day ? e.title : '...'}
-                          </button>
-                        )
-                      })}
-                      {dayEvents.length > 2 && <span className="text-[10px] text-muted-foreground px-1">+{dayEvents.length - 2}</span>}
-                    </div>
-                  </div>
-                )
-              })}
+      {/* Modale événement */}
+      {draft && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setDraft(null)}>
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <h3 className="text-lg font-bold">{draft.id ? 'Modifier l\'événement' : 'Nouvel événement'}</h3>
+              <button onClick={() => setDraft(null)} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {view === 'week' && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="space-y-2">
-              {filteredEvents.sort((a, b) => a.day - b.day).map(event => {
-                const config = typeConfig[event.type]
-                return (
-                  <button key={event.id} onClick={() => setSelectedEvent(event)} className="flex items-center gap-4 p-3 border rounded-lg w-full text-left hover:shadow-sm transition-shadow">
-                    <div className="text-center w-12 shrink-0">
-                      <p className="text-xl font-bold">{event.day}</p>
-                      <p className="text-[10px] text-muted-foreground">avr.</p>
-                    </div>
-                    <div className={cn('w-1 self-stretch rounded-full', config.bg)} />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">{event.title}</p>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                        <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{event.time}</span>
-                        <span className="flex items-center gap-1"><User className="h-3 w-3" />{event.person}</span>
-                        {event.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{event.location}</span>}
-                      </div>
-                    </div>
-                    <Badge className={cn(config.bg, config.text, 'text-[10px]')}>{config.label}</Badge>
-                  </button>
-                )
-              })}
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Titre</label>
+                <Input autoFocus value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="ex. Visite Résidence du Lac" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Type</label>
+                  <Select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value as EventCategory })}>
+                    {(Object.keys(CATEGORIES) as EventCategory[]).map((c) => <option key={c} value={c}>{CATEGORIES[c].label}</option>)}
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Date</label>
+                  <Input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allDay} onChange={(e) => setDraft({ ...draft, allDay: e.target.checked })} className="rounded" />Toute la journée</label>
+              {!draft.allDay && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="text-sm font-medium mb-1 block">Début</label><Input type="time" value={draft.startTime} onChange={(e) => setDraft({ ...draft, startTime: e.target.value })} /></div>
+                  <div><label className="text-sm font-medium mb-1 block">Fin</label><Input type="time" value={draft.endTime} onChange={(e) => setDraft({ ...draft, endTime: e.target.value })} /></div>
+                </div>
+              )}
+              <div>
+                <label className="text-sm font-medium mb-1 block flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />Lieu</label>
+                <Input value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} placeholder="Adresse, salle…" />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Bâtiment / projet</label>
+                <Select value={draft.projectId} onChange={(e) => setDraft({ ...draft, projectId: e.target.value })}>
+                  <option value="">— Aucun —</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Notes</label>
+                <Textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} rows={2} placeholder="Détails…" />
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Charge equipe</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {teamMembers.map(m => (
-              <div key={m.name} className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">{m.name.split(' ').map(n => n[0]).join('')}</div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{m.name}</p>
-                  <p className="text-xs text-muted-foreground">{m.role}</p>
-                </div>
-                <Badge variant="secondary">{m.events} ev.</Badge>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2">
-          <CardHeader><CardTitle className="text-sm">Prochains evenements</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {filteredEvents.filter(e => e.day >= 9).slice(0, 5).map(e => {
-              const config = typeConfig[e.type]
-              return (
-                <div key={e.id} className="flex items-center gap-3 text-sm">
-                  <span className="font-bold w-6 text-right">{e.day}</span>
-                  <div className={cn('h-2 w-2 rounded-full', config.bg.replace('100', '500'))} />
-                  <span className="flex-1 truncate">{e.title}</span>
-                  <span className="text-xs text-muted-foreground">{e.time}</span>
-                  <Badge className={cn(config.bg, config.text, 'text-[10px]')}>{config.label}</Badge>
-                </div>
-              )
-            })}
-          </CardContent>
-        </Card>
-      </div>
-
-      {selectedEvent && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setSelectedEvent(null)}>
-          <Card className="w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <Badge className={cn(typeConfig[selectedEvent.type].bg, typeConfig[selectedEvent.type].text)}>{typeConfig[selectedEvent.type].label}</Badge>
-                <button onClick={() => setSelectedEvent(null)} className="text-muted-foreground hover:text-foreground">&times;</button>
-              </div>
-              <CardTitle className="mt-2">{selectedEvent.title}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-2 text-sm"><Calendar className="h-4 w-4 text-muted-foreground" />{selectedEvent.day}{selectedEvent.endDay !== selectedEvent.day ? ` - ${selectedEvent.endDay}` : ''} avril 2026</div>
-              <div className="flex items-center gap-2 text-sm"><Clock className="h-4 w-4 text-muted-foreground" />{selectedEvent.time}</div>
-              <div className="flex items-center gap-2 text-sm"><User className="h-4 w-4 text-muted-foreground" />{selectedEvent.person}</div>
-              {selectedEvent.location && <div className="flex items-center gap-2 text-sm"><MapPin className="h-4 w-4 text-muted-foreground" />{selectedEvent.location}</div>}
-              <div className="flex gap-2 pt-3 border-t">
-                <Button size="sm" className="flex-1">Modifier</Button>
-                <Button variant="outline" size="sm">Supprimer</Button>
-              </div>
-            </CardContent>
-          </Card>
+            <div className="flex items-center gap-2 px-5 py-4 border-t">
+              {draft.id && (
+                <Button variant="ghost" onClick={() => delMut.mutate(draft.id!)} disabled={delMut.isPending} className="text-red-600 hover:text-red-700 mr-auto">
+                  {delMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setDraft(null)} className={cn(!draft.id && 'ml-auto')}>Annuler</Button>
+              <Button onClick={() => saveMut.mutate(draft)} disabled={saveMut.isPending || !draft.title.trim()}>
+                {saveMut.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />…</> : 'Enregistrer'}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,42 +1,94 @@
+import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ClipboardCheck } from 'lucide-react'
-import { Button, Card, CardHeader, CardTitle, CardContent, Input, Select } from '@/components/ui'
+import { Loader2 } from 'lucide-react'
+import { Button, Input, Select } from '@/components/ui'
+import { AuthCard } from '@/components/auth/AuthCard'
+import { GoogleButton, OrDivider } from '@/components/auth/Social'
+import { api, ApiError } from '@/lib/api'
+import { useAuth } from '@/stores/auth'
 
 export function Register() {
   const navigate = useNavigate()
+  const setAuth = useAuth((s) => s.setAuth)
+
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [companyName, setCompanyName] = useState('')
+  const [role, setRole] = useState('DT')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      const res = await api.auth.register({
+        email,
+        password,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+        companyName: companyName || undefined,
+      })
+      setAuth(res.user, res.accessToken, res.refreshToken)
+      navigate('/app/dashboard', { replace: true })
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Erreur lors de la création du compte')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50/50 py-12">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="h-12 w-12 rounded-xl bg-primary flex items-center justify-center">
-              <ClipboardCheck className="h-7 w-7 text-white" />
-            </div>
+    <AuthCard title="Créer un compte" subtitle="Commencez à utiliser Diagly">
+      <form onSubmit={onSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium mb-1.5 block text-slate-700">Prénom</label>
+            <Input placeholder="Sophie" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="given-name" />
           </div>
-          <CardTitle className="text-2xl">Creer un compte</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">Commencez votre essai gratuit de 14 jours</p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="text-sm font-medium mb-1 block">Prenom</label><Input placeholder="Sophie" /></div>
-            <div><label className="text-sm font-medium mb-1 block">Nom</label><Input placeholder="Berger" /></div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block text-slate-700">Nom</label>
+            <Input placeholder="Berger" value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="family-name" />
           </div>
-          <div><label className="text-sm font-medium mb-1 block">Email professionnel</label><Input type="email" placeholder="sophie@entreprise.ch" /></div>
-          <div><label className="text-sm font-medium mb-1 block">Entreprise</label><Input placeholder="Berger & Fils SA" /></div>
-          <div><label className="text-sm font-medium mb-1 block">Role</label>
-            <Select>
-              <option value="DT">Directeur de travaux</option>
-              <option value="REGIE">Regie immobiliere</option>
-              <option value="ARCHITECT">Architecte</option>
-            </Select>
-          </div>
-          <div><label className="text-sm font-medium mb-1 block">Mot de passe</label><Input type="password" placeholder="Minimum 8 caracteres" /></div>
-          <Button className="w-full" onClick={() => navigate('/app/dashboard')}>Creer mon compte</Button>
-          <p className="text-center text-sm text-muted-foreground">
-            Deja un compte ? <Link to="/login" className="text-primary hover:underline">Se connecter</Link>
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1.5 block text-slate-700">Email professionnel</label>
+          <Input type="email" placeholder="sophie@entreprise.ch" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1.5 block text-slate-700">Entreprise</label>
+          <Input placeholder="Berger & Fils SA" value={companyName} onChange={(e) => setCompanyName(e.target.value)} autoComplete="organization" />
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1.5 block text-slate-700">Rôle</label>
+          <Select value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value="DT">Directeur de travaux</option>
+            <option value="REGIE">Régie immobilière</option>
+            <option value="ARCHITECT">Architecte</option>
+            <option value="PARTICULIER">Particulier</option>
+          </Select>
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1.5 block text-slate-700">Mot de passe</label>
+          <Input type="password" placeholder="Minimum 8 caractères" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} autoComplete="new-password" />
+        </div>
+
+        {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Création…</> : 'Créer mon compte'}
+        </Button>
+      </form>
+
+      <OrDivider label="ou continuer avec" />
+      <GoogleButton label="S’inscrire avec Google" />
+
+      <p className="text-center text-sm text-muted-foreground mt-6">
+        Déjà un compte ? <Link to="/login" className="text-primary font-medium hover:underline">Se connecter</Link>
+      </p>
+    </AuthCard>
   )
 }
