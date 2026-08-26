@@ -11,6 +11,7 @@ import { validateQuery, validateBody } from "../middlewares/validate.js";
 import { notFound, badRequest } from "../lib/http-error.js";
 import { ownerScopeFor } from "../lib/org-context.js";
 import { blockViewerWrites } from "../middlewares/org.js";
+import { signUploadPath } from "../lib/file-token.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -43,13 +44,16 @@ async function assertProjectOwned(projectId: string, ownerId: string) {
   if (!p) throw notFound("Project not found");
 }
 
+/** Ajoute l'URL signee du fichier : c'est le seul moyen d'y acceder depuis le navigateur. */
+const withFileUrl = <T extends { fileName: string }>(plan: T) => ({ ...plan, fileUrl: signUploadPath(plan.fileName) });
+
 const listQuery = z.object({ projectId: z.string().min(1) });
 
 router.get("/", validateQuery(listQuery), async (req, res) => {
   const { projectId } = req.query as unknown as z.infer<typeof listQuery>;
   await assertProjectOwned(projectId, req.auth!.sub);
   const plans = await prisma.plan.findMany({ where: { projectId }, orderBy: { createdAt: "desc" } });
-  res.json({ plans, count: plans.length });
+  res.json({ plans: plans.map(withFileUrl), count: plans.length });
 });
 
 router.post("/", uploadLimiter, upload.single("file"), async (req, res) => {
@@ -62,7 +66,7 @@ router.post("/", uploadLimiter, upload.single("file"), async (req, res) => {
   const plan = await prisma.plan.create({
     data: { projectId, name, fileName: file.filename, mimeType: file.mimetype, size: file.size },
   });
-  res.status(201).json({ plan });
+  res.status(201).json({ plan: withFileUrl(plan) });
 });
 
 const updatePlanSchema = z.object({
@@ -85,7 +89,7 @@ router.put("/:id", validateBody(updatePlanSchema), async (req, res) => {
       annotations: data.annotations as object[] | undefined,
     },
   });
-  res.json({ plan: updated });
+  res.json({ plan: withFileUrl(updated) });
 });
 
 router.delete("/:id", async (req, res) => {

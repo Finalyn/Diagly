@@ -6,3 +6,6 @@ dist/
 public/
 
 uploads/
+
+# Fichier de build TypeScript incrementiel (ne doit pas etre versionne)
+tsconfig.tsbuildinfo

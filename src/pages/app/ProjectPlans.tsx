@@ -121,7 +121,7 @@ export function ProjectPlans() {
             <Card key={plan.id} className="overflow-hidden group">
               <button onClick={() => setViewing(plan)} className="block w-full aspect-[4/3] bg-muted/40 relative">
                 {isImage(plan.mimeType) ? (
-                  <img src={api.plans.fileUrl(plan.fileName)} alt={plan.name} className="h-full w-full object-cover" />
+                  <img src={api.plans.fileUrl(plan)} alt={plan.name} className="h-full w-full object-cover" />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center"><FileText className="h-10 w-10 text-muted-foreground" /></div>
                 )}

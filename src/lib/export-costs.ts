@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { ApiProject, ApiDiagnosticItem } from './api-types'
@@ -26,39 +25,12 @@ function fileBase(project: ApiProject) {
   return `couts-${slug || 'diagnostic'}`
 }
 
-/** Export Excel (.xlsx) : détail des éléments + synthèse financière. */
-export function exportCostsExcel(project: ApiProject, items: ApiDiagnosticItem[], t: CostTotals) {
-  const rows = items.map(i => ({
-    CFC: i.cfcCode,
-    'Élément': i.cfcLabel,
-    'État': i.state ? (STATE_LABEL[i.state] ?? i.state) : 'À évaluer',
-    'Priorité': i.priority ?? '',
-    'Quantité': i.area ?? '',
-    'Unité': i.unit ?? '',
-    'Coût HT (CHF)': num(i.estimatedCost),
-  }))
-  const ws = XLSX.utils.json_to_sheet(rows)
-  XLSX.utils.sheet_add_aoa(ws, [
-    [],
-    ['Travaux (HT)', '', '', '', '', '', t.ht],
-    [`Honoraires (${t.honoraryPct}%)`, '', '', '', '', '', t.honoraires],
-    [`Réserve (${t.reservePct}%)`, '', '', '', '', '', t.reserve],
-    ['Sous-total', '', '', '', '', '', t.sousTotal],
-    ['TVA 8.1%', '', '', '', '', '', t.tva],
-    ['Total TTC', '', '', '', '', '', t.total],
-  ], { origin: -1 })
-  ws['!cols'] = [{ wch: 8 }, { wch: 42 }, { wch: 10 }, { wch: 9 }, { wch: 10 }, { wch: 14 }, { wch: 15 }]
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Coûts')
-  XLSX.writeFile(wb, `${fileBase(project)}.xlsx`)
-}
-
 /** Export PDF : en-tête projet + tableau des éléments + synthèse. */
 export function exportCostsPdf(project: ApiProject, items: ApiDiagnosticItem[], t: CostTotals) {
   const doc = new jsPDF()
 
   doc.setFontSize(16); doc.setTextColor(30)
-  doc.text('Diagly — Estimation des coûts', 14, 18)
+  doc.text('Diagly · Estimation des coûts', 14, 18)
   doc.setFontSize(10); doc.setTextColor(90)
   doc.text(project.name, 14, 26)
   const addr = [project.address, [project.postalCode, project.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')

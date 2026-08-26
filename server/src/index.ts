@@ -1,11 +1,13 @@
 import express from "express";
 import "express-async-errors"; // rattrape les erreurs des handlers async -> errorHandler (évite les crashs)
 import cors from "cors";
+import compression from "compression";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import { join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { env } from "./lib/env.js";
+import { verifyUploadToken } from "./lib/file-token.js";
 import { logger } from "./lib/logger.js";
 import { prisma } from "./lib/prisma.js";
 import { errorHandler, notFoundHandler } from "./middlewares/error.js";
@@ -49,7 +51,9 @@ app.use(
         "default-src": ["'self'"],
         "script-src": ["'self'"],
         "style-src": ["'self'", "'unsafe-inline'"], // styles inline React (couleur d'accent, etc.)
-        "img-src": ["'self'", "data:", "blob:"], // photos en data URL, apercu camera
+        // photos en data URL, apercu camera, et tuiles du fond de carte
+        // (sans cette derniere entree, la carte de localisation reste vide en production).
+        "img-src": ["'self'", "data:", "blob:", "https://basemaps.cartocdn.com", "https://a.basemaps.cartocdn.com", "https://b.basemaps.cartocdn.com", "https://c.basemaps.cartocdn.com", "https://d.basemaps.cartocdn.com"],
         "font-src": ["'self'", "data:"],
         "connect-src": ["'self'", "https://api3.geo.admin.ch"], // API meme origine + autocompletion d'adresse
         "worker-src": ["'self'", "blob:"], // service worker + worker pdf.js
@@ -71,6 +75,11 @@ app.use(cors({
   },
   credentials: true,
 }));
+// Compression des reponses : les payloads de diagnostic (elements, photos en data URL,
+// catalogue CFC) sont du JSON tres repetitif, il se compresse d'un facteur ~5. Determinant
+// sur le terrain en 3G/4G. Les fichiers de /uploads (PDF, JPEG) sont deja compresses :
+// le middleware les laisse passer tels quels via son filtre par defaut.
+app.use(compression());
 app.use(express.json({ limit: "8mb" })); // photos d'observation stockées en data URL
 app.use(pinoHttp({ logger }));
 
@@ -107,8 +116,17 @@ app.use("/api/mcp", mcpRouter); // serveur MCP (Streamable HTTP, auth par clé d
 app.use("/api/share", shareRouter); // public (lecture seule, sans auth)
 app.use("/api/push", pushRouter);
 
-// Fichiers de plans uploadés (noms en UUID). nosniff + CSP stricte : meme si un fichier
+// Fichiers uploadés (plans, captures de support). Acces controle par un jeton signe
+// (?t=...) delivre uniquement dans les reponses d'API authentifiees : un nom de fichier
+// qui fuite ne suffit plus, et le lien expire. nosniff + CSP stricte : meme si un fichier
 // contenait du HTML/JS, le navigateur ne l'executera pas (defense contre le XSS stocke).
+app.use("/uploads", (req, res, next) => {
+  const fileName = decodeURIComponent(req.path.replace(/^\//, ""));
+  if (!verifyUploadToken(fileName, typeof req.query.t === "string" ? req.query.t : undefined)) {
+    return res.status(403).json({ error: "Lien de fichier invalide ou expire." });
+  }
+  return next();
+});
 app.use("/uploads", express.static(UPLOAD_DIR, {
   setHeaders: (res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -127,7 +145,17 @@ if (STATIC_DIR && existsSync(STATIC_DIR)) {
     app.use("/mobile", express.static(mobileDir));
     app.get("/mobile/*", (_req, res) => res.sendFile(join(mobileDir, "index.html")));
   }
-  app.use(express.static(STATIC_DIR));
+  app.use(
+    express.static(STATIC_DIR, {
+      setHeaders: (res, filePath) => {
+        // Les fichiers de /assets portent un hash dans leur nom : ils ne changent jamais,
+        // on autorise le cache navigateur a vie. L'index.html, lui, doit toujours etre
+        // revalide, sinon un deploiement ne serait pas vu par les navigateurs.
+        if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        else if (filePath.endsWith(".html")) res.setHeader("Cache-Control", "no-cache");
+      },
+    }),
+  );
   // Fallback SPA : toute route non-API/-uploads renvoie l'index du site web.
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api/") || req.path.startsWith("/uploads/") || req.path === "/health") return next();

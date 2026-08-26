@@ -115,8 +115,14 @@ export function ProjectsList() {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt)) // plus récent en haut
   }, [rows, activeTab, typeFilter, search])
 
-  // Réinitialise la page quand les filtres changent.
-  useEffect(() => { setPage(1) }, [activeTab, typeFilter, search, pageSize])
+  // Réinitialise la page quand les filtres changent. Ajustement pendant le rendu
+  // plutôt qu'un useEffect : évite un rendu supplémentaire sur l'ancienne pagination.
+  const filterKey = `${activeTab}|${typeFilter}|${search}|${pageSize}`
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey)
+  if (lastFilterKey !== filterKey) {
+    setLastFilterKey(filterKey)
+    setPage(1)
+  }
 
   const total = filtered.length
   const pageCount = Math.max(1, Math.ceil(total / pageSize))

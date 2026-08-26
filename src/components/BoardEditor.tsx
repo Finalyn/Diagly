@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import * as pdfjsLib from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import {
   X, Hand, Pencil, StickyNote, ZoomIn, ZoomOut, Maximize, Undo2, Check, Download,
   Loader2, Plus, Trash2, Layers, ArrowUp,
@@ -9,8 +7,7 @@ import {
 import { api } from '@/lib/api'
 import type { ApiBoard, ApiPlan, BoardLayer, PlanAnnotation, PlanPoint } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
+import { loadPdfjs } from '@/lib/pdf'
 
 const MIN_ZOOM = 0.02
 const MAX_ZOOM = 8
@@ -24,22 +21,29 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 /** Rend un plan (image directe, PDF -> 1re page en image) pour l'utiliser comme calque. */
 function LayerImg({ plan }: { plan: ApiPlan }) {
-  const [src, setSrc] = useState<string | null>(plan.mimeType.startsWith('image/') ? api.plans.fileUrl(plan.fileName) : null)
+  // Une image s'affiche directement : pas d'état. Seul le rendu de la 1re page d'un
+  // PDF en bitmap doit passer par un état, une fois le rendu asynchrone terminé.
+  const isImage = plan.mimeType.startsWith('image/')
+  const [pdfSrc, setPdfSrc] = useState<string | null>(null)
+  const src = isImage ? api.plans.fileUrl(plan) : pdfSrc
   useEffect(() => {
-    if (plan.mimeType.startsWith('image/')) { setSrc(api.plans.fileUrl(plan.fileName)); return }
+    if (isImage) return
     let cancelled = false
     ;(async () => {
-      const buf = await (await fetch(api.plans.fileUrl(plan.fileName))).arrayBuffer()
+      const buf = await (await fetch(api.plans.fileUrl(plan))).arrayBuffer()
+      const pdfjsLib = await loadPdfjs()
       const pdf = await pdfjsLib.getDocument({ data: buf }).promise
       const page = await pdf.getPage(1)
       const base = page.getViewport({ scale: 1 })
       const vp = page.getViewport({ scale: 1400 / base.width })
       const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height
       await page.render({ canvasContext: c.getContext('2d')!, viewport: vp }).promise
-      if (!cancelled) setSrc(c.toDataURL('image/png'))
+      if (!cancelled) setPdfSrc(c.toDataURL('image/png'))
     })().catch(() => undefined)
     return () => { cancelled = true }
-  }, [plan.fileName, plan.mimeType])
+    // Idem PlanEditor : on ne re-rend pas la page PDF quand seule la signature d'URL change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isImage, plan.id])
   if (!src) return <div className="w-72 h-48 bg-white/70 flex items-center justify-center rounded"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
   return <img src={src} alt={plan.name} draggable={false} crossOrigin="anonymous" className="block max-w-none select-none" />
 }

@@ -32,7 +32,7 @@ export function OfflineIndicator() {
       ) : (
         <>
           <WifiOff className="h-3.5 w-3.5" />
-          Hors-ligne{pending > 0 ? ` — ${pending} modification${pending > 1 ? 's' : ''} en attente de synchro` : ''}
+          Hors-ligne{pending > 0 ? ` : ${pending} modification${pending > 1 ? 's' : ''} en attente de synchro` : ''}
         </>
       )}
     </div>

@@ -53,7 +53,8 @@ export function PlanningPage() {
     queryKey: ['events', gridStart.toISOString()],
     queryFn: () => api.events.list({ from: gridStart.toISOString(), to: rangeTo.toISOString() }),
   })
-  const events = data?.events ?? []
+  // Référence stable : `?? []` produirait un tableau neuf à chaque rendu et casserait les mémorisations en aval.
+  const events = useMemo(() => data?.events ?? [], [data])
   const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: () => api.projects.list(), staleTime: 60_000 })
   const projects = projectsQuery.data?.projects ?? []
 

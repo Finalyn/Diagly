@@ -50,8 +50,10 @@ export function Dashboard() {
   const { data } = useQuery({ queryKey: ['projects'], queryFn: () => api.projects.list() })
   const { data: itemsData } = useQuery({ queryKey: ['recent-items'], queryFn: () => api.diagnostics.recentItems() })
 
-  const projects = data?.projects ?? []
-  const recentItems = itemsData?.items ?? []
+  // Références stables : sans useMemo, `?? []` crée un tableau neuf à chaque rendu,
+  // ce qui invalide toutes les mémorisations en aval (fil d'activité, KPI).
+  const projects = useMemo(() => data?.projects ?? [], [data])
+  const recentItems = useMemo(() => itemsData?.items ?? [], [itemsData])
 
   const totalProjects = projects.length
   const inProgress = projects.filter((p) => ['PLANIFIE', 'EN_COURS', 'EN_REVUE'].includes(p.status)).length

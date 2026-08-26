@@ -71,7 +71,7 @@ export const priorityColors: Record<Priority, string> = {
 }
 
 export const priorityDescriptions: Record<Priority, string> = {
-  I:   'Urgent — intervention dans les 12 mois (sécurité, étanchéité ou fonction critique en jeu).',
+  I:   'Urgent, intervention dans les 12 mois (sécurité, étanchéité ou fonction critique en jeu).',
   II:  'À planifier sous 1 à 5 ans pour éviter une dégradation accélérée ou des coûts plus élevés.',
   III: 'Entretien préventif à moyen / long terme (>5 ans), pas de risque immédiat.',
 }

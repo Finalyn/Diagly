@@ -233,8 +233,9 @@ export function DiagnosticDetail() {
   }
 
   // ----- derived data -----
-  const items = itemsQuery.data?.items ?? []
-  const catalogItems = catalogQuery.data?.items ?? []
+  // Référence stable : `?? []` produirait un tableau neuf à chaque rendu et casserait les mémorisations en aval.
+  const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data])
+  const catalogItems = useMemo(() => catalogQuery.data?.items ?? [], [catalogQuery.data])
 
   // map for fast lookup
   const itemsByCatalogId = useMemo(() => {

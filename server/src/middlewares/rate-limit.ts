@@ -40,6 +40,15 @@ export const registerLimiter = rateLimit({
   message: tooMany,
 });
 
+/** Mot de passe oublie : freine l'envoi en masse d'emails et le sondage d'adresses (par IP). */
+export const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: tooMany,
+});
+
 /** Verification 2FA : freine le brute-force du code TOTP (par IP). */
 export const twoFaLimiter = rateLimit({
   windowMs: 15 * 60_000,

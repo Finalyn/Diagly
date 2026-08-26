@@ -122,7 +122,8 @@ export interface ApiProject {
   egrid: string | null
   geoSource: string | null
   geoFetchedAt: string | null
-  geoData: GeoData | null
+  /** Absent des listes (payload allégé), présent sur la fiche d'un diagnostic. */
+  geoData?: GeoData | null
   shareToken?: string | null
   sharedAt?: string | null
   createdAt: string
@@ -287,6 +288,8 @@ export interface ApiPlan {
   projectId: string
   name: string
   fileName: string
+  /** Chemin signé du fichier (jeton d'accès à durée limitée), fourni par le serveur. */
+  fileUrl: string
   mimeType: string
   size: number
   scalePxPerM: number | null

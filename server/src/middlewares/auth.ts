@@ -20,7 +20,11 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   }
   const token = header.slice("Bearer ".length).trim();
   try {
-    req.auth = verifyAccessToken(token);
+    const payload = verifyAccessToken(token);
+    // Deuxieme verrou : tout le cloisonnement des donnees repose sur `sub`. S'il manquait,
+    // les filtres Prisma `where: { userId: sub }` deviendraient des requetes SANS filtre.
+    if (!payload.sub) return next(unauthorized("Invalid token"));
+    req.auth = payload;
     return next();
   } catch {
     return next(unauthorized("Invalid or expired token"));

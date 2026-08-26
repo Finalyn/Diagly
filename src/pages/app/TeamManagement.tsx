@@ -5,7 +5,6 @@ import { Card, CardHeader, CardTitle, CardContent, Input, Button, Badge, Select 
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import type { OrgRole, OrgMember } from '@/lib/api-types'
-import { cn } from '@/lib/utils'
 
 const ROLE_LABEL: Record<OrgRole, string> = { OWNER: 'Propriétaire', ADMIN: 'Administrateur', MEMBER: 'Membre', VIEWER: 'Lecture seule' }
 const ROLE_ICON: Record<OrgRole, typeof Shield> = { OWNER: Crown, ADMIN: Shield, MEMBER: Users, VIEWER: Eye }

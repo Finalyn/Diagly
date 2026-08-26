@@ -20,9 +20,22 @@ function swissDate(iso: string | null): string {
 }
 
 // ---- CSV ----
+/**
+ * Neutralise l'injection de formules : une note de diagnostic commencant par `=`, `+`,
+ * `@` (ou une tabulation) est interpretee comme une FORMULE par Excel / LibreOffice a
+ * l'ouverture du CSV, y compris des appels externes du type =HYPERLINK(...) ou DDE.
+ * Le prefixe apostrophe force la cellule en texte. Les nombres negatifs restent intacts.
+ */
+function neutralizeFormula(s: string): string {
+  if (!/^[=+@\t\r]/.test(s) && !(s.startsWith("-") && Number.isNaN(Number(s)))) return s;
+  return `'${s}`;
+}
+
 export function toCsv(sheet: SheetData): string {
   const esc = (v: string | number | null) => {
-    const s = v == null ? "" : String(v);
+    if (v == null) return "";
+    if (typeof v === "number") return String(v); // un nombre ne peut pas etre une formule
+    const s = neutralizeFormula(String(v));
     return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const lines = [sheet.headers.map(esc).join(";"), ...sheet.rows.map((r) => r.map(esc).join(";"))];

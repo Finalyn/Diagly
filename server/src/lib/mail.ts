@@ -35,6 +35,21 @@ export async function sendMail(opts: { to: string; subject: string; html: string
   }
 }
 
+/** Gabarit HTML du lien de réinitialisation de mot de passe (valable 30 minutes). */
+export function passwordResetEmail(resetUrl: string) {
+  return {
+    subject: "Réinitialisation de votre mot de passe Diagly",
+    text: `Vous avez demandé la réinitialisation de votre mot de passe Diagly. Lien valable 30 minutes : ${resetUrl}\nSi vous n'êtes pas à l'origine de cette demande, ignorez cet email.`,
+    html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:auto">
+      <h2 style="color:#1f2937">Réinitialisation de votre mot de passe</h2>
+      <p>Vous avez demandé à définir un nouveau mot de passe pour votre compte Diagly.</p>
+      <p style="margin:24px 0"><a href="${resetUrl}" style="background:#2563eb;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Choisir un nouveau mot de passe</a></p>
+      <p style="color:#6b7280;font-size:13px">Ou copiez ce lien : ${resetUrl}</p>
+      <p style="color:#6b7280;font-size:13px">Ce lien est valable 30 minutes et ne fonctionne qu'une fois. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email : votre mot de passe actuel reste valable.</p>
+    </div>`,
+  };
+}
+
 /** Gabarit HTML d'invitation à rejoindre une organisation. */
 export function invitationEmail(orgName: string, role: string, acceptUrl: string) {
   return {

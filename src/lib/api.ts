@@ -39,14 +39,17 @@ async function refreshAccessToken(): Promise<string | null> {
         body: JSON.stringify({ refreshToken }),
       })
       if (!res.ok) {
-        useAuth.getState().clearAuth()
+        // Session definitivement perdue : on efface aussi les donnees en cache local.
+        // Import dynamique : evite un cycle d'import entre api.ts et session.ts.
+        void import('./session').then((m) => m.purgeLocalSession())
         return null
       }
       const data = (await res.json()) as AuthResponse
       useAuth.getState().setAuth(data.user, data.accessToken, data.refreshToken)
       return data.accessToken
     } catch {
-      useAuth.getState().clearAuth()
+      // Echec reseau : la session peut encore etre valide (mode hors-ligne), on ne
+      // purge rien, on se contente de ne pas rejouer la requete.
       return null
     } finally {
       refreshing = null
@@ -172,6 +175,11 @@ export const api = {
       request<{ ok: boolean }>('/api/auth/change-password', { method: 'POST', body }),
     logout: (refreshToken: string) =>
       request<void>('/api/auth/logout', { method: 'POST', body: { refreshToken }, withAuth: false }),
+    // Mot de passe oublié : réponse toujours identique, que l'adresse existe ou non.
+    forgotPassword: (email: string) =>
+      request<{ ok: boolean }>('/api/auth/forgot-password', { method: 'POST', body: { email }, withAuth: false }),
+    resetPassword: (body: { token: string; password: string }) =>
+      request<{ ok: boolean }>('/api/auth/reset-password', { method: 'POST', body, withAuth: false }),
   },
 
   cfc: {
@@ -261,7 +269,9 @@ export const api = {
     update: (id: string, body: { name?: string; scalePxPerM?: number | null; annotations?: unknown[] }) =>
       request<{ plan: ApiPlan }>(`/api/plans/${id}`, { method: 'PUT', body }),
     delete: (id: string) => request<void>(`/api/plans/${id}`, { method: 'DELETE' }),
-    fileUrl: (fileName: string) => `${BASE_URL}/uploads/${fileName}`,
+    // Le serveur signe l'accès au fichier : on ne reconstruit plus l'URL à partir du
+    // nom, sinon le téléchargement est refusé (403).
+    fileUrl: (plan: ApiPlan) => `${BASE_URL}${plan.fileUrl}`,
   },
 
   boards: {

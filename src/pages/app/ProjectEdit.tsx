@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Save, Loader2, AlertCircle } from 'lucide-react'
@@ -82,7 +82,10 @@ export function ProjectEdit() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [form, setForm] = useState<FormState | null>(null)
+  // `edited` ne contient que les modifications de l'utilisateur : tant qu'il n'a rien
+  // touché, le formulaire est dérivé des données du serveur. Plus besoin d'un effet
+  // qui recopie la réponse dans l'état (et qui provoquait un rendu supplémentaire).
+  const [edited, setEdited] = useState<FormState | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery({
@@ -91,9 +94,7 @@ export function ProjectEdit() {
     enabled: !!id,
   })
 
-  useEffect(() => {
-    if (data?.project) setForm(fromProject(data.project))
-  }, [data])
+  const form: FormState | null = edited ?? (data?.project ? fromProject(data.project) : null)
 
   const update = useMutation({
     mutationFn: () => api.projects.update(id!, toPayload(form!)),
@@ -124,7 +125,7 @@ export function ProjectEdit() {
   }
 
   const set = <K extends keyof FormState>(field: K, value: FormState[K]) =>
-    setForm(prev => prev ? { ...prev, [field]: value } : prev)
+    setEdited(prev => (prev ?? form) ? { ...(prev ?? form)!, [field]: value } : prev)
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">

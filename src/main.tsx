@@ -1,28 +1,16 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { QueryClient } from '@tanstack/react-query'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister'
 import { get, set, del } from 'idb-keyval'
 import './index.css'
 import App from './App.tsx'
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      // 7 jours : on garde les données en cache pour la consultation hors-ligne.
-      gcTime: 1000 * 60 * 60 * 24 * 7,
-      refetchOnWindowFocus: false,
-      retry: 1,
-    },
-  },
-})
+import { queryClient, QUERY_CACHE_KEY } from '@/lib/query-client'
 
 // Persistance du cache (requêtes + mutations en attente) sur IndexedDB : les données
 // restent disponibles hors-ligne et au redémarrage de l'app (chantier, sous-sol).
 const persister = createAsyncStoragePersister({
-  key: 'diagly-query-cache',
+  key: QUERY_CACHE_KEY,
   throttleTime: 1000,
   storage: {
     getItem: (k) => get(k),

@@ -19,7 +19,11 @@ export function Login() {
   const [error, setError] = useState<string | null>(() => new URLSearchParams(location.search).get('error'))
   const [loading, setLoading] = useState(false)
 
-  const [ticket, setTicket] = useState<string | null>(null)
+  // Le retour Google d'un compte protege par 2FA nous renvoie ici avec le ticket :
+  // on reprend directement a l'etape 2 (saisie du code).
+  const [ticket, setTicket] = useState<string | null>(
+    () => (location.state as { ticket?: string } | null)?.ticket ?? null,
+  )
   const [code, setCode] = useState('')
 
   const finishAuth = (res: AuthResponse) => {

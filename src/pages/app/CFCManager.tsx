@@ -66,7 +66,8 @@ function CatalogItemsTab() {
     }
   }
 
-  const items = data?.items ?? []
+  // Référence stable : `?? []` produirait un tableau neuf à chaque rendu et casserait les mémorisations en aval.
+  const items = useMemo(() => data?.items ?? [], [data])
 
   // Catégories dans l'ordre de la Feuil2 (= ordre de visite du diagnostiqueur).
   const allCategories = useMemo(() => groupItemsByCategory(items), [items])
@@ -325,7 +326,7 @@ function ItemDetailBody({ item }: { item: ApiCatalogItem }) {
                   <dt className="font-medium w-28 shrink-0">{label}</dt>
                   <dd className="flex-1">
                     {work && <span>{work}</span>}
-                    {price && <span className="text-primary font-semibold ml-2">— {price} {item.unit ?? ''}</span>}
+                    {price && <span className="text-primary font-semibold ml-2">· {price} {item.unit ?? ''}</span>}
                   </dd>
                 </div>
               ))}
@@ -491,7 +492,8 @@ function CfcCatalogTab() {
     staleTime: 60 * 60 * 1000,
   })
 
-  const entries = data?.entries ?? []
+  // Référence stable : `?? []` produirait un tableau neuf à chaque rendu et casserait les mémorisations en aval.
+  const entries = useMemo(() => data?.entries ?? [], [data])
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     if (!q) return entries

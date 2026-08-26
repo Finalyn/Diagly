@@ -11,7 +11,7 @@
  *
  * Bump VERSION pour forcer la mise à jour du cache après un déploiement majeur.
  */
-const VERSION = 'v1'
+const VERSION = 'v2'
 const SHELL_CACHE = `diagly-shell-${VERSION}`
 const ASSET_CACHE = `diagly-assets-${VERSION}`
 const API_CACHE = `diagly-api-${VERSION}`
@@ -48,7 +48,9 @@ self.addEventListener('fetch', (event) => {
     return
   }
   if (url.pathname.startsWith('/uploads/')) {
-    event.respondWith(cacheFirst(request, UPLOAD_CACHE))
+    // Le jeton d'accès (?t=...) est renouvelé régulièrement : on ignore la query
+    // pour ne pas remettre le même plan en cache à chaque rotation.
+    event.respondWith(cacheFirst(request, UPLOAD_CACHE, { ignoreSearch: true }))
     return
   }
   if (url.pathname.startsWith('/api/')) {
@@ -91,8 +93,8 @@ self.addEventListener('notificationclick', (event) => {
   )
 })
 
-async function cacheFirst(request, cacheName) {
-  const cached = await caches.match(request)
+async function cacheFirst(request, cacheName, opts) {
+  const cached = await caches.match(request, opts)
   if (cached) return cached
   const res = await fetch(request)
   if (res.ok) (await caches.open(cacheName)).put(request, res.clone())

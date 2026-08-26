@@ -69,7 +69,7 @@ export const FAQ: FaqCategory[] = [
     items: [
       { q: 'Quels formats d\'export sont disponibles ?', a: "Excel (.xlsx), CSV et JSON, via le bouton « Exporter » (onglets Coûts, Variantes). L'Excel comporte des onglets Bâtiment, Éléments, Plan de travaux, Variantes, Chiffrage. Les colonnes sont configurables et enregistrables comme modèle." },
       { q: 'Comment fonctionne l\'API REST ?', a: "Une API v1 en lecture seule expose vos diagnostics, éléments, coûts, plan de travaux et bâtiments. Authentification par clé d'API. Documentation interactive (OpenAPI) et spécification disponibles dans Intégrations → Clés API." },
-      { q: 'Où créer une clé d\'API ?', a: "Dans Intégrations → Clés API : « Créer une clé ». La clé n'est affichée qu'une seule fois — copiez-la. Elle est révocable à tout moment et limitée strictement à vos diagnostics." },
+      { q: 'Où créer une clé d\'API ?', a: "Dans Intégrations → Clés API : « Créer une clé ». La clé n'est affichée qu'une seule fois, copiez-la. Elle est révocable à tout moment et limitée strictement à vos diagnostics." },
       { q: 'À quoi servent les webhooks ?', a: "Les webhooks notifient vos systèmes tiers en temps réel (diagnostic finalisé, rapport généré, élément modifié, plan de travaux mis à jour). Payload signé HMAC, avec journal des livraisons et rejeu. Configuration dans Intégrations → Webhooks." },
       { q: 'Qu\'est-ce que le serveur MCP ?', a: "Le serveur MCP permet de brancher votre propre assistant IA (Claude, etc.) sur vos diagnostics : il répond en langage naturel (« budget fenêtres en 2028 », « bâtiments en priorité I »). Adresse et outils dans Intégrations → Assistant IA (MCP), authentifié par clé d'API." },
     ],
@@ -80,7 +80,7 @@ export const FAQ: FaqCategory[] = [
     items: [
       { q: 'Comment créer une organisation ?', a: "Dans Gestion d'équipe, cliquez sur « Créer votre organisation ». Vos diagnostics actuels deviennent ceux de l'organisation, et vous en êtes le propriétaire (OWNER)." },
       { q: 'Comment inviter un collaborateur ?', a: "Dans Gestion d'équipe (administrateur), saisissez son email et choisissez un rôle. Un email d'invitation est envoyé (ou un lien copiable si l'email n'est pas configuré). Le collaborateur rejoint l'organisation en cliquant sur le lien." },
-      { q: 'Quels sont les rôles disponibles ?', a: "Propriétaire (contrôle total), Administrateur (gère membres + diagnostics), Membre (édite les diagnostics), Lecture seule (consulte uniquement — idéal pour un mandant institutionnel). Les membres partagent les mêmes diagnostics." },
+      { q: 'Quels sont les rôles disponibles ?', a: "Propriétaire (contrôle total), Administrateur (gère membres + diagnostics), Membre (édite les diagnostics), Lecture seule (consulte uniquement, idéal pour un mandant institutionnel). Les membres partagent les mêmes diagnostics." },
       { q: 'Que se passe-t-il si je retire un membre ?', a: "Il repasse en compte solo : il ne voit plus les diagnostics de l'organisation et retrouve uniquement ses propres données." },
       { q: 'Un compte en lecture seule peut-il modifier des données ?', a: "Non. Le rôle « Lecture seule » consulte l'ensemble des diagnostics mais toute tentative de modification est refusée." },
     ],

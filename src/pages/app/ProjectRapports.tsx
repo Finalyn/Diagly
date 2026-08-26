@@ -60,7 +60,8 @@ export function ProjectRapports() {
     queryFn: () => api.diagnostics.listItems(diagnostic!.id),
     enabled: !!diagnostic,
   })
-  const items = itemsQuery.data?.items ?? []
+  // Référence stable : `?? []` produirait un tableau neuf à chaque rendu et casserait les mémorisations en aval.
+  const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data])
 
   const cfcQuery = useQuery({ queryKey: ['cfc-catalog'], queryFn: () => api.cfc.catalog(), staleTime: 3.6e6 })
   const labels = useMemo(() => cfcGroupLabels(cfcQuery.data?.entries ?? []), [cfcQuery.data])

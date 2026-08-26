@@ -104,7 +104,7 @@ export function ProjectCECB() {
   const hasImport = !!(project.energySource || project.energyClassGlobal || project.sre != null)
   const measures = project.energyData?.measures ?? []
 
-  const toggle = (k: string) => setSelected((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n })
+  const toggle = (k: string) => setSelected((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
 
   const applySelection = () => {
     if (!extraction) return

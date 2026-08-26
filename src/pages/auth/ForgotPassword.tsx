@@ -1,16 +1,30 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Mail, MailCheck } from 'lucide-react'
+import { ArrowLeft, Mail, MailCheck, Loader2 } from 'lucide-react'
 import { Button, Input } from '@/components/ui'
 import { AuthCard } from '@/components/auth/AuthCard'
+import { api, ApiError } from '@/lib/api'
 
 export function ForgotPassword() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    setSent(true)
+    setError(null)
+    setLoading(true)
+    try {
+      // Le serveur répond pareil que l'adresse existe ou non : on affiche le même
+      // message dans tous les cas, pour ne pas révéler qui a un compte.
+      await api.auth.forgotPassword(email.trim().toLowerCase())
+      setSent(true)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Erreur de connexion au serveur')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -24,7 +38,7 @@ export function ForgotPassword() {
             <MailCheck className="h-8 w-8 text-green-600" />
           </div>
           <p className="text-sm text-muted-foreground mb-6">
-            Si un compte existe avec cette adresse, vous recevrez un email avec les instructions pour réinitialiser votre mot de passe.
+            Si un compte existe avec cette adresse, vous recevrez un email avec les instructions pour réinitialiser votre mot de passe. Le lien est valable 30 minutes.
           </p>
           <Link to="/login"><Button variant="outline" className="w-full">Retour à la connexion</Button></Link>
         </div>
@@ -37,7 +51,10 @@ export function ForgotPassword() {
               <Input type="email" placeholder="vous@exemple.ch" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" className="pl-9" />
             </div>
           </div>
-          <Button type="submit" className="w-full">Envoyer le lien</Button>
+          {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+          <Button type="submit" className="w-full" disabled={loading || !email}>
+            {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Envoi…</> : 'Envoyer le lien'}
+          </Button>
           <Link to="/login" className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" />Retour à la connexion
           </Link>

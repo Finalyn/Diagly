@@ -3,8 +3,19 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { validateBody } from "../middlewares/validate.js";
-import { notFound } from "../lib/http-error.js";
+import { badRequest, notFound } from "../lib/http-error.js";
 import { WEBHOOK_EVENTS, newWebhookSecret } from "../lib/webhook.js";
+import { assertPublicHttpUrl, UnsafeUrlError } from "../lib/safe-url.js";
+
+/** Refuse les URL qui feraient appeler le reseau interne par le serveur (SSRF). */
+async function assertDeliverableUrl(url: string) {
+  try {
+    await assertPublicHttpUrl(url);
+  } catch (e) {
+    if (e instanceof UnsafeUrlError) throw badRequest(e.message);
+    throw e;
+  }
+}
 
 // Gestion des endpoints webhook par le titulaire du compte (auth JWT).
 const router = Router();
@@ -33,6 +44,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", validateBody(createSchema), async (req, res) => {
   const data = req.body as z.infer<typeof createSchema>;
+  await assertDeliverableUrl(data.url);
   const endpoint = await prisma.webhookEndpoint.create({
     data: { userId: req.auth!.sub, url: data.url, events: data.events, description: data.description, secret: newWebhookSecret() },
   });
@@ -48,6 +60,7 @@ async function loadOwned(id: string, userId: string) {
 router.put("/:id", validateBody(updateSchema), async (req, res) => {
   await loadOwned(req.params.id, req.auth!.sub);
   const data = req.body as z.infer<typeof updateSchema>;
+  if (data.url) await assertDeliverableUrl(data.url);
   const endpoint = await prisma.webhookEndpoint.update({ where: { id: req.params.id }, data });
   res.json({ endpoint });
 });

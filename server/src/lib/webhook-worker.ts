@@ -2,6 +2,7 @@ import type { WebhookDelivery } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { logger } from "./logger.js";
 import { signPayload } from "./webhook.js";
+import { assertPublicHttpUrl, UnsafeUrlError } from "./safe-url.js";
 
 const TICK_MS = 10_000;
 const MAX_ATTEMPTS = 6;
@@ -31,6 +32,18 @@ async function deliver(d: WebhookDelivery) {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const attempts = d.attempts + 1;
 
+  // Re-verification a chaque tentative : un domaine valide a l'enregistrement peut avoir
+  // ete repointe vers une adresse interne depuis (DNS rebinding).
+  try {
+    await assertPublicHttpUrl(ep.url);
+  } catch (e) {
+    await prisma.webhookDelivery.update({
+      where: { id: d.id },
+      data: { status: "FAILED", attempts, error: e instanceof UnsafeUrlError ? e.message : "URL non autorisee" },
+    });
+    return;
+  }
+
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -46,8 +59,12 @@ async function deliver(d: WebhookDelivery) {
       },
       body,
       signal: ctrl.signal,
+      // Une redirection pourrait renvoyer vers le reseau interne apres coup : on ne suit pas.
+      redirect: "manual",
     });
-    if (res.ok) {
+    if (res.status >= 300 && res.status < 400) {
+      await markFailure(d.id, attempts, res.status, "Redirection non suivie (indiquez l'URL finale)");
+    } else if (res.ok) {
       await prisma.webhookDelivery.update({ where: { id: d.id }, data: { status: "DELIVERED", attempts, responseStatus: res.status, deliveredAt: new Date(), error: null } });
     } else {
       await markFailure(d.id, attempts, res.status, `HTTP ${res.status}`);

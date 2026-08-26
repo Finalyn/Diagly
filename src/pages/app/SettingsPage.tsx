@@ -7,6 +7,7 @@ import { useAuth } from '@/stores/auth'
 import { useIsMobile } from '@/lib/use-mobile'
 import { cn } from '@/lib/utils'
 import { getPushState, subscribePush, unsubscribePush, type PushState } from '@/lib/push-client'
+import { logout as endSession } from '@/lib/session'
 import type { UserPreferences } from '@/lib/api-types'
 
 /** Enregistre des préférences côté serveur et met à jour le store. */
@@ -44,14 +45,13 @@ export function SettingsPage() {
   const [active, setActive] = useState<(typeof SECTIONS)[number]['id']>('profile')
 
   const sections = isMobile ? SECTIONS.filter((s) => MOBILE_SECTION_IDS.includes(s.id)) : SECTIONS
-  // Si la section active n'est pas visible (ex. bascule mobile sur "Profil"), on retombe sur la 1re dispo.
-  useEffect(() => {
-    if (!sections.some((s) => s.id === active)) setActive(sections[0].id)
-  }, [sections, active])
+  // Si la section choisie n'existe pas dans cette vue (bascule desktop -> mobile),
+  // on affiche la première disponible. Valeur dérivée : pas d'état à resynchroniser.
+  const activeId = sections.some((s) => s.id === active) ? active : sections[0].id
 
   const initials = ((user?.firstName?.[0] ?? '') + (user?.lastName?.[0] ?? '')).toUpperCase() || (user?.email?.[0] ?? 'U').toUpperCase()
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Mon compte'
-  const current = sections.find((s) => s.id === active) ?? sections[0]
+  const current = sections.find((s) => s.id === activeId) ?? sections[0]
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -74,7 +74,7 @@ export function SettingsPage() {
         <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0 -mx-1 px-1 lg:mx-0 lg:px-0 lg:sticky lg:top-2 self-start">
           {sections.map((s) => {
             const Icon = s.icon
-            const on = s.id === active
+            const on = s.id === activeId
             return (
               <button
                 key={s.id}
@@ -96,12 +96,12 @@ export function SettingsPage() {
             <h2 className="text-lg font-semibold">{current.label}</h2>
             <p className="text-sm text-muted-foreground">{current.desc}</p>
           </div>
-          {active === 'profile' && <ProfileCard />}
-          {active === 'company' && <CompanyCard />}
-          {active === 'prefs' && <PreferencesCard />}
-          {active === 'notif' && <NotificationsCard />}
-          {active === 'security' && <div className="space-y-5"><TwoFactorCard /><ChangePasswordCard /></div>}
-          {active === 'account' && <AccountCard />}
+          {activeId === 'profile' && <ProfileCard />}
+          {activeId === 'company' && <CompanyCard />}
+          {activeId === 'prefs' && <PreferencesCard />}
+          {activeId === 'notif' && <NotificationsCard />}
+          {activeId === 'security' && <div className="space-y-5"><TwoFactorCard /><ChangePasswordCard /></div>}
+          {activeId === 'account' && <AccountCard />}
         </div>
       </div>
     </div>
@@ -395,9 +395,13 @@ function ChangePasswordCard() {
 
 function AccountCard() {
   const user = useAuth((s) => s.user)
-  const clearAuth = useAuth((s) => s.clearAuth)
   const navigate = useNavigate()
-  const logout = () => { clearAuth(); navigate('/login', { replace: true }) }
+  // Revoque la session cote serveur ET efface les donnees mises en cache sur l'appareil
+  // (diagnostics, photos, file de synchro) avant de rendre la main a l'ecran de connexion.
+  const logout = async () => {
+    await endSession()
+    navigate('/login', { replace: true })
+  }
   return (
     <Card>
       <CardHeader><CardTitle>Compte</CardTitle></CardHeader>

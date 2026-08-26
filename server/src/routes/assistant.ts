@@ -88,8 +88,12 @@ router.post("/chat", validateBody(chatSchema), async (req, res) => {
 
 // ---------- Guide terrain : analyse d'une photo (vision) ----------
 
+// 3 Mo par photo : le client redimensionne a 1280 px (~300 Ko), la marge est large.
+// Sans borne, 8 photos pouvaient partir a l'API Anthropic a chaque appel, 40 fois par
+// tranche de 10 minutes et par compte : la facture, pas seulement le serveur, est en jeu.
+const MAX_IMAGE_CHARS = 3 * 1024 * 1024;
 const visionSchema = z.object({
-  images: z.array(z.string().min(1)).min(1).max(8), // data URLs (image/jpeg;base64,...)
+  images: z.array(z.string().min(1).max(MAX_IMAGE_CHARS)).min(1).max(8), // data URLs (image/jpeg;base64,...)
   cfcCode: z.string().optional(),
   cfcLabel: z.string().optional(),
   projectId: z.string().optional(),
@@ -283,7 +287,9 @@ router.post("/analysis-chat", validateBody(analysisChatSchema), async (req, res)
 
 const pdfUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 30 * 1024 * 1024 }, // 30 Mo
+  // 12 Mo : un certificat energetique fait quelques centaines de Ko. Au-dela, c'est le
+  // serveur qui garde le fichier en memoire puis le convertit en base64 pour l'API.
+  limits: { fileSize: 12 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => cb(null, file.mimetype === "application/pdf"),
 });
 

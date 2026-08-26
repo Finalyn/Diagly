@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bell, CalendarClock, Settings2, Clock } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
@@ -40,11 +40,14 @@ export function NotificationsBell() {
   })
 
   // Événements triés par date (les plus proches d'abord), passé récent inclus.
+  const events: ApiEvent[] = useMemo(
+    () => (data?.events ?? []).slice().sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()).slice(0, 12),
+    [data],
+  )
+  // Lecture volontaire de l'heure au rendu : la pastille « à venir » se recalcule à
+  // chaque rafraîchissement de la requête (toutes les 5 minutes), ce qui suffit ici.
+  // eslint-disable-next-line react-hooks/purity
   const now = Date.now()
-  const events: ApiEvent[] = (data?.events ?? [])
-    .slice()
-    .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
-    .slice(0, 12)
   // « Nouveau » = à venir dans les 3 jours (ou aujourd'hui) => pastille.
   const unseen = events.filter((e) => {
     const t = new Date(e.startAt).getTime()

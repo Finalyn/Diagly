@@ -7,7 +7,6 @@ import { ExportDialog } from '@/components/ExportDialog'
 import { stateLabels, stateColors, priorityColors } from '@/data/mock'
 import { formatCHF, cn } from '@/lib/utils'
 import { api } from '@/lib/api'
-import { exportCostsPdf } from '@/lib/export-costs'
 
 const TVA = 0.081 // TVA Suisse 8.1%
 const toNum = (v: string | null | undefined) => (v ? Number(v) : 0)
@@ -96,7 +95,11 @@ export function ProjectMetres() {
           {items.length > 0 && (
             <>
               <Button variant="outline" onClick={() => setExportOpen(true)}><Download className="mr-2 h-4 w-4" />Exporter</Button>
-              <Button variant="outline" onClick={() => exportCostsPdf(project, items, totals)}><FileDown className="mr-2 h-4 w-4" />PDF</Button>
+              <Button variant="outline" onClick={async () => {
+                // jsPDF + autoTable pesent ~350 Ko : charges seulement au clic sur Export.
+                const { exportCostsPdf } = await import('@/lib/export-costs')
+                exportCostsPdf(project, items, totals)
+              }}><FileDown className="mr-2 h-4 w-4" />PDF</Button>
             </>
           )}
           <Link to={`/app/diagnostic/${diagnostic.id}`}><Button variant="outline"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir le diagnostic</Button></Link>

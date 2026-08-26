@@ -12,7 +12,7 @@ interface Props {
 
 export function ComingSoon({
   title,
-  description = 'Cette fonctionnalité est en cours de développement. Le cœur diagnostique est déjà fonctionnel — accède-y depuis la liste des diagnostics.',
+  description = 'Cette fonctionnalité est en cours de développement. Le cœur diagnostique est déjà fonctionnel, accède-y depuis la liste des diagnostics.',
   backTo = '/app/dashboard',
   backLabel = 'Retour au tableau de bord',
 }: Props) {

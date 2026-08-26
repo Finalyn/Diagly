@@ -71,10 +71,13 @@ const createSchema = projectBaseSchema;
 const updateSchema = projectBaseSchema.partial();
 
 router.get("/", async (req, res) => {
-  const projects = await prisma.project.findMany({
+  const rows = await prisma.project.findMany({
     where: await ownerScopeFor(req.auth!.sub),
     orderBy: { updatedAt: "desc" },
   });
+  // `geoData` est le dump brut des registres (plusieurs Ko par batiment) : inutile en liste,
+  // il n'est lu que sur la fiche du diagnostic, qui passe par GET /projects/:id.
+  const projects = rows.map(({ geoData: _geoData, ...rest }) => rest);
   res.json({ projects, count: projects.length });
 });
 

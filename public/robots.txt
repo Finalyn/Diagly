@@ -1,0 +1,9 @@
+# Les rapports partagés (/share/<jeton>) et l'application sont privés : un lien qui
+# circule par mail ne doit pas finir dans un index de moteur de recherche.
+User-agent: *
+Disallow: /app/
+Disallow: /share/
+Disallow: /preview
+Disallow: /api/
+Disallow: /uploads/
+Allow: /

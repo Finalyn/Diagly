@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Printer, Loader2, AlertCircle, Building2, Lock } from 'lucide-react'
+import { Printer, Loader2, AlertCircle, Lock } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatCHF } from '@/lib/utils'
 import { stateLabels, buildingTypeLabels } from '@/data/mock'

@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import * as pdfjsLib from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import {
   X, Hand, MousePointer2, Crosshair, Ruler, ArrowUpRight, StickyNote, Hash, Pencil,
   ZoomIn, ZoomOut, Undo2, Check, Trash2, Loader2, ChevronLeft, ChevronRight, Maximize, Download,
@@ -9,8 +7,7 @@ import {
 import { api } from '@/lib/api'
 import type { ApiPlan, PlanAnnotation, PlanPoint } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
+import { loadPdfjs } from '@/lib/pdf'
 
 type Tool = 'pan' | 'select' | 'calibrate' | 'measure' | 'arrow' | 'note' | 'hatch' | 'draw'
 const TARGET_W = 1600
@@ -109,7 +106,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   useEffect(() => {
     let cancelled = false
     setLoading(true); setLoadError(null)
-    const url = api.plans.fileUrl(plan.fileName)
+    const url = api.plans.fileUrl(plan)
     ;(async () => {
       const canvas = canvasRef.current
       if (!canvas) return
@@ -117,6 +114,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       if (isPdf) {
         const buf = await (await fetch(url)).arrayBuffer()
         if (cancelled) return
+        const pdfjsLib = await loadPdfjs()
         const pdf = await pdfjsLib.getDocument({ data: buf }).promise
         if (cancelled) return
         setNumPages(pdf.numPages)
@@ -141,7 +139,10 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       setLoading(false)
     })().catch((e) => { if (!cancelled) { setLoadError(e?.message ?? 'Erreur de rendu'); setLoading(false) } })
     return () => { cancelled = true }
-  }, [plan.fileName, isPdf, pageNum])
+    // Le rendu ne dépend que du plan affiché et de la page : l'URL signée du fichier
+    // est renouvelée à chaque rafraîchissement de la liste, sans que le contenu change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan.id, isPdf, pageNum])
 
   // ---- Ajuster le plan à l'écran ----
   const fitView = useCallback(() => {
@@ -378,7 +379,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
   // « Plan seul » : télécharge le fichier original tel quel.
   const downloadOriginal = async () => {
-    const res = await fetch(api.plans.fileUrl(plan.fileName))
+    const res = await fetch(api.plans.fileUrl(plan))
     const blob = await res.blob()
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)

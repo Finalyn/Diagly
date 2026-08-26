@@ -21,6 +21,15 @@ export function OAuthCallback() {
     done.current = true
 
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+
+    // Compte protege par la double authentification : le serveur ne delivre pas encore
+    // les jetons, il renvoie un ticket. On repasse par l'ecran de connexion (etape 2).
+    const ticket = params.get('ticket')
+    if (params.get('twoFactorRequired') === '1' && ticket) {
+      navigate('/login', { replace: true, state: { ticket } })
+      return
+    }
+
     const accessToken = params.get('accessToken')
     const refreshToken = params.get('refreshToken')
     if (!accessToken || !refreshToken) {

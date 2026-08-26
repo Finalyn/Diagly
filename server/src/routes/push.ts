@@ -16,8 +16,8 @@ router.get("/vapid", (_req, res) => {
 router.use(requireAuth);
 
 const subSchema = z.object({
-  endpoint: z.string().url(),
-  keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
+  endpoint: z.string().url().max(500), // = taille de la colonne, evite une erreur Prisma
+  keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }),
 });
 
 router.post("/subscribe", validateBody(subSchema), async (req, res) => {
@@ -30,7 +30,7 @@ router.post("/subscribe", validateBody(subSchema), async (req, res) => {
   res.status(201).json({ id: sub.id });
 });
 
-const unsubSchema = z.object({ endpoint: z.string().min(1) });
+const unsubSchema = z.object({ endpoint: z.string().min(1).max(500) });
 router.post("/unsubscribe", validateBody(unsubSchema), async (req, res) => {
   const { endpoint } = req.body as z.infer<typeof unsubSchema>;
   await prisma.pushSubscription.deleteMany({ where: { endpoint, userId: req.auth!.sub } });

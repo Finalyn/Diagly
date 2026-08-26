@@ -1,3 +1,6 @@
+/* Police Inter servie par l'app (paquet @fontsource) : aucune requete vers Google,
+   la CSP reste stricte et la PWA garde sa typographie hors-ligne. */
+@import '@fontsource-variable/inter';
 @import "tailwindcss";
 
 @theme {
@@ -32,7 +35,7 @@
   --radius-sm: 0.25rem;
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
 * {

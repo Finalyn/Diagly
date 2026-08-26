@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Loader2, MapPin, ExternalLink } from 'lucide-react'
@@ -36,32 +37,41 @@ export function ProjectMap({ address, postalCode, city, canton }: Props) {
   const cityQ = [postalCode, city].filter(Boolean).join(' ').trim()
   const regionQ = [city, canton].filter(Boolean).join(' ').trim()
 
-  const [coords, setCoords] = useState<Geo | null>(null)
-  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading')
   const boxRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
 
   // Géocodage : adresse exacte (si non floue) → NPA + ville → ville + canton.
-  useEffect(() => {
-    let cancelled = false
-    setStatus('loading')
-    setCoords(null)
-    ;(async () => {
+  // Passé en requête : le résultat est mis en cache (une adresse ne bouge pas), donc
+  // rouvrir la fiche n'appelle plus le service, et il n'y a plus d'état à resynchroniser.
+  const geoQuery = useQuery({
+    queryKey: ['geocode', full, cityQ, regionQ],
+    queryFn: async (): Promise<Geo | null> => {
       let hit: Geo | null = null
       if (full) { const r = await geocode(full); if (r && !r.fuzzy) hit = r }
       if (!hit && cityQ) hit = await geocode(cityQ)
       if (!hit && regionQ && regionQ !== cityQ) hit = await geocode(regionQ)
-      if (cancelled) return
-      if (hit) { setCoords(hit); setStatus('ok') } else { setStatus('error') }
-    })()
-    return () => { cancelled = true }
-  }, [full, cityQ, regionQ])
+      return hit
+    },
+    staleTime: 24 * 60 * 60 * 1000,
+  })
+  const coords = geoQuery.data ?? null
+  const status: 'loading' | 'ok' | 'error' = geoQuery.isPending ? 'loading' : coords ? 'ok' : 'error'
 
   // Carte Leaflet
   useEffect(() => {
     if (status !== 'ok' || !coords || !boxRef.current || mapRef.current) return
+    // Clé CARTO (gratuite, demandée sur carto.com/basemaps/apikey) : sans elle, les tuiles
+    // sont tamponnées « API KEY REQUIRED ».
+    const cartoKey = import.meta.env.VITE_CARTO_KEY as string | undefined
+    // Pas de bandeau Leaflet : le credit « OpenStreetMap · CARTO » exige par les conditions
+    // d'usage est deja affiche en haut a droite de la carte (voir plus bas dans le rendu).
     const map = L.map(boxRef.current, { zoomControl: false, scrollWheelZoom: true, attributionControl: false }).setView([coords.lat, coords.lon], 16)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 19 }).addTo(map)
+    // Chemin `rastertiles/` : c'est la forme documentee par CARTO pour les cles.
+    // `light_all` = style Positron (le fond clair d'origine), `{r}` = tuiles @2x sur ecran retina.
+    L.tileLayer(
+      `https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png${cartoKey ? `?key=${cartoKey}` : ''}`,
+      { subdomains: 'abcd', maxZoom: 20 },
+    ).addTo(map)
     L.marker([coords.lat, coords.lon], { icon: pin }).addTo(map)
     mapRef.current = map
     return () => { map.remove(); mapRef.current = null }

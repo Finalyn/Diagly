@@ -12,7 +12,9 @@ import {
 import { badRequest, conflict, unauthorized } from "../lib/http-error.js";
 import { validateBody } from "../middlewares/validate.js";
 import { requireAuth } from "../middlewares/auth.js";
-import { loginLimiter, registerLimiter, twoFaLimiter } from "../middlewares/rate-limit.js";
+import { loginLimiter, passwordResetLimiter, registerLimiter, twoFaLimiter } from "../middlewares/rate-limit.js";
+import { sendMail, passwordResetEmail } from "../lib/mail.js";
+import { logger } from "../lib/logger.js";
 import jwt from "jsonwebtoken";
 import { authenticator } from "otplib";
 import QRCode from "qrcode";
@@ -183,18 +185,57 @@ router.put("/me", requireAuth, validateBody(updateProfileSchema), async (req, re
 });
 
 // Fusionne (2 niveaux) les préférences reçues avec l'existant.
+// Clés interdites : `JSON.parse` crée bien une propriété propre `__proto__`, dont
+// l'affectation modifierait le prototype de l'objet fusionné.
+const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function mergePrefs(cur: Record<string, unknown>, inc: Record<string, unknown>) {
   const out: Record<string, unknown> = { ...cur };
   for (const [k, v] of Object.entries(inc)) {
+    if (FORBIDDEN_KEYS.has(k)) continue;
     if (v && typeof v === "object" && !Array.isArray(v) && cur[k] && typeof cur[k] === "object") {
       out[k] = { ...(cur[k] as object), ...(v as object) };
     } else out[k] = v;
   }
   return out;
 }
-router.put("/preferences", requireAuth, async (req, res) => {
+// Les preferences etaient acceptees telles quelles (n'importe quel JSON, sans limite de
+// taille), alors qu'elles sont renvoyees a chaque /me, login et refresh, et que le logo
+// et la couleur d'accent sont repris sur le RAPPORT PUBLIC. On borne donc la forme.
+const txt = (max: number) => z.string().max(max).nullish();
+const companySchema = z.object({
+  name: txt(150), address: txt(200), postalCode: txt(20), city: txt(120),
+  canton: txt(60), vatNumber: txt(40), iban: txt(40),
+  // Logo : uniquement une image en data URL (une URL externe fuiterait vers un tiers
+  // depuis le rapport client, et serait de toute facon bloquee par la CSP).
+  logo: z.string().max(400_000).regex(/^data:image\/(png|jpeg|webp|svg\+xml);base64,/, "Logo invalide.").nullish(),
+  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Couleur invalide.").nullish(),
+}).strict().partial();
+
+const exportColumn = z.object({ key: z.string().max(60), label: z.string().max(120), active: z.boolean() });
+const preferencesSchema = z.object({
+  company: companySchema,
+  defaults: z.object({
+    honoraryPct: z.number().min(0).max(100), reservePct: z.number().min(0).max(100),
+    vatPct: z.number().min(0).max(100), unit: z.enum(["m", "cm", "mm"]),
+  }).strict().partial(),
+  notifications: z.object({
+    emailDiagnostic: z.boolean(), calendarReminders: z.boolean(),
+    weeklyDigest: z.boolean(), priorityAlerts: z.boolean(),
+  }).strict().partial(),
+  exportTemplates: z.array(z.object({
+    id: z.string().max(100), name: z.string().max(120),
+    sheets: z.array(z.object({
+      id: z.enum(["building", "items", "workplan"]),
+      title: z.string().max(120),
+      columns: z.array(exportColumn).max(80),
+    })).max(10),
+  })).max(20),
+  exportDefaultTemplateId: z.string().max(100).nullish(),
+}).strict().partial();
+
+router.put("/preferences", requireAuth, validateBody(preferencesSchema), async (req, res) => {
   const inc = (req.body ?? {}) as Record<string, unknown>;
-  if (typeof inc !== "object" || Array.isArray(inc)) throw badRequest("Invalid preferences");
   const user = await prisma.user.findUnique({ where: { id: req.auth!.sub } });
   if (!user) throw badRequest("User not found");
   const cur = (user.preferences as Record<string, unknown>) ?? {};
@@ -213,6 +254,69 @@ router.post("/change-password", requireAuth, validateBody(changePwSchema), async
   await prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
   res.json({ ok: true });
 });
+
+// ==================== Mot de passe oublie / reinitialisation ====================
+//
+// Le jeton est un JWT court signe avec JWT_ACCESS_SECRET : aucune table supplementaire.
+// Il embarque une empreinte du hash actuel du mot de passe ("v") : des que le mot de passe
+// change, tous les jetons emis avant deviennent invalides -> usage unique de fait.
+
+const RESET_TTL = "30m";
+
+function signResetToken(user: { id: string; passwordHash: string }): string {
+  return jwt.sign(
+    { sub: user.id, purpose: "pwreset", v: sha256(user.passwordHash).slice(0, 16) },
+    env.JWT_ACCESS_SECRET,
+    { expiresIn: RESET_TTL },
+  );
+}
+
+// Demande de lien. Reponse TOUJOURS identique : ne revele pas si l'adresse existe.
+router.post(
+  "/forgot-password",
+  passwordResetLimiter,
+  validateBody(z.object({ email: z.string().email().toLowerCase() })),
+  async (req, res) => {
+    const { email } = req.body as { email: string };
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (user) {
+      const url = `${env.APP_URL}/reset-password/${signResetToken(user)}`;
+      const mail = passwordResetEmail(url);
+      const sent = await sendMail({ to: user.email, ...mail });
+      // Sans SMTP configure (dev), le lien part dans les logs plutot que d'etre perdu.
+      if (!sent) logger.warn({ email: user.email, url }, "lien de reinitialisation non envoye (SMTP absent)");
+    }
+    res.json({ ok: true });
+  },
+);
+
+// Definition du nouveau mot de passe a partir du jeton recu par email.
+router.post(
+  "/reset-password",
+  passwordResetLimiter,
+  validateBody(z.object({ token: z.string().min(1), password: z.string().min(8).max(100) })),
+  async (req, res) => {
+    const { token, password } = req.body as { token: string; password: string };
+    let payload: { sub: string; purpose?: string; v?: string };
+    try {
+      payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as typeof payload;
+    } catch {
+      throw badRequest("Lien expire ou invalide. Demandez-en un nouveau.");
+    }
+    if (payload.purpose !== "pwreset") throw badRequest("Lien invalide.");
+
+    const user = await prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user) throw badRequest("Lien invalide.");
+    if (payload.v !== sha256(user.passwordHash).slice(0, 16)) {
+      throw badRequest("Ce lien a deja ete utilise. Demandez-en un nouveau.");
+    }
+
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } });
+    // Le compte a pu etre compromis : on coupe toutes les sessions existantes.
+    await prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    res.json({ ok: true });
+  },
+);
 
 // ============================ 2FA (TOTP) ============================
 
@@ -293,6 +397,17 @@ router.post("/2fa/disable", requireAuth, validateBody(codeSchema), async (req, r
 // ============================ Google OAuth ============================
 
 const googleConfigured = () => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+const OAUTH_STATE_COOKIE = "diagly_oauth_state";
+
+/** Lit un cookie sans dependance supplementaire (un seul cookie a lire dans toute l'app). */
+function readCookie(header: string | undefined, name: string): string | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(";")) {
+    const i = part.indexOf("=");
+    if (i > 0 && part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return undefined;
+}
 const googleRedirectUri = () => `${env.APP_URL}/api/auth/google/callback`;
 
 // Démarre le flux : redirige vers l'écran de consentement Google.
@@ -300,7 +415,19 @@ router.get("/google", (_req, res) => {
   if (!googleConfigured()) {
     return res.redirect(`${env.APP_URL}/login?error=${encodeURIComponent("Connexion Google non disponible pour le moment")}`);
   }
-  const state = jwt.sign({ n: crypto.randomUUID(), purpose: "oauth" }, env.JWT_ACCESS_SECRET, { expiresIn: "10m" });
+  // L'etat est lie au NAVIGATEUR qui a lance la connexion, via un cookie httpOnly.
+  // Sans ce lien, un attaquant peut faire visiter a la victime une URL de retour portant
+  // SON code d'autorisation : la victime se retrouve connectee au compte de l'attaquant
+  // et travaille dedans sans le voir (CSRF de connexion).
+  const nonce = crypto.randomUUID();
+  const state = jwt.sign({ n: nonce, purpose: "oauth" }, env.JWT_ACCESS_SECRET, { expiresIn: "10m" });
+  res.cookie(OAUTH_STATE_COOKIE, nonce, {
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+    sameSite: "lax", // doit survivre au retour depuis accounts.google.com
+    maxAge: 10 * 60_000,
+    path: "/api/auth",
+  });
   const params = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID!,
     redirect_uri: googleRedirectUri(),
@@ -320,8 +447,12 @@ router.get("/google/callback", async (req, res) => {
 
   if (!googleConfigured()) return fail("Google non configuré");
   if (!code || !state) return fail("Réponse Google invalide");
+  const expectedNonce = readCookie(req.headers.cookie, OAUTH_STATE_COOKIE);
+  res.clearCookie(OAUTH_STATE_COOKIE, { path: "/api/auth" }); // usage unique
   try {
-    jwt.verify(state, env.JWT_ACCESS_SECRET);
+    const st = jwt.verify(state, env.JWT_ACCESS_SECRET) as { n?: string; purpose?: string };
+    // Le retour doit correspondre a la demande partie de CE navigateur.
+    if (st.purpose !== "oauth" || !st.n || !expectedNonce || st.n !== expectedNonce) throw new Error("state mismatch");
   } catch {
     return fail("État OAuth invalide");
   }
@@ -347,10 +478,14 @@ router.get("/google/callback", async (req, res) => {
   if (!infoRes.ok) return fail("Profil Google inaccessible");
   const info = (await infoRes.json()) as {
     email?: string;
+    email_verified?: boolean;
     given_name?: string;
     family_name?: string;
   };
   if (!info.email) return fail("Email Google introuvable");
+  // L'identite repose entierement sur cet email (il peut rattacher a un compte existant) :
+  // on exige que Google l'ait VERIFIE, sinon n'importe qui pourrait revendiquer l'adresse.
+  if (info.email_verified !== true) return fail("Adresse Google non verifiee");
   const email = info.email.toLowerCase();
 
   // Identité = email (vérifié par Google). On lie à un compte existant ou on le crée.
@@ -365,6 +500,13 @@ router.get("/google/callback", async (req, res) => {
         role: "PARTICULIER",
       },
     });
+  }
+
+  // La 2FA s'applique AUSSI au parcours Google : sans ce controle, activer la 2FA sur un
+  // compte lie a une adresse Gmail serait contournable en un clic.
+  if (user.twoFactorEnabled && user.twoFactorSecret) {
+    const frag = new URLSearchParams({ twoFactorRequired: "1", ticket: sign2faTicket(user.id) });
+    return res.redirect(`${env.APP_URL}/oauth-callback#${frag.toString()}`);
   }
 
   const tokens = await issueTokens(user);

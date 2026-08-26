@@ -11,6 +11,7 @@ import { validateBody } from "../middlewares/validate.js";
 import { badRequest, notFound } from "../lib/http-error.js";
 import { env } from "../lib/env.js";
 import { sendMail } from "../lib/mail.js";
+import { signStoredPath } from "../lib/file-token.js";
 
 // Centre d'aide : tickets de support avec fil de discussion + pièces jointes (captures d'écran).
 const router = Router();
@@ -36,12 +37,28 @@ async function userName(userId: string) {
 // Upload d'une capture d'écran → renvoie son URL (relative).
 router.post("/attachments", uploadLimiter, upload.single("file"), (req, res) => {
   if (!req.file) throw badRequest("Image invalide (PNG, JPG ou WEBP, 10 Mo max).");
-  res.status(201).json({ url: `/uploads/${req.file.filename}` });
+  // `url` = valeur a renvoyer avec le message ; elle porte deja un jeton pour l'apercu immediat.
+  res.status(201).json({ url: signStoredPath(req.file.filename) });
+});
+
+// Une piece jointe ne peut etre qu'un fichier issu de POST /attachments (nom en UUID).
+// Sans ce filtre, le client pourrait stocker n'importe quelle URL externe ou un
+// "javascript:..." qui serait ensuite rendu dans le fil de discussion.
+const attachmentUrl = z
+  .string()
+  .regex(/^\/uploads\/[0-9a-f-]{36}\.(png|jpg|webp)(\?t=[\w.-]+)?$/i, "Piece jointe invalide.")
+  // On ne stocke que le chemin : le jeton d'acces est resigne a chaque lecture.
+  .transform((u) => u.split("?")[0]);
+
+/** Re-signe les pieces jointes d'un message avant de les renvoyer au client. */
+const withSignedAttachments = <T extends { attachments: unknown }>(m: T) => ({
+  ...m,
+  attachments: (Array.isArray(m.attachments) ? (m.attachments as string[]) : []).map(signStoredPath),
 });
 
 const messageBody = z.object({
   body: z.string().min(1).max(5000),
-  attachments: z.array(z.string().max(300)).max(6).optional(),
+  attachments: z.array(attachmentUrl).max(6).optional(),
 });
 const createTicketSchema = messageBody.extend({
   subject: z.string().min(1).max(200),
@@ -93,7 +110,7 @@ router.get("/tickets/:id", async (req, res) => {
     include: { messages: { orderBy: { createdAt: "asc" } } },
   });
   if (!ticket) throw notFound("Ticket introuvable");
-  res.json({ ticket });
+  res.json({ ticket: { ...ticket, messages: ticket.messages.map(withSignedAttachments) } });
 });
 
 // Répondre / relancer sur un ticket.
@@ -107,7 +124,7 @@ router.post("/tickets/:id/messages", validateBody(messageBody), async (req, res)
   });
   // Une relance client rouvre le ticket + touche updatedAt.
   await prisma.supportTicket.update({ where: { id: ticket.id }, data: { status: "OPEN" } });
-  res.status(201).json({ message });
+  res.status(201).json({ message: withSignedAttachments(message) });
 });
 
 export default router;

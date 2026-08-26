@@ -6,6 +6,11 @@ const router = Router();
 
 // PUBLIC : rapport de diagnostic en lecture seule via jeton. Aucune authentification.
 router.get("/:token", async (req, res) => {
+  // Un lien de partage circule par email : il ne doit ni etre indexe, ni rester dans un
+  // cache partage (proxy). Le robots.txt couvre la page, cet en-tete couvre la reponse.
+  res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+  res.setHeader("Cache-Control", "private, no-store");
+
   const token = req.params.token;
   const project = await prisma.project.findFirst({ where: { shareToken: token } });
   if (!project) throw notFound("Lien de partage invalide ou revoque.");

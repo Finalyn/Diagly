@@ -30,14 +30,15 @@ export function ProjectPlanning() {
 
   // Offsets cumulés + dates par phase.
   const rows = useMemo(() => {
-    let offset = 0
-    return phases.map(p => {
-      const from = addMonths(startDate, offset)
-      const to = addMonths(startDate, offset + p.months)
-      const row = { ...p, offset, from, to }
-      offset += p.months
-      return row
-    })
+    // Somme des durées des phases précédentes : pas de compteur réassigné, le
+    // compilateur React peut mémoriser le calcul.
+    const offsets = phases.map((_, i) => phases.slice(0, i).reduce((s, q) => s + q.months, 0))
+    return phases.map((p, i) => ({
+      ...p,
+      offset: offsets[i],
+      from: addMonths(startDate, offsets[i]),
+      to: addMonths(startDate, offsets[i] + p.months),
+    }))
   }, [phases, startDate])
 
   const endDate = addMonths(startDate, total)
