@@ -9,7 +9,7 @@ import { ProjectMap } from '@/components/ProjectMap'
 import { TerrainConstraintsCard } from '@/components/TerrainConstraintsCard'
 import { statusLabels, statusColors, buildingTypeLabels, type BuildingType } from '@/data/mock'
 import type { ProjectStatus, ApiProject, RoofType } from '@/lib/api-types'
-import { computeProjectMetrics, roofSurface } from '@/lib/formulas'
+import { computeProjectMetrics, roofSurface, perimeterWarning, floorsWarning } from '@/lib/formulas'
 import { api } from '@/lib/api'
 
 const STATUSES: ProjectStatus[] = ['NON_PLANIFIE', 'PLANIFIE', 'EN_COURS', 'EN_REVUE', 'TERMINE', 'ARCHIVE']
@@ -84,16 +84,10 @@ export function ProjectDetail() {
 
   const { project, diagnostics } = data
   const diagnostic = diagnostics[0]
-  const metrics = computeProjectMetrics({
-    perimeter: project.perimeter ?? 0,
-    nbFloors: project.nbFloors ?? 1,
-    floorHeight: project.floorHeight ?? 2.7,
-    builtArea: project.builtArea ?? 0,
-    floorArea: project.floorArea ?? 0,
-    facadeArea: project.facadeArea ?? undefined,
-    windowPct: project.windowPct / 100,
-    nbApartments: project.nbApartments ?? 0,
-  })
+  const metrics = computeProjectMetrics(project)
+  // Garde-fous : les données de registre couvrent parfois un îlot entier, pas le bâtiment.
+  const perimetreDouteux = perimeterWarning(project.perimeter, project.builtArea)
+  const etagesDouteux = floorsWarning(project.nbFloors, project.floorArea, project.builtArea)
 
   // Sauvegarde au blur (seulement si la valeur a changé).
   const saveText = (key: keyof ApiProject, current: string | null, required = false) =>
@@ -179,7 +173,10 @@ export function ProjectDetail() {
               {isResidential && (
                 <Field label="Appartements"><Input type="number" defaultValue={project.nbApartments ?? ''} onBlur={saveNum('nbApartments', project.nbApartments)} /></Field>
               )}
-              <Field label="Étages"><Input type="number" defaultValue={project.nbFloors ?? ''} onBlur={saveNum('nbFloors', project.nbFloors)} /></Field>
+              <Field label="Étages">
+                <Input type="number" defaultValue={project.nbFloors ?? ''} onBlur={saveNum('nbFloors', project.nbFloors)} />
+                {etagesDouteux && <p className="mt-1 text-[11px] text-amber-700">{etagesDouteux}</p>}
+              </Field>
               <Field label="Hauteur étage (m)"><Input type="number" step="0.1" defaultValue={project.floorHeight ?? ''} onBlur={saveNum('floorHeight', project.floorHeight)} /></Field>
             </div>
           </CardContent>
@@ -195,7 +192,10 @@ export function ProjectDetail() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <Field label="Plancher (m²)"><Input type="number" defaultValue={project.floorArea ?? ''} onBlur={saveNum('floorArea', project.floorArea)} /></Field>
               <Field label="Bâtie (m²)"><Input type="number" defaultValue={project.builtArea ?? ''} onBlur={saveNum('builtArea', project.builtArea)} /></Field>
-              <Field label="Périmètre (ml)"><Input type="number" defaultValue={project.perimeter ?? ''} onBlur={saveNum('perimeter', project.perimeter)} /></Field>
+              <Field label="Périmètre (ml)">
+                <Input type="number" defaultValue={project.perimeter ?? ''} onBlur={saveNum('perimeter', project.perimeter)} />
+                {perimetreDouteux && <p className="mt-1 text-[11px] text-amber-700">{perimetreDouteux}</p>}
+              </Field>
               <Field label="Terrain (m²)"><Input type="number" defaultValue={project.terrainArea ?? ''} onBlur={saveNum('terrainArea', project.terrainArea)} /></Field>
               <Field label="% fenêtres"><Input type="number" defaultValue={project.windowPct} onBlur={saveNum('windowPct', project.windowPct)} /></Field>
             </div>

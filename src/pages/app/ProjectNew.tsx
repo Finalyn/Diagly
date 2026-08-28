@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowRight, Check, Loader2, AlertCircle, Plus, X } from 'luc
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Badge } from '@/components/ui'
 import { AddressAutocomplete, type AddressSelection } from '@/components/AddressAutocomplete'
 import { fetchRegistryInfo } from '@/lib/geoadmin'
-import { computeProjectMetrics } from '@/lib/formulas'
+import { computeProjectMetrics, perimeterWarning } from '@/lib/formulas'
 import { buildingTypeLabels, type BuildingType } from '@/data/mock'
 import { cn } from '@/lib/utils'
 import { api, ApiError } from '@/lib/api'
@@ -140,7 +140,6 @@ export function ProjectNew() {
         nbStaircases: num(form.nbStaircases),
         floorArea: num(form.floorArea),
         builtArea: num(form.builtArea),
-        facadeArea: metrics.facade || undefined,
         terrainArea: num(form.terrainArea),
         perimeter: num(form.perimeter),
         windowPct: form.windowPct * 100, // form 0-1, API attend 0-100
@@ -505,8 +504,10 @@ export function ProjectNew() {
                 {[
                   { label: 'Facade', value: metrics.facade, unit: 'm2' },
                   { label: 'Fenetres', value: metrics.windows, unit: 'm2' },
-                  { label: 'Toiture plate', value: metrics.flatRoof, unit: 'm2' },
-                  { label: 'Toiture pente', value: metrics.slopedRoof, unit: 'm2' },
+                  // Tant que le type de toiture n'est pas précisé, on affiche les deux
+                  // hypothèses comme telles : elles ne servent à aucun chiffrage.
+                  { label: 'Toiture (si plate)', value: metrics.flatRoof, unit: 'm2, à préciser' },
+                  { label: 'Toiture (si en pente)', value: metrics.slopedRoof, unit: 'm2, à préciser' },
                   { label: 'Echafaudage', value: metrics.scaffolding, unit: 'm2' },
                   { label: 'Communs', value: metrics.commons, unit: 'm2' },
                   { label: 'Carrelage SDB', value: metrics.tilesBathrooms, unit: 'm2' },
@@ -596,6 +597,8 @@ function ExtraBuildingCard({ index, value, onChange, onRemove }: {
   onRemove: () => void
 }) {
   const [enriching, setEnriching] = useState(false)
+  // Garde-fou : les données de registre couvrent parfois un îlot entier, pas le bâtiment.
+  const perimetreDouteux = perimeterWarning(Number(value.perimeter) || null, Number(value.builtArea) || null)
 
   const onSelect = async (sel: AddressSelection) => {
     onChange({
@@ -697,6 +700,7 @@ function ExtraBuildingCard({ index, value, onChange, onRemove }: {
         <div>
           <label className="text-sm font-medium mb-1 block">Périmètre (ml)</label>
           <Input type="number" value={value.perimeter} onChange={setNum('perimeter')} />
+          {perimetreDouteux && <p className="mt-1 text-[11px] text-amber-700">{perimetreDouteux}</p>}
         </div>
         <div>
           <label className="text-sm font-medium mb-1 block">Terrain (m²)</label>

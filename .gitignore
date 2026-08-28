@@ -30,3 +30,6 @@ dist-ssr
 *.sw?
 dist/
 Références/
+
+# Extractions locales (catalogue de prix, analyses)
+exports/

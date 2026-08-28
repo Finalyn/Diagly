@@ -502,6 +502,10 @@ model DiagnosticItem {
   /// Liste d'URL/clefs de photos, sérialisée en JSON
   photos         Json          @default("[]")
   area           Float?
+  /// true = quantite saisie par le diagnostiqueur : elle ne doit plus etre recalculee.
+  quantityManual Boolean       @default(false) @map("quantity_manual")
+  /// true = cout force a la main : il ne doit plus etre recalcule depuis le catalogue.
+  costManual     Boolean       @default(false) @map("cost_manual")
   unit           String?       @db.VarChar(50)
   yearInstalled  Int?          @map("year_installed")
   /// Année d'intervention planifiée (plan de travaux). null = déduite de la priorité à l'export.

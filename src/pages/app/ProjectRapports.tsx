@@ -5,8 +5,8 @@ import { Loader2, AlertCircle, ClipboardCheck, Printer, FileText, Image, Share2,
 import { Button, Card, CardContent, Badge } from '@/components/ui'
 import { ExportDialog } from '@/components/ExportDialog'
 import { stateLabels, buildingTypeLabels } from '@/data/mock'
-import { formatCHF, cn } from '@/lib/utils'
-import { computeProjectMetrics, roofSurface } from '@/lib/formulas'
+import { formatCHF, cn, formatDate } from '@/lib/utils'
+import { computeProjectMetrics } from '@/lib/formulas'
 import { getMarketCoeff } from '@/lib/diagnostic-auto'
 import { cfcGroupCode, cfcGroupLabels } from '@/lib/cfc'
 import { api } from '@/lib/api'
@@ -29,6 +29,17 @@ function ReportBrand({ canton }: { canton: string }) {
 }
 
 const TVA = 0.081
+
+/**
+ * Prix unitaire réellement appliqué : le coût rapporté à la quantité. C'est la valeur
+ * qui permet à un destinataire de contester un montant, contrairement au prix catalogue
+ * qui n'inclut pas l'indice de construction.
+ */
+function unitPriceOf(it: { area: number | null; estimatedCost: string | null }): string {
+  const cost = toNum(it.estimatedCost)
+  if (!it.area || it.area <= 0 || cost <= 0) return '—'
+  return formatCHF(Math.round(cost / it.area))
+}
 const toNum = (v: string | null | undefined) => (v ? Number(v) : 0)
 
 type ReportKind = 'sommaire' | 'detaille' | 'documente' | 'scenario' | 'rapport' | 'photos'
@@ -46,6 +57,8 @@ export function ProjectRapports() {
   const { id } = useParams<{ id: string }>()
   const { pathname } = useLocation()
   const mode: 'variantes' | 'rapports' = pathname.endsWith('/rapports') ? 'rapports' : 'variantes'
+  const user = useAuth((s) => s.user)
+  const auteur = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.companyName || ''
   const kinds = mode === 'rapports' ? KINDS_RAPPORTS : KINDS_VARIANTES
   const [report, setReport] = useState<ReportKind>(mode === 'rapports' ? 'rapport' : 'detaille')
   const [scenario, setScenario] = useState<ScenarioId>('energetique')
@@ -97,12 +110,8 @@ export function ProjectRapports() {
     )
   }
 
-  const metrics = computeProjectMetrics({
-    perimeter: project.perimeter ?? 0, nbFloors: project.nbFloors ?? 1, floorHeight: project.floorHeight ?? 2.7,
-    builtArea: project.builtArea ?? 0, floorArea: project.floorArea ?? 0, facadeArea: project.facadeArea ?? undefined,
-    windowPct: project.windowPct / 100, nbApartments: project.nbApartments ?? 0,
-  })
-  const roof = roofSurface(project.roofType, project.builtArea)
+  const metrics = computeProjectMetrics(project)
+  const roof = metrics.roof
 
   const htRepair = items.reduce((s, i) => s + toNum(i.estimatedCost), 0)
   const htImprovement = items.reduce((s, i) => s + toNum(i.improvementCost), 0)
@@ -138,10 +147,23 @@ export function ProjectRapports() {
   const floor = project.floorArea ?? 0
   const improvementPack = Math.round(floor * 120 * coeff)
   const energyPack = Math.round((opaque * 220 + windowArea * 250 + roofM * 180) * coeff)
+  // Forfaits de scénario : estimés depuis la géométrie, donc absents de la liste des
+  // éléments diagnostiqués. Ils sont désormais énoncés ligne par ligne, avec leur base
+  // de calcul, pour que le total du scénario se retrouve à la main.
+  const packRenovation = {
+    label: 'Rénovation intérieure (forfait)',
+    basis: `${Math.round(floor)} m² de plancher × 120 CHF × indice ${coeff}`,
+    amount: improvementPack,
+  }
+  const packEnergie = {
+    label: 'Isolation de l’enveloppe (forfait)',
+    basis: `${Math.round(opaque)} m² opaque × 220 + ${Math.round(windowArea)} m² vitré × 250${roofM ? ` + ${Math.round(roofM)} m² toiture × 180` : ''} CHF × indice ${coeff}`,
+    amount: energyPack,
+  }
   const variants = [
-    { id: 'maintenance' as ScenarioId, name: 'Maintenance', envelopes: ['Réparation'], energyFocus: false, ...cascade(htRepair) },
-    { id: 'renovation' as ScenarioId, name: 'Rénovation', envelopes: ['Réparation', 'Rénovation intérieure'], energyFocus: false, ...cascade(htRepair + improvementPack) },
-    { id: 'energetique' as ScenarioId, name: 'Rénovation énergétique', envelopes: ['Réparation', 'Rénovation intérieure', 'Isolation enveloppe'], energyFocus: true, ...cascade(htRepair + improvementPack + energyPack) },
+    { id: 'maintenance' as ScenarioId, name: 'Maintenance', envelopes: ['Réparation'], energyFocus: false, packs: [], ...cascade(htRepair) },
+    { id: 'renovation' as ScenarioId, name: 'Rénovation', envelopes: ['Réparation', 'Rénovation intérieure'], energyFocus: false, packs: [packRenovation], ...cascade(htRepair + improvementPack) },
+    { id: 'energetique' as ScenarioId, name: 'Rénovation énergétique', envelopes: ['Réparation', 'Rénovation intérieure', 'Isolation enveloppe'], energyFocus: true, packs: [packRenovation, packEnergie], ...cascade(htRepair + improvementPack + energyPack) },
   ]
   const currentVariant = variants.find(v => v.id === scenario) ?? variants[2]
 
@@ -193,6 +215,9 @@ export function ProjectRapports() {
             <div>
               <h1 className="text-2xl font-bold">{REPORT_TITLES[report]}</h1>
               <p className="text-muted-foreground">{project.name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Édité le {formatDate(new Date())}{auteur ? ` par ${auteur}` : ''}
+              </p>
             </div>
             <ReportBrand canton={project.canton} />
           </div>
@@ -249,7 +274,9 @@ export function ProjectRapports() {
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Synthèse des coûts</h2>
             <div className="grid sm:grid-cols-2 gap-6">
               <div className="space-y-1 text-sm">
-                <Row l="Réparation (HT)" v={formatCHF(htRepair)} />
+                {/* Le détail par enveloppe n'a de sens que s'il y en a plusieurs :
+                    sinon « Réparation » et « Travaux » affichaient deux fois le même montant. */}
+                {(htImprovement > 0 || htNorms > 0) && <Row l="Réparation (HT)" v={formatCHF(htRepair)} />}
                 {htImprovement > 0 && <Row l="Amélioration (HT)" v={formatCHF(htImprovement)} />}
                 {htNorms > 0 && <Row l="Remise aux normes (HT)" v={formatCHF(htNorms)} />}
                 <Row l="Travaux (HT)" v={formatCHF(ht)} strong />
@@ -296,6 +323,8 @@ export function ProjectRapports() {
                           <th className="font-medium">Élément</th>
                           <th className="font-medium w-20">État</th>
                           <th className="font-medium w-10">Prio.</th>
+                          <th className="font-medium text-right w-20">Quantité</th>
+                          <th className="font-medium text-right w-24">Prix unit.</th>
                           <th className="font-medium text-right w-24">Coût</th>
                         </tr>
                       </thead>
@@ -309,6 +338,11 @@ export function ProjectRapports() {
                             </td>
                             <td className="py-1">{it.state ? stateLabels[it.state] : 'À évaluer'}</td>
                             <td className="py-1">{it.priority ?? '—'}</td>
+                            <td className="py-1 text-right tabular-nums">
+                              {it.area != null ? `${it.area}${it.unit ? ` ${it.unit.replace(/^CHF\s*\/?\s*/i, '')}` : ''}` : '—'}
+                              {it.quantityManual && <span className="ml-1 text-muted-foreground" title="Quantité relevée sur place">·</span>}
+                            </td>
+                            <td className="py-1 text-right tabular-nums">{unitPriceOf(it)}</td>
                             <td className="py-1 text-right font-medium">{it.estimatedCost ? formatCHF(toNum(it.estimatedCost)) : '—'}</td>
                           </tr>
                         ))}
@@ -320,6 +354,37 @@ export function ProjectRapports() {
             )}
           </section>
           )}
+
+          {/* Hypothèses : ce qui a été relevé, ce qui a été présumé. */}
+          <section className="break-inside-avoid">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Hypothèses retenues</h2>
+            <table className="w-full text-xs">
+              <tbody>
+                {[
+                  ['Surface de façade', `${Math.round(metrics.facade)} m²`,
+                    project.perimeter ? `périmètre ${project.perimeter} ml × ${project.nbFloors ?? '?'} étages × ${project.floorHeight ?? 2.7} m` : 'surface relevée'],
+                  ["Hauteur d'étage", `${project.floorHeight ?? 2.7} m`, project.floorHeight ? 'renseignée' : 'valeur par défaut, non relevée'],
+                  ['Part vitrée', `${project.windowPct} %`, 'appliquée à la surface de façade'],
+                  ['Surface de toiture', roof != null ? `${roof} m²` : `${Math.round(metrics.flatRoof)}–${Math.round(metrics.slopedRoof)} m²`,
+                    roof != null ? `type ${project.roofType === 'PENTE' ? 'en pente' : project.roofType === 'MIXTE' ? 'mixte' : 'plate'}` : 'type de toiture non précisé, aucune présomption'],
+                  ['Indice de construction', `× ${getMarketCoeff()}`, 'indice suisse des prix de la construction (OFS)'],
+                  ['Honoraires / Réserve', `${project.honoraryPct ?? 0} % / ${project.reservePct ?? 0} %`, 'réserve calculée sur le montant déjà majoré'],
+                  ['TVA', '8.1 %', 'appliquée au sous-total'],
+                ].map(([l, v, note]) => (
+                  <tr key={l} className="border-t align-top">
+                    <td className="py-1 w-44">{l}</td>
+                    <td className="py-1 w-28 font-medium tabular-nums">{v}</td>
+                    <td className="py-1 text-muted-foreground">{note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-[11px] text-muted-foreground mt-2">
+              Les quantités suivies d'un point ont été relevées sur place et ne sont plus recalculées. Les
+              autres sont déduites des dimensions du bâtiment ci-dessus, à la date d'édition : corriger une
+              dimension du dossier met à jour les montants correspondants.
+            </p>
+          </section>
 
           <p className="text-[10px] text-muted-foreground border-t pt-3">
             Rapport indicatif généré par Diagly. Surfaces et coûts estimés par formules, à vérifier sur place.
@@ -369,7 +434,7 @@ function PhotoReport({ projectName, canton, groups }: {
         </div>
 
         {total === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucune photo n'a encore été prise dans le diagnostic. Ajoute des photos sur les éléments depuis l'éditeur.</p>
+          <p className="text-sm text-muted-foreground">Aucune photo n'a encore été prise dans le diagnostic. Ajoutez des photos sur les éléments depuis l'éditeur.</p>
         ) : (
           <div className="space-y-6">
             {withPhotos.map(g => (
@@ -408,8 +473,12 @@ function PhotoReport({ projectName, canton, groups }: {
 }
 
 // ---- Scénarios de rénovation ----
+/** Forfait de scénario : estimé depuis la géométrie, hors éléments diagnostiqués. */
+interface RPack { label: string; basis: string; amount: number }
+
 interface RVariant {
   id: ScenarioId; name: string; envelopes: string[]; energyFocus: boolean
+  packs: RPack[]
   ht: number; honoraires: number; reserve: number; sousTotal: number; tva: number; total: number
 }
 type RItem = {
@@ -489,14 +558,17 @@ function ScenarioReport({ projectName, canton, variant, allVariants, items, ener
               {allVariants.map(v => (
                 <Row key={v.id} l={v.name} v={`${formatCHF(v.total)}${v.total === v0.total ? '' : ` (+${formatCHF(v.total - v0.total)})`}`} />
               ))}
-              <p className="text-xs pt-2">Estimation ±15%. {lines.length} élément{lines.length !== 1 ? 's' : ''} concerné{lines.length !== 1 ? 's' : ''}.</p>
+              <p className="text-xs pt-2">
+                Estimation ±15%. {lines.length} élément{lines.length !== 1 ? 's' : ''} diagnostiqué{lines.length !== 1 ? 's' : ''}
+                {variant.packs.length > 0 && ` + ${variant.packs.length} forfait${variant.packs.length !== 1 ? 's' : ''} de scénario`}.
+              </p>
             </div>
           </div>
         </section>
 
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Éléments concernés</h2>
-          {lines.length === 0 ? (
+          {lines.length === 0 && variant.packs.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucun coût pour ce scénario. Renseignez les enveloppes correspondantes dans le diagnostic.</p>
           ) : (
             <table className="w-full text-xs">
@@ -519,6 +591,22 @@ function ScenarioReport({ projectName, canton, variant, allVariants, items, ener
                     <td className="py-1 text-right font-medium">{formatCHF(amount)}</td>
                   </tr>
                 ))}
+                {variant.packs.map(pack => (
+                  <tr key={pack.label} className="border-t align-top">
+                    <td className="py-1 text-muted-foreground">—</td>
+                    <td className="py-1">
+                      {pack.label}
+                      <div className="text-muted-foreground">{pack.basis}</div>
+                    </td>
+                    <td className="py-1 text-muted-foreground">estimé</td>
+                    <td className="py-1 text-muted-foreground">—</td>
+                    <td className="py-1 text-right font-medium">{formatCHF(pack.amount)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 font-semibold">
+                  <td className="py-1" colSpan={4}>Total travaux (HT)</td>
+                  <td className="py-1 text-right">{formatCHF(variant.ht)}</td>
+                </tr>
               </tbody>
             </table>
           )}

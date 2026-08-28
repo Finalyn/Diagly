@@ -262,7 +262,7 @@ export function BoardEditor({ board, plans, onClose }: { board: ApiBoard; plans:
 
           {layers.length === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 pointer-events-none">
-              <Layers className="h-10 w-10 mb-2" />Ajoute des plans depuis le panneau à droite →
+              <Layers className="h-10 w-10 mb-2" />Ajoutez des plans depuis le panneau à droite →
             </div>
           )}
         </div>
@@ -275,7 +275,7 @@ export function BoardEditor({ board, plans, onClose }: { board: ApiBoard; plans:
               <button onClick={() => setAddOpen((o) => !o)} className="p-1.5 rounded bg-primary hover:bg-primary/90"><Plus className="h-4 w-4" /></button>
               {addOpen && (
                 <div className="absolute right-0 top-full mt-1 w-56 max-h-64 overflow-y-auto bg-white text-slate-800 rounded-lg shadow-lg py-1 z-20">
-                  {plans.length === 0 && <p className="px-3 py-2 text-xs text-slate-400">Aucun plan. Ajoute d'abord des plans.</p>}
+                  {plans.length === 0 && <p className="px-3 py-2 text-xs text-slate-400">Aucun plan. Ajoutez d'abord des plans.</p>}
                   {plans.map((p) => <button key={p.id} onClick={() => addLayer(p)} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 truncate">{p.name}</button>)}
                 </div>
               )}

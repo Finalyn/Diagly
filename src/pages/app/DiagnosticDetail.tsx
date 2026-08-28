@@ -12,10 +12,9 @@ import { DiagnosticGuide } from '@/components/DiagnosticGuide'
 import { stateLabels, stateColors, priorityColors, priorityDescriptions } from '@/data/mock'
 import { formatCHF, cn } from '@/lib/utils'
 import { groupItemsByCategory } from '@/lib/cfc'
-import { computeProjectMetrics, roofSurface } from '@/lib/formulas'
 import {
-  STATE_PRIORITY, workForState, priceForState, computeQuantity, computeCost, computeCostFromPrice,
-  type QuantityContext,
+  STATE_PRIORITY, workForState, priceForState, computeQuantity, resolveQuantity, computeCost, computeCostFromPrice,
+  buildQuantityContext, appliedUnitPrice, getMarketCoeff, type QuantityContext,
 } from '@/lib/diagnostic-auto'
 import { api, ApiError } from '@/lib/api'
 import { ProjectSectionsMenu } from '@/components/ProjectSectionsMenu'
@@ -78,32 +77,8 @@ export function DiagnosticDetail() {
     enabled: !!projectId,
   })
 
-  const qtyCtx = useMemo<QuantityContext>(() => {
-    const p = projectQuery.data?.project
-    const m = computeProjectMetrics({
-      perimeter: p?.perimeter ?? 0,
-      nbFloors: p?.nbFloors ?? 1,
-      floorHeight: p?.floorHeight ?? 2.7,
-      builtArea: p?.builtArea ?? 0,
-      floorArea: p?.floorArea ?? 0,
-      facadeArea: p?.facadeArea ?? undefined,
-      windowPct: (p?.windowPct ?? 30) / 100,
-      nbApartments: p?.nbApartments ?? 0,
-    })
-    return {
-      builtArea: p?.builtArea ?? 0,
-      floorArea: p?.floorArea ?? 0,
-      terrainArea: p?.terrainArea ?? 0,
-      perimeter: p?.perimeter ?? 0,
-      nbApartments: p?.nbApartments ?? 0,
-      nbFloors: p?.nbFloors ?? 0,
-      facade: m.facade,
-      windows: m.windows,
-      roof: roofSurface(p?.roofType, p?.builtArea) ?? 0, // 0 si type non précisé → toiture manuelle
-      scaffolding: m.scaffolding,
-      commons: m.commons,
-    }
-  }, [projectQuery.data])
+  // Contexte de quantités : construit une seule fois, par la couche de calcul partagée.
+  const qtyCtx = useMemo(() => buildQuantityContext(projectQuery.data?.project ?? {}), [projectQuery.data])
 
   // ----- local UI state -----
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
@@ -417,7 +392,19 @@ export function DiagnosticDetail() {
               projectId={projectId}
               onBack={() => setSelectedItemId(null)}
               onUpdate={(data) => updateItem.mutate({ itemId: selectedDiagItem.id, data })}
-              onDelete={() => deleteItem.mutate(selectedDiagItem.id)}
+              onDelete={() => {
+                // L'élément peut porter des photos, des notes de terrain, une quantité
+                // relevée ou un coût forcé : on ne supprime pas tout cela en un clic.
+                const it = selectedDiagItem
+                const aPerdre = [
+                  it.photos.length > 0 && `${it.photos.length} photo${it.photos.length > 1 ? 's' : ''}`,
+                  it.notes && 'des notes de terrain',
+                  it.quantityManual && 'une quantité relevée',
+                  it.costManual && 'un coût forcé',
+                ].filter(Boolean) as string[]
+                if (aPerdre.length > 0 && !window.confirm(`Retirer « ${it.cfcLabel} » ? Vous perdez ${aPerdre.join(', ')}.`)) return
+                deleteItem.mutate(it.id)
+              }}
               isMutating={updateItem.isPending}
               isDeleting={deleteItem.isPending}
             />
@@ -645,21 +632,30 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
   }
 
   const suggestedPrice = catalog && item.state ? priceForState(catalog, item.state) : null
-  // Quantité dérivée des surfaces (undefined si formule non reconnue, ex. mètres linéaires).
-  const autoQty = catalog ? computeQuantity(catalog, qtyCtx) : undefined
+  const appliedPrice = appliedUnitPrice(suggestedPrice)
+  // Quantité dérivée du dossier + d'où elle vient (pour l'expliquer et la justifier).
+  const qtyResolution = useMemo(
+    () => (catalog ? resolveQuantity(catalog, qtyCtx) : { quantity: undefined, origin: 'manuelle' as const, basis: null }),
+    [catalog, qtyCtx],
+  )
+  const autoQty = qtyResolution.quantity
+  /** Unité affichée à côté d'une quantité (« CHF/m² fenêtres » -> « m² fenêtres »). */
+  const qtyUnit = catalog?.unit?.replace(/^CHF\s*\/?\s*/i, '') ?? ''
+  const [qtyError, setQtyError] = useState<string | null>(null)
 
-  // Backfill : un élément sans quantité mais calculable → on la pose automatiquement (une fois).
+  // Synchronisation de la quantité automatique. Corriger le périmètre, les étages ou le
+  // type de toiture du dossier doit se répercuter sur les éléments qui en dépendent.
+  // Une quantité reprise à la main est verrouillée et n'est jamais touchée ici.
   useEffect(() => {
-    if (catalog && item.area == null && autoQty != null) {
-      if (item.state) {
-        const cost = computeCost(catalog, item.state, autoQty)
-        onUpdate({ area: autoQty, estimatedCost: (cost ?? undefined) as unknown as string })
-      } else {
-        onUpdate({ area: autoQty }) // élément non évalué : quantité seule, pas de coût
-      }
+    if (!catalog || item.quantityManual) return
+    if (autoQty == null || autoQty === item.area) return
+    const patch: Partial<ApiDiagnosticItem> = { area: autoQty }
+    if (!item.costManual && item.state) {
+      patch.estimatedCost = (computeCost(catalog, item.state, autoQty) ?? 0) as unknown as string
     }
+    onUpdate(patch)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.id])
+  }, [item.id, autoQty, item.quantityManual])
 
   // Changer l'état recalcule automatiquement travaux, priorité et coût.
   const applyState = (state: ElementState) => {
@@ -669,25 +665,49 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
     if (catalog) {
       const work = workForState(catalog, state)
       patch.works = work && work !== 'Néant' ? [work as string] : []
-      // Coût = prix de l'état × quantité (indépendant du texte de travail ; états sans prix -> coût 0)
-      const cost = computeCost(catalog, state, quantity)
-      patch.estimatedCost = (cost ?? 0) as unknown as string
+      // Coût = prix de l'état × quantité (indépendant du texte de travail ; états sans prix -> coût 0).
+      // Un coût repris à la main n'est jamais écrasé.
+      if (!item.costManual) {
+        const cost = computeCost(catalog, state, quantity)
+        patch.estimatedCost = (cost ?? 0) as unknown as string
+      }
     }
     onUpdate(patch)
   }
 
-  // Changer la quantité recalcule le coût.
-  const applyQuantity = (v: number | undefined) => {
-    const patch: Partial<ApiDiagnosticItem> = { area: v ?? null }
-    const cost = item.state ? computeCost(catalog, item.state, v) : undefined
-    if (cost != null) patch.estimatedCost = cost as unknown as string | null
+  // Changer la quantité recalcule le coût, et verrouille la quantité : le dossier peut
+  // ensuite évoluer (périmètre, étages…) sans écraser ce que le terrain a relevé.
+  const applyQuantity = (v: number | undefined, manual = true) => {
+    const patch: Partial<ApiDiagnosticItem> = { area: v ?? null, quantityManual: manual }
+    if (!item.costManual) {
+      const cost = item.state ? computeCost(catalog, item.state, v) : undefined
+      patch.estimatedCost = (cost ?? null) as unknown as string | null
+    }
     onUpdate(patch)
   }
 
-  // Part (%) de la surface auto (ex. fenêtres réparties bois/métal) → quantité.
-  const currentPct = autoQty && item.area != null ? Math.round((item.area / autoQty) * 100) : undefined
+  /** Rend la quantité au calcul automatique (et le coût avec, s'il n'est pas forcé). */
+  const restoreAutoQuantity = () => {
+    const cost = item.state ? computeCost(catalog, item.state, autoQty) : undefined
+    onUpdate({
+      area: autoQty ?? null,
+      quantityManual: false,
+      costManual: false,
+      estimatedCost: (cost ?? null) as unknown as string | null,
+    })
+  }
+
+  /** Coût repris à la main : verrouillé jusqu'à ce qu'on le rende au calcul. */
+  const applyCost = (v: number | undefined) => onUpdate({
+    estimatedCost: (v ?? null) as unknown as string | null,
+    costManual: v != null,
+  })
+
+  // Part (%) d'une surface partagée : commande ponctuelle appliquée à la quantité
+  // automatique. Rien n'est stocké, et la valeur n'est jamais recalculée depuis la
+  // quantité (c'est ce qui affichait « 288 % » après une correction du périmètre).
   const applyPercent = (pct: number | undefined) => {
-    if (autoQty == null || pct == null) return
+    if (autoQty == null || pct == null || pct <= 0) return
     const area = Math.round((autoQty * pct) / 100)
     applyQuantity(area > 0 ? area : undefined)
   }
@@ -888,11 +908,27 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
 
         {/* 3. Résultat automatique (travaux, priorité, coût) */}
         <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">Calculé automatiquement</p>
-            <button onClick={() => setShowManual(v => !v)} className="text-xs text-primary hover:underline">
-              {showManual ? 'Masquer' : 'Modifier'}
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold">
+                {item.quantityManual || item.costManual ? 'Repris à la main' : 'Calculé automatiquement'}
+              </p>
+              {item.quantityManual && <Badge variant="outline" className="text-[10px]">Quantité saisie</Badge>}
+              {item.costManual && <Badge variant="outline" className="text-[10px]">Coût forcé</Badge>}
+            </div>
+            <div className="flex items-center gap-3">
+              {(item.quantityManual || item.costManual) && (
+                <button
+                  onClick={() => { setQtyError(null); restoreAutoQuantity() }}
+                  className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  Rétablir le calcul
+                </button>
+              )}
+              <button onClick={() => setShowManual(v => !v)} className="text-xs text-primary hover:underline">
+                {showManual ? 'Masquer' : 'Modifier'}
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-3 text-sm">
             <div>
@@ -946,18 +982,16 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
                 <p className="text-[11px] text-muted-foreground mt-1">{item.priority ? priorityDescriptions[item.priority] : 'Non évalué'}</p>
               </div>
 
-              {/* Part (%) d'une surface partagée (ex. fenêtres bois/métal) */}
+              {/* Part d'une surface partagée : commande ponctuelle, rien n'est mémorisé ici. */}
               {autoQty != null && (
                 <div>
                   <p className="text-xs font-medium mb-1">
-                    Part de la surface — {autoQty} {catalog?.unit?.replace(/^CHF\s*\/?\s*/i, '') ?? ''} au total
+                    Appliquer une part de {qtyResolution.basis ?? 'la quantité calculée'} · {autoQty} {qtyUnit} au total
                   </p>
                   <div className="flex items-center gap-2">
                     <Input
-                      type="number" min="0" max="100" className="w-24"
-                      key={`pct-${item.id}-${currentPct}`}
-                      defaultValue={currentPct ?? 100}
-                      onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : undefined; if (v != null && v !== currentPct) applyPercent(v) }}
+                      type="number" min="1" max="100" className="w-24" placeholder="100"
+                      onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : undefined; if (v != null) { applyPercent(v); e.target.value = '' } }}
                     />
                     <span className="text-sm text-muted-foreground">%</span>
                     <span className="text-xs text-muted-foreground">
@@ -969,9 +1003,16 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
-                  <p className="text-xs font-medium mb-1">Quantité</p>
-                  <Input type="number" key={`qty-${item.id}-${item.area}`} defaultValue={item.area ?? ''}
-                    onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : undefined; if (v !== (item.area ?? undefined)) applyQuantity(v) }} />
+                  <p className="text-xs font-medium mb-1">Quantité {qtyUnit && <span className="font-normal text-muted-foreground">({qtyUnit})</span>}</p>
+                  <Input type="number" min="1" key={`qty-${item.id}-${item.area}`} defaultValue={item.area ?? ''}
+                    onBlur={(e) => {
+                      const raw = e.target.value.trim()
+                      const v = raw ? Number(raw) : undefined
+                      if (raw && (!isFinite(v!) || v! <= 0)) { setQtyError('Quantité minimale : 1'); e.target.value = String(item.area ?? ''); return }
+                      setQtyError(null)
+                      if (v !== (item.area ?? undefined)) applyQuantity(v)
+                    }} />
+                  {qtyError && <p className="text-[11px] text-red-600 mt-1">{qtyError}</p>}
                 </div>
                 <div>
                   <p className="text-xs font-medium mb-1">Année d'installation</p>
@@ -986,14 +1027,24 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
                 </div>
                 <div>
                   <p className="text-xs font-medium mb-1">Coût estimé (CHF)</p>
-                  <Input type="number" defaultValue={item.estimatedCost ?? ''}
-                    onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : undefined; if (v !== (item.estimatedCost ? Number(item.estimatedCost) : undefined)) onUpdate({ estimatedCost: (v ?? null) as unknown as string | null }) }} />
+                  <Input type="number" min="0" key={`cost-${item.id}-${item.estimatedCost}`} defaultValue={item.estimatedCost ?? ''}
+                    onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : undefined; if (v !== (item.estimatedCost ? Number(item.estimatedCost) : undefined)) applyCost(v) }} />
                 </div>
               </div>
               {catalog && (
-                <p className="text-[11px] text-muted-foreground">
-                  Catalogue : {catalog.quantityFormula ?? '—'} · prix {suggestedPrice ? `${suggestedPrice} ${catalog.unit ?? ''}` : '—'}
-                </p>
+                <div className="text-[11px] text-muted-foreground space-y-0.5">
+                  <p>
+                    Catalogue : {catalog.quantityFormula ?? 'aucune formule'}
+                    {qtyResolution.basis && qtyResolution.origin !== 'manuelle' && <> · quantité prise sur {qtyResolution.basis}</>}
+                    {qtyResolution.origin === 'manuelle' && qtyResolution.reason && <> · à saisir ({qtyResolution.reason})</>}
+                  </p>
+                  {suggestedPrice && (
+                    <p>
+                      Prix : {suggestedPrice} {catalog.unit ?? ''}
+                      {appliedPrice != null && <> × indice {getMarketCoeff()} = <strong>{appliedPrice} {catalog.unit ?? ''}</strong></>}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           )}

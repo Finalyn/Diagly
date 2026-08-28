@@ -218,6 +218,10 @@ export interface ApiDiagnosticItem {
   works: string[]
   photos: string[]
   area: number | null
+  /** true = quantité reprise à la main : elle ne suit plus les corrections du dossier. */
+  quantityManual?: boolean
+  /** true = coût forcé à la main : il ne suit plus le catalogue. */
+  costManual?: boolean
   unit: string | null
   yearInstalled: number | null
   /** Année d'intervention planifiée (plan de travaux). null = déduite de la priorité à l'export. */

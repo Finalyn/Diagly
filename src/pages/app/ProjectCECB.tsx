@@ -128,7 +128,9 @@ export function ProjectCECB() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold">Étiquette énergétique</h1>
           <p className="text-muted-foreground text-sm">
-            {measured ? 'Classe issue du certificat importé' : 'Classe énergétique estimée du bâtiment'}
+            {measured
+              ? 'Classe issue du certificat importé'
+              : "Estimation d'après l'année de construction, en l'absence de certificat. À confirmer par un CECB."}
           </p>
         </div>
         <div className="shrink-0">
@@ -187,7 +189,7 @@ export function ProjectCECB() {
                 <div key={c.c} className="flex items-center gap-3">
                   <div className={cn('h-8 rounded text-white font-bold flex items-center justify-center transition-all',
                     c.color, c.c === klass ? 'w-full ring-2 ring-offset-2 ring-foreground/40' : 'w-2/3')}>
-                    {c.c}{c.c === klass && ' — votre bâtiment'}
+                    {c.c}{c.c === klass && (measured ? ' · votre bâtiment' : ' · estimation')}
                   </div>
                   {c.note && <span className="text-xs text-muted-foreground shrink-0">{c.note}</span>}
                 </div>

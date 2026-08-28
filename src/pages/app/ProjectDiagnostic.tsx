@@ -122,7 +122,8 @@ export function ProjectDiagnostic() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold">Diagnostic</h1>
           <p className="text-muted-foreground text-sm">
-            {items.length} élément{items.length !== 1 ? 's' : ''} — Visite du {diagnostic.visitDate ? formatDate(new Date(diagnostic.visitDate)) : 'Non planifiée'}
+            {items.length} élément{items.length !== 1 ? 's' : ''}
+            {diagnostic.visitDate ? ` · visite du ${formatDate(new Date(diagnostic.visitDate))}` : ' · visite non planifiée'}
           </p>
         </div>
         <Link to={`/app/diagnostic/${diagnostic.id}`}>

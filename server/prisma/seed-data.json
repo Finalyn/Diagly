@@ -2385,7 +2385,7 @@
    "stateBon": "Nettoyage à haute pression de la façade",
    "stateMoyen": "Réfection partielle du crépis et peinture de la façade",
    "stateMauvais": "Piquage et réfection complète du crépis.",
-   "improvement": "Piquage de l'ancien crépis et ajout d'une façade ventillée, à définir",
+   "improvement": "Piquage de l'ancien crépis et ajout d'une façade ventilée, à définir",
    "normsUpgrade": null
   },
   {
@@ -2397,7 +2397,7 @@
    "stateBon": "Néant",
    "stateMoyen": "Collage de l'isolation par l'extérieur yc nouveau crépis",
    "stateMauvais": "Piquage de l'ancien revêtement et collage de l'isolation par l'extérieur yc nouveau crépis",
-   "improvement": "Piquage de l'ancien crépis et ajout d'une façade ventillée, à définir",
+   "improvement": "Piquage de l'ancien crépis et ajout d'une façade ventilée, à définir",
    "normsUpgrade": null
   },
   {
@@ -10248,7 +10248,7 @@
    "workBon": "Néant",
    "workMoyen": "Collage de l'isolation par l'extérieur yc nouveau crépis",
    "workMauvais": "Piquage de l'ancien revêtement et collage de l'isolation par l'extérieur yc nouveau crépis",
-   "workImprovement": "Piquage de l'ancien crépis et ajout d'une façade ventillée, à définir",
+   "workImprovement": "Piquage de l'ancien crépis et ajout d'une façade ventilée, à définir",
    "workNorms": null,
    "descTbe": "Bon état.",
    "descBon": "Légèrement dégradée (20%). Reprise partielle.",

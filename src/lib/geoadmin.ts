@@ -16,6 +16,7 @@ export interface RegistryInfo {
   yearBuilt?: number
   builtArea?: number          // m² — surface au sol (emprise) du bâtiment
   perimeter?: number          // ml — périmètre du contour du bâtiment
+  perimeterEstimated?: boolean // true si déduit de l'emprise faute d'un contour fiable
   floorArea?: number          // m² — surface de plancher (somme logements, EBF ou estimée)
   floorAreaEstimated?: boolean // true si calculée (emprise × étages), false si donnée réelle
   nbFloors?: number
@@ -165,19 +166,34 @@ export async function fetchRegistryInfo(east: number, north: number): Promise<Re
   } catch { /* réseau / CORS : on ignore */ }
 
   // --- Empreinte bâtiment (VECTOR25) : périmètre + surface au sol du contour ---
-  // Plus représentatif pour le calcul de façade que la surface ponctuelle du GWR.
+  //
+  // Attention : VECTOR25 est au 1:25'000, où les bâtiments contigus sont fusionnés en
+  // un seul îlot. Reprendre son périmètre tel quel donnait des façades démesurées en
+  // centre-ville (relevé : contour de 2017 m² et 346 ml pour un bâtiment de 708 m²).
+  // On ne retient donc le périmètre que si le contour correspond bien AU bâtiment,
+  // c'est-à-dire si sa surface est proche de l'emprise officielle du RegBL.
   try {
     const res = await fetch(identifyUrl('ch.swisstopo.vec25-gebaeude', east, north, { tolerance: 1 }))
     const data = await res.json()
     const a = (data.results ?? [])[0]?.attributes
     if (a) {
       const per = num(a.perimeter)
-      if (per) info.perimeter = Math.round(per)
-      // Surface bâtie : on garde la valeur officielle GWR ; vec25 sert seulement de repli.
-      if (info.builtArea == null) {
-        const area = num(a.area)
-        if (area) info.builtArea = Math.round(area)
+      const contourArea = num(a.area)
+      const ratio = contourArea && info.builtArea ? contourArea / info.builtArea : null
+
+      if (per && (ratio == null || ratio <= 1.3)) {
+        info.perimeter = Math.round(per) // contour du bâtiment seul : exploitable
+      } else if (info.builtArea) {
+        // Contour d'îlot : on estime le périmètre depuis l'emprise plutôt que de
+        // propager une valeur fausse. 4,3 × √surface correspond à un bâtiment
+        // rectangulaire un peu allongé, l'ordre de grandeur courant en immeuble.
+        info.perimeter = Math.round(4.3 * Math.sqrt(info.builtArea))
+        info.perimeterEstimated = true
       }
+
+      // Surface bâtie : on garde la valeur officielle GWR ; vec25 ne sert de repli que
+      // si son contour ne couvre visiblement qu'un bâtiment.
+      if (info.builtArea == null && contourArea) info.builtArea = Math.round(contourArea)
     }
   } catch { /* réseau / CORS : on ignore */ }
 
