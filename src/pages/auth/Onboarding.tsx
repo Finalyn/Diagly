@@ -115,7 +115,7 @@ export function Onboarding() {
                     </Select>
                   </div>
                   <div>
-                    <label className="text-sm font-medium mb-1 block">Annee construction</label>
+                    <label className="text-sm font-medium mb-1 block">Année de construction</label>
                     <Input type="number" placeholder="1975" />
                   </div>
                 </div>

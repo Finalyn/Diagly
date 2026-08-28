@@ -800,10 +800,13 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
           </div>
         </div>
 
+        {/* Bouton posé au ras du bas : les 96 px d'écart d'avant servaient à dégager la
+            barre de navigation, qui n'est plus affichée dans l'éditeur. Il ne reste que
+            la marge de sécurité du bord d'écran (barre d'accueil iOS). */}
         <button
           type="button"
           onClick={onBack}
-          className="absolute bottom-24 right-4 flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg active:scale-95 transition-transform z-10"
+          className="absolute bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg active:scale-95 transition-transform z-10"
         >
           Suivant <ArrowRight className="h-5 w-5" />
         </button>

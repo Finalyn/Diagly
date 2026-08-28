@@ -301,20 +301,20 @@ export function ProjectNew() {
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
         <div>
           <h1 className="text-2xl font-bold">{operationId ? 'Ajouter un bâtiment' : 'Nouveau diagnostic'}</h1>
-          <p className="text-muted-foreground">Etape {step} sur 3{operationId ? " — rattaché à l'opération" : ''}</p>
+          <p className="text-muted-foreground">Étape {step} sur 3{operationId ? " · rattaché à l'opération" : ''}</p>
         </div>
       </div>
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex items-center gap-2 mb-6">
         {[1, 2, 3].map(s => (
-          <div key={s} className="flex items-center gap-2">
+          <div key={s} className="flex shrink-0 items-center gap-2">
             <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${s < step ? 'bg-green-500 text-white' : s === step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
               {s < step ? <Check className="h-4 w-4" /> : s}
             </div>
-            <span className={`text-sm ${s === step ? 'font-medium' : 'text-muted-foreground'}`}>
-              {s === 1 ? 'Informations' : s === 2 ? 'Surfaces' : 'Recapitulatif'}
+            <span className={`hidden text-sm sm:inline ${s === step ? 'font-medium' : 'text-muted-foreground'}`}>
+              {s === 1 ? 'Informations' : s === 2 ? 'Surfaces' : 'Récapitulatif'}
             </span>
-            {s < 3 && <div className="w-12 h-0.5 bg-muted mx-1" />}
+            {s < 3 && <div className="h-0.5 w-6 shrink-0 bg-muted mx-1 sm:w-12" />}
           </div>
         ))}
       </div>
@@ -324,10 +324,10 @@ export function ProjectNew() {
         <Card>
           <CardHeader><CardTitle>Informations du diagnostic</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 items-end gap-4">
               <div className="col-span-2">
                 <label className="text-sm font-medium mb-1 block">Nom du diagnostic</label>
-                <Input value={form.name} onChange={e => update('name', e.target.value)} placeholder="Ex: Renovation Residence du Lac" className={errCls('name')} />
+                <Input value={form.name} onChange={e => update('name', e.target.value)} placeholder="Ex: Rénovation Résidence du Lac" className={errCls('name')} />
               </div>
               <div className="col-span-2">
                 <label className="text-sm font-medium mb-1 block">Adresse</label>
@@ -362,15 +362,15 @@ export function ProjectNew() {
                 </Select>
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Annee de construction</label>
+                <label className="text-sm font-medium mb-1 block">Année de construction</label>
                 <Input type="number" value={form.yearBuilt} onChange={e => updateNum('yearBuilt', e.target.value)} placeholder="Ex: 1980" className={errCls('yearBuilt')} />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Annee de renovation</label>
-                <Input type="number" value={form.renovationYear} onChange={e => updateNum('renovationYear', e.target.value)} placeholder="Si deja renove" />
+                <label className="text-sm font-medium mb-1 block">Année de rénovation</label>
+                <Input type="number" value={form.renovationYear} onChange={e => updateNum('renovationYear', e.target.value)} placeholder="Si déjà rénové" />
               </div>
               <div className="col-span-2">
-                <label className="text-sm font-medium mb-1 block">Type de batiment</label>
+                <label className="text-sm font-medium mb-1 block">Type de bâtiment</label>
                 <Select
                   value={form.buildingType}
                   onChange={e => {
@@ -529,7 +529,7 @@ export function ProjectNew() {
 
       {step === 3 && (
         <Card>
-          <CardHeader><CardTitle>Recapitulatif</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Récapitulatif</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -537,7 +537,7 @@ export function ProjectNew() {
                 <div className="space-y-1 text-sm">
                   <p><span className="text-muted-foreground">Nom :</span> {form.name}</p>
                   <p><span className="text-muted-foreground">Adresse :</span> {form.address}, {form.postalCode} {form.city} ({form.canton})</p>
-                  <p><span className="text-muted-foreground">Annee :</span> {form.yearBuilt}{form.renovationYear ? `, rénové en ${form.renovationYear}` : ''}</p>
+                  <p><span className="text-muted-foreground">Année :</span> {form.yearBuilt}{form.renovationYear ? `, rénové en ${form.renovationYear}` : ''}</p>
                   <p><span className="text-muted-foreground">Type :</span> <Badge variant="secondary">{buildingTypeLabels[form.buildingType]}</Badge></p>
                   {form.parcelNumber && <p><span className="text-muted-foreground">Parcelle :</span> n°{form.parcelNumber}</p>}
                   <p><span className="text-muted-foreground">Appartements :</span> {form.nbApartments}</p>

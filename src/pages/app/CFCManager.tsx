@@ -96,7 +96,7 @@ function CatalogItemsTab() {
       {/* Navigation par catégorie : pastilles horizontales sur mobile, liste verticale sur desktop */}
       <Card className="self-start min-w-0">
         <CardContent className="p-2">
-          <div className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
+          <div className="no-scrollbar scroll-fade-r flex gap-1 overflow-x-auto pr-6 lg:flex-col lg:overflow-visible lg:pr-0">
             <button
               onClick={() => setCategoryFilter(null)}
               className={cn(
@@ -144,7 +144,7 @@ function CatalogItemsTab() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground -mt-1">
-          Vos modifications ne concernent que votre compte. « Réinitialiser » restaure le catalogue par défaut.
+          « Réinitialiser » restaure le catalogue par défaut.
         </p>
 
         {editing && (
@@ -260,7 +260,11 @@ function ItemRow({ item, expanded, onToggle, onEdit }: { item: ApiCatalogItem; e
 function ItemCard({ item, expanded, onToggle, onEdit }: { item: ApiCatalogItem; expanded: boolean; onToggle: () => void; onEdit: () => void }) {
   return (
     <div className="rounded-xl border bg-card">
-      <button onClick={onToggle} className="flex w-full items-start gap-2 p-3 text-left">
+      {/* Deux actions distinctes (deplier / editer) : elles doivent etre cote a cote,
+          un <button> imbrique dans un <button> est du HTML invalide et le clic sur
+          le crayon devenait ambigu. */}
+      <div className="flex w-full items-start gap-2 p-3 text-left">
+        <button onClick={onToggle} className="flex min-w-0 flex-1 items-start gap-2 text-left">
         {expanded ? <ChevronDown className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -273,14 +277,15 @@ function ItemCard({ item, expanded, onToggle, onEdit }: { item: ApiCatalogItem; 
             <span className="text-muted-foreground">Mauvais <span className="font-semibold text-primary">{item.priceMauvais ?? '—'}</span></span>
           </div>
         </div>
+        </button>
         <button
-          onClick={(e) => { e.stopPropagation(); onEdit() }}
+          onClick={onEdit}
           className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
           title="Éditer cet item"
         >
           <Pencil className="h-4 w-4" />
         </button>
-      </button>
+      </div>
       {expanded && (
         <div className="border-t p-3">
           <ItemDetailBody item={item} />

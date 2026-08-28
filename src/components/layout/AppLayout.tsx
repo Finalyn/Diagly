@@ -29,6 +29,11 @@ export function AppLayout() {
   const onDashboard = location.pathname === '/app/dashboard'
   const projMatch = location.pathname.match(/^\/app\/projects\/([^/]+)(?:\/|$)/)
   const diagProjectId = projMatch && projMatch[1] !== 'new' ? projMatch[1] : null
+  // L'editeur de diagnostic est un ecran de saisie plein cadre : la barre du bas
+  // recouvrait la liste du catalogue sans rien apporter (le retour se fait par la
+  // fleche de l'en-tete).
+  const editeurPleinEcran =
+    location.pathname.startsWith('/app/diagnostic/') || location.pathname === '/app/projects/new'
   const mainRef = useRef<HTMLDivElement>(null)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const isMobile = useIsMobile()
@@ -69,14 +74,19 @@ export function AppLayout() {
           <TopBar />
           <OfflineIndicator />
           {diagProjectId && !isMobile && <DiagnosticTabs projectId={diagProjectId} />}
-          <main ref={mainRef} className={`flex-1 overflow-y-auto overscroll-none pb-24 lg:pb-16 ${onDashboard ? 'mt-6 lg:mt-8' : 'mt-3'}`}>
+          <main
+            ref={mainRef}
+            className={`flex-1 overflow-y-auto overscroll-none lg:pb-16 ${editeurPleinEcran ? 'pb-6' : 'pb-24'} ${onDashboard ? 'mt-6 lg:mt-8' : 'mt-3'}`}
+          >
             <Outlet />
           </main>
         </div>
       </div>
 
-      {/* Navigation mobile épurée */}
-      <MobileNav onToggleAssistant={() => setAssistantOpen((o) => !o)} assistantOpen={assistantOpen} />
+      {/* Navigation mobile épurée (masquée dans l'éditeur) */}
+      {!editeurPleinEcran && (
+        <MobileNav onToggleAssistant={() => setAssistantOpen((o) => !o)} assistantOpen={assistantOpen} />
+      )}
 
       <AssistantWidget open={assistantOpen} onOpenChange={setAssistantOpen} />
     </div>

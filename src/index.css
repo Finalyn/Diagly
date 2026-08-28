@@ -143,3 +143,16 @@ body {
 .lg-40 { background: rgba(255,255,255,0.40); }
 .lg-55 { background: rgba(255,255,255,0.55); }
 .lg-70 { background: rgba(255,255,255,0.70); }
+
+/* Rangées de pastilles défilables (filtres, onglets) : le geste suffit, la barre
+   grise sous le contenu alourdit la mise en page sur mobile. */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Rangée défilable : dégradé sur le bord droit, pour montrer qu'il reste du contenu
+   au lieu de couper net une pastille au ras du bord. */
+.scroll-fade-r {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+@media (min-width: 1024px) { .scroll-fade-r { -webkit-mask-image: none; mask-image: none; } }

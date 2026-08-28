@@ -72,7 +72,7 @@ export function Payment() {
 
         <div className="space-y-6">
           <Card>
-            <CardHeader><CardTitle>Recapitulatif</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Récapitulatif</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <div className="flex justify-between text-sm"><span>Plan Pro (mensuel)</span><span className="font-medium">129.00 CHF</span></div>
               <div className="flex justify-between text-sm"><span>TVA (8.1%)</span><span>10.45 CHF</span></div>

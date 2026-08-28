@@ -92,7 +92,9 @@ export function SettingsPage() {
 
         {/* Contenu de la section */}
         <div className="min-w-0 space-y-5">
-          <div>
+          {/* Sur mobile, les pastilles au-dessus indiquent deja la section : ce titre
+              faisait doublon avec celui de la carte juste en dessous. */}
+          <div className="hidden lg:block">
             <h2 className="text-lg font-semibold">{current.label}</h2>
             <p className="text-sm text-muted-foreground">{current.desc}</p>
           </div>
