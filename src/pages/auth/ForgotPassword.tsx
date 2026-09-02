@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Mail, MailCheck, Loader2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Mail, MailCheck, Loader2 } from 'lucide-react'
 import { Button, Input } from '@/components/ui'
 import { AuthCard } from '@/components/auth/AuthCard'
 import { api, ApiError } from '@/lib/api'
@@ -8,6 +8,8 @@ import { api, ApiError } from '@/lib/api'
 export function ForgotPassword() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
+  /** false = le serveur n'a aucun SMTP : inutile de promettre un email. */
+  const [mailPossible, setMailPossible] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -18,7 +20,8 @@ export function ForgotPassword() {
     try {
       // Le serveur répond pareil que l'adresse existe ou non : on affiche le même
       // message dans tous les cas, pour ne pas révéler qui a un compte.
-      await api.auth.forgotPassword(email.trim().toLowerCase())
+      const r = await api.auth.forgotPassword(email.trim().toLowerCase())
+      setMailPossible(r.mailConfigured)
       setSent(true)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erreur de connexion au serveur')
@@ -30,16 +33,30 @@ export function ForgotPassword() {
   return (
     <AuthCard
       title="Mot de passe oublié"
-      subtitle={sent ? 'Vérifiez votre boîte mail.' : 'Entrez votre email pour recevoir un lien de réinitialisation.'}
+      subtitle={sent
+        ? (mailPossible ? 'Vérifiez votre boîte mail.' : undefined)
+        : 'Entrez votre email pour recevoir un lien de réinitialisation.'}
     >
       {sent ? (
         <div className="text-center">
-          <div className="h-16 w-16 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-            <MailCheck className="h-8 w-8 text-green-600" />
+          <div className={`h-16 w-16 rounded-full flex items-center justify-center mx-auto mb-4 ${mailPossible ? 'bg-green-50' : 'bg-amber-50'}`}>
+            {mailPossible
+              ? <MailCheck className="h-8 w-8 text-green-600" />
+              : <AlertTriangle className="h-8 w-8 text-amber-600" />}
           </div>
-          <p className="text-sm text-muted-foreground mb-6">
-            Si un compte existe avec cette adresse, vous recevrez un email avec les instructions pour réinitialiser votre mot de passe. Le lien est valable 30 minutes.
-          </p>
+          {mailPossible ? (
+            <p className="text-sm text-muted-foreground mb-6">
+              Si un compte existe avec cette adresse, vous recevrez un email avec les instructions pour réinitialiser votre mot de passe. Le lien est valable 30 minutes.
+            </p>
+          ) : (
+            /* Sans SMTP, annoncer un email qui n'arrivera jamais laisse l'utilisateur
+               attendre indéfiniment : on le dit et on donne la marche à suivre. */
+            <p className="text-sm text-muted-foreground mb-6">
+              L'envoi d'emails n'est pas activé sur ce serveur, aucun message ne partira.
+              Contactez <a href="mailto:contact@finalyn.com" className="font-medium text-foreground underline">contact@finalyn.com</a> pour
+              faire réinitialiser votre mot de passe.
+            </p>
+          )}
           <Link to="/login"><Button variant="outline" className="w-full">Retour à la connexion</Button></Link>
         </div>
       ) : (

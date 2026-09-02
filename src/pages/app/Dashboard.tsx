@@ -136,7 +136,7 @@ export function Dashboard() {
           {/* Accès rapides */}
           <section className="liquid-glass rounded-[24px] p-6" style={glass(1)}>
             <h2 className="mb-5 text-[16px] font-semibold text-neutral-800">Accès rapides</h2>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
               {QUICK.map((q) => (
                 <Link key={q.title} to={q.to} className="group flex flex-col items-center gap-4 rounded-2xl border border-black/[0.05] bg-white/45 px-4 py-14 text-center transition-all hover:-translate-y-0.5 hover:bg-white/80 hover:shadow-[0_14px_40px_-16px_rgba(0,0,0,0.22)]">
                   <span className="flex h-11 w-11 items-center justify-center rounded-full bg-neutral-900/[0.05] text-neutral-600 transition-colors group-hover:bg-blue-100 group-hover:text-blue-600">
@@ -154,7 +154,7 @@ export function Dashboard() {
           {/* En bref */}
           <section className="liquid-glass rounded-[24px] p-5" style={glass(0.55)}>
             <h2 className="mb-4 text-[16px] font-semibold text-neutral-800">En bref</h2>
-            <div className="grid grid-cols-2 divide-black/[0.06] sm:grid-cols-4 sm:divide-x">
+            <div className="grid grid-cols-2 divide-black/[0.06] xl:grid-cols-4 xl:divide-x">
               {KPIS.map((k) => (
                 <div key={k.label} className="px-1 sm:px-4 first:sm:pl-0 last:sm:pr-0">
                   <div className="flex items-center gap-2.5">

@@ -4,12 +4,13 @@ import { useQuery } from '@tanstack/react-query'
 import { Loader2, AlertCircle, ClipboardCheck, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf } from 'lucide-react'
 import { Button, Card, CardContent, Badge } from '@/components/ui'
 import { ExportDialog } from '@/components/ExportDialog'
-import { stateLabels, buildingTypeLabels } from '@/data/mock'
+import { stateLabels, buildingTypeLabels, stateColors } from '@/data/mock'
 import { formatCHF, cn, formatDate } from '@/lib/utils'
 import { computeProjectMetrics } from '@/lib/formulas'
-import { getMarketCoeff } from '@/lib/diagnostic-auto'
+import { getMarketCoeff, getMarketInfo, marketPeriodLabel, priceBasisNote } from '@/lib/diagnostic-auto'
 import { cfcGroupCode, cfcGroupLabels } from '@/lib/cfc'
 import { api } from '@/lib/api'
+import type { ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
 
 /** En-tête de marque du rapport : logo + identité de l'entreprise (Paramètres → Entreprise). */
@@ -77,6 +78,18 @@ export function ProjectRapports() {
   const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data])
 
   const cfcQuery = useQuery({ queryKey: ['cfc-catalog'], queryFn: () => api.cfc.catalog(), staleTime: 3.6e6 })
+  // Catalogue des items : il porte la description de l'état constaté (« état existant »
+  // du tableau de référence), qui doit figurer dans le rapport et pas seulement à la saisie.
+  const catalogQuery = useQuery({ queryKey: ['cfc-items'], queryFn: () => api.cfc.items(), staleTime: 3.6e6 })
+  const etatExistant = useMemo(() => {
+    const parId = new Map((catalogQuery.data?.items ?? []).map((c) => [c.id, c]))
+    return (it: { catalogItemId: number | null; state: ElementState | null }): string | null => {
+      if (!it.state || it.catalogItemId == null) return null
+      const c = parId.get(it.catalogItemId)
+      if (!c) return null
+      return it.state === 'TRES_BON' ? c.descTbe : it.state === 'BON' ? c.descBon : it.state === 'MOYEN' ? c.descMoyen : c.descMauvais
+    }
+  }, [catalogQuery.data])
   const labels = useMemo(() => cfcGroupLabels(cfcQuery.data?.entries ?? []), [cfcQuery.data])
 
   // Regroupement par groupe CFC (2 chiffres), trié par code.
@@ -334,9 +347,18 @@ export function ProjectRapports() {
                             <td className="font-mono py-1">{it.cfcCode}</td>
                             <td className="py-1">
                               {it.cfcLabel}
-                              {it.works.length > 0 && <div className="text-muted-foreground">{it.works.join(' · ')}</div>}
+                              {/* État existant constaté : c'est le cœur du livrable, pas seulement une aide à la saisie. */}
+                              {etatExistant(it) && <div className="text-muted-foreground">{etatExistant(it)}</div>}
+                              {it.works.length > 0 && <div className="text-muted-foreground italic">Travaux : {it.works.join(' · ')}</div>}
                             </td>
-                            <td className="py-1">{it.state ? stateLabels[it.state] : 'À évaluer'}</td>
+                            <td className="py-1">
+                              {it.state ? (
+                                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                  <span className={cn('inline-block h-2.5 w-2.5 rounded-full print:border print:border-black/20', stateColors[it.state])} />
+                                  {stateLabels[it.state]}
+                                </span>
+                              ) : 'À évaluer'}
+                            </td>
                             <td className="py-1">{it.priority ?? '—'}</td>
                             <td className="py-1 text-right tabular-nums">
                               {it.area != null ? `${it.area}${it.unit ? ` ${it.unit.replace(/^CHF\s*\/?\s*/i, '')}` : ''}` : '—'}
@@ -367,7 +389,8 @@ export function ProjectRapports() {
                   ['Part vitrée', `${project.windowPct} %`, 'appliquée à la surface de façade'],
                   ['Surface de toiture', roof != null ? `${roof} m²` : `${Math.round(metrics.flatRoof)}–${Math.round(metrics.slopedRoof)} m²`,
                     roof != null ? `type ${project.roofType === 'PENTE' ? 'en pente' : project.roofType === 'MIXTE' ? 'mixte' : 'plate'}` : 'type de toiture non précisé, aucune présomption'],
-                  ['Indice de construction', `× ${getMarketCoeff()}`, 'indice suisse des prix de la construction (OFS)'],
+                  ['Indice de construction', `× ${getMarketCoeff()}`,
+                    `indice suisse des prix de la construction (OFS)${getMarketInfo().indexDate ? `, ${getMarketInfo().index} (${marketPeriodLabel()})` : ''}`],
                   ['Honoraires / Réserve', `${project.honoraryPct ?? 0} % / ${project.reservePct ?? 0} %`, 'réserve calculée sur le montant déjà majoré'],
                   ['TVA', '8.1 %', 'appliquée au sous-total'],
                 ].map(([l, v, note]) => (
@@ -387,7 +410,8 @@ export function ProjectRapports() {
           </section>
 
           <p className="text-[10px] text-muted-foreground border-t pt-3">
-            Rapport indicatif généré par Diagly. Surfaces et coûts estimés par formules, à vérifier sur place.
+            {priceBasisNote()} Surfaces et coûts estimés par formules, à vérifier sur place.
+            Rapport généré par Diagly.
           </p>
         </CardContent>
       </Card>
@@ -616,7 +640,9 @@ function ScenarioReport({ projectName, canton, variant, allVariants, items, ener
           <p className="text-xs text-emerald-700 flex items-center gap-1"><Leaf className="h-3.5 w-3.5 shrink-0" />Scénario à visée énergétique — classe actuelle : <b>{energyClass ?? 'non renseignée'}</b>. Inclut isolation et remise aux normes.</p>
         )}
 
-        <p className="text-[10px] text-muted-foreground border-t pt-3">Rapport indicatif généré par Diagly · scénario « {variant.name} ».</p>
+        <p className="text-[10px] text-muted-foreground border-t pt-3">
+          {priceBasisNote()} Scénario « {variant.name} », rapport généré par Diagly.
+        </p>
       </CardContent>
     </Card>
   )

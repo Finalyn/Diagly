@@ -110,7 +110,11 @@ describe('quantité par formule de catalogue', () => {
     expect(computeQuantity(item({ quantityFormula: "Nombre d'appartement" }), ctx)).toBe(8)
     expect(computeQuantity(item({ quantityFormula: "Nombre de cage d'escalier" }), ctx)).toBe(2)
     expect(computeQuantity(item({ quantityFormula: "Nombre de portes d'entrées" }), ctx)).toBe(2)
-    expect(computeQuantity(item({ quantityFormula: "2 pce par pièce d'eau" }), ctx)).toBe(32) // 8 × 2 × 2
+    // Les appareils sanitaires ne se déduisent pas : le nombre dépend de la typologie
+    // des logements, il est relevé sur place (retour terrain du 1er septembre 2026).
+    const sanitaire = resolveQuantity(item({ quantityFormula: "2 pce par pièce d'eau" }), ctx)
+    expect(sanitaire.quantity).toBeUndefined()
+    expect(sanitaire.reason).toContain('sur place')
   })
 
   it('tolère la casse, les accents et les espaces du libellé', () => {
@@ -192,5 +196,55 @@ describe('contrôles de vraisemblance', () => {
   it('signale un nombre d’étages incohérent avec les surfaces', () => {
     expect(floorsWarning(2, 4248, 708)).toContain('6 niveaux')
     expect(floorsWarning(6, 4248, 708)).toBeNull()
+  })
+})
+
+describe('règles par code CFC, pour les items sans formule', () => {
+  const ctx = buildQuantityContext(DOSSIER)
+
+  it('compte les menuiseries des communs en portes palières', () => {
+    const q = resolveQuantity(item({ cfcCode: '273.0', unit: 'CHF/U', description: 'Portes intérieures - Bois' }), ctx)
+    expect(q.quantity).toBe(8) // une par logement
+    expect(q.basis).toContain('palières')
+  })
+
+  it('chiffre les revêtements intérieurs à la surface de plancher', () => {
+    for (const [cfc, desc] of [['281', 'Sols - Parquet'], ['282', 'Murs intérieurs - Peinture/Crépi'], ['283', 'Plafonds - Plâtre/Crépi']]) {
+      expect(computeQuantity(item({ cfcCode: cfc, unit: 'CHF/m²', description: desc }), ctx), desc).toBe(1416)
+    }
+  })
+
+  it('réserve la faïence aux salles de bain', () => {
+    const q = resolveQuantity(item({ cfcCode: '282', unit: 'CHF/m²', description: 'Murs intérieurs - Faïences' }), ctx)
+    expect(q.quantity).toBe(56) // 8 logements × 7 m²
+    expect(q.basis).toContain('salles de bain')
+  })
+})
+
+describe('descentes d’eaux pluviales', () => {
+  const F = 'Descentes EP : 4/8/10 selon surface bâtie x hauteur'
+  const hauteur = (g: Partial<typeof DOSSIER>) => buildQuantityContext({ ...DOSSIER, ...g })
+
+  it('compte 4 descentes jusqu’à 400 m² d’emprise', () => {
+    // 4 descentes × (2 étages × 2.7 m) = 21.6 → 22 ml
+    expect(computeQuantity(item({ quantityFormula: F }), hauteur({ builtArea: 350 }))).toBe(22)
+  })
+
+  it('compte 8 descentes entre 400 et 900 m²', () => {
+    expect(computeQuantity(item({ quantityFormula: F }), hauteur({ builtArea: 708 }))).toBe(43)
+  })
+
+  it('compte 10 descentes au-delà de 900 m²', () => {
+    expect(computeQuantity(item({ quantityFormula: F }), hauteur({ builtArea: 1200 }))).toBe(54)
+  })
+
+  it('suit la hauteur réelle du bâtiment', () => {
+    expect(computeQuantity(item({ quantityFormula: F }), hauteur({ builtArea: 708, nbFloors: 6 }))).toBe(130)
+  })
+
+  it('ne conclut pas si l’emprise ou la hauteur manque', () => {
+    const q = resolveQuantity(item({ quantityFormula: F }), hauteur({ builtArea: 0 }))
+    expect(q.quantity).toBeUndefined()
+    expect(q.reason).toContain('emprise')
   })
 })

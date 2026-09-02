@@ -68,7 +68,9 @@ export interface ProjectMetrics {
   commons: number
   tilesBathrooms: number
   tilesKitchens: number
-  entranceDoors: number
+  /** Portes palières : celle de chaque logement, sur le palier. */
+  landingDoors: number
+  /** Portes intérieures aux logements (hors porte palière). */
   interiorDoors: number
   staircases: number
   /** Pièces d'eau : une salle de bain + une cuisine par logement. */
@@ -96,7 +98,7 @@ export function computeProjectMetrics(g: ProjectGeometry): ProjectMetrics {
     commons: floorArea * 0.1,
     tilesBathrooms: nbApartments * 7,
     tilesKitchens: nbApartments * 12,
-    entranceDoors: nbApartments,
+    landingDoors: nbApartments,
     interiorDoors: nbApartments * 4,
     staircases: n(g.nbStaircases),
     wetRooms: nbApartments * 2,

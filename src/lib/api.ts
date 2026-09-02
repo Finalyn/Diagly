@@ -177,7 +177,7 @@ export const api = {
       request<void>('/api/auth/logout', { method: 'POST', body: { refreshToken }, withAuth: false }),
     // Mot de passe oublié : réponse toujours identique, que l'adresse existe ou non.
     forgotPassword: (email: string) =>
-      request<{ ok: boolean }>('/api/auth/forgot-password', { method: 'POST', body: { email }, withAuth: false }),
+      request<{ ok: boolean; mailConfigured: boolean }>('/api/auth/forgot-password', { method: 'POST', body: { email }, withAuth: false }),
     resetPassword: (body: { token: string; password: string }) =>
       request<{ ok: boolean }>('/api/auth/reset-password', { method: 'POST', body, withAuth: false }),
   },

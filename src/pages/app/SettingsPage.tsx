@@ -189,7 +189,9 @@ function CompanyCard() {
   }
   const save = async () => {
     setSaving(true); setError(null); setSaved(false)
-    try { await savePrefs({ company: { ...f, logo: logo || undefined, accentColor: accent } }); setSaved(true); setTimeout(() => setSaved(false), 2500) }
+    // `undefined` disparaît de la requête JSON : le serveur ne voyait alors rien à
+    // effacer et gardait l'ancien logo. On envoie donc explicitement `null`.
+    try { await savePrefs({ company: { ...f, logo: logo || null, accentColor: accent } }); setSaved(true); setTimeout(() => setSaved(false), 2500) }
     catch (e) { setError(e instanceof ApiError ? e.message : 'Erreur') } finally { setSaving(false) }
   }
   return (

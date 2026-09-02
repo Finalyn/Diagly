@@ -6,6 +6,7 @@ import { Button, Card, CardHeader, CardTitle, CardContent, Input } from '@/compo
 import { ExportDialog } from '@/components/ExportDialog'
 import { stateLabels, stateColors, priorityColors } from '@/data/mock'
 import { formatCHF, cn } from '@/lib/utils'
+import { priceBasisNote } from '@/lib/diagnostic-auto'
 import { api } from '@/lib/api'
 
 const TVA = 0.081 // TVA Suisse 8.1%
@@ -31,9 +32,6 @@ export function ProjectMetres() {
   })
   const items = itemsQuery.data?.items ?? []
 
-  // Indice marché (OFS) appliqué aux coûts — affiché pour transparence.
-  const marketQuery = useQuery({ queryKey: ['market-index'], queryFn: () => api.market.index(), staleTime: 1000 * 60 * 60 })
-  const market = marketQuery.data
 
   const updateProject = useMutation({
     mutationFn: (body: { honoraryPct?: number; reservePct?: number }) => api.projects.update(id!, body),
@@ -187,11 +185,7 @@ export function ProjectMetres() {
               <p className="text-[11px] text-muted-foreground pt-1">
                 Total = HT × (1 + honoraires) × (1 + réserve) × 1.081. Estimation ±15%.
               </p>
-              {market && (
-                <p className="text-[11px] text-muted-foreground border-t pt-2">
-                  Prix indexés sur le marché suisse — indice construction OFS {market.index} ({market.indexDate}), coefficient ×{market.coeff.toFixed(3)}.
-                </p>
-              )}
+              <p className="text-[11px] text-muted-foreground border-t pt-2">{priceBasisNote()}</p>
             </CardContent>
           </Card>
         </div>

@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { formatCHF } from '@/lib/utils'
 import { stateLabels, buildingTypeLabels } from '@/data/mock'
 import { cfcGroupCode } from '@/lib/cfc'
+import { priceBasisNote, setMarketInfo } from '@/lib/diagnostic-auto'
 
 const toNum = (v: string | null | undefined) => (v ? Number(v) : 0)
 
@@ -16,6 +17,14 @@ export function PublicReport() {
     queryFn: () => api.share.get(token!),
     enabled: !!token,
     retry: false,
+  })
+
+  // /api/market/index est public : la mention de la base de prix est disponible
+  // ici aussi, sans connexion.
+  useQuery({
+    queryKey: ['market-index'],
+    queryFn: async () => { const m = await api.market.index(); setMarketInfo(m); return m },
+    staleTime: 1000 * 60 * 60,
   })
 
   const groups = useMemo(() => {
@@ -173,7 +182,8 @@ export function PublicReport() {
           )}
 
           <p className="text-[10px] text-gray-400 border-t pt-3">
-            Document en lecture seule. Surfaces et coûts estimés, à vérifier sur place. Généré avec Diagly.
+            {priceBasisNote()} Document en lecture seule, surfaces et coûts estimés, à vérifier sur place.
+            Généré avec Diagly.
           </p>
         </div>
       </div>

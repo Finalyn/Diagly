@@ -512,8 +512,8 @@ export function ProjectNew() {
                   { label: 'Communs', value: metrics.commons, unit: 'm2' },
                   { label: 'Carrelage SDB', value: metrics.tilesBathrooms, unit: 'm2' },
                   { label: 'Carrelage cuisine', value: metrics.tilesKitchens, unit: 'm2' },
-                  { label: 'Portes palieres', value: metrics.entranceDoors, unit: 'pce' },
-                  { label: 'Portes interieures', value: metrics.interiorDoors, unit: 'pce' },
+                  { label: 'Portes palières', value: metrics.landingDoors, unit: 'pce' },
+                  { label: 'Portes intérieures', value: metrics.interiorDoors, unit: 'pce' },
                 ].map(m => (
                   <div key={m.label} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <span className="text-sm">{m.label}</span>

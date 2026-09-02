@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { setMarketCoeff } from '@/lib/diagnostic-auto'
+import { setMarketInfo } from '@/lib/diagnostic-auto'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { useIsMobile } from '@/lib/use-mobile'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
@@ -71,7 +71,7 @@ function PageLoader() {
 function App() {
   // Indexe les prix du catalogue sur le marché suisse (indice OFS) au démarrage.
   useEffect(() => {
-    api.market.index().then((m) => setMarketCoeff(m.coeff)).catch(() => {})
+    api.market.index().then(setMarketInfo).catch(() => {})
   }, [])
 
   return (

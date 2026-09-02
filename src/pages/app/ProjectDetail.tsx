@@ -88,6 +88,7 @@ export function ProjectDetail() {
   // Garde-fous : les données de registre couvrent parfois un îlot entier, pas le bâtiment.
   const perimetreDouteux = perimeterWarning(project.perimeter, project.builtArea)
   const etagesDouteux = floorsWarning(project.nbFloors, project.floorArea, project.builtArea)
+  const tropDeRenoves = (project.renovatedApartments ?? 0) > (project.nbApartments ?? 0)
 
   // Sauvegarde au blur (seulement si la valeur a changé).
   const saveText = (key: keyof ApiProject, current: string | null, required = false) =>
@@ -171,7 +172,13 @@ export function ProjectDetail() {
                 </Select>
               </Field>
               {isResidential && (
+                <>
                 <Field label="Appartements"><Input type="number" defaultValue={project.nbApartments ?? ''} onBlur={saveNum('nbApartments', project.nbApartments)} /></Field>
+                <Field label="Dont rénovés">
+                  <Input type="number" min="0" defaultValue={project.renovatedApartments ?? ''} onBlur={saveNum('renovatedApartments', project.renovatedApartments ?? null)} />
+                  {tropDeRenoves && <p className="mt-1 text-[11px] text-amber-700">Plus de logements rénovés que de logements.</p>}
+                </Field>
+                </>
               )}
               <Field label="Étages">
                 <Input type="number" defaultValue={project.nbFloors ?? ''} onBlur={saveNum('nbFloors', project.nbFloors)} />

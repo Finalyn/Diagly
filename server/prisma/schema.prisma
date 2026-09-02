@@ -325,6 +325,10 @@ model Project {
   yearBuilt     Int?          @map("year_built")
   renovationYear Int?         @map("renovation_year")
   nbApartments  Int?          @map("nb_apartments")
+  /// Nombre de logements deja renoves : ils appellent moins de travaux.
+  renovatedApartments Int?     @map("renovated_apartments")
+  /// Repartition par typologie, ex. { "2.5": 4, "3.5": 6 }. Sert au comptage des pieces d'eau.
+  apartmentTypes Json?         @map("apartment_types")
   nbFloors      Int?          @map("nb_floors")
   floorHeight   Float?        @map("floor_height")
   nbStaircases  Int?          @map("nb_staircases")

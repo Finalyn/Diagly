@@ -14,7 +14,7 @@ import { formatCHF, cn } from '@/lib/utils'
 import { groupItemsByCategory } from '@/lib/cfc'
 import {
   STATE_PRIORITY, workForState, priceForState, computeQuantity, resolveQuantity, computeCost, computeCostFromPrice,
-  buildQuantityContext, appliedUnitPrice, getMarketCoeff, type QuantityContext,
+  buildQuantityContext, appliedUnitPrice, getMarketCoeff, priceToNumber, type QuantityContext,
 } from '@/lib/diagnostic-auto'
 import { api, ApiError } from '@/lib/api'
 import { ProjectSectionsMenu } from '@/components/ProjectSectionsMenu'
@@ -642,6 +642,25 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
   /** Unité affichée à côté d'une quantité (« CHF/m² fenêtres » -> « m² fenêtres »). */
   const qtyUnit = catalog?.unit?.replace(/^CHF\s*\/?\s*/i, '') ?? ''
   const [qtyError, setQtyError] = useState<string | null>(null)
+  /** Un prix au mètre courant appelle une longueur, pas une « quantité ». */
+  const estLongueur = /ml$|metre|mètre/i.test(catalog?.unit ?? '')
+  /**
+   * Pourquoi un coût reste vide. Le tableau de référence ne chiffre que les états qui
+   * appellent des travaux : 81 items sur 102 n'ont aucun prix en « Bon », et la quasi
+   * totalité n'en a pas en « Très bon ». Un écran vide laissait croire à une panne.
+   */
+  const raisonCoutVide = !item.state
+    ? 'Choisissez un état'
+    : !catalog
+      ? 'Élément hors catalogue : coût à saisir'
+      : !suggestedPrice
+        ? `Aucun travail chiffré pour l'état « ${stateLabels[item.state]} »`
+        : priceToNumber(suggestedPrice) == null
+          ? `Prix au catalogue non numérique (${suggestedPrice})`
+          : item.area == null
+            ? 'Quantité à saisir'
+            : '—'
+
 
   // Synchronisation de la quantité automatique. Corriger le périmètre, les étages ou le
   // type de toiture du dossier doit se répercuter sur les éléments qui en dépendent.
@@ -781,6 +800,35 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
             <StepHeader n={2} label="Évaluer l'état" />
             <StateGuide item={item} catalog={catalog} onApply={applyState} isMutating={isMutating} />
           </section>
+
+          {/* Étape 3 — métré, seulement quand il ne se déduit pas du bâtiment.
+              Sans ce champ, un élément facturé au mètre (garde-corps, modénature) ou à
+              la pièce restait sans quantité, donc sans coût, et rien sur l'écran mobile
+              ne permettait de le saisir. */}
+          {qtyResolution.origin === 'manuelle' && (
+            <section className="space-y-3">
+              <StepHeader n={3} label={estLongueur ? 'Mesurer la longueur' : 'Saisir la quantité'} />
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number" inputMode="decimal" min="1" className="w-32 text-lg"
+                  key={`mq-${item.id}-${item.area}`}
+                  defaultValue={item.area ?? ''}
+                  placeholder={estLongueur ? 'ex. 24' : 'ex. 4'}
+                  onBlur={(e) => {
+                    const raw = e.target.value.trim()
+                    const v = raw ? Number(raw) : undefined
+                    if (raw && (!isFinite(v!) || v! <= 0)) { setQtyError('Valeur minimale : 1'); e.target.value = String(item.area ?? ''); return }
+                    setQtyError(null)
+                    if (v !== (item.area ?? undefined)) applyQuantity(v)
+                  }}
+                />
+                <span className="text-sm font-medium text-muted-foreground">{qtyUnit || 'unités'}</span>
+              </div>
+              {qtyError
+                ? <p className="text-xs text-red-600">{qtyError}</p>
+                : <p className="text-xs text-muted-foreground">{qtyResolution.reason ?? 'Ne se déduit pas des dimensions du bâtiment.'}</p>}
+            </section>
+          )}
 
           {/* Résultat automatique (priorité + coût) */}
           <div className="rounded-xl border bg-muted/20 p-3 flex items-center justify-between gap-3">
@@ -947,12 +995,12 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Coût estimé</p>
-              {item.estimatedCost ? (
+              {item.estimatedCost && toNum(item.estimatedCost) > 0 ? (
                 <p className="font-semibold text-primary mt-0.5">{formatCHF(toNum(item.estimatedCost))}</p>
-              ) : suggestedPrice ? (
-                <p className="font-medium text-muted-foreground mt-0.5 text-xs">{suggestedPrice} {catalog?.unit ?? ''}</p>
               ) : (
-                <p className="font-semibold mt-0.5">—</p>
+                /* Un coût vide n'est pas une panne : le catalogue ne chiffre pas tous les
+                   états, et certaines quantités ne se déduisent pas. On dit lequel des deux. */
+                <p className="font-medium text-amber-700 mt-0.5 text-xs">{raisonCoutVide}</p>
               )}
             </div>
           </div>

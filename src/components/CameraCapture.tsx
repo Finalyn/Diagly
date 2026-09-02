@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Camera, Maximize2, X, ZoomIn } from 'lucide-react'
+import { Camera, Images, Maximize2, X, ZoomIn } from 'lucide-react'
 
 /** Capture une frame vidéo -> data URL JPEG compacte (max 1280px). `zoom` = recadrage numérique centré. */
 function frameToDataUrl(video: HTMLVideoElement, zoom = 1, maxDim = 1280, quality = 0.7): string | null {
@@ -47,6 +47,18 @@ const touchDist = (t: { [i: number]: { clientX: number; clientY: number } }) =>
  * Zoom natif de l'appareil si supporté, sinon zoom numérique. Fallback appareil photo natif.
  */
 export function CameraCapture({ onCapture }: { onCapture: (dataUrl: string) => void }) {
+  /**
+   * Import depuis la galerie. Sans l'attribut `capture`, le téléphone propose la
+   * pellicule : indispensable quand la photo a été prise avant d'ouvrir l'élément,
+   * ou depuis un autre appareil.
+   */
+  const importer = async (files: FileList | null) => {
+    if (!files?.length) return
+    for (const f of Array.from(files)) {
+      try { onCapture(await fileToDataUrl(f)) } catch { /* fichier illisible : on passe */ }
+    }
+  }
+
   const inlineRef = useRef<HTMLVideoElement>(null)
   const fsRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -114,14 +126,19 @@ export function CameraCapture({ onCapture }: { onCapture: (dataUrl: string) => v
   // Fallback : appareil photo natif.
   if (error) {
     return (
-      <label className="block relative aspect-square w-full rounded-2xl overflow-hidden border-2 border-dashed border-muted-foreground/30 bg-muted/30 cursor-pointer">
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
-          <Camera className="h-14 w-14 mb-2" />
+      <div className="flex aspect-square w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-muted-foreground/30 bg-muted/30 text-muted-foreground">
+        <label className="flex cursor-pointer flex-col items-center">
+          <Camera className="mb-2 h-12 w-12" />
           <span className="text-sm font-medium">Prendre une photo</span>
-        </div>
-        <input type="file" accept="image/*" capture="environment" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f).then(onCapture); e.currentTarget.value = '' }} />
-      </label>
+          <input type="file" accept="image/*" capture="environment" className="hidden"
+            onChange={(e) => { importer(e.target.files); e.currentTarget.value = '' }} />
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-sm font-medium text-foreground">
+          <Images className="h-4 w-4" />Choisir dans la galerie
+          <input type="file" accept="image/*" multiple className="hidden"
+            onChange={(e) => { importer(e.target.files); e.currentTarget.value = '' }} />
+        </label>
+      </div>
     )
   }
 
@@ -149,6 +166,16 @@ export function CameraCapture({ onCapture }: { onCapture: (dataUrl: string) => v
           className="absolute bottom-3 left-1/2 -translate-x-1/2 h-16 w-16 rounded-full bg-white/95 border-4 border-white/60 shadow-lg active:scale-90 transition-transform disabled:opacity-50 flex items-center justify-center">
           <span className="h-11 w-11 rounded-full border-2 border-gray-400" />
         </button>
+
+        {/* Photos déjà prises : pellicule du téléphone, plusieurs à la fois */}
+        <label
+          title="Choisir des photos déjà prises"
+          className="absolute bottom-5 left-3 flex h-12 w-12 cursor-pointer items-center justify-center rounded-full bg-black/40 text-white transition active:scale-90"
+        >
+          <Images className="h-5 w-5" />
+          <input type="file" accept="image/*" multiple className="hidden"
+            onChange={(e) => { importer(e.target.files); e.currentTarget.value = '' }} />
+        </label>
       </div>
 
       {/* Plein écran (portal sur body -> couvre vraiment tout l'écran) */}

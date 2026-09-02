@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
-import { BuildingType, ProjectStatus } from "@prisma/client";
+import { BuildingType, Prisma, ProjectStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { validateBody } from "../middlewares/validate.js";
@@ -13,6 +13,15 @@ import { blockViewerWrites } from "../middlewares/org.js";
 const router = Router();
 router.use(requireAuth);
 router.use(blockViewerWrites);
+
+/**
+ * Les typologies sont stockées en JSON : Prisma veut une valeur JSON explicite, et
+ * `null` doit passer par JsonNull pour vider la colonne plutôt qu'ignorer le champ.
+ */
+function typologiesPourPrisma(v: Record<string, number> | null | undefined) {
+  if (v === undefined) return {};
+  return { apartmentTypes: v === null ? Prisma.JsonNull : (v as Prisma.InputJsonValue) };
+}
 
 /** Vérifie que l'opération (si fournie) est accessible (parc de l'organisation ou compte solo). */
 async function assertOperationOwnership(operationId: string | null | undefined, ownerId: string) {
@@ -34,6 +43,10 @@ const projectBaseSchema = z.object({
   yearBuilt: z.number().int().min(1500).max(2100).optional(),
   renovationYear: z.number().int().min(1500).max(2100).optional(),
   nbApartments: z.number().int().min(0).optional(),
+  renovatedApartments: z.number().int().min(0).max(10_000).nullable().optional(),
+  // Typologies suisses : « 1.5 », « 2.5 »… en clef, nombre de logements en valeur.
+  apartmentTypes: z.record(z.string().regex(/^[0-9]+(\.5)?$/), z.number().int().min(0).max(10_000))
+    .nullable().optional(),
   nbFloors: z.number().int().min(0).optional(),
   floorHeight: z.number().positive().optional(),
   nbStaircases: z.number().int().min(0).optional(),
@@ -82,10 +95,10 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", validateBody(createSchema), async (req, res) => {
-  const data = req.body as z.infer<typeof createSchema>;
+  const { apartmentTypes, ...data } = req.body as z.infer<typeof createSchema>;
   await assertOperationOwnership(data.operationId, req.auth!.sub);
   const project = await prisma.project.create({
-    data: { ...data, ownerId: req.auth!.sub },
+    data: { ...data, ...typologiesPourPrisma(apartmentTypes), ownerId: req.auth!.sub },
   });
   res.status(201).json({ project });
 });
@@ -108,9 +121,12 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", validateBody(updateSchema), async (req, res) => {
   const before = await loadOwnedProject(req.params.id, req.auth!.sub);
-  const data = req.body as z.infer<typeof updateSchema>;
+  const { apartmentTypes, ...data } = req.body as z.infer<typeof updateSchema>;
   await assertOperationOwnership(data.operationId, req.auth!.sub);
-  const project = await prisma.project.update({ where: { id: req.params.id }, data });
+  const project = await prisma.project.update({
+    where: { id: req.params.id },
+    data: { ...data, ...typologiesPourPrisma(apartmentTypes) },
+  });
   // Finalisation (transition vers TERMINE uniquement).
   if (data.status === "TERMINE" && before.status !== "TERMINE") {
     fireEvent(req.auth!.sub, "diagnostic.finalise", { projectId: project.id, egid: project.egid ?? null });

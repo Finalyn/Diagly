@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { ApiProject, ApiDiagnosticItem } from './api-types'
+import { priceBasisNote } from './diagnostic-auto'
 
 const STATE_LABEL: Record<string, string> = {
   TRES_BON: 'Très bon', BON: 'Bon', MOYEN: 'Moyen', MAUVAIS: 'Mauvais',
@@ -73,6 +74,8 @@ export function exportCostsPdf(project: ApiProject, items: ApiDiagnosticItem[], 
   const end = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY
   doc.setFontSize(8); doc.setTextColor(150)
   doc.text('Estimation ±15%. Total = HT × (1 + honoraires) × (1 + réserve) × 1.081.', 14, end + 8)
+  // Base de prix : le lecteur du PDF doit savoir sur quoi les montants reposent.
+  doc.text(doc.splitTextToSize(priceBasisNote(), 182), 14, end + 13)
 
   doc.save(`${fileBase(project)}.pdf`)
 }

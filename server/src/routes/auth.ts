@@ -13,7 +13,7 @@ import { badRequest, conflict, unauthorized } from "../lib/http-error.js";
 import { validateBody } from "../middlewares/validate.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { loginLimiter, passwordResetLimiter, registerLimiter, twoFaLimiter } from "../middlewares/rate-limit.js";
-import { sendMail, passwordResetEmail } from "../lib/mail.js";
+import { sendMail, mailConfigured, passwordResetEmail } from "../lib/mail.js";
 import { logger } from "../lib/logger.js";
 import jwt from "jsonwebtoken";
 import { authenticator } from "otplib";
@@ -286,7 +286,9 @@ router.post(
       // Sans SMTP configure (dev), le lien part dans les logs plutot que d'etre perdu.
       if (!sent) logger.warn({ email: user.email, url }, "lien de reinitialisation non envoye (SMTP absent)");
     }
-    res.json({ ok: true });
+    // `mailConfigured` ne dépend pas du compte : il ne dit pas si l'adresse existe, mais
+    // il évite de promettre un email que le serveur est incapable d'envoyer.
+    res.json({ ok: true, mailConfigured: mailConfigured() });
   },
 );
 

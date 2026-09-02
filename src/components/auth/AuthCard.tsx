@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom'
  */
 export function AuthCard({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
-    <div className="relative min-h-dvh flex items-center justify-center overflow-hidden bg-gradient-to-b from-white to-[#eef0f3] px-4 py-10">
+    <div className="safe-top safe-sides relative min-h-dvh flex items-center justify-center overflow-y-auto overflow-x-hidden bg-gradient-to-b from-white to-[#eef0f3] px-4 py-10">
       <div className="relative w-full max-w-md">
         <Link to="/" className="flex items-center justify-center gap-2 mb-8">
           <img src="/diagly-logo.svg" alt="Diagly" className="h-9 w-auto" />

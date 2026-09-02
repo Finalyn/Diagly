@@ -43,7 +43,9 @@ export interface ApiUser {
 }
 
 export interface UserPreferences {
-  company?: { name?: string; address?: string; postalCode?: string; city?: string; canton?: string; vatNumber?: string; iban?: string; logo?: string; accentColor?: string }
+  // `null` = champ explicitement vidé. `undefined` disparaîtrait de la requête JSON
+  // et le serveur, qui fusionne, garderait l'ancienne valeur.
+  company?: { name?: string; address?: string; postalCode?: string; city?: string; canton?: string; vatNumber?: string; iban?: string; logo?: string | null; accentColor?: string }
   defaults?: { honoraryPct?: number; reservePct?: number; vatPct?: number; unit?: 'm' | 'cm' | 'mm' }
   notifications?: { emailDiagnostic?: boolean; calendarReminders?: boolean; weeklyDigest?: boolean; priorityAlerts?: boolean }
   /** Modèles d'export enregistrés (mapping de colonnes) + modèle par défaut. */
@@ -91,6 +93,10 @@ export interface ApiProject {
   yearBuilt: number | null
   renovationYear: number | null
   nbApartments: number | null
+  /** Logements déjà rénovés : ils appellent moins de travaux. */
+  renovatedApartments?: number | null
+  /** Répartition par typologie, ex. { '2.5': 4, '3.5': 6 }. */
+  apartmentTypes?: Record<string, number> | null
   nbFloors: number | null
   floorHeight: number | null
   nbStaircases: number | null

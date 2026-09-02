@@ -48,9 +48,9 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-muted">
+    <div className="safe-top safe-sides flex h-dvh overflow-hidden bg-muted">
       {/* Colonne gauche : panneau unique (desktop) */}
-      <div className="hidden lg:flex lg:flex-col gap-3 pl-3 py-3 w-[17.5rem] shrink-0">
+      <div className="hidden md:flex md:flex-col gap-3 pl-3 py-3 w-[15rem] lg:w-[17.5rem] shrink-0">
         <Sidebar onOpenAssistant={() => setAssistantOpen(true)} />
       </div>
 
@@ -76,7 +76,7 @@ export function AppLayout() {
           {diagProjectId && !isMobile && <DiagnosticTabs projectId={diagProjectId} />}
           <main
             ref={mainRef}
-            className={`flex-1 overflow-y-auto overscroll-none lg:pb-16 ${editeurPleinEcran ? 'pb-6' : 'pb-24'} ${onDashboard ? 'mt-6 lg:mt-8' : 'mt-3'}`}
+            className={`flex-1 overflow-y-auto overscroll-none md:pb-16 ${editeurPleinEcran ? 'pb-6' : 'pb-24'} ${onDashboard ? 'mt-6 lg:mt-8' : 'mt-3'}`}
           >
             <Outlet />
           </main>
