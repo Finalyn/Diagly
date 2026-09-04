@@ -6,6 +6,7 @@
 import { prisma } from "./prisma.js";
 import { notFound } from "./http-error.js";
 import { ownerScopeFor } from "./org-context.js";
+import { marketCoeff } from "./market.js";
 
 const TVA_PCT = 8.1;
 const num = (v: unknown) => (v == null ? 0 : Number(v));
@@ -67,7 +68,7 @@ export interface ExportVariant extends CostCascade {
 }
 
 /** Coefficient marché (indice OFS des prix de la construction), pour les estimations de scénarios. */
-const MARKET_COEFF = (Number(process.env.DIAGLY_MARKET_INDEX) || 112.3) / (Number(process.env.DIAGLY_BASE_INDEX) || 100);
+const MARKET_COEFF = marketCoeff();
 
 export interface ScenarioPacks {
   improvementPack: number; // rénovation intérieure estimée (finitions, confort) — depuis la surface de plancher

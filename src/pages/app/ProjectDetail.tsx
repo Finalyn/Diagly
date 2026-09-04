@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useIsMobile } from '@/lib/use-mobile'
 import { Loader2, AlertCircle, ClipboardCheck, Plus } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Select, Input } from '@/components/ui'
+import { VisitEmail } from '@/components/VisitEmail'
 import { Dropdown } from '@/components/Dropdown'
 import { ProjectMap } from '@/components/ProjectMap'
 import { TerrainConstraintsCard } from '@/components/TerrainConstraintsCard'
@@ -128,6 +129,8 @@ export function ProjectDetail() {
             {update.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
           </div>
         </div>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-start">
+        <VisitEmail project={project} />
         {diagnostic ? (
           <Link to={`/app/diagnostic/${diagnostic.id}`} className="shrink-0">
             <Button className="w-full sm:w-auto"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir le diagnostic</Button>
@@ -139,6 +142,7 @@ export function ProjectDetail() {
               : <><Plus className="mr-2 h-4 w-4" />Démarrer un diagnostic</>}
           </Button>
         )}
+        </div>
       </div>
 
       <div className="grid gap-4 md:gap-6 lg:grid-cols-2">

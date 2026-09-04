@@ -228,6 +228,8 @@ export interface ApiDiagnosticItem {
   quantityManual?: boolean
   /** true = coût forcé à la main : il ne suit plus le catalogue. */
   costManual?: boolean
+  /** Coefficient marché appliqué au coût de cette ligne, pour pouvoir la réindexer. */
+  costIndex?: number | null
   unit: string | null
   yearInstalled: number | null
   /** Année d'intervention planifiée (plan de travaux). null = déduite de la priorité à l'export. */

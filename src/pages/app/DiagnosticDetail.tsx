@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Loader2, AlertCircle, Search, Plus, Check, ImagePlus, X, ArrowRight, ScanSearch, Trash2, ChevronDown,
+  ArrowLeft, Loader2, AlertCircle, Search, Plus, Check, ImagePlus, X, ArrowRight, ScanSearch, Trash2, ChevronDown, RefreshCw,
 } from 'lucide-react'
 import {
   Button, Card, CardHeader, CardTitle, CardContent, Badge, Textarea, Input,
@@ -11,10 +11,10 @@ import { useGuideMode, GUIDE_MODE_LABELS, type GuideMode } from '@/lib/use-guide
 import { DiagnosticGuide } from '@/components/DiagnosticGuide'
 import { stateLabels, stateColors, priorityColors, priorityDescriptions } from '@/data/mock'
 import { formatCHF, cn } from '@/lib/utils'
-import { groupItemsByCategory } from '@/lib/cfc'
+import { groupItemsByVisitStep } from '@/lib/visit-steps'
 import {
   STATE_PRIORITY, workForState, priceForState, computeQuantity, resolveQuantity, computeCost, computeCostFromPrice,
-  buildQuantityContext, appliedUnitPrice, getMarketCoeff, priceToNumber, type QuantityContext,
+  buildQuantityContext, appliedUnitPrice, getMarketCoeff, priceBasisNote, priceToNumber, type QuantityContext,
 } from '@/lib/diagnostic-auto'
 import { api, ApiError } from '@/lib/api'
 import { ProjectSectionsMenu } from '@/components/ProjectSectionsMenu'
@@ -23,6 +23,81 @@ import { useIsMobile } from '@/lib/use-mobile'
 import type {
   ApiCatalogItem, ApiDiagnosticItem, ElementState, Priority,
 } from '@/lib/api-types'
+
+/**
+ * Réindexation des coûts au marché du jour.
+ *
+ * Les coûts sont figés à la saisie. Quand l'indice de construction change, ce
+ * bouton les ramène tous au coefficient courant, sans ressaisir le dossier.
+ * On montre l'effet avant de l'appliquer : un chiffrage qui bouge tout seul
+ * derrière le dos de celui qui l'a remis n'est pas acceptable.
+ */
+function ReindexPanel({ diagnosticId }: { diagnosticId: string }) {
+  const qc = useQueryClient()
+  const [apercu, setApercu] = useState<Awaited<ReturnType<typeof api.diagnostics.reindex>> | null>(null)
+
+  const simuler = useMutation({
+    mutationFn: () => api.diagnostics.reindex(diagnosticId, true),
+    onSuccess: setApercu,
+  })
+  const appliquer = useMutation({
+    mutationFn: () => api.diagnostics.reindex(diagnosticId, false),
+    onSuccess: () => {
+      setApercu(null)
+      qc.invalidateQueries({ queryKey: ['diagnostic', diagnosticId] })
+      qc.invalidateQueries({ queryKey: ['diagnostic-items', diagnosticId] })
+      qc.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+
+  if (!apercu) {
+    return (
+      <button
+        onClick={() => simuler.mutate()}
+        disabled={simuler.isPending}
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+      >
+        {simuler.isPending
+          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          : <RefreshCw className="h-3.5 w-3.5" />}
+        Actualiser les prix au marché du jour
+      </button>
+    )
+  }
+
+  const rien = apercu.items.updated === 0
+  return (
+    <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
+      {rien ? (
+        <p>Les coûts sont déjà au coefficient du jour (×{apercu.market.coeff}). Rien à changer.</p>
+      ) : (
+        <>
+          <p>
+            {apercu.items.updated} poste{apercu.items.updated > 1 ? 's' : ''} sur {apercu.items.total} passerai
+            {apercu.items.updated > 1 ? 'ent' : 't'} au coefficient ×{apercu.market.coeff}.
+            {apercu.items.manual > 0 && ` ${apercu.items.manual} coût${apercu.items.manual > 1 ? 's' : ''} repris à la main ${apercu.items.manual > 1 ? 'restent' : 'reste'} inchangé${apercu.items.manual > 1 ? 's' : ''}.`}
+          </p>
+          <p className="tabular-nums">
+            Total {formatCHF(apercu.before)} → <strong>{formatCHF(apercu.after)}</strong>{' '}
+            <span className={apercu.delta >= 0 ? 'text-amber-600' : 'text-green-600'}>
+              ({apercu.delta >= 0 ? '+' : ''}{formatCHF(apercu.delta)})
+            </span>
+          </p>
+        </>
+      )}
+      <div className="flex gap-2">
+        {!rien && (
+          <Button size="sm" onClick={() => appliquer.mutate()} disabled={appliquer.isPending}>
+            {appliquer.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+            Appliquer
+          </Button>
+        )}
+        <Button size="sm" variant="outline" onClick={() => setApercu(null)}>Fermer</Button>
+      </div>
+      <p className="text-[11px] text-muted-foreground border-t pt-2">{priceBasisNote()}</p>
+    </div>
+  )
+}
 
 // ---------- Helpers ----------
 
@@ -230,8 +305,14 @@ export function DiagnosticDetail() {
           || (c.cfcCode?.toLowerCase().includes(q) ?? false)
           || (c.category?.toLowerCase().includes(q) ?? false))
       : catalogItems
-    return groupItemsByCategory(filtered)
+    return groupItemsByVisitStep(filtered)
   }, [catalogItems, search])
+
+  // Parcours de visite : une étape à la fois, comme sur le terrain. null = tout voir.
+  const [etape, setEtape] = useState<number | null>(null)
+  const etapesVisibles = etape == null ? grouped : grouped.filter(g => g.step === etape)
+  const rangEtape = grouped.findIndex(g => g.step === etape)
+  const etapeSuivante = rangEtape >= 0 ? grouped[rangEtape + 1] ?? null : null
 
   // selected
   const selectedDiagItem = items.find(i => i.id === selectedItemId) ?? null
@@ -300,6 +381,8 @@ export function DiagnosticDetail() {
           </div>
         </div>
 
+        <ReindexPanel diagnosticId={id!} />
+
         <GuideModeToggle mode={guideMode} onChange={setGuideMode} />
       </div>
 
@@ -325,7 +408,34 @@ export function DiagnosticDetail() {
             {grouped.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-4">Aucun résultat</p>
             )}
-            {grouped.map((group) => (
+
+            {/* Étapes de la visite : cliquer en isole une, comme un parcours guidé. */}
+            {grouped.length > 1 && (
+              <div className="no-scrollbar -mx-2 mb-2 flex gap-1.5 overflow-x-auto px-2 pb-1">
+                <button
+                  onClick={() => setEtape(null)}
+                  className={cn('shrink-0 rounded-full border px-2.5 py-1 text-[11px]',
+                    etape == null ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
+                >Tout</button>
+                {grouped.map(g => (
+                  <button
+                    key={g.label}
+                    onClick={() => setEtape(g.step)}
+                    className={cn('shrink-0 rounded-full border px-2.5 py-1 text-[11px]',
+                      etape === g.step ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
+                  >{g.label}</button>
+                ))}
+              </div>
+            )}
+
+            {etapesVisibles.map((etapeGroup) => (
+              <div key={etapeGroup.label}>
+                {etape == null && (
+                  <div className="px-2 pt-2 pb-1 text-[11px] font-semibold text-foreground">
+                    {etapeGroup.label} <span className="font-normal text-muted-foreground">({etapeGroup.count})</span>
+                  </div>
+                )}
+                {etapeGroup.categories.map((group) => (
               <div key={group.category} className="mb-3">
                 <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sticky top-0 bg-card">
                   {group.category}
@@ -376,7 +486,22 @@ export function DiagnosticDetail() {
                   )
                 })}
               </div>
+                ))}
+              </div>
             ))}
+
+            {/* Étape terminée : on passe à la suivante sans revenir chercher dans la liste. */}
+            {etape != null && etapeSuivante && (
+              <button
+                onClick={() => setEtape(etapeSuivante.step)}
+                className="mt-1 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-xs hover:bg-muted/50"
+              >
+                <span className="text-muted-foreground">Étape suivante</span>
+                <span className="flex items-center gap-1 font-medium">
+                  {etapeSuivante.label}<ArrowRight className="h-3.5 w-3.5" />
+                </span>
+              </button>
+            )}
           </CardContent>
         </Card>
 
@@ -671,6 +796,7 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
     const patch: Partial<ApiDiagnosticItem> = { area: autoQty }
     if (!item.costManual && item.state) {
       patch.estimatedCost = (computeCost(catalog, item.state, autoQty) ?? 0) as unknown as string
+      patch.costIndex = getMarketCoeff()
     }
     onUpdate(patch)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -689,6 +815,7 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
       if (!item.costManual) {
         const cost = computeCost(catalog, state, quantity)
         patch.estimatedCost = (cost ?? 0) as unknown as string
+        patch.costIndex = getMarketCoeff()
       }
     }
     onUpdate(patch)
@@ -701,6 +828,7 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
     if (!item.costManual) {
       const cost = item.state ? computeCost(catalog, item.state, v) : undefined
       patch.estimatedCost = (cost ?? null) as unknown as string | null
+      patch.costIndex = getMarketCoeff()
     }
     onUpdate(patch)
   }
@@ -713,13 +841,16 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
       quantityManual: false,
       costManual: false,
       estimatedCost: (cost ?? null) as unknown as string | null,
+      costIndex: getMarketCoeff(),
     })
   }
 
   /** Coût repris à la main : verrouillé jusqu'à ce qu'on le rende au calcul. */
+  // Coût forcé à la main : pas d'indice, il ne sera pas réindexé.
   const applyCost = (v: number | undefined) => onUpdate({
     estimatedCost: (v ?? null) as unknown as string | null,
     costManual: v != null,
+    costIndex: v != null ? null : getMarketCoeff(),
   })
 
   // Part (%) d'une surface partagée : commande ponctuelle appliquée à la quantité

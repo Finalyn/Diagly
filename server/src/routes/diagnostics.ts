@@ -8,6 +8,7 @@ import { notFound } from "../lib/http-error.js";
 import { fireEvent } from "../lib/webhook.js";
 import { ownerScopeFor } from "../lib/org-context.js";
 import { blockViewerWrites } from "../middlewares/org.js";
+import { marketCoeff, LEGACY_COST_INDEX, marketInfo } from "../lib/market.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -103,6 +104,8 @@ const itemBaseSchema = z.object({
   yearInstalled: z.number().int().min(1500).max(2100).optional(),
   interventionYear: z.number().int().min(1900).max(2200).nullable().optional(),
   estimatedCost: z.number().min(0).nullable().optional(),
+  /// Coefficient marche en vigueur au moment ou le cout a ete calcule.
+  costIndex: z.number().positive().max(10).nullable().optional(),
   improvement: z.string().max(2000).nullable().optional(),
   improvementCost: z.number().min(0).nullable().optional(),
   norms: z.string().max(2000).nullable().optional(),
@@ -142,6 +145,7 @@ router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
       yearInstalled: data.yearInstalled,
       interventionYear: data.interventionYear,
       estimatedCost: data.estimatedCost,
+      costIndex: data.costIndex,
       improvement: data.improvement,
       improvementCost: data.improvementCost,
       norms: data.norms,
@@ -150,6 +154,80 @@ router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
   });
   fireItemEvents(req.auth!.sub, diag.id, diag.project.egid ?? null);
   res.status(201).json({ item });
+});
+
+/**
+ * Réindexation d'un dossier au coefficient marché du jour.
+ *
+ * Les coûts sont figés au moment où ils sont écrits : sans cette passe, un dossier
+ * chiffré il y a un an garde les prix d'il y a un an. On n'y recalcule rien depuis
+ * le catalogue (dont les prix ont pu bouger pour d'autres raisons) : on applique le
+ * seul rapport des indices, ce qui est exactement ce qu'indexer veut dire.
+ *
+ * Un coût forcé à la main n'est jamais touché. `preview` renvoie l'effet sans écrire.
+ */
+router.post("/:id/reindex", async (req, res) => {
+  const diag = await loadOwnedDiagnostic(req.params.id, req.auth!.sub);
+  const preview = req.query.preview === "1" || (req.body as { preview?: boolean } | undefined)?.preview === true;
+  const target = marketCoeff();
+
+  const items = await prisma.diagnosticItem.findMany({
+    where: { diagnosticId: diag.id },
+    select: {
+      id: true, costManual: true, costIndex: true,
+      estimatedCost: true, improvementCost: true, normsCost: true,
+    },
+  });
+
+  const n = (v: unknown) => (v == null ? null : Number(v));
+  const sum = (i: { estimatedCost: unknown; improvementCost: unknown; normsCost: unknown }) =>
+    (n(i.estimatedCost) ?? 0) + (n(i.improvementCost) ?? 0) + (n(i.normsCost) ?? 0);
+
+  let before = 0;
+  let after = 0;
+  let manual = 0;
+  const writes: { id: string; data: Record<string, number | null> }[] = [];
+
+  for (const it of items) {
+    const avant = sum(it);
+    before += avant;
+    if (it.costManual) {
+      manual += 1;
+      after += avant;
+      continue;
+    }
+    const base = it.costIndex ?? LEGACY_COST_INDEX;
+    const factor = target / base;
+    if (!Number.isFinite(factor) || factor <= 0 || Math.abs(factor - 1) < 1e-9) {
+      after += avant;
+      continue;
+    }
+    const data: Record<string, number | null> = { costIndex: target };
+    for (const k of ["estimatedCost", "improvementCost", "normsCost"] as const) {
+      const v = n(it[k]);
+      if (v != null) data[k] = Math.round(v * factor);
+    }
+    after += (n(data.estimatedCost) ?? n(it.estimatedCost) ?? 0)
+      + (n(data.improvementCost) ?? n(it.improvementCost) ?? 0)
+      + (n(data.normsCost) ?? n(it.normsCost) ?? 0);
+    writes.push({ id: it.id, data });
+  }
+
+  if (!preview && writes.length > 0) {
+    await prisma.$transaction(
+      writes.map((w) => prisma.diagnosticItem.update({ where: { id: w.id }, data: w.data })),
+    );
+  }
+
+  res.json({
+    preview,
+    market: marketInfo(),
+    legacyIndex: LEGACY_COST_INDEX,
+    items: { total: items.length, updated: writes.length, manual },
+    before: Math.round(before),
+    after: Math.round(after),
+    delta: Math.round(after - before),
+  });
 });
 
 async function loadOwnedItem(itemId: string, ownerId: string) {

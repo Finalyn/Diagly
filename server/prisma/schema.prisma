@@ -510,6 +510,10 @@ model DiagnosticItem {
   quantityManual Boolean       @default(false) @map("quantity_manual")
   /// true = cout force a la main : il ne doit plus etre recalcule depuis le catalogue.
   costManual     Boolean       @default(false) @map("cost_manual")
+  /// Coefficient marche applique aux couts de cette ligne, au moment ou ils ont
+  /// ete ecrits. Permet de les reindexer plus tard sans les ressaisir.
+  /// null = ecrit avant l'existence de la colonne (voir LEGACY_COST_INDEX).
+  costIndex      Float?        @map("cost_index")
   unit           String?       @db.VarChar(50)
   yearInstalled  Int?          @map("year_installed")
   /// Année d'intervention planifiée (plan de travaux). null = déduite de la priorité à l'export.

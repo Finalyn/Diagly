@@ -36,6 +36,26 @@ function etapeDe({ category = '', cfcCode = '', description = '' }) {
   const cfc = cfcCode ?? ''
   const desc = description ?? ''
 
+  // Éléments repris du catalogue de travail du bureau : ils portent déjà le
+  // regroupement voulu par le terrain, on s'en sert tel quel. Deux écarts assumés :
+  // les ouvrages métalliques (273) et la plâtrerie se relèvent dans la cage
+  // d'escalier, pas au local technique, malgré leur place dans le tableau.
+  const CATEGORIES_BUREAU = {
+    'STRUCTURE': 'Structure',
+    'FACADE': 'Façade',
+    'FENETRES': 'Fenêtres',
+    'PORTES EXTERIEURES': 'Porte extérieure',
+    'STORES et VOLETS': 'Fenêtres',
+    'TOITURE': 'Toitures',
+    'TECHNIQUES CVSE': 'Installations techniques',
+  }
+  if (CATEGORIES_BUREAU[cat]) {
+    if (/bo[iî]te aux lettres/i.test(desc)) return 'Boîte aux lettres'
+    if (cfc === '421') return 'Annexe'
+    if (cfc.startsWith('273') || cfc === '271') return "Communs / cage d'escalier"
+    return CATEGORIES_BUREAU[cat]
+  }
+
   // Dehors, façade et ses abords immédiats
   if (['Parois extérieures', 'Modénature façades', 'Isolation murs', 'Échafaudage', 'Balcons',
        'Façade légère portée', 'M14-01 Façade massive'].includes(cat)) return 'Façade'

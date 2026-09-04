@@ -425,5 +425,14 @@ export const api = {
       request<{ item: ApiDiagnosticItem }>(`/api/diagnostics/items/${itemId}`, { method: 'PUT', body }),
     deleteItem: (itemId: string) =>
       request<void>(`/api/diagnostics/items/${itemId}`, { method: 'DELETE' }),
+    /** Ramène les coûts du dossier au coefficient marché du jour. preview = simulation. */
+    reindex: (id: string, preview = false) =>
+      request<{
+        preview: boolean
+        market: { coeff: number; base: number; index: number; indexDate: string; source: string }
+        legacyIndex: number
+        items: { total: number; updated: number; manual: number }
+        before: number; after: number; delta: number
+      }>(`/api/diagnostics/${id}/reindex`, { method: 'POST', query: { preview: preview ? '1' : undefined } }),
   },
 }
