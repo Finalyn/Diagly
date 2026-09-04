@@ -15,6 +15,7 @@
  */
 import { PrismaClient } from '@prisma/client'
 import { readFileSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 const ETAPES = [
   'Façade',
@@ -166,7 +167,7 @@ for (const [id, order] of nouveaux) {
 console.log(`\n${nouveaux.size} items renumérotés en base.`)
 
 // Le fichier de seed doit rester en phase, sinon une base neuve repart dans l'ancien ordre.
-const chemin = new URL('../prisma/seed-data.json', import.meta.url).pathname.replace(/^\//, '')
+const chemin = fileURLToPath(new URL('../prisma/seed-data.json', import.meta.url))
 const seed = JSON.parse(readFileSync(chemin, 'utf8'))
 const parCle = new Map(items.map((i) => [`${i.cfcCode}|${i.description}`, nouveaux.get(i.id)]))
 let maj = 0
