@@ -164,15 +164,18 @@ function normalize(s: string): string {
     .trim()
 }
 
-type Resolver = (ctx: QuantityContext) => {
+/** Ce que rend une formule : la grandeur, ce qu'elle représente, et pourquoi elle manque. */
+interface Resolved {
   value: number | null
   basis: string
   /** Renseigné quand la grandeur ne se déduit pas du dossier : la saisie reste au relevé. */
   reason?: string
 }
 
+type Resolver = (ctx: QuantityContext) => Resolved
+
 /**
- * Les 9 formules réellement présentes au catalogue, associées une par une à la grandeur
+ * Les formules du catalogue du bureau, associées une par une à la grandeur
  * qu'elles décrivent. Table exhaustive et volontairement rigide : une formule inconnue
  * n'est jamais devinée, elle tombe en saisie manuelle (voir resolveQuantity).
  */

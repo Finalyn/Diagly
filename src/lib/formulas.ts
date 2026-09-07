@@ -33,6 +33,8 @@ export interface ProjectGeometry {
   roofType?: RoofType | null
   nbApartments?: number | null
   nbStaircases?: number | null
+  /** Répartition des logements par typologie : { "3.5": 5, "4.5": 2 }. */
+  apartmentTypes?: Record<string, number> | null
 }
 
 const n = (v: number | null | undefined, d = 0) => (typeof v === 'number' && isFinite(v) && v > 0 ? v : d)

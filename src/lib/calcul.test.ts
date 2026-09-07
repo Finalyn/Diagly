@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { readFileSync } from 'node:fs'
 import { computeProjectMetrics, facadeSurface, roofSurface, perimeterWarning, floorsWarning } from './formulas'
 import {
   buildQuantityContext, resolveQuantity, computeQuantity, computeCost,
   setMarketCoeff, appliedUnitPrice, priceToNumber, STATE_PRIORITY,
 } from './diagnostic-auto'
 import type { ApiCatalogItem } from './api-types'
+import seedData from '../../server/prisma/seed-data.json'
 
 // Dossier de référence : Avenue de la Gare 10, 1003 Lausanne (relevé du brief de correction).
 const DOSSIER = {
@@ -266,7 +266,7 @@ describe('formules du catalogue', () => {
   ])
 
   it('sont toutes résolues, sauf celles qui appellent un relevé', () => {
-    const seed = JSON.parse(readFileSync('server/prisma/seed-data.json', 'utf8')) as {
+    const seed = seedData as {
       items: { quantityFormula?: string | null; unit?: string | null; cfcCode?: string | null }[]
     }
     // Dossier complet : toutes les grandeurs du bâtiment sont renseignées.
