@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle, ClipboardCheck, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf } from 'lucide-react'
+import { Loader2, AlertCircle, ClipboardCheck, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf } from 'lucide-react'
 import { Button, Card, CardContent, Badge } from '@/components/ui'
 import { ExportDialog } from '@/components/ExportDialog'
 import { stateLabels, buildingTypeLabels, stateColors } from '@/data/mock'
@@ -10,7 +10,7 @@ import { computeProjectMetrics } from '@/lib/formulas'
 import { getMarketCoeff, getMarketInfo, marketPeriodLabel, priceBasisNote } from '@/lib/diagnostic-auto'
 import { cfcGroupCode, cfcGroupLabels } from '@/lib/cfc'
 import { api } from '@/lib/api'
-import type { ElementState } from '@/lib/api-types'
+import type { ApiDiagnosticItem, ApiProject, ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
 
 /** En-tête de marque du rapport : logo + identité de l'entreprise (Paramètres → Entreprise). */
@@ -43,16 +43,16 @@ function unitPriceOf(it: { area: number | null; estimatedCost: string | null }):
 }
 const toNum = (v: string | null | undefined) => (v ? Number(v) : 0)
 
-type ReportKind = 'sommaire' | 'detaille' | 'documente' | 'scenario' | 'rapport' | 'photos'
+type ReportKind = 'sommaire' | 'detaille' | 'documente' | 'scenario' | 'rapport' | 'photos' | 'existant'
 type ScenarioId = 'maintenance' | 'renovation' | 'energetique'
 const REPORT_TITLES: Record<ReportKind, string> = {
   sommaire: 'Rapport sommaire', detaille: 'Rapport détaillé', documente: 'Rapport documenté', scenario: 'Rapport par scénario',
-  rapport: 'Rapport de diagnostic', photos: 'Rapport photo',
+  rapport: 'Rapport de diagnostic', photos: 'Rapport photo', existant: "Rapport de l'existant",
 }
 
 // L'onglet « Variantes » = les 4 types de rapports ; l'onglet « Rapports » = Rapport + Rapports photo.
 const KINDS_VARIANTES = [['sommaire', 'Sommaire', LayoutList], ['detaille', 'Détaillé', FileText], ['documente', 'Documenté', Image], ['scenario', 'Par scénario', Layers]] as const
-const KINDS_RAPPORTS = [['rapport', 'Rapport', FileText], ['photos', 'Rapports photo', Image]] as const
+const KINDS_RAPPORTS = [['rapport', 'Rapport', FileText], ['existant', "De l'existant", ClipboardList], ['photos', 'Rapports photo', Image]] as const
 
 export function ProjectRapports() {
   const { id } = useParams<{ id: string }>()
@@ -221,7 +221,7 @@ export function ProjectRapports() {
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
       {/* Document */}
-      {report !== 'scenario' && report !== 'photos' && (
+      {report !== 'scenario' && report !== 'photos' && report !== 'existant' && (
       <Card className="print:shadow-none print:border-0">
         <CardContent className="p-6 md:p-10 space-y-6">
           <div className="flex items-start justify-between gap-4 border-b pb-4">
@@ -417,6 +417,11 @@ export function ProjectRapports() {
       </Card>
       )}
 
+      {/* Rapport de l'existant : qualitatif, calqué sur le modèle du bureau */}
+      {report === 'existant' && (
+        <ExistingStateReport project={project} items={items} etatExistant={etatExistant} auteur={auteur} />
+      )}
+
       {/* Reportage photo : dans « Documenté » et dans « Rapports photo » */}
       {(report === 'documente' || report === 'photos') && <PhotoReport projectName={project.name} canton={project.canton} groups={groups} />}
 
@@ -432,6 +437,147 @@ export function ProjectRapports() {
         />
       )}
     </div>
+  )
+}
+
+
+// ---------------------------------------------------------------------------
+// Rapport de l'existant
+//
+// Le livrable que le bureau remet à la gérance : pas un tableau de coûts, mais
+// une description ouvrage par ouvrage, avec l'état coché et ce qu'il faut prévoir.
+// C'est le document que le client lit vraiment, et il manquait entièrement.
+// ---------------------------------------------------------------------------
+
+/** Chapitres du rapport, dans l'ordre de lecture, par groupe CFC. */
+const CHAPITRES: { titre: string; groupes: string[] }[] = [
+  { titre: 'Enveloppe / thermique', groupes: ['21', '22'] },
+  { titre: 'Techniques CVSE', groupes: ['23', '24', '25', '26'] },
+  { titre: 'Aménagements intérieurs', groupes: ['27', '28'] },
+  { titre: 'Abords et extérieurs', groupes: ['4', '41', '42', '46'] },
+]
+
+const ETATS: ElementState[] = ['TRES_BON', 'BON', 'MOYEN', 'MAUVAIS']
+
+/** Case à cocher du modèle papier : l'état constaté est coché et coloré. */
+function CaseEtat({ etat, actif }: { etat: ElementState; actif: boolean }) {
+  return (
+    <span className={cn('inline-flex items-center gap-1 whitespace-nowrap', actif ? 'font-semibold' : 'text-muted-foreground')}>
+      <span className={cn('inline-flex h-3 w-3 items-center justify-center border text-[9px] leading-none',
+        actif ? `${stateColors[etat]} border-transparent text-white` : 'border-current')}
+      >{actif ? '×' : ''}</span>
+      {stateLabels[etat]}
+    </span>
+  )
+}
+
+function ExistingStateReport({ project, items, etatExistant, auteur }: {
+  project: ApiProject
+  items: ApiDiagnosticItem[]
+  etatExistant: (it: { catalogItemId: number | null; state: ElementState | null }) => string | null
+  auteur: string
+}) {
+  const chapitres = useMemo(() => {
+    const reste = new Set(items.map((i) => i.id))
+    const sortis = CHAPITRES.map((ch) => {
+      const dedans = items
+        .filter((i) => ch.groupes.includes(cfcGroupCode(i.cfcCode) ?? ''))
+        .sort((a, b) => (a.cfcCode ?? '').localeCompare(b.cfcCode ?? '', undefined, { numeric: true }))
+      for (const i of dedans) reste.delete(i.id)
+      return { titre: ch.titre, items: dedans }
+    })
+    // Un ouvrage dont le CFC ne tombe dans aucun chapitre ne doit pas disparaître du rapport.
+    const orphelins = items.filter((i) => reste.has(i.id))
+    if (orphelins.length) sortis.push({ titre: 'Divers', items: orphelins })
+    return sortis.filter((c) => c.items.length > 0)
+  }, [items])
+
+  const niveaux = project.nbFloors ? `${project.nbFloors} niveau${project.nbFloors > 1 ? 'x' : ''}` : null
+  const photo = items.find((i) => i.photos.length > 0)?.photos[0]
+
+  return (
+    <Card className="print:border-0 print:shadow-none">
+      <CardContent className="p-6 sm:p-8 space-y-6 print:p-0">
+        <ReportBrand canton={project.canton} />
+
+        <div>
+          <h1 className="text-xl font-bold">Rapport de l'existant</h1>
+          <p className="text-sm text-muted-foreground">{project.name}</p>
+        </div>
+
+        <section className="break-inside-avoid">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Description du bâtiment</h2>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="flex-1 space-y-1 text-sm">
+              <Info l="Adresse" v={[project.address, [project.postalCode, project.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')} />
+              {project.yearBuilt && <Info l="Date de construction" v={String(project.yearBuilt)} />}
+              {niveaux && <Info l="Nombre de niveaux" v={niveaux} />}
+              {project.floorArea != null && <Info l="Surface de plancher" v={`${Math.round(project.floorArea)} m²`} />}
+              {project.nbApartments != null && <Info l="Nombre d'appartements" v={String(project.nbApartments)} />}
+              <Info l="Type" v={buildingTypeLabels[project.buildingType] ?? project.buildingType} />
+            </div>
+            {photo && <img src={photo} alt="" className="w-full rounded border object-cover sm:w-56" />}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">État de l'existant</h2>
+          {chapitres.length === 0 && (
+            <p className="text-sm text-muted-foreground">Aucun ouvrage relevé pour l'instant.</p>
+          )}
+          <div className="space-y-6">
+            {chapitres.map((ch) => (
+              <div key={ch.titre}>
+                <h3 className="mb-2 border-b-2 border-foreground pb-1 text-sm font-bold uppercase italic">{ch.titre}</h3>
+                <div className="space-y-4">
+                  {ch.items.map((it) => {
+                    const constat = etatExistant(it)
+                    const travaux = it.works.filter((w) => w && w !== 'Néant')
+                    return (
+                      <article key={it.id} className="break-inside-avoid border-t pt-2 first:border-t-0">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                          <p className="text-sm font-semibold">
+                            {it.cfcLabel}
+                            <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{it.cfcCode}</span>
+                          </p>
+                          <div className="flex flex-wrap gap-3 text-[11px]">
+                            {ETATS.map((e) => <CaseEtat key={e} etat={e} actif={it.state === e} />)}
+                          </div>
+                        </div>
+                        {constat && <Ligne titre="État constaté" texte={constat} />}
+                        {it.notes && <Ligne titre="Observations" texte={it.notes} />}
+                        {travaux.length > 0 && <Ligne titre="Travaux à prévoir" texte={travaux.join(' ')} />}
+                        {it.improvement && <Ligne titre="Amélioration possible" texte={it.improvement} />}
+                        {it.norms && <Ligne titre="Remise aux normes" texte={it.norms} />}
+                        {!constat && !it.notes && travaux.length === 0 && !it.improvement && !it.norms && (
+                          <p className="mt-1 text-xs italic text-muted-foreground">
+                            {it.state ? 'Aucune observation saisie.' : 'Élément non encore évalué.'}
+                          </p>
+                        )}
+                      </article>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <p className="border-t pt-3 text-[10px] text-muted-foreground">
+          Date d'édition : {formatDate(new Date())}{auteur ? ` · ${auteur}` : ''}.
+          Rapport descriptif, établi sur la base d'une visite. Il ne comporte pas de sondage destructif.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Paragraphe du modèle : intitulé souligné, puis le texte à la suite. */
+function Ligne({ titre, texte }: { titre: string; texte: string }) {
+  return (
+    <p className="mt-1 text-sm">
+      <span className="underline">{titre}</span> : <span className="text-muted-foreground">{texte}</span>
+    </p>
   )
 }
 

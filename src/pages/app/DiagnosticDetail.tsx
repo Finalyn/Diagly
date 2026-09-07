@@ -652,7 +652,7 @@ function InsulationInputs({ value, quantity, onChange }: {
   const compose = (epv: string, prixv: string) => {
     const p = n(prixv)
     const c = Number.isFinite(p) && surface > 0 ? Math.round(p * surface) : null
-    const text = `Ajout d'isolation${epv ? ` — épaisseur ${epv} cm` : ''}${prixv ? ` · ${prixv} CHF/m²` : ''}`
+    const text = `Ajout d'isolation${epv ? `, épaisseur ${epv} cm` : ''}${prixv ? `, à ${prixv} CHF/m²` : ''}`
     onChange(text, c)
   }
   const p = n(prix)
