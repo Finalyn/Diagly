@@ -94,6 +94,8 @@ export interface QuantityContext {
   /** m² de carrelage des salles de bain, déduits du nombre de logements. */
   bathroomTiles: number
   trees: number
+  /** Somme des pièces de tous les logements, depuis les typologies saisies. 0 si absentes. */
+  apartmentRooms: number
 }
 
 /** Construit le contexte de quantités d'un dossier. Point d'entrée unique de tous les écrans. */
@@ -119,7 +121,23 @@ export function buildQuantityContext(project: ProjectGeometry): QuantityContext 
     landingDoors: m.landingDoors * HYPOTHESES.portesPalieresParLogement,
     bathroomTiles: m.tilesBathrooms,
     trees: (terrainArea / 100) * HYPOTHESES.arbresPar100m2Terrain,
+    apartmentRooms: totalPieces(project.apartmentTypes),
   }
+}
+
+/**
+ * Somme des pièces de l'immeuble, depuis la répartition par typologie saisie sur
+ * la fiche : { "3.5": 5, "4.5": 2 } vaut 5 × 3,5 + 2 × 4,5 = 26,5 pièces.
+ * Rend 0 si la répartition n'a pas été renseignée : la formule reste au relevé.
+ */
+function totalPieces(types: Record<string, number> | null | undefined): number {
+  if (!types) return 0
+  let total = 0
+  for (const [typologie, nombre] of Object.entries(types)) {
+    const pieces = Number(String(typologie).replace(',', '.'))
+    if (Number.isFinite(pieces) && Number.isFinite(nombre)) total += pieces * nombre
+  }
+  return total
 }
 
 // ---------- Résolution de la quantité ----------
@@ -158,6 +176,21 @@ type Resolver = (ctx: QuantityContext) => {
  * qu'elles décrivent. Table exhaustive et volontairement rigide : une formule inconnue
  * n'est jamais devinée, elle tombe en saisie manuelle (voir resolveQuantity).
  */
+/**
+ * Descentes d'eaux pluviales : leur nombre dépend de l'emprise au sol, leur longueur
+ * de la hauteur du bâtiment. Le métré est donc en mètres courants de descente.
+ */
+function descentesEauxPluviales(c: QuantityContext): Resolved {
+  if (!c.builtArea || !c.buildingHeight) {
+    return { value: null, basis: 'descentes EP', reason: "emprise au sol ou hauteur du bâtiment non renseignée" }
+  }
+  const palier = HYPOTHESES.descentesEauxPluviales.find((t) => c.builtArea <= t.jusqua)!
+  return {
+    value: palier.nombre * c.buildingHeight,
+    basis: `${palier.nombre} descentes × ${Math.round(c.buildingHeight)} m de hauteur`,
+  }
+}
+
 const FORMULA_TABLE: Record<string, Resolver> = {
   // Façade HORS VITRAGE. Le libellé décrit le calcul de la façade entière (périmètre ×
   // étages × hauteur), mais les éléments qui portent cette formule sont des revêtements
@@ -183,18 +216,74 @@ const FORMULA_TABLE: Record<string, Resolver> = {
   }),
   // Descentes d'eaux pluviales : leur nombre dépend de l'emprise au sol, leur longueur
   // de la hauteur du bâtiment. Le métré est donc en mètres courants de descente.
-  'descentes ep : 4/8/10 selon surface batie x hauteur': (c) => {
-    if (!c.builtArea || !c.buildingHeight) {
-      return { value: null, basis: 'descentes EP', reason: "emprise au sol ou hauteur du bâtiment non renseignée" }
-    }
-    const palier = HYPOTHESES.descentesEauxPluviales.find((t) => c.builtArea <= t.jusqua)!
-    return {
-      value: palier.nombre * c.buildingHeight,
-      basis: `${palier.nombre} descentes × ${Math.round(c.buildingHeight)} m de hauteur`,
-    }
-  },
+  'descentes ep : 4/8/10 selon surface batie x hauteur': (c) => descentesEauxPluviales(c),
   '(compter 2 arbres pour 100 m2 de terrain)': (c) => ({ value: c.trees, basis: 'arbres (2 pour 100 m² de terrain)' }),
+
+  // La surface de plancher est la grandeur la plus utilisée du catalogue : elle sert
+  // de base à tous les revêtements intérieurs et aux installations techniques.
+  'surface de plancher': (c) => ({ value: c.floorArea, basis: 'surface de plancher' }),
+  sp: (c) => ({ value: c.floorArea, basis: 'surface de plancher' }),
+  'surface de fenetres': (c) => ({ value: c.windows, basis: 'surface vitrée' }),
+  "nombre d'etage": (c) => ({ value: c.nbFloors, basis: "nombre d'étages" }),
+  "nombre d'appartements": (c) => ({ value: c.nbApartments, basis: 'nombre de logements' }),
+  'nombre de piece par appartement': (c) => ({ value: c.apartmentRooms, basis: 'pièces de l\'immeuble (depuis les typologies)' }),
+
+  // Portes palières plus portes de garage : les premières se déduisent du nombre de
+  // logements, les secondes non. On rend la part connue en le disant.
+  'portes palieres + portes de garage': (c) => ({
+    value: c.landingDoors,
+    basis: 'portes palières (1 par logement), portes de garage à ajouter au relevé',
+  }),
+
+  // Ces deux-là ne désignent aucune grandeur du dossier : elles appellent un relevé.
+  pce: () => ({ value: null, basis: 'quantité', reason: 'à relever sur place' }),
+  'a definir': () => ({ value: null, basis: 'quantité', reason: 'à définir sur place' }),
+
+  // Le nombre de salles d'eau dépend de la typologie des logements, et la règle qui
+  // relie l'une à l'autre n'est pas arrêtée. Tant qu'elle ne l'est pas, on relève.
+  "25 m2 par salle d'eau": () => ({
+    value: null,
+    basis: "salles d'eau",
+    reason: "le nombre de salles d'eau par logement n'est pas encore fixé",
+  }),
 }
+
+/**
+ * Formules paramétrées : la même règle s'écrit avec un nombre différent d'un
+ * ouvrage à l'autre. Les reconnaître par motif évite d'ajouter une entrée au
+ * tableau chaque fois que le bureau change un coefficient.
+ */
+const FORMULA_PATTERNS: { motif: RegExp; resolve: (m: RegExpMatchArray, c: QuantityContext) => Resolved }[] = [
+  // « 20% de la surface de plancher », « 60% de la surface de plancher »
+  {
+    motif: /^(\d+(?:[.,]\d+)?)\s*% de la surface de plancher$/,
+    resolve: (m, c) => {
+      const part = Number(m[1].replace(',', '.')) / 100
+      return { value: c.floorArea * part, basis: `${m[1]} % de la surface de plancher` }
+    },
+  },
+  // « 10 ml / appartement », « 1.5 ml / appartement »
+  {
+    motif: /^(\d+(?:[.,]\d+)?)\s*ml\s*\/\s*appartements?$/,
+    resolve: (m, c) => {
+      const parLogement = Number(m[1].replace(',', '.'))
+      return { value: c.nbApartments * parLogement, basis: `${m[1]} ml par logement` }
+    },
+  },
+  // « 1 pce / appartement »
+  {
+    motif: /^(\d+(?:[.,]\d+)?)\s*pce\s*\/\s*appartements?$/,
+    resolve: (m, c) => {
+      const parLogement = Number(m[1].replace(',', '.'))
+      return { value: c.nbApartments * parLogement, basis: `${m[1]} par logement` }
+    },
+  },
+  // Descentes d'eaux pluviales, écrites en toutes lettres dans le tableau.
+  {
+    motif: /surface de b[ai]tie est entre 100 et 400/,
+    resolve: (_m, c) => descentesEauxPluviales(c),
+  },
+]
 
 /**
  * Règles par code CFC, pour les items que le catalogue laisse sans formule.
@@ -255,7 +344,12 @@ export function resolveQuantity(
 ): QuantityResolution {
   const formula = item.quantityFormula?.trim()
   if (formula) {
-    const resolver = FORMULA_TABLE[normalize(formula)]
+    const cle = normalize(formula)
+    const parMotif = FORMULA_PATTERNS.map((p) => {
+      const m = cle.match(p.motif)
+      return m ? () => p.resolve(m, ctx) : null
+    }).find(Boolean)
+    const resolver = FORMULA_TABLE[cle] ?? (parMotif ? () => parMotif() : undefined)
     if (resolver) {
       const { value, basis, reason } = resolver(ctx)
       if (value == null) return { quantity: undefined, origin: 'manuelle', basis, reason: reason ?? `${basis} inconnue sur ce dossier` }
@@ -370,7 +464,11 @@ const nb = (v: number, dec: number) =>
  */
 export function priceBasisNote(): string {
   const fin = " Estimation indicative, elle ne remplace pas un devis d'entreprise."
-  if (market.coeff === 1 && !market.indexDate) return 'Prix de référence du catalogue, non indexés.' + fin
+  // Coefficient à 1 : les prix du catalogue sont déjà ceux du marché, on n'indexe pas.
+  if (market.coeff === 1) {
+    const base = market.source || 'Prix du catalogue, sans indexation'
+    return (base.endsWith('.') ? base : base + '.') + fin
+  }
   const periode = marketPeriodLabel()
   const de = /^[aeiouàâéèêîôû]/i.test(periode) ? "d'" : 'de '
   return "Prix de référence indexés sur l'indice suisse des prix de la construction (OFS)"
@@ -380,7 +478,7 @@ export function priceBasisNote(): string {
 
 /** Version courte, pour les endroits où la place manque. */
 export function priceBasisShort(): string {
-  if (market.coeff === 1 && !market.indexDate) return 'prix catalogue non indexés'
+  if (market.coeff === 1) return 'prix du catalogue, sans indexation'
   const periode = marketPeriodLabel()
   return `indice OFS ${nb(market.index, 1)}${periode ? ` (${periode})` : ''}, ×${nb(market.coeff, 3)}`
 }

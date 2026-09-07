@@ -16,12 +16,17 @@ const num = (v: string | undefined, d: number) => {
 
 /** Période de référence des prix du catalogue. */
 export const BASE_INDEX = num(process.env.DIAGLY_BASE_INDEX, 100);
-/** Dernière publication OFS retenue. */
-export const CURRENT_INDEX = num(process.env.DIAGLY_MARKET_INDEX, 112.3);
-export const INDEX_DATE = process.env.DIAGLY_MARKET_INDEX_DATE || "2025-04";
+/**
+ * Indice courant. Par défaut égal à la base : les prix du catalogue sont ceux du
+ * marché actuel, fournis tels quels par le bureau, et ne doivent pas être majorés.
+ * Renseigner DIAGLY_MARKET_INDEX et DIAGLY_MARKET_INDEX_DATE le jour où le
+ * catalogue vieillit et qu'on veut le suivre sur l'indice OFS sans le ressaisir.
+ */
+export const CURRENT_INDEX = num(process.env.DIAGLY_MARKET_INDEX, BASE_INDEX);
+export const INDEX_DATE = process.env.DIAGLY_MARKET_INDEX_DATE || "";
 export const INDEX_SOURCE =
   process.env.DIAGLY_MARKET_INDEX_SOURCE ||
-  "Indice suisse des prix de la construction (OFS/BFS), base octobre 2020 = 100";
+  "Prix du catalogue du bureau, au marché actuel, sans indexation";
 
 /** Coefficient appliqué à tous les coûts estimés. */
 export const marketCoeff = () => Math.round((CURRENT_INDEX / BASE_INDEX) * 1000) / 1000;

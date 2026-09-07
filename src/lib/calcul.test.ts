@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { computeProjectMetrics, facadeSurface, roofSurface, perimeterWarning, floorsWarning } from './formulas'
 import {
   buildQuantityContext, resolveQuantity, computeQuantity, computeCost,
@@ -246,5 +247,39 @@ describe('descentes d’eaux pluviales', () => {
     const q = resolveQuantity(item({ quantityFormula: F }), hauteur({ builtArea: 0 }))
     expect(q.quantity).toBeUndefined()
     expect(q.reason).toContain('emprise')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Garde-fou : toute formule du catalogue doit être reconnue par le résolveur.
+// Le bureau fait évoluer son tableau ; une formulation nouvelle passerait
+// silencieusement en saisie manuelle et personne ne le verrait. Ce test échoue
+// à la place, en nommant la formule à traiter.
+// ---------------------------------------------------------------------------
+describe('formules du catalogue', () => {
+  /** Formules qui appellent volontairement un relevé sur place. */
+  const AU_RELEVE = new Set([
+    '2 pce par pièce d\'eau',
+    '25 m2 par salle d\'eau',
+    'A définir',
+    'pce',
+  ])
+
+  it('sont toutes résolues, sauf celles qui appellent un relevé', () => {
+    const seed = JSON.parse(readFileSync('server/prisma/seed-data.json', 'utf8')) as {
+      items: { quantityFormula?: string | null; unit?: string | null; cfcCode?: string | null }[]
+    }
+    // Dossier complet : toutes les grandeurs du bâtiment sont renseignées.
+    const ctx = buildQuantityContext({
+      perimeter: 346, nbFloors: 2, floorHeight: 2.7, builtArea: 708, floorArea: 1416,
+      terrainArea: 1505, windowPct: 30, nbApartments: 8, nbStaircases: 2, roofType: 'PENTE',
+      apartmentTypes: { '3.5': 5, '4.5': 3 },
+    } as never)
+
+    const nonResolues = [...new Set(seed.items.map((i) => i.quantityFormula).filter(Boolean) as string[])]
+      .filter((f) => !AU_RELEVE.has(f))
+      .filter((f) => resolveQuantity({ quantityFormula: f, unit: 'CHF/m²', cfcCode: '999' }, ctx).quantity == null)
+
+    expect(nonResolues).toEqual([])
   })
 })
