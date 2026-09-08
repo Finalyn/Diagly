@@ -158,8 +158,93 @@ body {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .dp-pop { animation: dp-pop 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; transform-origin: bottom right; }
+
+
+/* ============ Typographie : l'espacement suit la taille ============ */
+/* Une seule valeur d'interlettrage pour toutes les tailles est fausse quelque part :
+   un titre grandit et ses lettres s'écartent trop, un petit texte se resserre trop.
+   Inter Variable porte un axe optique, on l'active et on resserre à mesure que la
+   taille monte. `:where()` garde une spécificité nulle : une classe utilitaire posée
+   dans un composant continue de gagner. */
+body {
+  font-optical-sizing: auto;
+  text-rendering: optimizeLegibility;
+}
+
+:where(h1, h2, h3, h4, h5, h6) {
+  font-optical-sizing: auto;
+  text-wrap: balance;
+}
+
+:where(h1), :where(.text-4xl), :where(.text-5xl) { letter-spacing: -0.022em; line-height: 1.08; }
+:where(h2), :where(.text-3xl)                    { letter-spacing: -0.018em; line-height: 1.14; }
+:where(h3), :where(.text-2xl)                    { letter-spacing: -0.014em; line-height: 1.2; }
+:where(.text-xl)                                 { letter-spacing: -0.010em; line-height: 1.28; }
+:where(h4, h5, h6), :where(.text-lg)             { letter-spacing: -0.006em; line-height: 1.38; }
+/* Le petit texte a besoin de l'inverse : un cheveu d'air pour rester lisible. */
+:where(.text-xs)                                 { letter-spacing: 0.006em; }
+/* Un libellé en capitales a toujours besoin de plus d'air que le même mot en bas de casse. */
+:where(.uppercase)                               { letter-spacing: 0.06em; }
+
+/* ============ Mouvement réduit ============ */
+/* Ce réglage n'est pas du confort : c'est celui que règlent les personnes sujettes au
+   vertige. On ne coupe pas tout retour pour autant, on remplace les déplacements et
+   les ressorts par un fondu court, et on supprime les dépassements. Les changements
+   d'opacité et de couleur restent : ils aident à comprendre ce qui s'est passé. */
 @media (prefers-reduced-motion: reduce) {
-  .dp-anim, .dp-pop { animation: none; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.12s !important;
+    transition-delay: 0ms !important;
+    transition-property: opacity, color, background-color, border-color, fill, stroke !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============ Transparence réduite ============ */
+/* En plein soleil sur un chantier, un texte sur un flou translucide devient illisible.
+   Quand le système demande moins de transparence, la matière devient opaque et le
+   flou disparaît : on garde la forme, on abandonne l'effet. */
+@media (prefers-reduced-transparency: reduce) {
+  .liquid-nav {
+    background: var(--color-card);
+    -webkit-backdrop-filter: none;
+            backdrop-filter: none;
+    box-shadow: 0 6px 20px -8px rgba(0, 0, 0, 0.28);
+    border: 1px solid var(--color-border);
+  }
+  .liquid-nav::before,
+  .liquid-nav::after { display: none; }
+
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+            backdrop-filter: none !important;
+    background-color: color-mix(in srgb, var(--color-card) 94%, transparent) !important;
+  }
+}
+
+/* ============ Contraste renforcé ============ */
+/* Même situation, autre réglage : la surface devient franche et prend une bordure
+   nette, pour que le bord de l'objet ne dépende plus d'une nuance. */
+@media (prefers-contrast: more) {
+  .liquid-nav {
+    background: var(--color-card);
+    -webkit-backdrop-filter: none;
+            backdrop-filter: none;
+    border: 1.5px solid var(--color-foreground);
+  }
+  .liquid-nav::before,
+  .liquid-nav::after { display: none; }
+
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+            backdrop-filter: none !important;
+    background-color: var(--color-card) !important;
+  }
 }
 
 /* niveaux d'opacité empilés -> hiérarchie de profondeur */

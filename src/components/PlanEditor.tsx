@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { spring, projeterElan, suiviVitesse, mouvementReduit, RESSORTS, type SpringHandle } from '@/lib/motion'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   X, Hand, MousePointer2, Crosshair, Ruler, ArrowUpRight, StickyNote, Hash, Pencil,
@@ -82,6 +83,17 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const [color, setColor] = useState(COLORS[0])
   const [unit, setUnit] = useState<'m' | 'cm' | 'mm'>('m')
   const [view, setView] = useState<View>({ zoom: 1, tx: 0, ty: 0 })
+  // Miroir synchrone de la vue : les gestes ont besoin de la valeur affichée à
+  // l'instant même, pas de celle du rendu précédent.
+  const viewRef = useRef(view)
+  useEffect(() => { viewRef.current = view }, [view])
+  // Un ressort par axe : un seul ressort sur la distance se désynchronise dès que
+  // les deux axes n'ont pas la même vitesse.
+  const elan = useRef<{ x: SpringHandle | null; y: SpringHandle | null }>({ x: null, y: null })
+  const vitX = useRef(suiviVitesse())
+  const vitY = useRef(suiviVitesse())
+  const stopElan = () => { elan.current.x?.stop(); elan.current.y?.stop(); elan.current = { x: null, y: null } }
+  useEffect(() => stopElan, [])
   const [scale, setScale] = useState<number | null>(plan.scalePxPerM)
   const [annotations, setAnnotations] = useState<PlanAnnotation[]>(plan.annotations ?? [])
   const [pending, setPending] = useState<PlanPoint | null>(null)
@@ -187,6 +199,12 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (calibrateSeg || notePoint) return
+    // Le plan est peut-être encore en train de glisser : on le rattrape là où il est
+    // affiché, sans attendre la fin de sa course. C'est ce qui distingue un mouvement
+    // qu'on peut reprendre d'une animation qu'on subit.
+    stopElan()
+    vitX.current.reset()
+    vitY.current.reset()
     const el = containerRef.current!
     el.setPointerCapture(e.pointerId)
     ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
@@ -263,7 +281,11 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       return
     }
     if (g.mode === 'pan') {
-      setView((v) => ({ ...v, tx: v.tx + e.movementX, ty: v.ty + e.movementY }))
+      const suivante = { ...viewRef.current, tx: viewRef.current.tx + e.movementX, ty: viewRef.current.ty + e.movementY }
+      viewRef.current = suivante
+      setView(suivante)
+      vitX.current.ajouter(suivante.tx)
+      vitY.current.ajouter(suivante.ty)
       return
     }
     if (g.mode === 'draw') { setDraft((d) => [...d, toStage(e.clientX, e.clientY)]); return }
@@ -289,6 +311,29 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const onPointerUp = (e: React.PointerEvent) => {
     const g = gesture.current
     const wasTap = !g.moved
+
+    // Un lancer doit continuer après que le doigt s'est levé : on vise le point où le
+    // geste allait, et on y va en partant de la vitesse de relâchement. Sans ça, le
+    // plan s'arrête net sous le doigt, ce qu'aucun objet réel ne fait.
+    if (g.mode === 'pan' && g.moved && !mouvementReduit()) {
+      const vx = vitX.current.vitesse()
+      const vy = vitY.current.vitesse()
+      // Sous ce seuil, le doigt s'est posé plutôt que lancé : glisser serait un défaut.
+      if (Math.abs(vx) > 60 || Math.abs(vy) > 60) {
+        const departX = viewRef.current.tx
+        const departY = viewRef.current.ty
+        elan.current.x = spring({
+          from: departX, to: departX + projeterElan(vx), velocity: vx, ...RESSORTS.glisse,
+          onUpdate: (val) => { viewRef.current = { ...viewRef.current, tx: val }; setView((v) => ({ ...v, tx: val })) },
+        })
+        elan.current.y = spring({
+          from: departY, to: departY + projeterElan(vy), velocity: vy, ...RESSORTS.glisse,
+          onUpdate: (val) => { viewRef.current = { ...viewRef.current, ty: val }; setView((v) => ({ ...v, ty: val })) },
+        })
+      }
+    }
+    vitX.current.reset()
+    vitY.current.reset()
     const sp = toStage(e.clientX, e.clientY)
     ptrs.current.delete(e.pointerId)
 

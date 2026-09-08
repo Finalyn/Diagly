@@ -19,6 +19,8 @@ import {
 import { api, ApiError } from '@/lib/api'
 import { ProjectSectionsMenu } from '@/components/ProjectSectionsMenu'
 import { CameraCapture } from '@/components/CameraCapture'
+import { PanneauGlissant } from '@/components/PanneauGlissant'
+import { vibrer } from '@/lib/motion'
 import { useIsMobile } from '@/lib/use-mobile'
 import type {
   ApiCatalogItem, ApiDiagnosticItem, ElementState, Priority,
@@ -386,7 +388,7 @@ export function DiagnosticDetail() {
         <GuideModeToggle mode={guideMode} onChange={setGuideMode} />
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
+      <div className="relative flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
         {/* ===== Catalogue : plein écran sur mobile (masqué pendant l'édition), colonne à gauche sur desktop ===== */}
         <Card className={cn(
           'w-full overflow-hidden flex flex-col',
@@ -493,7 +495,7 @@ export function DiagnosticDetail() {
             {/* Étape terminée : on passe à la suivante sans revenir chercher dans la liste. */}
             {etape != null && etapeSuivante && (
               <button
-                onClick={() => setEtape(etapeSuivante.step)}
+                onClick={() => { vibrer('succes'); setEtape(etapeSuivante.step) }}
                 className="mt-1 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-xs hover:bg-muted/50"
               >
                 <span className="text-muted-foreground">Étape suivante</span>
@@ -505,8 +507,44 @@ export function DiagnosticDetail() {
           </CardContent>
         </Card>
 
-        {/* ===== Éditeur : plein écran sur mobile (visible quand un élément est sélectionné) ===== */}
-        <div className={cn('flex-1 overflow-y-auto overflow-x-hidden min-w-0', isMobile && !selectedItemId && 'hidden')}>
+        {/* ===== Éditeur ===== */}
+        {/* Sur mobile : panneau qui entre par la droite et se renvoie d'un glissement.
+            Sur grand écran : colonne fixe, aucun mouvement n'aurait de sens. */}
+        {isMobile ? (
+          <PanneauGlissant
+            ouvert={!!selectedItemId}
+            onFermer={() => setSelectedItemId(null)}
+            // pb-24 : le bouton flottant « Suivant » ne doit jamais couvrir la fin du contenu.
+            className="absolute inset-0 z-30 overflow-y-auto overflow-x-hidden bg-background pb-24"
+          >
+            {selectedDiagItem && (
+              <ItemEditor
+                item={selectedDiagItem}
+                catalog={selectedCatalog}
+                qtyCtx={qtyCtx}
+                mobile
+                guideMode={guideMode}
+                projectId={projectId}
+                onBack={() => setSelectedItemId(null)}
+                onUpdate={(data) => updateItem.mutate({ itemId: selectedDiagItem.id, data })}
+                onDelete={() => {
+                  const it = selectedDiagItem
+                  const aPerdre = [
+                    it.photos.length > 0 && `${it.photos.length} photo${it.photos.length > 1 ? 's' : ''}`,
+                    it.notes && 'des notes de terrain',
+                    it.quantityManual && 'une quantité relevée',
+                    it.costManual && 'un coût forcé',
+                  ].filter(Boolean) as string[]
+                  if (aPerdre.length > 0 && !window.confirm(`Retirer « ${it.cfcLabel} » ? Vous perdez ${aPerdre.join(', ')}.`)) return
+                  deleteItem.mutate(it.id)
+                }}
+                isMutating={updateItem.isPending}
+                isDeleting={deleteItem.isPending}
+              />
+            )}
+          </PanneauGlissant>
+        ) : (
+        <div className={cn('flex-1 overflow-y-auto overflow-x-hidden min-w-0')}>
           {selectedDiagItem ? (
             <ItemEditor
               item={selectedDiagItem}
@@ -534,17 +572,16 @@ export function DiagnosticDetail() {
               isDeleting={deleteItem.isPending}
             />
           ) : (
-            !isMobile && (
-              <Card>
-                <CardContent className="py-16 text-center">
-                  <p className="text-muted-foreground">
-                    Cliquez sur un élément du catalogue à gauche pour l'ajouter au diagnostic.
-                  </p>
-                </CardContent>
-              </Card>
-            )
+            <Card>
+              <CardContent className="py-16 text-center">
+                <p className="text-muted-foreground">
+                  Cliquez sur un élément du catalogue à gauche pour l'ajouter au diagnostic.
+                </p>
+              </CardContent>
+            </Card>
           )}
         </div>
+        )}
       </div>
     </div>
   )
@@ -804,6 +841,9 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
 
   // Changer l'état recalcule automatiquement travaux, priorité et coût.
   const applyState = (state: ElementState) => {
+    // L'app se tient d'une main, souvent sans quitter le bâtiment des yeux : une
+    // vibration courte confirme l'état retenu sans qu'on ait à regarder l'écran.
+    vibrer('leger')
     const quantity = item.area ?? autoQty ?? undefined
     const patch: Partial<ApiDiagnosticItem> = { state, priority: STATE_PRIORITY[state] }
     if (quantity != null && item.area == null) patch.area = quantity
