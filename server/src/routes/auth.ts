@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import { env } from "../lib/env.js";
+import { env, urlPubliqueValide } from "../lib/env.js";
 import { hashPassword, sha256, verifyPassword } from "../lib/hash.js";
 import {
   signAccessToken,
@@ -398,7 +398,10 @@ router.post("/2fa/disable", requireAuth, validateBody(codeSchema), async (req, r
 
 // ============================ Google OAuth ============================
 
-const googleConfigured = () => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+// La connexion Google demande aussi une URL publique atteignable : sans elle, Google
+// affiche son ecran de consentement puis renvoie l'utilisateur sur une adresse morte.
+const googleConfigured = () =>
+  !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) && urlPubliqueValide();
 const OAUTH_STATE_COOKIE = "diagly_oauth_state";
 
 /** Lit un cookie sans dependance supplementaire (un seul cookie a lire dans toute l'app). */

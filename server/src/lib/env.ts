@@ -43,3 +43,24 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+/**
+ * L'URL publique est-elle utilisable pour construire un lien qu'un tiers va suivre ?
+ *
+ * APP_URL vaut localhost par defaut. Oublier de la renseigner en production ne
+ * provoque aucune erreur au demarrage, mais casse silencieusement trois choses a la
+ * fois : Google renvoie l'utilisateur sur localhost apres l'ecran de consentement,
+ * le lien de reinitialisation du mot de passe pointe dans le vide, et l'invitation
+ * d'equipe aussi. On prefere le dire fort et refuser d'envoyer qui que ce soit vers
+ * un aller sans retour.
+ */
+export const urlPubliqueValide = (): boolean =>
+  env.NODE_ENV !== "production" || !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(env.APP_URL);
+
+if (!urlPubliqueValide()) {
+  console.error(
+    `[config] APP_URL vaut « ${env.APP_URL} » en production. La connexion Google, le lien de ` +
+    "reinitialisation du mot de passe et les invitations d'equipe ne peuvent pas fonctionner. " +
+    "Renseigner APP_URL=https://votre-domaine dans le fichier .env, puis redemarrer.",
+  );
+}
