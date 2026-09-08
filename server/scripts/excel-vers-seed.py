@@ -83,11 +83,70 @@ def lire(classeur, onglet='Feuil2'):
         items.append(item)
     return items
 
+# ---------------------------------------------------------------------------
+# Corrections demandees par le bureau, absentes du classeur
+#
+# Trois retours de la visite de beta ne sont pas reportes dans le tableau. Plutot
+# que de les appliquer a la main en base, ou ils seraient effaces au prochain
+# import, ils vivent ici : visibles, dates, et annules d'eux-memes le jour ou le
+# classeur les portera.
+#
+# Aucun texte n'est invente : chacun est repris mot pour mot d'un autre poste du
+# meme catalogue, indique en commentaire.
+CORRECTIONS = [
+    {
+        'ouvrage': "Fenetres en bois",
+        'demande': "retirer la remise aux normes, pas necessaire ici (retour du 1er septembre, point 9)",
+        'champs': {'workNorms': None, 'priceNorms': None},
+    },
+    {
+        'ouvrage': "Facade en pierre naturelle",
+        'demande': "ajouter l'option d'isolation par l'interieur (point 8)",
+        # Texte et prix repris de l'ouvrage « Isolation par l'interieur » (CFC 271),
+        # meme travail et meme unite (CHF/m2).
+        'champs': {
+            'workImprovement': "Fourniture et pose d'isolation par l'intérieur avec multipor épaisseur 10 cm.",
+            'priceImprovement': '110',
+        },
+    },
+    {
+        'ouvrage': "Chaudiere gaz a condensation",
+        'demande': "ajouter l'option de raccordement au CAD (point 16)",
+        # Texte repris de l'ouvrage « Chauffage a distance / CAD » (CFC 242). Le prix
+        # n'est pas repris : celui du CAD est un forfait de sous-station, l'ajouter ici
+        # le compterait deux fois. Une seule cellule reste a renseigner par le bureau.
+        'champs': {'workImprovement': "Raccordement au réseau CAD en remplacement de la production actuelle."},
+    },
+    {
+        'ouvrage': "Chaudiere mazout a condensation",
+        'demande': "ajouter l'option de raccordement au CAD (point 16)",
+        'champs': {'workImprovement': "Raccordement au réseau CAD en remplacement de la production actuelle."},
+    },
+]
+
+
+def appliquer_corrections(items):
+    """Applique les corrections et rend le compte rendu de ce qui a change."""
+    par_nom = {norm(i['description']): i for i in items}
+    journal = []
+    for c in CORRECTIONS:
+        item = par_nom.get(norm(c['ouvrage']))
+        if item is None:
+            journal.append(("INTROUVABLE", c['ouvrage'], c['demande'], []))
+            continue
+        change = [k for k, v in c['champs'].items() if (item.get(k) or None) != (v or None)]
+        for k, v in c['champs'].items():
+            item[k] = v
+        journal.append(("appliquee" if change else "deja conforme", c['ouvrage'], c['demande'], change))
+    return journal
+
+
 def main():
     if len(sys.argv) < 2:
         sys.exit(__doc__)
     classeur, appliquer = sys.argv[1], '--appliquer' in sys.argv
     items = lire(classeur)
+    journal = appliquer_corrections(items)
 
     # Un meme libelle deux fois rendrait l'appariement ambigu cote base.
     vus, doublons = {}, []
@@ -109,6 +168,12 @@ def main():
     print("  avec prix moyen       : %d" % len([i for i in items if i['priceMoyen']]))
     print("  avec prix mauvais     : %d" % len([i for i in items if i['priceMauvais']]))
     print("  avec note echafaudage : %d" % len([i for i in items if i['scaffoldingNote']]))
+
+    print("\nCORRECTIONS DEMANDEES PAR LE BUREAU, ABSENTES DU CLASSEUR")
+    for etat, ouvrage, demande, change in journal:
+        print("  %-14s %-34s %s" % (etat, ouvrage[:34], demande))
+        if change:
+            print("                 champs touches : %s" % ", ".join(change))
 
     if doublons:
         print("\nLIBELLES EN DOUBLE (l'appariement serait ambigu) : %d" % len(doublons))
