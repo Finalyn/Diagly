@@ -637,39 +637,79 @@ interface ItemEditorProps {
 }
 
 /** Sélecteur d'état guidé : chaque état avec sa description (Feuille 3). Fallback = boutons simples. */
+/**
+ * Choix de l'état constaté.
+ *
+ * Sur place, personne ne peut trancher entre « bon » et « moyen » devant quatre
+ * boutons nus : ce sont des mots, pas des critères. Chaque état porte donc ce qui
+ * permet de décider, dans l'ordre où on en a besoin :
+ *
+ *   le constat   à quoi ressemble un ouvrage dans cet état
+ *   les travaux  ce que cet état engage, qui est souvent le vrai critère
+ *   le prix      signalé seulement quand il manque, pour éviter la surprise d'un
+ *                montant à zéro une fois l'état retenu
+ *
+ * Les textes viennent du catalogue du bureau, tels qu'il les a écrits.
+ */
 function StateGuide({ item, catalog, onApply, isMutating }: {
   item: ApiDiagnosticItem; catalog: ApiCatalogItem | null
   onApply: (s: ElementState) => void; isMutating: boolean
 }) {
-  const descOf = (s: ElementState) => s === 'TRES_BON' ? catalog?.descTbe : s === 'BON' ? catalog?.descBon : s === 'MOYEN' ? catalog?.descMoyen : catalog?.descMauvais
-  const hasDesc = !!(catalog && (catalog.descTbe || catalog.descBon || catalog.descMoyen || catalog.descMauvais))
-  if (!hasDesc) {
-    return (
-      <div className="grid grid-cols-2 gap-2">
-        {STATES.map(state => (
-          <button key={state} onClick={() => onApply(state)} disabled={isMutating}
-            className={cn('py-3 rounded-xl text-sm font-medium border-2 transition-colors',
-              item.state === state ? `${stateColors[state]} text-white border-transparent` : 'bg-background border-muted hover:border-primary/30')}>
-            {stateLabels[state]}
-          </button>
-        ))}
-      </div>
-    )
+  const constatOf = (s: ElementState) =>
+    s === 'TRES_BON' ? catalog?.descTbe : s === 'BON' ? catalog?.descBon : s === 'MOYEN' ? catalog?.descMoyen : catalog?.descMauvais
+  const travauxOf = (s: ElementState) => {
+    if (!catalog) return null
+    const t = workForState(catalog, s)
+    return t && t.trim() ? t.trim() : null
   }
+
   return (
     <div className="space-y-2">
-      {STATES.map(state => {
-        const desc = descOf(state)
+      {STATES.map((state) => {
+        const constat = constatOf(state)
+        const travaux = travauxOf(state)
         const selected = item.state === state
+        // Un état qui engage des travaux mais n'a pas de prix donnera un coût nul :
+        // mieux vaut le dire avant qu'après. Un état sans travaux, lui, n'a aucune
+        // raison d'avoir un prix : le signaler serait du bruit sur presque chaque ligne.
+        const engageDesTravaux = !!travaux && travaux.toLowerCase() !== 'néant'
+        const sansPrix = engageDesTravaux && !!catalog && priceToNumber(priceForState(catalog, state)) == null
         return (
-          <button key={state} onClick={() => onApply(state)} disabled={isMutating}
+          <button
+            key={state}
+            onClick={() => onApply(state)}
+            disabled={isMutating}
             className={cn('w-full rounded-xl border-2 p-3 text-left transition-colors',
-              selected ? `${stateColors[state]} border-transparent` : 'bg-background border-muted hover:border-primary/30')}>
+              selected ? `${stateColors[state]} border-transparent` : 'bg-background border-muted hover:border-primary/30')}
+          >
             <div className="flex items-center gap-2">
-              <span className={cn('inline-block h-2.5 w-2.5 rounded-full', selected ? 'bg-white' : stateColors[state])} />
+              <span className={cn('inline-block h-2.5 w-2.5 rounded-full shrink-0', selected ? 'bg-white' : stateColors[state])} />
               <span className={cn('text-sm font-semibold', selected && 'text-white')}>{stateLabels[state]}</span>
+              {sansPrix && (
+                <span className={cn('ml-auto text-[10px] font-medium', selected ? 'text-white/80' : 'text-amber-600')}>
+                  prix non renseigné
+                </span>
+              )}
             </div>
-            {desc && <p className={cn('mt-1 text-xs leading-snug', selected ? 'text-white/90' : 'text-muted-foreground')}>{desc}</p>}
+
+            {constat && (
+              <p className={cn('mt-1 text-xs leading-snug', selected ? 'text-white/90' : 'text-muted-foreground')}>
+                {constat}
+              </p>
+            )}
+
+            {travaux && (
+              <p className={cn('mt-1 text-xs leading-snug', selected ? 'text-white/90' : 'text-foreground/75')}>
+                <span className={cn('font-medium', selected ? 'text-white' : 'text-foreground')}>Travaux : </span>
+                {travaux}
+              </p>
+            )}
+
+            {!constat && !travaux && (
+              <p className={cn('mt-1 text-xs italic', selected ? 'text-white/80' : 'text-muted-foreground')}>
+                Aucune description au catalogue pour cet état.
+              </p>
+            )}
           </button>
         )
       })}
