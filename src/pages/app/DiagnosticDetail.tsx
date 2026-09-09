@@ -879,6 +879,31 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id, autoQty, item.quantityManual])
 
+  /**
+   * Ce qu'il y a à faire, tel qu'il partira au devis.
+   *
+   * On affiche d'abord ce qui a été retenu sur le poste. S'il est vide, on retombe
+   * sur le texte du catalogue pour l'état constaté : un ouvrage dont le catalogue
+   * ne portait pas de texte au moment du choix laissait sinon le bloc muet, et la
+   * personne sur place ne voyait plus ce qu'elle venait de décider.
+   */
+  const travauxRetenus = item.works.filter((w) => w && w.trim() && w.trim().toLowerCase() !== 'néant')
+  const travauxCatalogue = (item.state && catalog ? workForState(catalog, item.state) : null)?.trim() || null
+  const aFaire = travauxRetenus.length > 0
+    ? travauxRetenus.join(' · ')
+    : (travauxCatalogue && travauxCatalogue.toLowerCase() !== 'néant' ? travauxCatalogue : null)
+
+  /**
+   * Deux silences a ne pas confondre.
+   *
+   * « Neant » est une reponse : l'ouvrage est dans un etat qui n'appelle aucun travail.
+   * Une case vide n'en est pas une : le catalogue ne dit pas quoi faire, et l'ecrire
+   * « aucun travail a prevoir » serait un mensonge, surtout en face d'un cout de
+   * plusieurs dizaines de milliers de francs.
+   */
+  const silenceDesTravaux: 'neant' | 'catalogue-muet' | null =
+    aFaire || !item.state ? null : travauxCatalogue?.toLowerCase() === 'néant' ? 'neant' : 'catalogue-muet'
+
   // Changer l'état recalcule automatiquement travaux, priorité et coût.
   const applyState = (state: ElementState) => {
     // L'app se tient d'une main, souvent sans quitter le bâtiment des yeux : une
@@ -1042,17 +1067,34 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
           )}
 
           {/* Résultat automatique (priorité + coût) */}
-          <div className="rounded-xl border bg-muted/20 p-3 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Priorité · coût (auto)</p>
-              <div className="flex items-center gap-2 mt-1">
-                {item.priority
-                  ? <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold', priorityColors[item.priority])}>P{item.priority}</span>
-                  : <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Non évalué</span>}
-                {item.works.length > 0 && <span className="text-xs text-muted-foreground truncate">{item.works.join(' · ')}</span>}
+          {/* Le libellé des travaux était coupé à mi-phrase : c'est justement ce qui est
+              retenu pour le devis, il doit se lire en entier. La pastille de priorité et
+              le montant gardent leur ligne, le texte passe dessous et retourne à la ligne. */}
+          <div className="rounded-xl border bg-muted/20 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Priorité · coût (auto)</p>
+                <div className="mt-1">
+                  {item.priority
+                    ? <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold', priorityColors[item.priority])}>P{item.priority}</span>
+                    : <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Non évalué</span>}
+                </div>
               </div>
+              <p className="text-lg font-bold text-primary shrink-0">{item.estimatedCost ? formatCHF(toNum(item.estimatedCost)) : '—'}</p>
             </div>
-            <p className="text-lg font-bold text-primary shrink-0">{item.estimatedCost ? formatCHF(toNum(item.estimatedCost)) : '—'}</p>
+            {aFaire && (
+              <p className="mt-2 text-xs leading-snug text-foreground/80">
+                <span className="font-medium text-foreground">À faire : </span>{aFaire}
+              </p>
+            )}
+            {silenceDesTravaux === 'neant' && (
+              <p className="mt-2 text-xs italic leading-snug text-muted-foreground">Aucun travail à prévoir pour cet état.</p>
+            )}
+            {silenceDesTravaux === 'catalogue-muet' && (
+              <p className="mt-2 text-xs leading-snug text-amber-700">
+                Le catalogue ne précise pas les travaux pour cet état. À décrire dans les options avancées.
+              </p>
+            )}
           </div>
 
           {/* Options avancées repliées : l'écran reste simple par défaut */}
@@ -1217,7 +1259,12 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Travaux</p>
-            <p className="text-sm mt-0.5">{item.works.length > 0 ? item.works.join(' · ') : '—'}</p>
+            <p className={cn('text-sm mt-0.5 leading-snug', silenceDesTravaux === 'catalogue-muet' && 'text-amber-700')}>
+              {aFaire
+                ?? (silenceDesTravaux === 'neant' ? 'Aucun travail à prévoir pour cet état.'
+                  : silenceDesTravaux === 'catalogue-muet' ? 'Le catalogue ne précise pas les travaux pour cet état.'
+                    : '—')}
+            </p>
           </div>
 
           {/* Réglages manuels (repliés par défaut) */}
