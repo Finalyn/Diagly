@@ -514,8 +514,9 @@ export function DiagnosticDetail() {
           <PanneauGlissant
             ouvert={!!selectedItemId}
             onFermer={() => setSelectedItemId(null)}
-            // pb-24 : le bouton flottant « Suivant » ne doit jamais couvrir la fin du contenu.
-            className="absolute inset-0 z-30 overflow-y-auto overflow-x-hidden bg-background pb-24"
+            // L'editeur gere son propre defilement et son propre degagement du bas :
+            // une marge ici raccourcirait le panneau et laisserait une bande vide.
+            className="absolute inset-0 z-30 overflow-hidden bg-background"
           >
             {selectedDiagItem && (
               <ItemEditor
