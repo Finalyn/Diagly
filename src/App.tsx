@@ -8,7 +8,6 @@ import { useIsMobile } from '@/lib/use-mobile'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 // Entrée : chargée immédiatement pour un premier affichage rapide.
 import { Soon } from '@/pages/marketing/Soon'
-import { Landing } from '@/pages/marketing/Landing'
 import { Login } from '@/pages/auth/Login'
 import { OAuthCallback } from '@/pages/auth/OAuthCallback'
 
@@ -30,6 +29,9 @@ const ProjectDiagnostic = lazy(() => named(import('@/pages/app/ProjectDiagnostic
 const ProjectMetres = lazy(() => named(import('@/pages/app/ProjectMetres'), 'ProjectMetres'))
 const ProjectPlans = lazy(() => named(import('@/pages/app/ProjectPlans'), 'ProjectPlans'))
 const ProjectPhotos = lazy(() => named(import('@/pages/app/ProjectPhotos'), 'ProjectPhotos'))
+// La vitrine embarque Leaflet et ses captures : chargee a la demande, elle ne
+// pese pas sur le paquet que tout utilisateur de l'application telecharge.
+const Landing = lazy(() => named(import('@/pages/marketing/Landing'), 'Landing'))
 const ProjectRapports = lazy(() => named(import('@/pages/app/ProjectRapports'), 'ProjectRapports'))
 const ProjectCECB = lazy(() => named(import('@/pages/app/ProjectCECB'), 'ProjectCECB'))
 const ProjectPlanning = lazy(() => named(import('@/pages/app/ProjectPlanning'), 'ProjectPlanning'))

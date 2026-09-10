@@ -6,7 +6,7 @@ import visite from '@/assets/vitrine/app-visite.png'
 import couts from '@/assets/vitrine/app-couts.png'
 import rapport from '@/assets/vitrine/app-rapport.png'
 import catalogue from '@/assets/vitrine/app-catalogue.png'
-import carte from '@/assets/vitrine/app-carte.png'
+import { CarteAdresse } from './CarteAdresse'
 
 /**
  * Page publique de Diagly.
@@ -301,92 +301,86 @@ function Visite() {
  * viennent, on ne les donne pas. Elles restent marquees comme decoratives pour
  * un lecteur d'ecran, qui n'a rien a faire d'un chiffre illisible.
  */
-const DEPUIS_ADRESSE: { libelle: string; valeur: string; source: string; floute?: boolean }[] = [
-  { libelle: 'Identifiant fédéral du bâtiment', valeur: '1 927 043', source: 'RegBL', floute: true },
-  { libelle: 'Année de construction', valeur: '1972', source: 'RegBL' },
-  { libelle: 'Nombre de logements', valeur: '18', source: 'RegBL', floute: true },
-  { libelle: 'Emprise au sol', valeur: '420 m²', source: 'swisstopo', floute: true },
-  { libelle: 'Périmètre du bâtiment', valeur: '88 ml', source: 'swisstopo', floute: true },
-  { libelle: "Zone d'affectation", valeur: "Zone d'habitation", source: 'cadastre RDPPF' },
-  { libelle: 'Degré de sensibilité au bruit', valeur: 'DS III', source: 'cadastre RDPPF' },
+const EXEMPLE_DEPART = 'Avenue de la Gare 12, 1700 Fribourg'
+
+/**
+ * Ce que l'adresse donne, et d'ou. Les valeurs ne sont la que pour donner une
+ * forme au flou : elles sont masquees et marquees comme decoratives, jamais lues.
+ * Afficher un chiffre reel pour l'adresse cherchee par le visiteur, sans l'avoir
+ * interrogee, serait un mensonge.
+ */
+const DEPUIS_ADRESSE = [
+  { libelle: 'Identifiant fédéral du bâtiment', exemple: '1 927 043', source: 'RegBL' },
+  { libelle: 'Année de construction', exemple: '1972', source: 'RegBL' },
+  { libelle: 'Nombre de logements', exemple: '18', source: 'RegBL' },
+  { libelle: 'Emprise au sol', exemple: '420 m²', source: 'swisstopo' },
+  { libelle: 'Périmètre du bâtiment', exemple: '88 ml', source: 'swisstopo' },
+  { libelle: "Zone d'affectation", exemple: "Zone d'habitation", source: 'cadastre RDPPF' },
+  { libelle: 'Degré de sensibilité au bruit', exemple: 'DS III', source: 'cadastre RDPPF' },
 ]
 
 const DEDUIT = [
-  { libelle: 'Surface de façade', valeur: '1 188 m²' },
-  { libelle: 'Surface vitrée', valeur: '475 m²' },
-  { libelle: 'Échafaudage', valeur: '1 307 m²' },
+  { libelle: 'Surface de façade', exemple: '1 188 m²' },
+  { libelle: 'Surface vitrée', exemple: '475 m²' },
+  { libelle: 'Échafaudage', exemple: '1 307 m²' },
 ]
 
 function Adresse() {
+  const [lieu, setLieu] = useState(EXEMPLE_DEPART)
   return (
     <section className="px-5 py-24 md:py-32">
       <GrandTitre>Tout commence par une adresse.</GrandTitre>
       <Chapo>
-        Avant la première photo, Diagly interroge les registres publics suisses et en tire
-        la géométrie du bâtiment. Le dossier est déjà à moitié rempli quand vous arrivez sur place.
+        Avant la première photo, Diagly interroge les registres publics suisses et en tire la
+        géométrie du bâtiment. Cherchez le vôtre, la carte est celle de l'application.
       </Chapo>
 
-      <div className="mx-auto mt-14 max-w-[1000px]">
-        {/* La barre d'adresse, telle qu'on la remplit dans l'application. */}
-        <div className="mx-auto flex max-w-xl items-center gap-3 rounded-full border border-black/[0.08] bg-white px-5 py-3 shadow-[0_10px_30px_-16px_rgba(20,45,90,0.4)]">
-          <MapPin className="h-4 w-4 shrink-0 text-[#0167EA]" aria-hidden="true" />
-          <span className="truncate text-[15px] text-[#1d1d1f]/80">Avenue de la Gare 12, 1700 Fribourg</span>
-          <span className="ml-auto shrink-0 rounded-full bg-[#0167EA] px-3 py-1 text-[12px] text-white">Analyser</span>
-        </div>
+      <div className="mx-auto mt-14 grid max-w-[1060px] items-start gap-6 md:grid-cols-[1.05fr_0.95fr]">
+        <CarteAdresse onLieu={(l) => setLieu(l.label)} />
 
-        <div className="mt-10 grid items-stretch gap-6 md:grid-cols-[0.95fr_1.05fr]">
-          <img
-            src={carte}
-            alt="La parcelle localisée sur la carte, avec le bâtiment repéré."
-            loading="lazy"
-            className="h-full min-h-[300px] w-full rounded-[20px] border border-black/[0.07] object-cover shadow-[0_20px_60px_-30px_rgba(20,45,90,0.5)]"
-          />
+        <div className="rounded-[20px] border border-black/[0.07] bg-white p-6 shadow-[0_20px_60px_-30px_rgba(20,45,90,0.35)] sm:p-8">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">Relevé sans se déplacer</p>
+          <p className="mt-1.5 truncate text-[15px] font-semibold" title={lieu}>{lieu}</p>
 
-          <div className="rounded-[20px] border border-black/[0.07] bg-white p-6 shadow-[0_20px_60px_-30px_rgba(20,45,90,0.35)] sm:p-8">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">Relevé sans se déplacer</p>
-            <dl className="mt-5 divide-y divide-black/[0.06]">
-              {DEPUIS_ADRESSE.map((d) => (
-                <div key={d.libelle} className="flex items-baseline justify-between gap-4 py-2.5">
-                  <dt className="text-[15px] text-[#1d1d1f]/75">
-                    {d.libelle}
-                    <span className="ml-2 text-[12px] text-[#86868b]">{d.source}</span>
-                  </dt>
-                  <dd className={cn('shrink-0 text-[15px] font-semibold tabular-nums',
-                    d.floute && 'select-none blur-[5px]')} aria-hidden={d.floute || undefined}>
-                    {d.valeur}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+          <dl className="mt-5 divide-y divide-black/[0.06]">
+            {DEPUIS_ADRESSE.map((d) => (
+              <div key={d.libelle} className="flex items-baseline justify-between gap-4 py-2.5">
+                <dt className="text-[15px] text-[#1d1d1f]/75">
+                  {d.libelle}
+                  <span className="ml-2 text-[12px] text-[#86868b]">{d.source}</span>
+                </dt>
+                <dd className="shrink-0 select-none text-[15px] font-semibold tabular-nums blur-[5px]" aria-hidden="true">{d.exemple}</dd>
+              </div>
+            ))}
+          </dl>
 
-            <p className="mt-6 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">Et ce qui s'en déduit</p>
-            <dl className="mt-3 divide-y divide-black/[0.06]">
-              {DEDUIT.map((d) => (
-                <div key={d.libelle} className="flex items-baseline justify-between gap-4 py-2.5">
-                  <dt className="text-[15px] text-[#1d1d1f]/75">{d.libelle}</dt>
-                  <dd className="shrink-0 select-none text-[15px] font-semibold tabular-nums blur-[5px]" aria-hidden="true">{d.valeur}</dd>
-                </div>
-              ))}
-            </dl>
+          <p className="mt-6 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">Et ce qui s'en déduit</p>
+          <dl className="mt-3 divide-y divide-black/[0.06]">
+            {DEDUIT.map((d) => (
+              <div key={d.libelle} className="flex items-baseline justify-between gap-4 py-2.5">
+                <dt className="text-[15px] text-[#1d1d1f]/75">{d.libelle}</dt>
+                <dd className="shrink-0 select-none text-[15px] font-semibold tabular-nums blur-[5px]" aria-hidden="true">{d.exemple}</dd>
+              </div>
+            ))}
+          </dl>
 
-            <p className="sr-only">
-              Les valeurs chiffrées de cet exemple sont volontairement floutées. Créez un
-              dossier pour obtenir celles de votre propre bâtiment.
-            </p>
+          <p className="sr-only">
+            Les valeurs de ce relevé sont volontairement masquées sur la page publique.
+            Créez un dossier pour obtenir celles de votre bâtiment.
+          </p>
 
-            <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-3">
-              <BoutonFleche to="/login" className="py-2.5 text-[14px]">Voir sur mon immeuble</BoutonFleche>
-              <span className="text-[13px] text-[#86868b]">Chiffres masqués sur cet exemple</span>
-            </div>
+          <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-3">
+            <BoutonFleche to="/login" className="py-2.5 text-[14px]">Voir mes chiffres</BoutonFleche>
+            <span className="text-[13px] text-[#86868b]">Valeurs masquées ici</span>
           </div>
         </div>
-
-        <p className="mx-auto mt-8 max-w-2xl text-center text-[14px] leading-relaxed text-[#6e6e73]">
-          Ces valeurs sont un point de départ, pas une vérité. Le périmètre issu de swisstopo
-          fusionne parfois des bâtiments contigus : Diagly le signale quand la forme obtenue
-          est improbable, et vous le corrigez sur place.
-        </p>
       </div>
+
+      <p className="mx-auto mt-10 max-w-2xl text-center text-[14px] leading-relaxed text-[#6e6e73]">
+        Ces valeurs sont un point de départ, pas une vérité. Le périmètre issu de swisstopo
+        fusionne parfois des bâtiments contigus : Diagly le signale quand la forme obtenue est
+        improbable, et vous le corrigez sur place.
+      </p>
     </section>
   )
 }
