@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, AlertCircle, Download, X, Camera, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button, Card, CardContent } from '@/components/ui'
-import { DiagnosticTabs } from '@/components/layout/DiagnosticTabs'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { stateLabels, stateColors } from '@/data/mock'
@@ -134,8 +133,8 @@ export function ProjectPhotos() {
 
   return (
     <div className="space-y-4">
-      <DiagnosticTabs projectId={project.id} />
-
+      {/* Pas de barre d'onglets ici : la mise en page l'affiche deja pour toute
+          page de dossier. La reposer en donnait deux, l'une sous l'autre. */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold md:text-2xl">Photos</h1>
