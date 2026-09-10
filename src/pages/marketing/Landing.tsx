@@ -47,7 +47,14 @@ export function Landing() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-white text-[#1d1d1f] antialiased">
+    <div className="relative min-h-screen bg-white text-[#1d1d1f] antialiased">
+      {/* Nuance du haut : elle part du premier pixel, passe derriere la barre
+          flottante et s'eteint vers le blanc. Posee ici plutot que sur le heros,
+          sinon une couture nette apparait a la jonction des deux. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[820px] bg-[linear-gradient(180deg,#e9f1fd_0%,#f2f7fd_35%,#fafcfe_70%,#ffffff_100%)]"
+      />
       <Entete />
       <main>
         <Hero />
@@ -213,7 +220,7 @@ function Entete() {
 
 function Hero() {
   return (
-    <section id="haut" className="scroll-mt-28 overflow-hidden bg-[linear-gradient(180deg,#eef4fd_0%,#f7fafd_45%,#ffffff_100%)] px-5 pb-2 pt-24 text-center md:pt-28">
+    <section id="haut" className="relative scroll-mt-28 overflow-hidden px-5 pb-2 pt-24 text-center md:pt-28">
       {/* Badge : ce qui vient d'arriver, avant même le titre. */}
       <a href="#visite" className="inline-flex items-center gap-2 rounded-full border border-black/[0.07] bg-white py-1 pl-1 pr-3.5 text-[13px] shadow-sm transition-colors hover:border-black/15">
         <span className="rounded-full bg-[#0167EA] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white">Nouveau</span>
