@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronRight, Plus, Check, Minus, ArrowUpRight, MapPin } from 'lucide-react'
+import { ChevronRight, Plus, Check, Minus, ArrowUpRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import visite from '@/assets/vitrine/app-visite.png'
 import couts from '@/assets/vitrine/app-couts.png'
