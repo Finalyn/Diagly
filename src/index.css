@@ -36,6 +36,9 @@
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
   --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* Un mot en italique serif dans les titres de la vitrine : servi par le systeme,
+     aucune requete vers un fournisseur de polices, la CSP reste stricte. */
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", serif;
 
 }
 

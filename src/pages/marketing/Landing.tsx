@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronRight, Plus, Check, Minus } from 'lucide-react'
+import { ChevronRight, Plus, Check, Minus, ArrowUpRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import visite from '@/assets/vitrine/app-visite.png'
 import couts from '@/assets/vitrine/app-couts.png'
@@ -47,7 +47,9 @@ export function Landing() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-white text-[#1d1d1f] antialiased">
+    // Le degrade est le fond du navigateur ; la page vit dans un cadre pose dessus.
+    <div className="min-h-screen bg-[linear-gradient(140deg,#b9d4ff_0%,#dde9fc_22%,#fbeedd_46%,#cfe2ff_70%,#a9c8f7_100%)] p-3 text-[#1d1d1f] antialiased sm:p-6 lg:p-10">
+      <div className="mx-auto w-full max-w-[1320px] rounded-[26px] bg-white shadow-[0_30px_90px_-40px_rgba(20,45,90,0.45)] sm:rounded-[32px]">
       <Entete />
       <main>
         <Hero />
@@ -61,19 +63,39 @@ export function Landing() {
         <AppelFinal />
       </main>
       <PiedDePage />
+      </div>
     </div>
   )
 }
 
 /* --------------------------------------------------------------- éléments */
 
+/** Bouton plein avec la flèche en pastille claire, la signature des références. */
+function BoutonFleche({ children, to, className }: { children: React.ReactNode; to: string; className?: string }) {
+  return (
+    <Link
+      to={to}
+      className={cn(
+        'group inline-flex items-center gap-2.5 rounded-full bg-[#0167EA] py-3 pl-6 pr-2 text-[15px] text-white',
+        'transition-colors hover:bg-[#0154c4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0167EA]',
+        className,
+      )}
+    >
+      {children}
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/20 transition-transform group-hover:translate-x-0.5">
+        <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+      </span>
+    </Link>
+  )
+}
+
 function Pilule({ children, to, className }: { children: React.ReactNode; to: string; className?: string }) {
   return (
     <Link
       to={to}
       className={cn(
-        'inline-flex items-center justify-center rounded-full bg-[#0066cc] px-6 py-3 text-[15px] text-white',
-        'transition-colors hover:bg-[#0055b3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0066cc]',
+        'inline-flex items-center justify-center rounded-full bg-[#0167EA] px-6 py-3 text-[15px] text-white',
+        'transition-colors hover:bg-[#0154c4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0167EA]',
         className,
       )}
     >
@@ -84,7 +106,7 @@ function Pilule({ children, to, className }: { children: React.ReactNode; to: st
 
 function LienFleche({ children, href, to }: { children: React.ReactNode; href?: string; to?: string }) {
   const contenu = <>{children}<ChevronRight className="h-4 w-4" aria-hidden="true" /></>
-  const styles = 'inline-flex items-center gap-0.5 text-[15px] text-[#0066cc] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0066cc]'
+  const styles = 'inline-flex items-center gap-0.5 text-[15px] text-[#0167EA] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0167EA]'
   return to ? <Link to={to} className={styles}>{contenu}</Link> : <a href={href} className={styles}>{contenu}</a>
 }
 
@@ -139,64 +161,53 @@ function Capture({ src, alt, className, sombre }: {
 function Entete() {
   const [ouvert, setOuvert] = useState(false)
   return (
-    <div className="sticky top-0 z-50">
-      {/* Bandeau d'offre : la raison de cliquer, avant même le premier titre. */}
-      <Link
-        to="/login"
-        className="block bg-[#0066cc] px-4 py-2 text-center text-[13px] text-white transition-colors hover:bg-[#0055b3]"
-      >
-        Premier diagnostic offert, sans carte bancaire.
-        <span className="ml-1.5 font-semibold underline underline-offset-2">Commencer</span>
-      </Link>
+    <div className="sticky top-2 z-50 px-3 pt-3 sm:top-4 sm:px-4 sm:pt-4">
+      <header className="mx-auto flex w-full max-w-[1160px] items-center gap-6 rounded-full border border-black/[0.06] bg-white/85 px-3 py-2 shadow-[0_10px_30px_-14px_rgba(20,45,90,0.35)] backdrop-blur-xl backdrop-saturate-150 sm:px-4">
+        <a href="#haut" className="flex shrink-0 items-center gap-2 pl-1">
+          <img src="/diagly-mark.svg" alt="" aria-hidden="true" className="h-6 w-6" />
+          <span className="text-[17px] font-semibold tracking-[-0.015em]">Diagly</span>
+        </a>
 
-      <header className="border-b border-black/[0.08] bg-white/80 backdrop-blur-xl backdrop-saturate-150">
-        <div className="mx-auto flex h-14 w-full max-w-[1100px] items-center gap-7 px-4 sm:px-5">
-          <a href="#haut" className="flex shrink-0 items-center gap-2">
-            <img src="/diagly-mark.svg" alt="" aria-hidden="true" className="h-6 w-6" />
-            <span className="text-[18px] font-semibold tracking-[-0.015em]">Diagly</span>
-          </a>
+        <nav className="hidden flex-1 items-center justify-center gap-7 lg:flex" aria-label="Sections">
+          {NAV.map((n) => (
+            <a key={n.href} href={n.href} className="text-[14px] text-[#1d1d1f]/70 transition-colors hover:text-[#1d1d1f]">
+              {n.label}
+            </a>
+          ))}
+        </nav>
 
-          <nav className="hidden flex-1 items-center gap-7 lg:flex" aria-label="Sections">
-            {NAV.map((n) => (
-              <a key={n.href} href={n.href} className="text-[14px] text-[#1d1d1f]/75 transition-colors hover:text-[#1d1d1f]">
-                {n.label}
-              </a>
-            ))}
-          </nav>
-
-          <div className="ml-auto flex items-center gap-3 lg:ml-0 lg:gap-4">
-            <Link to="/login" className="hidden text-[14px] text-[#1d1d1f]/75 transition-colors hover:text-[#1d1d1f] sm:block">
-              Se connecter
-            </Link>
-            {/* Le bouton reste sur telephone : c'est lui qui transforme la lecture en essai. */}
-            <Pilule to="/login" className="whitespace-nowrap px-4 py-2 text-[14px]">
-              <span className="sm:hidden">Essayer</span>
-              <span className="hidden sm:inline">Essayer gratuitement</span>
-            </Pilule>
-            <button
-              onClick={() => setOuvert((o) => !o)}
-              aria-expanded={ouvert}
-              aria-label="Ouvrir le menu"
-              className="-mr-1 p-1 lg:hidden"
-            >
-              <Minus className={cn('h-5 w-5 transition-transform', ouvert && 'rotate-90')} />
-            </button>
-          </div>
+        <div className="ml-auto flex items-center gap-2.5 lg:ml-0 lg:gap-3">
+          <Link to="/login" className="hidden text-[14px] text-[#1d1d1f]/70 transition-colors hover:text-[#1d1d1f] sm:block">
+            Se connecter
+          </Link>
+          {/* Le bouton ne disparait jamais : c'est lui qui transforme la lecture en essai. */}
+          <BoutonFleche to="/login" className="px-4 py-2 text-[14px]">
+            <span className="sm:hidden">Essayer</span>
+            <span className="hidden sm:inline">Essayer gratuitement</span>
+          </BoutonFleche>
+          <button
+            onClick={() => setOuvert((o) => !o)}
+            aria-expanded={ouvert}
+            aria-label="Ouvrir le menu"
+            className="pr-1 lg:hidden"
+          >
+            <Minus className={cn('h-5 w-5 transition-transform', ouvert && 'rotate-90')} />
+          </button>
         </div>
-
-        {ouvert && (
-          <nav className="border-t border-black/[0.06] bg-white px-5 py-2 lg:hidden" aria-label="Sections">
-            {NAV.map((n) => (
-              <a key={n.href} href={n.href} onClick={() => setOuvert(false)} className="block py-2.5 text-[15px] text-[#1d1d1f]/85">
-                {n.label}
-              </a>
-            ))}
-            <Link to="/login" onClick={() => setOuvert(false)} className="block py-2.5 text-[15px] text-[#1d1d1f]/85 sm:hidden">
-              Se connecter
-            </Link>
-          </nav>
-        )}
       </header>
+
+      {ouvert && (
+        <nav className="mx-auto mt-2 w-full max-w-[1160px] rounded-3xl border border-black/[0.06] bg-white/95 px-4 py-2 shadow-lg backdrop-blur-xl lg:hidden" aria-label="Sections">
+          {NAV.map((n) => (
+            <a key={n.href} href={n.href} onClick={() => setOuvert(false)} className="block py-2.5 text-[15px] text-[#1d1d1f]/85">
+              {n.label}
+            </a>
+          ))}
+          <Link to="/login" onClick={() => setOuvert(false)} className="block py-2.5 text-[15px] text-[#1d1d1f]/85 sm:hidden">
+            Se connecter
+          </Link>
+        </nav>
+      )}
     </div>
   )
 }
@@ -205,24 +216,52 @@ function Entete() {
 
 function Hero() {
   return (
-    <section id="haut" className="scroll-mt-28 overflow-hidden px-5 pt-16 text-center md:pt-24">
-      <p className="text-[15px] font-semibold text-[#0066cc]">Diagly</p>
-      <h1 className="mx-auto mt-3 max-w-4xl text-balance text-[clamp(2.4rem,7vw,5rem)] font-semibold leading-[1.03] tracking-[-0.035em]">
-        Un immeuble relevé et chiffré avant de repartir.
+    <section id="haut" className="scroll-mt-28 overflow-hidden px-5 pt-14 text-center md:pt-20">
+      {/* Badge : ce qui vient d'arriver, avant même le titre. */}
+      <a href="#visite" className="inline-flex items-center gap-2 rounded-full border border-black/[0.07] bg-white py-1 pl-1 pr-3.5 text-[13px] shadow-sm transition-colors hover:border-black/15">
+        <span className="rounded-full bg-[#0167EA] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white">Nouveau</span>
+        <span className="text-[#1d1d1f]/75">Le parcours de visite guidé</span>
+        <ChevronRight className="h-3.5 w-3.5 text-[#1d1d1f]/40" aria-hidden="true" />
+      </a>
+
+      <h1 className="mx-auto mt-7 max-w-4xl text-balance text-[clamp(2.4rem,6.6vw,4.6rem)] font-semibold leading-[1.04] tracking-[-0.035em]">
+        Un immeuble relevé et chiffré{' '}
+        <span className="font-serif italic font-normal tracking-[-0.01em]">avant de repartir</span>
       </h1>
-      <p className="mx-auto mt-6 max-w-2xl text-balance text-[clamp(1.1rem,2.1vw,1.5rem)] leading-[1.35] text-[#6e6e73]">
+
+      <p className="mx-auto mt-6 max-w-2xl text-balance text-[clamp(1.05rem,2vw,1.35rem)] leading-[1.45] text-[#5b6572]">
         Vous photographiez les ouvrages pendant la visite. Diagly propose leur état,
         calcule les métrés et sort un rapport structuré par codes CFC, chiffré en francs.
       </p>
-      <div className="mt-8 flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
-        <Pilule to="/login">Essayer gratuitement</Pilule>
+
+      <div className="mt-9 flex flex-wrap items-center justify-center gap-x-7 gap-y-4">
+        <BoutonFleche to="/login">Essayer gratuitement</BoutonFleche>
         <LienFleche href="#rapport">Voir un rapport</LienFleche>
       </div>
-      <p className="mt-5 text-[13px] text-[#86868b]">
-        Sans carte bancaire. Premier diagnostic offert. Hébergé en Suisse.
-      </p>
-      <div className="mx-auto mt-14 max-w-[340px] md:mt-20 md:max-w-[380px]">
-        <Capture src={visite} alt="L'écran de relevé sur téléphone : les quatre états d'un ouvrage, chacun avec son constat et les travaux qu'il engage." />
+
+      {/* Preuve : des faits verifiables, pas des etoiles ni des avatars inventes. */}
+      <div className="mx-auto mt-9 flex max-w-2xl flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[13px] text-[#5b6572]">
+        <span className="inline-flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#0167EA]" aria-hidden="true" />
+          En test dans un bureau d'architectes romand
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#0167EA]" aria-hidden="true" />
+          111 postes au catalogue CFC
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#0167EA]" aria-hidden="true" />
+          Hébergé en Suisse
+        </span>
+      </div>
+
+      {/* La capture deborde en bas du cadre : on montre l'ecran, pas sa bordure. */}
+      <div className="mx-auto mt-16 max-h-[430px] max-w-[340px] overflow-hidden md:mt-20 md:max-w-[380px]">
+        <img
+          src={visite}
+          alt="L'écran de relevé sur téléphone : les quatre états d'un ouvrage, chacun avec son constat et les travaux qu'il engage."
+          className="w-full rounded-t-[26px] border border-black/[0.06] shadow-[0_-2px_60px_-20px_rgba(20,45,90,0.45)]"
+        />
       </div>
     </section>
   )
@@ -232,7 +271,7 @@ function Hero() {
 
 function Visite() {
   return (
-    <section id="visite" className="scroll-mt-28 bg-[#f5f5f7] px-5 py-24 md:py-32">
+    <section id="visite" className="scroll-mt-28 rounded-[22px] bg-[#f5f7fa] px-5 py-24 md:py-32">
       <GrandTitre>Le catalogue suit la visite,<br className="hidden sm:block" /> pas la nomenclature.</GrandTitre>
       <Chapo>
         Façade, porte d'entrée, boîte aux lettres, communs, techniques, toiture. Onze étapes
@@ -256,7 +295,7 @@ const PRECISION = [
 
 function Analyse() {
   return (
-    <section id="analyse" className="scroll-mt-28 bg-black px-5 py-24 text-white md:py-32">
+    <section id="analyse" className="scroll-mt-28 rounded-[22px] bg-[#0b1220] px-5 py-24 text-white md:py-32">
       <GrandTitre sombre>Elle propose.<br />Vous décidez.</GrandTitre>
       <Chapo sombre>
         Sur la photo d'un ouvrage, Diagly propose un état, une priorité et une note écrite.
@@ -299,7 +338,7 @@ function Analyse() {
                 <p className="text-[15px] text-white/50">{n.detail}</p>
               </div>
               <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/15">
-                <div className="h-full rounded-full bg-[#0a84ff]" style={{ width: `${n.part}%` }} />
+                <div className="h-full rounded-full bg-[#4d9bff]" style={{ width: `${n.part}%` }} />
               </div>
             </li>
           ))}
@@ -348,7 +387,7 @@ const CHIFFRES = [
 
 function Chiffres() {
   return (
-    <section className="bg-[#f5f5f7] px-5 py-20">
+    <section className="px-5 py-20">
       <div className="mx-auto grid w-full max-w-[900px] grid-cols-2 gap-x-6 gap-y-12 md:grid-cols-4">
         {CHIFFRES.map((c) => (
           <div key={c.libelle} className="text-center">
@@ -455,7 +494,7 @@ const COMPARATIF: { ligne: string; valeurs: (string | boolean)[] }[] = [
 function Tarifs() {
   const [annuel, setAnnuel] = useState(false)
   return (
-    <section id="tarifs" className="scroll-mt-28 bg-[#f5f5f7] px-5 py-24 md:py-32">
+    <section id="tarifs" className="scroll-mt-28 rounded-[22px] bg-[#f5f7fa] px-5 py-24 md:py-32">
       <GrandTitre>Un prix par usage.</GrandTitre>
       <Chapo>
         Tous les plans donnent le catalogue CFC, le calcul des métrés et le rapport. Ce qui
@@ -472,7 +511,7 @@ function Tarifs() {
               className={cn('rounded-full px-5 py-2 text-[14px] transition-colors',
                 annuel === valeur ? 'bg-white font-medium shadow-sm' : 'text-[#6e6e73] hover:text-[#1d1d1f]')}
             >
-              {libelle}{valeur && <span className="ml-1.5 text-[#0066cc]">2 mois offerts</span>}
+              {libelle}{valeur && <span className="ml-1.5 text-[#0167EA]">2 mois offerts</span>}
             </button>
           ))}
         </div>
@@ -483,7 +522,7 @@ function Tarifs() {
           <article key={p.nom} className="flex flex-col">
             <h3 className="text-[21px] font-semibold tracking-[-0.015em]">
               {p.nom}
-              {p.phare && <span className="ml-2 align-middle text-[12px] font-normal text-[#0066cc]">Le plus choisi</span>}
+              {p.phare && <span className="ml-2 align-middle text-[12px] font-normal text-[#0167EA]">Le plus choisi</span>}
             </h3>
             <p className="mt-1.5 text-[14px] leading-snug text-[#6e6e73]">{p.accroche}</p>
 
@@ -506,7 +545,7 @@ function Tarifs() {
             <ul className="mt-7 flex-1 space-y-2.5">
               {p.points.map((pt) => (
                 <li key={pt} className="flex gap-2 text-[15px] leading-snug text-[#1d1d1f]/80">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#0066cc]" aria-hidden="true" />
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#0167EA]" aria-hidden="true" />
                   {pt}
                 </li>
               ))}
@@ -533,7 +572,7 @@ function Tarifs() {
 }
 
 function Case({ v }: { v: string | boolean }) {
-  if (v === true) return <Check className="mx-auto h-4 w-4 text-[#0066cc]" aria-label="Inclus" />
+  if (v === true) return <Check className="mx-auto h-4 w-4 text-[#0167EA]" aria-label="Inclus" />
   if (v === false) return <Minus className="mx-auto h-3.5 w-3.5 text-black/20" aria-label="Non inclus" />
   return <span className="text-[14px] text-[#6e6e73]">{v}</span>
 }
@@ -541,7 +580,7 @@ function Case({ v }: { v: string | boolean }) {
 function TableauComparatif() {
   return (
     <details className="group mx-auto mt-14 max-w-[1000px]" open>
-      <summary className="flex cursor-pointer list-none items-center justify-center gap-1 text-[15px] text-[#0066cc] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0066cc]">
+      <summary className="flex cursor-pointer list-none items-center justify-center gap-1 text-[15px] text-[#0167EA] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0167EA]">
         Comparer les plans en détail
         <ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" aria-hidden="true" />
       </summary>
@@ -590,9 +629,9 @@ function Questions() {
       <div className="mx-auto mt-14 max-w-[760px]">
         {QUESTIONS.map((item) => (
           <details key={item.q} className="group border-b border-black/[0.09]">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-[17px] font-medium leading-snug focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0066cc]">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-[17px] font-medium leading-snug focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0167EA]">
               {item.q}
-              <Plus className="h-4 w-4 shrink-0 text-[#0066cc] transition-transform group-open:rotate-45" aria-hidden="true" />
+              <Plus className="h-4 w-4 shrink-0 text-[#0167EA] transition-transform group-open:rotate-45" aria-hidden="true" />
             </summary>
             <p className="pb-6 pr-10 text-[17px] leading-relaxed text-[#6e6e73]">{item.r}</p>
           </details>
@@ -606,7 +645,7 @@ function Questions() {
 
 function AppelFinal() {
   return (
-    <section className="bg-black px-5 py-28 text-center text-white md:py-36">
+    <section className="rounded-[22px] bg-[#0b1220] px-5 py-28 text-center text-white md:py-36">
       <GrandTitre sombre>Prenez un immeuble<br className="hidden sm:block" /> que vous connaissez.</GrandTitre>
       <Chapo sombre>
         Le premier diagnostic est offert, sans carte bancaire. Comparez avec ce que vous
@@ -614,7 +653,7 @@ function AppelFinal() {
       </Chapo>
       <div className="mt-10 flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
         <Pilule to="/login">Essayer gratuitement</Pilule>
-        <a href="mailto:contact@finalyn.com" className="inline-flex items-center gap-0.5 text-[15px] text-[#0a84ff] hover:underline">
+        <a href="mailto:contact@finalyn.com" className="inline-flex items-center gap-0.5 text-[15px] text-[#4d9bff] hover:underline">
           Parler à quelqu'un<ChevronRight className="h-4 w-4" aria-hidden="true" />
         </a>
       </div>
@@ -632,7 +671,7 @@ const COLONNES = [
 
 function PiedDePage() {
   return (
-    <footer className="bg-[#f5f5f7] px-5 py-12 text-[12px] text-[#6e6e73]">
+    <footer className="rounded-b-[26px] border-t border-black/[0.07] px-5 py-12 text-[12px] text-[#6e6e73] sm:rounded-b-[32px]">
       <div className="mx-auto w-full max-w-[900px]">
         <p className="border-b border-black/[0.09] pb-6 leading-relaxed">
           Les estimations produites par Diagly sont indicatives et ne remplacent ni un devis
