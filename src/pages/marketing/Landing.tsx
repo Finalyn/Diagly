@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronRight, Plus, Check, Minus, ArrowUpRight } from 'lucide-react'
+import { ChevronRight, Plus, Check, Minus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import visite from '@/assets/vitrine/app-visite.png'
 import couts from '@/assets/vitrine/app-couts.png'
 import rapport from '@/assets/vitrine/app-rapport.png'
 import catalogue from '@/assets/vitrine/app-catalogue.png'
 import { CarteAdresse } from './CarteAdresse'
+import { BoutonFleche, Pilule, LienFleche, GrandTitre, Chapo, Capture } from './elements'
+import { CommentCaMarche, TempsGagne, Modules, Technique, IntelligenceArtificielle } from './SectionsProduit'
 import { releverBatiment, EXEMPLES } from './registre'
 import type { Lieu } from './registre'
 
@@ -29,11 +31,11 @@ import type { Lieu } from './registre'
  */
 
 const NAV = [
-  { href: '#visite', label: 'La visite' },
-  { href: '#analyse', label: "L'analyse" },
-  { href: '#rapport', label: 'Le rapport' },
+  { href: '#methode', label: 'Comment ça marche' },
+  { href: '#ia', label: "L'IA" },
+  { href: '#modules', label: 'Les modules' },
+  { href: '#technique', label: 'La méthode' },
   { href: '#tarifs', label: 'Tarifs' },
-  { href: '#questions', label: 'Questions' },
 ]
 
 export function Landing() {
@@ -61,10 +63,15 @@ export function Landing() {
       <Entete />
       <main>
         <Hero />
+        <CommentCaMarche />
         <Visite />
         <Adresse />
-        <Analyse />
+        <IntelligenceArtificielle />
         <Rapport />
+        <Precision />
+        <TempsGagne />
+        <Modules />
+        <Technique />
         <Chiffres />
         <PourQui />
         <Tarifs />
@@ -73,86 +80,6 @@ export function Landing() {
       </main>
       <PiedDePage />
     </div>
-  )
-}
-
-/* --------------------------------------------------------------- éléments */
-
-/** Bouton plein avec la flèche en pastille claire, la signature des références. */
-function BoutonFleche({ children, to, className }: { children: React.ReactNode; to: string; className?: string }) {
-  return (
-    <Link
-      to={to}
-      className={cn(
-        'group inline-flex items-center gap-2.5 rounded-full bg-[#0167EA] py-3 pl-6 pr-2 text-[15px] text-white',
-        'transition-colors hover:bg-[#0154c4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0167EA]',
-        className,
-      )}
-    >
-      {children}
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/20 transition-transform group-hover:translate-x-0.5">
-        <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-      </span>
-    </Link>
-  )
-}
-
-function Pilule({ children, to, className }: { children: React.ReactNode; to: string; className?: string }) {
-  return (
-    <Link
-      to={to}
-      className={cn(
-        'inline-flex items-center justify-center rounded-full bg-[#0167EA] px-6 py-3 text-[15px] text-white',
-        'transition-colors hover:bg-[#0154c4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0167EA]',
-        className,
-      )}
-    >
-      {children}
-    </Link>
-  )
-}
-
-function LienFleche({ children, href, to }: { children: React.ReactNode; href?: string; to?: string }) {
-  const contenu = <>{children}<ChevronRight className="h-4 w-4" aria-hidden="true" /></>
-  const styles = 'inline-flex items-center gap-0.5 text-[15px] text-[#0167EA] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0167EA]'
-  return to ? <Link to={to} className={styles}>{contenu}</Link> : <a href={href} className={styles}>{contenu}</a>
-}
-
-/** Titre de section : très grand, très serré, centré. La règle de la maison. */
-function GrandTitre({ children, sombre, className }: { children: React.ReactNode; sombre?: boolean; className?: string }) {
-  return (
-    <h2 className={cn(
-      'text-balance text-center text-[clamp(2rem,5.2vw,3.5rem)] font-semibold leading-[1.06] tracking-[-0.028em]',
-      sombre ? 'text-white' : 'text-[#1d1d1f]',
-      className,
-    )}>
-      {children}
-    </h2>
-  )
-}
-
-function Chapo({ children, sombre }: { children: React.ReactNode; sombre?: boolean }) {
-  return (
-    <p className={cn('mx-auto mt-5 max-w-2xl text-balance text-center text-[clamp(1.05rem,1.9vw,1.35rem)] leading-[1.4]',
-      sombre ? 'text-white/65' : 'text-[#6e6e73]')}>
-      {children}
-    </p>
-  )
-}
-
-/** Capture de l'application, présentée comme un objet posé sur la page. */
-function Capture({ src, alt, className, sombre }: {
-  src: string; alt: string; className?: string; sombre?: boolean
-}) {
-  return (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      className={cn('mx-auto block w-full rounded-[22px]',
-        sombre ? 'shadow-[0_24px_80px_-30px_rgba(0,0,0,0.9)]' : 'shadow-[0_24px_70px_-30px_rgba(0,0,0,0.35)]',
-        className)}
-    />
   )
 }
 
@@ -409,60 +336,38 @@ function Adresse() {
   )
 }
 
-/* ---------------------------------------------------------------- analyse */
+/* -------------------------------------------------------------- precision */
 
 const PRECISION = [
-  { titre: "L'adresse seule", detail: 'Géométrie du registre des bâtiments. Un ordre de grandeur.', part: 30 },
-  { titre: 'Avec vos photos', detail: "L'état de chaque ouvrage est relevé, plus présumé.", part: 55 },
-  { titre: 'Avec le relevé sur place', detail: 'Périmètre, étages, hauteur, logements. Les métrés deviennent les vôtres.', part: 80 },
-  { titre: 'Avec les devis reçus', detail: 'Les prix du catalogue cèdent la place aux montants adjugés.', part: 100 },
+  { titre: "L'adresse seule", detail: 'GÃ©omÃ©trie du registre des bÃ¢timents. Un ordre de grandeur.', part: 30 },
+  { titre: 'Avec vos photos', detail: "L'Ã©tat de chaque ouvrage est relevÃ©, plus prÃ©sumÃ©.", part: 55 },
+  { titre: 'Avec le relevÃ© sur place', detail: 'PÃ©rimÃ¨tre, Ã©tages, hauteur, logements. Les mÃ©trÃ©s deviennent les vÃ´tres.', part: 80 },
+  { titre: 'Avec les devis reÃ§us', detail: 'Les prix du catalogue cÃ¨dent la place aux montants adjugÃ©s.', part: 100 },
 ]
 
-function Analyse() {
+/**
+ * La jauge de precision : l'argument le plus honnete de la page, donc le plus
+ * visible. Elle dit ce que vaut un chiffre a chaque etape, au lieu de laisser
+ * croire qu'une photo suffit a fixer un budget.
+ */
+function Precision() {
   return (
-    <section id="analyse" className="scroll-mt-28 bg-[#0b1220] px-5 py-24 text-white md:py-32">
-      <GrandTitre sombre>Elle propose.<br />Vous décidez.</GrandTitre>
+    <section className="bg-[#0b1220] px-5 py-24 text-white md:py-32">
+      <GrandTitre sombre>La prÃ©cision se gagne.<br className="hidden sm:block" /> Elle ne se promet pas.</GrandTitre>
       <Chapo sombre>
-        Sur la photo d'un ouvrage, Diagly propose un état, une priorité et une note écrite.
-        Le choix de l'ouvrage reste le vôtre, avec son code CFC, son unité et vos prix.
+        Diagly affiche une fourchette et dit sur quoi elle repose. Un chiffre exact tirÃ©
+        d'une seule photo serait une invention, et vous le sauriez au premier devis reÃ§u.
       </Chapo>
 
-      <div className="mx-auto mt-20 grid max-w-[900px] gap-14 md:grid-cols-2 md:gap-16">
-        <div>
-          <h3 className="text-[28px] font-semibold leading-tight tracking-[-0.02em]">Ce qu'elle regarde</h3>
-          <p className="mt-4 text-[17px] leading-relaxed text-white/60">
-            Fissures, décollements, salissures, corrosion, état des menuiseries et des
-            revêtements. Elle en déduit un état parmi quatre, une priorité d'intervention,
-            et une note qui part telle quelle dans le rapport si elle vous convient.
-          </p>
-        </div>
-        <div>
-          <h3 className="text-[28px] font-semibold leading-tight tracking-[-0.02em]">Ce qu'elle ne fait pas</h3>
-          <p className="mt-4 text-[17px] leading-relaxed text-white/60">
-            Elle n'invente pas un poste et ne devine pas un code CFC. Elle qualifie l'ouvrage
-            que vous lui montrez. Sur un cas qu'elle ne sait pas trancher, elle le dit plutôt
-            que de remplir la case.
-          </p>
-        </div>
-      </div>
-
-      {/* La jauge : l'argument le plus honnête de la page, donc le plus visible. */}
-      <div className="mx-auto mt-24 max-w-[760px]">
-        <h3 className="text-balance text-center text-[clamp(1.6rem,3.4vw,2.4rem)] font-semibold leading-tight tracking-[-0.024em]">
-          La précision se gagne. Elle ne se promet pas.
-        </h3>
-        <p className="mx-auto mt-5 max-w-xl text-center text-[17px] leading-relaxed text-white/60">
-          Diagly affiche une fourchette et dit sur quoi elle repose. Un chiffre exact tiré
-          d'une seule photo serait une invention, et vous le sauriez au premier devis reçu.
-        </p>
-        <div className="mx-auto mb-16 mt-14 max-w-[300px]">
+      <div className="mx-auto max-w-[760px]">
+        <div className="mx-auto mb-16 mt-16 max-w-[300px]">
           <img
             src={visite}
-            alt="Sur téléphone, les quatre états proposés pour un ouvrage, chacun avec son constat et les travaux qu'il engage."
+            alt="Sur tÃ©lÃ©phone, les quatre Ã©tats proposÃ©s pour un ouvrage, chacun avec son constat et les travaux qu'il engage."
             className="w-full rounded-[20px] border border-white/10 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.9)]"
           />
         </div>
-        <ol className="mt-14 space-y-7">
+        <ol className="space-y-7">
           {PRECISION.map((n) => (
             <li key={n.titre}>
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
