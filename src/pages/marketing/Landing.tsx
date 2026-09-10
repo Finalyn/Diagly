@@ -48,7 +48,7 @@ export function Landing() {
 
   return (
     // Le degrade est le fond du navigateur ; la page vit dans un cadre pose dessus.
-    <div className="min-h-screen bg-[linear-gradient(140deg,#b9d4ff_0%,#dde9fc_22%,#fbeedd_46%,#cfe2ff_70%,#a9c8f7_100%)] p-2.5 text-[#1d1d1f] antialiased sm:p-4 lg:p-5">
+    <div className="min-h-screen bg-[linear-gradient(140deg,#eaf1fb_0%,#f6f8fc_28%,#fdfaf5_54%,#eef4ff_78%,#e8eff9_100%)] p-2.5 text-[#1d1d1f] antialiased sm:p-4 lg:p-5">
       {/* Pas de largeur maximale ici : le cadre occupe l'ecran, le degrade n'est
           qu'un lisere. Le plafond de lisibilite est pose section par section. */}
       <div className="w-full rounded-[22px] bg-white shadow-[0_30px_90px_-40px_rgba(20,45,90,0.45)] sm:rounded-[28px]">
@@ -257,12 +257,13 @@ function Hero() {
         </span>
       </div>
 
-      {/* La capture deborde en bas du cadre : on montre l'ecran, pas sa bordure. */}
-      <div className="mx-auto mt-16 max-h-[430px] max-w-[340px] overflow-hidden md:mt-20 md:max-w-[380px]">
+      {/* La capture deborde en bas : on montre l'ecran, pas sa bordure. Et c'est
+          l'ecran d'ordinateur, celui qui dit d'un coup d'oeil ce que le produit rend. */}
+      <div className="mx-auto mt-16 max-h-[300px] max-w-[1120px] overflow-hidden px-2 sm:max-h-[420px] md:mt-20 md:max-h-[520px]">
         <img
-          src={visite}
-          alt="L'écran de relevé sur téléphone : les quatre états d'un ouvrage, chacun avec son constat et les travaux qu'il engage."
-          className="w-full rounded-t-[26px] border border-black/[0.06] shadow-[0_-2px_60px_-20px_rgba(20,45,90,0.45)]"
+          src={couts}
+          alt="La page des coûts : les postes groupés par priorité, chacun avec son état et son montant, et la synthèse avec honoraires, réserve et TVA."
+          className="w-full rounded-t-[20px] border border-black/[0.07] shadow-[0_-4px_80px_-24px_rgba(20,45,90,0.5)]"
         />
       </div>
     </section>
@@ -332,6 +333,13 @@ function Analyse() {
           Diagly affiche une fourchette et dit sur quoi elle repose. Un chiffre exact tiré
           d'une seule photo serait une invention, et vous le sauriez au premier devis reçu.
         </p>
+        <div className="mx-auto mb-16 mt-14 max-w-[300px]">
+          <img
+            src={visite}
+            alt="Sur téléphone, les quatre états proposés pour un ouvrage, chacun avec son constat et les travaux qu'il engage."
+            className="w-full rounded-[20px] border border-white/10 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.9)]"
+          />
+        </div>
         <ol className="mt-14 space-y-7">
           {PRECISION.map((n) => (
             <li key={n.titre}>
