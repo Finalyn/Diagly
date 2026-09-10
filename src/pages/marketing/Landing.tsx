@@ -48,8 +48,10 @@ export function Landing() {
 
   return (
     // Le degrade est le fond du navigateur ; la page vit dans un cadre pose dessus.
-    <div className="min-h-screen bg-[linear-gradient(140deg,#b9d4ff_0%,#dde9fc_22%,#fbeedd_46%,#cfe2ff_70%,#a9c8f7_100%)] p-3 text-[#1d1d1f] antialiased sm:p-6 lg:p-10">
-      <div className="mx-auto w-full max-w-[1320px] rounded-[26px] bg-white shadow-[0_30px_90px_-40px_rgba(20,45,90,0.45)] sm:rounded-[32px]">
+    <div className="min-h-screen bg-[linear-gradient(140deg,#b9d4ff_0%,#dde9fc_22%,#fbeedd_46%,#cfe2ff_70%,#a9c8f7_100%)] p-2.5 text-[#1d1d1f] antialiased sm:p-4 lg:p-5">
+      {/* Pas de largeur maximale ici : le cadre occupe l'ecran, le degrade n'est
+          qu'un lisere. Le plafond de lisibilite est pose section par section. */}
+      <div className="w-full rounded-[22px] bg-white shadow-[0_30px_90px_-40px_rgba(20,45,90,0.45)] sm:rounded-[28px]">
       <Entete />
       <main>
         <Hero />
@@ -671,7 +673,7 @@ const COLONNES = [
 
 function PiedDePage() {
   return (
-    <footer className="rounded-b-[26px] border-t border-black/[0.07] px-5 py-12 text-[12px] text-[#6e6e73] sm:rounded-b-[32px]">
+    <footer className="rounded-b-[22px] border-t border-black/[0.07] px-5 py-12 text-[12px] text-[#6e6e73] sm:rounded-b-[28px]">
       <div className="mx-auto w-full max-w-[900px]">
         <p className="border-b border-black/[0.09] pb-6 leading-relaxed">
           Les estimations produites par Diagly sont indicatives et ne remplacent ni un devis
