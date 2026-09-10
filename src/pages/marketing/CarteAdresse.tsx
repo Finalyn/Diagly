@@ -3,6 +3,8 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { MapPin, Search, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { chercher, EXEMPLES } from './registre'
+import type { Lieu } from './registre'
 
 /**
  * Recherche d'adresse et carte réelle, sur la page publique.
@@ -11,35 +13,9 @@ import { cn } from '@/lib/utils'
  * adresse et voir son bâtiment. La recherche interroge le service fédéral
  * geo.admin.ch, public et sans clé, celui-là même que l'application utilise.
  *
- * Les valeurs du relevé restent floutées, y compris pour une adresse cherchée par
- * le visiteur. Afficher une année de construction que nous n'avons pas interrogée
- * serait un mensonge ; montrer qu'elle existe et d'où elle vient ne l'est pas.
+ * Ce composant ne fait que la carte. Les interrogations vivent dans registre.ts,
+ * avec la raison pour laquelle l’une d’elles passe par notre serveur.
  */
-
-const RECHERCHE = 'https://api3.geo.admin.ch/rest/services/api/SearchServer?type=locations&origins=address&limit=6&sr=4326&searchText='
-
-interface Lieu {
-  label: string
-  lat: number
-  lon: number
-}
-
-/** Le service rend du HTML dans ses libellés : on le retire avant de l'afficher. */
-function nettoyer(html: string): string {
-  return html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
-}
-
-async function chercher(q: string): Promise<Lieu[]> {
-  try {
-    const j = await (await fetch(RECHERCHE + encodeURIComponent(q))).json()
-    return (j?.results ?? [])
-      .map((r: { attrs?: { label?: string; lat?: number; lon?: number } }) => r.attrs)
-      .filter((a: { lat?: number; lon?: number }) => typeof a?.lat === 'number' && typeof a?.lon === 'number')
-      .map((a: { label?: string; lat: number; lon: number }) => ({ label: nettoyer(a.label ?? ''), lat: a.lat, lon: a.lon }))
-  } catch {
-    return []
-  }
-}
 
 /** Marqueur aux couleurs de la marque, identique à celui de l'application. */
 const pin = L.divIcon({
@@ -51,13 +27,6 @@ const pin = L.divIcon({
     <span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:9999px;background:#0167EA;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4)"></span>
   </div>`,
 })
-
-/** Quelques immeubles pour démarrer sans rien taper. */
-const EXEMPLES: Lieu[] = [
-  { label: 'Avenue de la Gare 12, 1700 Fribourg', lat: 46.8033, lon: 7.1512 },
-  { label: 'Chemin de Boston 8, 1004 Lausanne', lat: 46.5265, lon: 6.6167 },
-  { label: 'Rue du Rhône 40, 1204 Genève', lat: 46.2044, lon: 6.1470 },
-]
 
 export function CarteAdresse({ onLieu }: { onLieu?: (l: Lieu) => void }) {
   const boite = useRef<HTMLDivElement>(null)
@@ -94,6 +63,12 @@ export function CarteAdresse({ onLieu }: { onLieu?: (l: Lieu) => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [choisi])
 
+  // Au premier rendu, annoncer le lieu de départ pour que le relevé le suive.
+  useEffect(() => {
+    onLieu?.(choisi)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Recherche différée : on laisse le doigt finir de taper avant d'interroger.
   useEffect(() => {
     const q = saisie.trim()
@@ -114,7 +89,10 @@ export function CarteAdresse({ onLieu }: { onLieu?: (l: Lieu) => void }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative">
+      {/* Leaflet empile ses calques très haut, jusqu'à 800 pour ses commandes :
+          sans rang explicite, la liste des propositions passait dessous. Elle est
+          donc posée au-dessus, et la carte enfermée dans son propre contexte. */}
+      <div className="relative z-[1200]">
         <label htmlFor="adresse-vitrine" className="sr-only">Chercher une adresse en Suisse</label>
         <div className="flex items-center gap-3 rounded-full border border-black/[0.08] bg-white px-5 py-3 shadow-[0_10px_30px_-16px_rgba(20,45,90,0.4)] focus-within:border-[#0167EA]/40">
           <MapPin className="h-4 w-4 shrink-0 text-[#0167EA]" aria-hidden="true" />
@@ -132,7 +110,7 @@ export function CarteAdresse({ onLieu }: { onLieu?: (l: Lieu) => void }) {
         </div>
 
         {resultats.length > 0 && (
-          <ul className="absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-black/[0.08] bg-white shadow-[0_20px_50px_-20px_rgba(20,45,90,0.45)]">
+          <ul className="absolute inset-x-0 top-full z-[1201] mt-2 overflow-hidden rounded-2xl border border-black/[0.08] bg-white shadow-[0_20px_50px_-20px_rgba(20,45,90,0.45)]">
             {resultats.map((r) => (
               <li key={`${r.lat}-${r.lon}-${r.label}`}>
                 <button
@@ -164,7 +142,7 @@ export function CarteAdresse({ onLieu }: { onLieu?: (l: Lieu) => void }) {
         ))}
       </div>
 
-      <div className="relative overflow-hidden rounded-[20px] border border-black/[0.07] shadow-[0_20px_60px_-30px_rgba(20,45,90,0.5)]">
+      <div className="relative z-0 overflow-hidden rounded-[20px] border border-black/[0.07] shadow-[0_20px_60px_-30px_rgba(20,45,90,0.5)]">
         <div ref={boite} className="h-[340px] w-full bg-[#eef1f5] md:h-[420px]" />
         {/* Credit exige par les conditions d'usage des fonds de carte. */}
         <span className="pointer-events-none absolute right-2 top-2 rounded-md bg-white/85 px-2 py-0.5 text-[10px] text-[#6e6e73]">

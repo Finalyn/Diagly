@@ -22,6 +22,7 @@ import boardsRouter from "./routes/boards.js";
 import eventsRouter from "./routes/events.js";
 import assistantRouter from "./routes/assistant.js";
 import geoRouter from "./routes/geo.js";
+import vitrineRouter from "./routes/vitrine.js";
 import marketRouter from "./routes/market.js";
 import exportRouter from "./routes/export.js";
 import apiKeysRouter from "./routes/api-keys.js";
@@ -113,6 +114,7 @@ app.use("/api/support", supportRouter); // centre d'aide : tickets de support
 app.use("/api/v1", v1Router); // API REST publique v1 (auth par clé d'API)
 app.use("/api/webhooks", webhooksRouter); // gestion des endpoints webhook (auth JWT)
 app.use("/api/mcp", mcpRouter); // serveur MCP (Streamable HTTP, auth par clé d'API)
+app.use("/api/vitrine", vitrineRouter); // public : le peu que la page vitrine peut montrer
 app.use("/api/share", shareRouter); // public (lecture seule, sans auth)
 app.use("/api/push", pushRouter);
 

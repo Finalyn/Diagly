@@ -7,6 +7,8 @@ import couts from '@/assets/vitrine/app-couts.png'
 import rapport from '@/assets/vitrine/app-rapport.png'
 import catalogue from '@/assets/vitrine/app-catalogue.png'
 import { CarteAdresse } from './CarteAdresse'
+import { releverBatiment, EXEMPLES } from './registre'
+import type { Lieu } from './registre'
 
 /**
  * Page publique de Diagly.
@@ -301,85 +303,107 @@ function Visite() {
  * viennent, on ne les donne pas. Elles restent marquees comme decoratives pour
  * un lecteur d'ecran, qui n'a rien a faire d'un chiffre illisible.
  */
-const EXEMPLE_DEPART = 'Avenue de la Gare 12, 1700 Fribourg'
-
 /**
- * Ce que l'adresse donne, et d'ou. Les valeurs ne sont la que pour donner une
- * forme au flou : elles sont masquees et marquees comme decoratives, jamais lues.
- * Afficher un chiffre reel pour l'adresse cherchee par le visiteur, sans l'avoir
- * interrogee, serait un mensonge.
+ * Ce que le registre porte. Une seule de ces lignes est demandee au serveur et
+ * s'affiche en clair : l'annee de construction. Les autres valeurs ne sont jamais
+ * interrogees, elles ne servent qu'a donner une forme au flou, et restent
+ * marquees comme decoratives pour un lecteur d'ecran.
  */
-const DEPUIS_ADRESSE = [
-  { libelle: 'Identifiant fédéral du bâtiment', exemple: '1 927 043', source: 'RegBL' },
-  { libelle: 'Année de construction', exemple: '1972', source: 'RegBL' },
-  { libelle: 'Nombre de logements', exemple: '18', source: 'RegBL' },
-  { libelle: 'Emprise au sol', exemple: '420 m²', source: 'swisstopo' },
-  { libelle: 'Périmètre du bâtiment', exemple: '88 ml', source: 'swisstopo' },
-  { libelle: "Zone d'affectation", exemple: "Zone d'habitation", source: 'cadastre RDPPF' },
-  { libelle: 'Degré de sensibilité au bruit', exemple: 'DS III', source: 'cadastre RDPPF' },
+const REGISTRE = [
+  { libelle: 'Identifiant fédéral du bâtiment', exemple: '1’927’043' },
+  { libelle: 'Année de construction', exemple: '1972', reel: true },
+  { libelle: 'Nombre d’étages', exemple: '6' },
+  { libelle: 'Nombre de logements', exemple: '18' },
+  { libelle: 'Emprise au sol', exemple: '420 m²' },
 ]
 
+/** Les metres que Diagly deduit de la geometrie : c'est notre travail, il reste couvert. */
 const DEDUIT = [
-  { libelle: 'Surface de façade', exemple: '1 188 m²' },
+  { libelle: 'Surface de façade', exemple: '1’188 m²' },
   { libelle: 'Surface vitrée', exemple: '475 m²' },
-  { libelle: 'Échafaudage', exemple: '1 307 m²' },
+  { libelle: 'Échafaudage', exemple: '1’307 m²' },
 ]
+
+/** Une ligne dont la valeur existe mais ne se lit pas. */
+function LigneMasquee({ libelle, exemple }: { libelle: string; exemple: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-2.5">
+      <dt className="text-[15px] text-[#1d1d1f]/75">{libelle}</dt>
+      <dd className="shrink-0 select-none text-[15px] font-semibold tabular-nums blur-[5px]" aria-hidden="true">{exemple}</dd>
+    </div>
+  )
+}
 
 function Adresse() {
-  const [lieu, setLieu] = useState(EXEMPLE_DEPART)
+  const [lieu, setLieu] = useState<Lieu>(EXEMPLES[0])
+  // On retient le lieu avec sa reponse : tant que les deux ne correspondent pas,
+  // c'est que le releve du lieu courant est encore en route.
+  const [releve, setReleve] = useState<{ lieu: Lieu; annee: string | null } | null>(null)
+
+  // La reponse d'une adresse abandonnee en chemin ne doit pas ecraser la bonne.
+  useEffect(() => {
+    let courant = true
+    releverBatiment(lieu).then((r) => {
+      if (courant) setReleve({ lieu, annee: r?.annee ?? null })
+    })
+    return () => { courant = false }
+  }, [lieu])
+
+  const charge = releve?.lieu !== lieu
+  const annee = releve?.annee ?? null
+
   return (
     <section className="px-5 py-24 md:py-32">
       <GrandTitre>Tout commence par une adresse.</GrandTitre>
       <Chapo>
         Avant la première photo, Diagly interroge les registres publics suisses et en tire la
-        géométrie du bâtiment. Cherchez le vôtre, la carte est celle de l'application.
+        géométrie du bâtiment. Cherchez le vôtre : la carte et l’année sont les vraies.
       </Chapo>
 
       <div className="mx-auto mt-14 grid max-w-[1060px] items-start gap-6 md:grid-cols-[1.05fr_0.95fr]">
-        <CarteAdresse onLieu={(l) => setLieu(l.label)} />
+        <CarteAdresse onLieu={setLieu} />
 
         <div className="rounded-[20px] border border-black/[0.07] bg-white p-6 shadow-[0_20px_60px_-30px_rgba(20,45,90,0.35)] sm:p-8">
           <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">Relevé sans se déplacer</p>
-          <p className="mt-1.5 truncate text-[15px] font-semibold" title={lieu}>{lieu}</p>
+          <p className="mt-1.5 truncate text-[15px] font-semibold" title={lieu.label}>{lieu.label}</p>
 
-          <dl className="mt-5 divide-y divide-black/[0.06]">
-            {DEPUIS_ADRESSE.map((d) => (
-              <div key={d.libelle} className="flex items-baseline justify-between gap-4 py-2.5">
-                <dt className="text-[15px] text-[#1d1d1f]/75">
-                  {d.libelle}
-                  <span className="ml-2 text-[12px] text-[#86868b]">{d.source}</span>
-                </dt>
-                <dd className="shrink-0 select-none text-[15px] font-semibold tabular-nums blur-[5px]" aria-hidden="true">{d.exemple}</dd>
-              </div>
-            ))}
-          </dl>
-
-          <p className="mt-6 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">Et ce qui s'en déduit</p>
-          <dl className="mt-3 divide-y divide-black/[0.06]">
-            {DEDUIT.map((d) => (
+          <p className="mt-5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">Registre fédéral des bâtiments</p>
+          <dl className="mt-1 divide-y divide-black/[0.06]">
+            {REGISTRE.map((d) => d.reel ? (
+              // La seule valeur qui se lit : elle vient du registre, pour cette adresse.
               <div key={d.libelle} className="flex items-baseline justify-between gap-4 py-2.5">
                 <dt className="text-[15px] text-[#1d1d1f]/75">{d.libelle}</dt>
-                <dd className="shrink-0 select-none text-[15px] font-semibold tabular-nums blur-[5px]" aria-hidden="true">{d.exemple}</dd>
+                <dd className="shrink-0 text-[15px] font-semibold tabular-nums text-[#0167EA]">
+                  {charge
+                    ? <span className="inline-block h-[14px] w-12 animate-pulse rounded bg-[#0167EA]/20 align-middle" />
+                    : annee ?? <span className="text-[14px] font-normal text-[#86868b]">non renseignée</span>}
+                </dd>
               </div>
-            ))}
+            ) : <LigneMasquee key={d.libelle} libelle={d.libelle} exemple={d.exemple} />)}
+          </dl>
+
+          <p className="mt-6 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">Et ce qui s’en déduit</p>
+          <dl className="mt-1 divide-y divide-black/[0.06]">
+            {DEDUIT.map((d) => <LigneMasquee key={d.libelle} {...d} />)}
           </dl>
 
           <p className="sr-only">
-            Les valeurs de ce relevé sont volontairement masquées sur la page publique.
-            Créez un dossier pour obtenir celles de votre bâtiment.
+            Seule l’année de construction est donnée ici. Les autres valeurs du relevé sont
+            volontairement masquées sur la page publique : créez un dossier pour obtenir celles
+            de votre bâtiment.
           </p>
 
           <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-3">
-            <BoutonFleche to="/login" className="py-2.5 text-[14px]">Voir mes chiffres</BoutonFleche>
-            <span className="text-[13px] text-[#86868b]">Valeurs masquées ici</span>
+            <BoutonFleche to="/login" className="py-2.5 text-[14px]">Voir tout le relevé</BoutonFleche>
+            <span className="text-[13px] text-[#86868b]">Le reste s’ouvre dans l’application</span>
           </div>
         </div>
       </div>
 
       <p className="mx-auto mt-10 max-w-2xl text-center text-[14px] leading-relaxed text-[#6e6e73]">
-        Ces valeurs sont un point de départ, pas une vérité. Le périmètre issu de swisstopo
-        fusionne parfois des bâtiments contigus : Diagly le signale quand la forme obtenue est
-        improbable, et vous le corrigez sur place.
+        Ces valeurs sont un point de départ, pas une vérité. Le registre confond parfois deux
+        bâtiments contigus et ne porte pas toujours l’année exacte : Diagly le signale quand la
+        forme obtenue est improbable, et vous la corrigez sur place.
       </p>
     </section>
   )
