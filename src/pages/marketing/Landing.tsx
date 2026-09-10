@@ -47,11 +47,7 @@ export function Landing() {
   }, [])
 
   return (
-    // Le degrade est le fond du navigateur ; la page vit dans un cadre pose dessus.
-    <div className="min-h-screen bg-[linear-gradient(140deg,#eaf1fb_0%,#f6f8fc_28%,#fdfaf5_54%,#eef4ff_78%,#e8eff9_100%)] p-2.5 text-[#1d1d1f] antialiased sm:p-4 lg:p-5">
-      {/* Pas de largeur maximale ici : le cadre occupe l'ecran, le degrade n'est
-          qu'un lisere. Le plafond de lisibilite est pose section par section. */}
-      <div className="w-full rounded-[22px] bg-white shadow-[0_30px_90px_-40px_rgba(20,45,90,0.45)] sm:rounded-[28px]">
+    <div className="min-h-screen bg-white text-[#1d1d1f] antialiased">
       <Entete />
       <main>
         <Hero />
@@ -65,7 +61,6 @@ export function Landing() {
         <AppelFinal />
       </main>
       <PiedDePage />
-      </div>
     </div>
   )
 }
@@ -163,7 +158,7 @@ function Capture({ src, alt, className, sombre }: {
 function Entete() {
   const [ouvert, setOuvert] = useState(false)
   return (
-    <div className="sticky top-2 z-50 px-3 pt-3 sm:top-4 sm:px-4 sm:pt-4">
+    <div className="sticky top-3 z-50 px-3 pt-3 sm:top-4 sm:px-5 sm:pt-4">
       <header className="mx-auto flex w-full max-w-[1160px] items-center gap-6 rounded-full border border-black/[0.06] bg-white/85 px-3 py-2 shadow-[0_10px_30px_-14px_rgba(20,45,90,0.35)] backdrop-blur-xl backdrop-saturate-150 sm:px-4">
         <a href="#haut" className="flex shrink-0 items-center gap-2 pl-1">
           <img src="/diagly-mark.svg" alt="" aria-hidden="true" className="h-6 w-6" />
@@ -218,7 +213,7 @@ function Entete() {
 
 function Hero() {
   return (
-    <section id="haut" className="scroll-mt-28 overflow-hidden px-5 pt-14 text-center md:pt-20">
+    <section id="haut" className="scroll-mt-28 overflow-hidden bg-[linear-gradient(180deg,#eef4fd_0%,#f7fafd_45%,#ffffff_100%)] px-5 pb-2 pt-24 text-center md:pt-28">
       {/* Badge : ce qui vient d'arriver, avant même le titre. */}
       <a href="#visite" className="inline-flex items-center gap-2 rounded-full border border-black/[0.07] bg-white py-1 pl-1 pr-3.5 text-[13px] shadow-sm transition-colors hover:border-black/15">
         <span className="rounded-full bg-[#0167EA] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white">Nouveau</span>
@@ -274,7 +269,7 @@ function Hero() {
 
 function Visite() {
   return (
-    <section id="visite" className="scroll-mt-28 rounded-[22px] bg-[#f5f7fa] px-5 py-24 md:py-32">
+    <section id="visite" className="scroll-mt-28 bg-[#f5f7fa] px-5 py-24 md:py-32">
       <GrandTitre>Le catalogue suit la visite,<br className="hidden sm:block" /> pas la nomenclature.</GrandTitre>
       <Chapo>
         Façade, porte d'entrée, boîte aux lettres, communs, techniques, toiture. Onze étapes
@@ -298,7 +293,7 @@ const PRECISION = [
 
 function Analyse() {
   return (
-    <section id="analyse" className="scroll-mt-28 rounded-[22px] bg-[#0b1220] px-5 py-24 text-white md:py-32">
+    <section id="analyse" className="scroll-mt-28 bg-[#0b1220] px-5 py-24 text-white md:py-32">
       <GrandTitre sombre>Elle propose.<br />Vous décidez.</GrandTitre>
       <Chapo sombre>
         Sur la photo d'un ouvrage, Diagly propose un état, une priorité et une note écrite.
@@ -504,7 +499,7 @@ const COMPARATIF: { ligne: string; valeurs: (string | boolean)[] }[] = [
 function Tarifs() {
   const [annuel, setAnnuel] = useState(false)
   return (
-    <section id="tarifs" className="scroll-mt-28 rounded-[22px] bg-[#f5f7fa] px-5 py-24 md:py-32">
+    <section id="tarifs" className="scroll-mt-28 bg-[#f5f7fa] px-5 py-24 md:py-32">
       <GrandTitre>Un prix par usage.</GrandTitre>
       <Chapo>
         Tous les plans donnent le catalogue CFC, le calcul des métrés et le rapport. Ce qui
@@ -655,7 +650,7 @@ function Questions() {
 
 function AppelFinal() {
   return (
-    <section className="rounded-[22px] bg-[#0b1220] px-5 py-28 text-center text-white md:py-36">
+    <section className="bg-[#0b1220] px-5 py-28 text-center text-white md:py-36">
       <GrandTitre sombre>Prenez un immeuble<br className="hidden sm:block" /> que vous connaissez.</GrandTitre>
       <Chapo sombre>
         Le premier diagnostic est offert, sans carte bancaire. Comparez avec ce que vous
@@ -681,7 +676,7 @@ const COLONNES = [
 
 function PiedDePage() {
   return (
-    <footer className="rounded-b-[22px] border-t border-black/[0.07] px-5 py-12 text-[12px] text-[#6e6e73] sm:rounded-b-[28px]">
+    <footer className="border-t border-black/[0.07] bg-[#f5f7fa] px-5 py-12 text-[12px] text-[#6e6e73]">
       <div className="mx-auto w-full max-w-[900px]">
         <p className="border-b border-black/[0.09] pb-6 leading-relaxed">
           Les estimations produites par Diagly sont indicatives et ne remplacent ni un devis
