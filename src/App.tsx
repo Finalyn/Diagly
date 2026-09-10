@@ -8,6 +8,7 @@ import { useIsMobile } from '@/lib/use-mobile'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 // Entrée : chargée immédiatement pour un premier affichage rapide.
 import { Soon } from '@/pages/marketing/Soon'
+import { Landing } from '@/pages/marketing/Landing'
 import { Login } from '@/pages/auth/Login'
 import { OAuthCallback } from '@/pages/auth/OAuthCallback'
 
@@ -81,6 +82,9 @@ function App() {
         <Routes>
           {/* Public : page « bientôt disponible » (l'app reste accessible via /login) */}
           <Route path="/" element={<Soon />} />
+          {/* Vitrine : visible ici le temps de la relire, avant de remplacer la
+              page « bientot disponible » de la racine. */}
+          <Route path="/landing" element={<Landing />} />
           <Route path="/tarifs" element={<Navigate to="/" replace />} />
 
           {/* Raccourci : /dashboard -> app (redirige vers /login si non connecté) */}

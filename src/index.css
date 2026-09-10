@@ -36,6 +36,16 @@
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
   --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Page publique : palette propre a la vitrine, distincte de celle de l'app.
+     L'application reste sobre et grise, la vitrine assume la couleur. */
+  --color-marine: #1b3a5c;
+  --color-marine-clair: #2a5580;
+  --color-marine-pale: #e7eef5;
+  --color-corail: #ff7a59;
+  --color-corail-fonce: #e05a38;
+  --color-creme: #fdf8f3;
+  --color-sable: #f4e7da;
 }
 
 * {
