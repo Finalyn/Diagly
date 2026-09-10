@@ -8,6 +8,7 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { stateLabels, stateColors } from '@/data/mock'
 import { vibrer } from '@/lib/motion'
+import { creerZip, octetsDeDataUrl } from '@/lib/zip'
 import type { ElementState } from '@/lib/api-types'
 
 /**
@@ -33,11 +34,17 @@ interface PhotoTrouvee {
   rang: number
 }
 
+const slug = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+
+/** Nom du dossier, utilisable comme nom de fichier. */
+function nomDossier(projet: string): string {
+  return slug(projet) || 'diagnostic'
+}
+
 /** Nom de fichier lisible et triable : le dossier, le code CFC, puis le rang. */
 function nomFichier(projet: string, p: PhotoTrouvee): string {
-  const slug = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-  return `${slug(projet) || 'diagnostic'}-${slug(p.cfcCode) || 'cfc'}-${p.rang}.jpg`
+  return `${nomDossier(projet)}-${slug(p.cfcCode) || 'cfc'}-${p.rang}.jpg`
 }
 
 function enregistrer(nom: string, src: string) {
@@ -52,6 +59,7 @@ function enregistrer(nom: string, src: string) {
 export function ProjectPhotos() {
   const { id } = useParams<{ id: string }>()
   const [ouverte, setOuverte] = useState<number | null>(null)
+  const [enCours, setEnCours] = useState(false)
 
   const projectQuery = useQuery({ queryKey: ['project', id], queryFn: () => api.projects.get(id!), enabled: !!id })
   const project = projectQuery.data?.project
@@ -84,14 +92,30 @@ export function ProjectPhotos() {
     return [...map.values()]
   }, [photos])
 
-  const toutEnregistrer = () => {
-    if (!project) return
-    vibrer('succes')
-    // Un déclenchement par photo : le navigateur les enchaîne, un léger décalage
-    // évite qu'il n'en ignore une partie.
-    photos.forEach((p, i) => {
-      setTimeout(() => enregistrer(nomFichier(project.name, p), p.src), i * 250)
-    })
+  /**
+   * Tout sortir en une archive plutôt qu'en cent téléchargements : le navigateur
+   * en bloque une partie, et personne ne veut trier cent fichiers dans un dossier.
+   */
+  const toutEnregistrer = async () => {
+    if (!project || enCours) return
+    setEnCours(true)
+    try {
+      const fichiers = await Promise.all(photos.map(async (p) => ({
+        nom: nomFichier(project.name, p),
+        // Les photos du diagnostic sont conservées en data URL ; on gère quand même
+        // le cas d'une image servie par le serveur, pour ne pas la perdre en route.
+        donnees: p.src.startsWith('data:')
+          ? octetsDeDataUrl(p.src)
+          : new Uint8Array(await (await fetch(p.src)).arrayBuffer()),
+      })))
+      const url = URL.createObjectURL(creerZip(fichiers))
+      enregistrer(`${nomDossier(project.name)}-photos.zip`, url)
+      // Le navigateur a besoin de l'URL le temps du téléchargement.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      vibrer('succes')
+    } finally {
+      setEnCours(false)
+    }
   }
 
   if (projectQuery.isLoading || itemsQuery.isLoading) {
@@ -122,8 +146,10 @@ export function ProjectPhotos() {
           </p>
         </div>
         {photos.length > 0 && (
-          <Button onClick={toutEnregistrer}>
-            <Download className="mr-2 h-4 w-4" />Tout enregistrer
+          <Button onClick={toutEnregistrer} disabled={enCours}>
+            {enCours
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Préparation…</>
+              : <><Download className="mr-2 h-4 w-4" />Tout exporter ({photos.length})</>}
           </Button>
         )}
       </div>
