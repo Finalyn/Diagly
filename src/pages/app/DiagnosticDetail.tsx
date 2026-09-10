@@ -439,7 +439,7 @@ export function DiagnosticDetail() {
                 )}
                 {etapeGroup.categories.map((group) => (
               <div key={group.category} className="mb-3">
-                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sticky top-0 bg-card">
+                <div className="sticky top-0 z-10 bg-card px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-foreground/75">
                   {group.category}
                 </div>
                 {group.items.map(c => {
@@ -465,10 +465,10 @@ export function DiagnosticDetail() {
                         isAdded ? 'bg-green-500' : 'bg-gray-300',
                       )} />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1">
-                          {c.cfcCode && <span className="font-mono text-muted-foreground">{c.cfcCode}</span>}
-                          <span className="truncate font-medium">{c.description}</span>
-                        </div>
+                        <p className="font-medium leading-snug">
+                          {c.cfcCode && <span className="mr-1.5 font-mono font-normal text-muted-foreground">{c.cfcCode}</span>}
+                          {c.description}
+                        </p>
                         {existing && (
                           <div className="flex gap-1 mt-0.5">
                             {existing.state ? (
@@ -999,7 +999,9 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
             <ArrowLeft className="h-5 w-5" />Retour
           </button>
           <div className="flex-1 min-w-0 text-center">
-            <p className="text-base font-semibold truncate leading-tight">{item.cfcLabel}</p>
+            {/* Le nom porte la distinction entre deux ouvrages voisins : « ... panneau plein
+                (2 vantaux) » et « ... vitrée (1 vantail) » ne different que par leur fin. */}
+            <p className="text-sm font-semibold leading-tight text-balance">{item.cfcLabel}</p>
             {catalog?.category && <p className="text-[11px] text-muted-foreground truncate">{catalog.category}</p>}
           </div>
           <button onClick={onDelete} disabled={isDeleting} title="Retirer cet élément" className="shrink-0 rounded-lg p-2 text-red-600 hover:bg-red-50">
