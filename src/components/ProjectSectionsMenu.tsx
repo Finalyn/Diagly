@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { LayoutGrid, Building2, DollarSign, Layers, Ruler, FileText, Zap, Trash2 } from 'lucide-react'
+import { LayoutGrid, Building2, DollarSign, Layers, Ruler, FileText, Zap, Trash2, Image } from 'lucide-react'
 
 /** Menu « Sections » d'un projet : accès rapide (surtout mobile) à Coûts / Plans / Rapports… depuis l'éditeur. */
 export function ProjectSectionsMenu({ projectId, onDeleteDiagnostic }: { projectId: string; onDeleteDiagnostic?: () => void }) {
@@ -16,6 +16,7 @@ export function ProjectSectionsMenu({ projectId, onDeleteDiagnostic }: { project
   const items = [
     { label: 'Fiche du projet', to: `/app/projects/${projectId}`, icon: Building2 },
     { label: 'Coûts', to: `/app/projects/${projectId}/couts`, icon: DollarSign },
+    { label: 'Photos', to: `/app/projects/${projectId}/photos`, icon: Image },
     { label: 'Plans', to: `/app/projects/${projectId}/plans`, icon: Ruler },
     { label: 'Variantes', to: `/app/projects/${projectId}/variantes`, icon: Layers },
     { label: 'Rapports', to: `/app/projects/${projectId}/rapports`, icon: FileText },

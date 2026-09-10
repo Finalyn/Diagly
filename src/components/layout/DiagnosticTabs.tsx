@@ -1,11 +1,12 @@
 import { NavLink, Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { MapPin, ClipboardCheck, DollarSign, Layers, Ruler, FileText, Zap, ChevronLeft } from 'lucide-react'
+import { MapPin, ClipboardCheck, DollarSign, Layers, Ruler, FileText, Zap, ChevronLeft, Image } from 'lucide-react'
 
 function tabs(projectId: string) {
   return [
     { to: `/app/projects/${projectId}`, icon: MapPin, label: 'Résumé', end: true },
     { to: `/app/projects/${projectId}/diagnostic`, icon: ClipboardCheck, label: 'Diagnostic' },
+    { to: `/app/projects/${projectId}/photos`, icon: Image, label: 'Photos' },
     { to: `/app/projects/${projectId}/couts`, icon: DollarSign, label: 'Coûts' },
     { to: `/app/projects/${projectId}/variantes`, icon: Layers, label: 'Variantes' },
     { to: `/app/projects/${projectId}/rapports`, icon: FileText, label: 'Rapports' },

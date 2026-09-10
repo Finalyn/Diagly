@@ -28,6 +28,7 @@ const ProjectEdit = lazy(() => named(import('@/pages/app/ProjectEdit'), 'Project
 const ProjectDiagnostic = lazy(() => named(import('@/pages/app/ProjectDiagnostic'), 'ProjectDiagnostic'))
 const ProjectMetres = lazy(() => named(import('@/pages/app/ProjectMetres'), 'ProjectMetres'))
 const ProjectPlans = lazy(() => named(import('@/pages/app/ProjectPlans'), 'ProjectPlans'))
+const ProjectPhotos = lazy(() => named(import('@/pages/app/ProjectPhotos'), 'ProjectPhotos'))
 const ProjectRapports = lazy(() => named(import('@/pages/app/ProjectRapports'), 'ProjectRapports'))
 const ProjectCECB = lazy(() => named(import('@/pages/app/ProjectCECB'), 'ProjectCECB'))
 const ProjectPlanning = lazy(() => named(import('@/pages/app/ProjectPlanning'), 'ProjectPlanning'))
@@ -114,6 +115,7 @@ function App() {
             <Route path="projects/:id/couts" element={<ProjectMetres />} />
             <Route path="projects/:id/variantes" element={<ProjectRapports />} />
             <Route path="projects/:id/plans" element={<ProjectPlans />} />
+            <Route path="projects/:id/photos" element={<ProjectPhotos />} />
             <Route path="projects/:id/rapports" element={<ProjectRapports />} />
             <Route path="projects/:id/cecb" element={<ProjectCECB />} />
             <Route path="projects/:id/calendrier" element={<ProjectPlanning />} />
