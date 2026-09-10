@@ -128,36 +128,76 @@ function Capture({ src, alt, className, sombre }: {
 
 /* ----------------------------------------------------------------- entête */
 
+/**
+ * Barre du haut.
+ *
+ * Elle n'est pas là seulement pour naviguer : c'est le seul élément visible en
+ * permanence, donc le seul qui convertit à n'importe quel moment de la lecture.
+ * D'où un bandeau d'offre au-dessus, la marque à gauche, et un bouton plein qui
+ * ne disparaît jamais, même sur téléphone.
+ */
 function Entete() {
   const [ouvert, setOuvert] = useState(false)
   return (
-    <header className="sticky top-0 z-50 border-b border-black/[0.08] bg-white/72 backdrop-blur-xl backdrop-saturate-150">
-      <div className="mx-auto flex h-12 w-full max-w-[1024px] items-center gap-8 px-5">
-        <a href="#haut" className="text-[17px] font-semibold tracking-[-0.01em]">Diagly</a>
-        <nav className="hidden flex-1 items-center gap-8 md:flex" aria-label="Sections">
-          {NAV.map((n) => (
-            <a key={n.href} href={n.href} className="text-[12px] text-[#1d1d1f]/80 transition-opacity hover:opacity-60">
-              {n.label}
-            </a>
-          ))}
-        </nav>
-        <div className="ml-auto flex items-center gap-5 md:ml-0">
-          <Link to="/login" className="text-[12px] text-[#1d1d1f]/80 transition-opacity hover:opacity-60">Se connecter</Link>
-          <button onClick={() => setOuvert((o) => !o)} aria-expanded={ouvert} aria-label="Ouvrir le menu" className="md:hidden">
-            <Minus className={cn('h-4 w-4 transition-transform', ouvert && 'rotate-90')} />
-          </button>
+    <div className="sticky top-0 z-50">
+      {/* Bandeau d'offre : la raison de cliquer, avant même le premier titre. */}
+      <Link
+        to="/login"
+        className="block bg-[#0066cc] px-4 py-2 text-center text-[13px] text-white transition-colors hover:bg-[#0055b3]"
+      >
+        Premier diagnostic offert, sans carte bancaire.
+        <span className="ml-1.5 font-semibold underline underline-offset-2">Commencer</span>
+      </Link>
+
+      <header className="border-b border-black/[0.08] bg-white/80 backdrop-blur-xl backdrop-saturate-150">
+        <div className="mx-auto flex h-14 w-full max-w-[1100px] items-center gap-7 px-4 sm:px-5">
+          <a href="#haut" className="flex shrink-0 items-center gap-2">
+            <img src="/diagly-mark.svg" alt="" aria-hidden="true" className="h-6 w-6" />
+            <span className="text-[18px] font-semibold tracking-[-0.015em]">Diagly</span>
+          </a>
+
+          <nav className="hidden flex-1 items-center gap-7 lg:flex" aria-label="Sections">
+            {NAV.map((n) => (
+              <a key={n.href} href={n.href} className="text-[14px] text-[#1d1d1f]/75 transition-colors hover:text-[#1d1d1f]">
+                {n.label}
+              </a>
+            ))}
+          </nav>
+
+          <div className="ml-auto flex items-center gap-3 lg:ml-0 lg:gap-4">
+            <Link to="/login" className="hidden text-[14px] text-[#1d1d1f]/75 transition-colors hover:text-[#1d1d1f] sm:block">
+              Se connecter
+            </Link>
+            {/* Le bouton reste sur telephone : c'est lui qui transforme la lecture en essai. */}
+            <Pilule to="/login" className="whitespace-nowrap px-4 py-2 text-[14px]">
+              <span className="sm:hidden">Essayer</span>
+              <span className="hidden sm:inline">Essayer gratuitement</span>
+            </Pilule>
+            <button
+              onClick={() => setOuvert((o) => !o)}
+              aria-expanded={ouvert}
+              aria-label="Ouvrir le menu"
+              className="-mr-1 p-1 lg:hidden"
+            >
+              <Minus className={cn('h-5 w-5 transition-transform', ouvert && 'rotate-90')} />
+            </button>
+          </div>
         </div>
-      </div>
-      {ouvert && (
-        <nav className="border-t border-black/[0.06] bg-white px-5 py-2 md:hidden" aria-label="Sections">
-          {NAV.map((n) => (
-            <a key={n.href} href={n.href} onClick={() => setOuvert(false)} className="block py-2.5 text-[15px] text-[#1d1d1f]/85">
-              {n.label}
-            </a>
-          ))}
-        </nav>
-      )}
-    </header>
+
+        {ouvert && (
+          <nav className="border-t border-black/[0.06] bg-white px-5 py-2 lg:hidden" aria-label="Sections">
+            {NAV.map((n) => (
+              <a key={n.href} href={n.href} onClick={() => setOuvert(false)} className="block py-2.5 text-[15px] text-[#1d1d1f]/85">
+                {n.label}
+              </a>
+            ))}
+            <Link to="/login" onClick={() => setOuvert(false)} className="block py-2.5 text-[15px] text-[#1d1d1f]/85 sm:hidden">
+              Se connecter
+            </Link>
+          </nav>
+        )}
+      </header>
+    </div>
   )
 }
 
@@ -165,7 +205,7 @@ function Entete() {
 
 function Hero() {
   return (
-    <section id="haut" className="scroll-mt-16 overflow-hidden px-5 pt-16 text-center md:pt-24">
+    <section id="haut" className="scroll-mt-28 overflow-hidden px-5 pt-16 text-center md:pt-24">
       <p className="text-[15px] font-semibold text-[#0066cc]">Diagly</p>
       <h1 className="mx-auto mt-3 max-w-4xl text-balance text-[clamp(2.4rem,7vw,5rem)] font-semibold leading-[1.03] tracking-[-0.035em]">
         Un immeuble relevé et chiffré avant de repartir.
@@ -192,7 +232,7 @@ function Hero() {
 
 function Visite() {
   return (
-    <section id="visite" className="scroll-mt-16 bg-[#f5f5f7] px-5 py-24 md:py-32">
+    <section id="visite" className="scroll-mt-28 bg-[#f5f5f7] px-5 py-24 md:py-32">
       <GrandTitre>Le catalogue suit la visite,<br className="hidden sm:block" /> pas la nomenclature.</GrandTitre>
       <Chapo>
         Façade, porte d'entrée, boîte aux lettres, communs, techniques, toiture. Onze étapes
@@ -216,7 +256,7 @@ const PRECISION = [
 
 function Analyse() {
   return (
-    <section id="analyse" className="scroll-mt-16 bg-black px-5 py-24 text-white md:py-32">
+    <section id="analyse" className="scroll-mt-28 bg-black px-5 py-24 text-white md:py-32">
       <GrandTitre sombre>Elle propose.<br />Vous décidez.</GrandTitre>
       <Chapo sombre>
         Sur la photo d'un ouvrage, Diagly propose un état, une priorité et une note écrite.
@@ -273,7 +313,7 @@ function Analyse() {
 
 function Rapport() {
   return (
-    <section id="rapport" className="scroll-mt-16 px-5 py-24 md:py-32">
+    <section id="rapport" className="scroll-mt-28 px-5 py-24 md:py-32">
       <GrandTitre>Le rapport est déjà écrit<br className="hidden sm:block" /> quand vous sortez.</GrandTitre>
       <Chapo>
         Un rapport de l'existant, ouvrage par ouvrage, avec l'état constaté et les travaux à
@@ -415,7 +455,7 @@ const COMPARATIF: { ligne: string; valeurs: (string | boolean)[] }[] = [
 function Tarifs() {
   const [annuel, setAnnuel] = useState(false)
   return (
-    <section id="tarifs" className="scroll-mt-16 bg-[#f5f5f7] px-5 py-24 md:py-32">
+    <section id="tarifs" className="scroll-mt-28 bg-[#f5f5f7] px-5 py-24 md:py-32">
       <GrandTitre>Un prix par usage.</GrandTitre>
       <Chapo>
         Tous les plans donnent le catalogue CFC, le calcul des métrés et le rapport. Ce qui
@@ -545,7 +585,7 @@ const QUESTIONS = [
 
 function Questions() {
   return (
-    <section id="questions" className="scroll-mt-16 px-5 py-24 md:py-32">
+    <section id="questions" className="scroll-mt-28 px-5 py-24 md:py-32">
       <GrandTitre>Questions fréquentes</GrandTitre>
       <div className="mx-auto mt-14 max-w-[760px]">
         {QUESTIONS.map((item) => (
@@ -616,7 +656,10 @@ function PiedDePage() {
           ))}
         </div>
         <div className="flex flex-col gap-2 border-t border-black/[0.09] pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} Diagly. Tous droits réservés.</p>
+          <p className="flex items-center gap-2">
+            <img src="/diagly-mark.svg" alt="" aria-hidden="true" className="h-4 w-4" />
+            © {new Date().getFullYear()} Diagly, un produit Finalyn. Tous droits réservés.
+          </p>
           <p>Conçu en Suisse. Installable sur téléphone, utilisable hors ligne pendant la visite.</p>
         </div>
       </div>
