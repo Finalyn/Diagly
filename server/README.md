@@ -21,11 +21,15 @@ npm install
 # 3. Lancer MySQL (docker compose)
 npm run db:up
 
-# 4. Appliquer les migrations Prisma (crée toutes les tables)
-#    → exécute aussi automatiquement le seed (cfc_catalog + catalog_items)
-npm run db:migrate
+# 4. Créer les tables
+#    Le dépôt n'a pas de dossier prisma/migrations : le schéma s'applique
+#    directement, il n'y a pas d'historique de migrations à rejouer.
+npx prisma db push
 
-# 5. Lancer l'API en mode dev (watch + hot reload)
+# 5. Charger le catalogue de départ (645 entrées CFC, 111 postes) et le compte admin
+npm run db:seed
+
+# 6. Lancer l'API en mode dev (watch + hot reload)
 npm run dev
 ```
 
@@ -42,11 +46,11 @@ Healthcheck : `GET /health` → `{ ok: true, db: "up" }`.
 | `start`          | Lance `dist/index.js` (prod)                                      |
 | `db:up`          | Démarre MySQL via docker-compose                                  |
 | `db:down`        | Stoppe le container MySQL                                         |
-| `db:migrate`     | `prisma migrate dev` — crée/migre le schéma + lance le seed       |
+| `db:migrate`     | `prisma migrate dev` — non utilisé ici, voir `prisma db push`     |
 | `db:deploy`      | `prisma migrate deploy` — applique les migrations (prod)          |
 | `db:generate`    | Régénère le client Prisma typé                                    |
 | `db:studio`      | Ouvre Prisma Studio (UI web pour explorer la DB)                  |
-| `db:seed`        | Re-seed cfc_catalog + catalog_items depuis `../sql/seed_data.sql` |
+| `db:seed`        | Charge cfc_catalog + catalog_items depuis `prisma/seed-data.json` |
 | `db:reset`       | Reset complet (drop + recreate + seed) — ⚠️ détruit toutes les données |
 | `lint`           | Type-check uniquement                                             |
 
@@ -64,7 +68,8 @@ src/
     └── diagnostics.ts    # /api/diagnostics/:id + /items
 prisma/
 ├── schema.prisma         # schéma DB
-└── seed.ts               # importe ../sql/seed_data.sql
+├── seed-data.json        # catalogue de départ (645 CFC, 111 postes)
+└── seed.ts               # charge seed-data.json, idempotent
 ```
 
 ## API — endpoints
@@ -132,6 +137,6 @@ Voir `scripts/smoke-test.ps1` pour un parcours complet (register → create proj
 2. Créer une base `diagly` + un user dédié.
 3. Cloner le repo, copier `.env.example` → `.env`, remplir avec la connexion prod.
 4. `npm ci && npm run build`
-5. `npm run db:deploy` (applique migrations)
-6. `npm run db:seed` (charge cfc_catalog + catalog_items)
+5. `npx prisma db push` (applique le schéma)
+6. `npm run db:seed` (charge cfc_catalog + catalog_items, sans effet si déjà remplis)
 7. Lancer `node dist/index.js` derrière un reverse-proxy (Nginx/Caddy) + process manager (systemd ou PM2).
