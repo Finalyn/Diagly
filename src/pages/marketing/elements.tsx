@@ -141,7 +141,7 @@ export function BadgeAppStore({ mention = 'Bientôt', sombre, className }: { men
  * Seules les sections qui racontent le déroulé d'un dossier en portent un. Les
  * autres gardent leur surtitre, sinon la numérotation ne veut plus rien dire.
  */
-export function Etape({ rang, sombre }: { rang: 'un' | 'deux' | 'trois' | 'quatre'; sombre?: boolean }) {
+export function Etape({ rang, sombre }: { rang: 'un' | 'deux' | 'trois' | 'quatre' | 'cinq' | 'six'; sombre?: boolean }) {
   return (
     <p className="mb-4 flex items-center justify-center gap-3">
       <span className={cn('text-[12px] font-semibold uppercase tracking-[0.16em]',

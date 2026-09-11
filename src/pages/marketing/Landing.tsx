@@ -9,6 +9,7 @@ import catalogue from '@/assets/vitrine/app-catalogue.png'
 import { CarteAdresse } from './CarteAdresse'
 import { BoutonFleche, Pilule, LienFleche, GrandTitre, Chapo, Capture, BadgeAppStore, Etape } from './elements'
 import { TempsGagne, Modules, Technique, IntelligenceArtificielle } from './SectionsProduit'
+import { EtapeGeometrie, EtapeEtat, EtapeChiffrage } from './Etapes'
 import { releverBatiment, EXEMPLES } from './registre'
 import type { Lieu } from './registre'
 
@@ -63,9 +64,12 @@ export function Landing() {
       <main>
         <Hero />
         <Adresse />
+        <EtapeGeometrie />
         <Visite />
-        <IntelligenceArtificielle />
+        <EtapeEtat />
+        <EtapeChiffrage />
         <Rapport />
+        <IntelligenceArtificielle />
         <Precision />
         <TempsGagne />
         <Modules />
@@ -210,7 +214,7 @@ function Hero() {
 function Visite() {
   return (
     <section id="visite" className="scroll-mt-28 bg-[#f5f7fa] px-5 py-24 md:py-32">
-      <Etape rang="deux" />
+      <Etape rang="trois" />
       <GrandTitre>Le catalogue suit la visite,<br className="hidden sm:block" /> pas la nomenclature.</GrandTitre>
       <Chapo>
         Façade, porte d'entrée, boîte aux lettres, communs, techniques, toiture. Onze étapes
@@ -394,7 +398,7 @@ function Precision() {
 function Rapport() {
   return (
     <section id="rapport" className="scroll-mt-28 px-5 py-24 md:py-32">
-      <Etape rang="quatre" />
+      <Etape rang="six" />
       <GrandTitre>Le rapport est déjà écrit<br className="hidden sm:block" /> quand vous sortez.</GrandTitre>
       <Chapo>
         Un rapport de l'existant, ouvrage par ouvrage, avec l'état constaté et les travaux à
