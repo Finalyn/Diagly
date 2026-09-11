@@ -10,6 +10,7 @@ import { CarteAdresse } from './CarteAdresse'
 import { BoutonFleche, Pilule, LienFleche, GrandTitre, Chapo, Capture, BadgeAppStore, Etape } from './elements'
 import { TempsGagne, Modules, Technique, IntelligenceArtificielle } from './SectionsProduit'
 import { EtapeGeometrie, EtapeEtat, EtapeChiffrage } from './Etapes'
+import { Fil } from './Fil'
 import { releverBatiment, EXEMPLES } from './registre'
 import type { Lieu } from './registre'
 
@@ -213,7 +214,8 @@ function Hero() {
 
 function Visite() {
   return (
-    <section id="visite" className="scroll-mt-28 bg-[#f5f7fa] px-5 py-24 md:py-32">
+    <section id="visite" className="relative scroll-mt-28 px-5 py-24 md:py-32">
+      <Fil />
       <Etape rang="trois" />
       <GrandTitre>Le catalogue suit la visite,<br className="hidden sm:block" /> pas la nomenclature.</GrandTitre>
       <Chapo>
@@ -397,7 +399,8 @@ function Precision() {
 
 function Rapport() {
   return (
-    <section id="rapport" className="scroll-mt-28 px-5 py-24 md:py-32">
+    <section id="rapport" className="relative scroll-mt-28 bg-[#f5f7fa] px-5 py-24 md:py-32">
+      <Fil />
       <Etape rang="six" />
       <GrandTitre>Le rapport est déjà écrit<br className="hidden sm:block" /> quand vous sortez.</GrandTitre>
       <Chapo>

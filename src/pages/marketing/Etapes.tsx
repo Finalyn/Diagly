@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { GrandTitre, Chapo, Etape } from './elements'
+import { Fil } from './Fil'
 import { computeProjectMetrics } from '@/lib/formulas'
 import { STATE_PRIORITY } from '@/lib/diagnostic-auto'
 import type { ElementState, RoofType } from '@/lib/api-types'
@@ -92,7 +93,8 @@ export function EtapeGeometrie() {
   })
 
   return (
-    <section className="bg-[#f5f7fa] px-5 py-24 md:py-32">
+    <section className="relative bg-[#f5f7fa] px-5 py-24 md:py-32">
+      <Fil />
       <Etape rang="deux" />
       <GrandTitre>Vous posez vos ratios,<br className="hidden sm:block" /> les métrés suivent.</GrandTitre>
       <Chapo>
@@ -187,7 +189,8 @@ export function EtapeEtat() {
   const priorite = STATE_PRIORITY[choisi]
 
   return (
-    <section className="px-5 py-24 md:py-32">
+    <section className="relative bg-[#f5f7fa] px-5 py-24 md:py-32">
+      <Fil />
       <Etape rang="quatre" />
       <GrandTitre>Un état, et tout<br className="hidden sm:block" /> ce qu'il engage.</GrandTitre>
       <Chapo>
@@ -269,7 +272,8 @@ export function EtapeChiffrage() {
   const total = sousTotal + tva
 
   return (
-    <section className="bg-[#f5f7fa] px-5 py-24 md:py-32">
+    <section className="relative px-5 py-24 md:py-32">
+      <Fil />
       <Etape rang="cinq" />
       <GrandTitre>Chaque montant<br className="hidden sm:block" /> dit d'où il vient.</GrandTitre>
       <Chapo>
