@@ -7,7 +7,7 @@ import couts from '@/assets/vitrine/app-couts.png'
 import rapport from '@/assets/vitrine/app-rapport.png'
 import catalogue from '@/assets/vitrine/app-catalogue.png'
 import { CarteAdresse } from './CarteAdresse'
-import { BoutonFleche, Pilule, LienFleche, GrandTitre, Chapo, Capture } from './elements'
+import { BoutonFleche, Pilule, LienFleche, GrandTitre, Chapo, Capture, BadgeAppStore } from './elements'
 import { CommentCaMarche, TempsGagne, Modules, Technique, IntelligenceArtificielle } from './SectionsProduit'
 import { releverBatiment, EXEMPLES } from './registre'
 import type { Lieu } from './registre'
@@ -693,6 +693,9 @@ function AppelFinal() {
         <a href="mailto:contact@finalyn.com" className="inline-flex items-center gap-0.5 text-[15px] text-[#4d9bff] hover:underline">
           Parler à quelqu'un<ChevronRight className="h-4 w-4" aria-hidden="true" />
         </a>
+      </div>
+      <div className="mt-14">
+        <BadgeAppStore mention="Application iOS bientôt disponible" />
       </div>
     </section>
   )
