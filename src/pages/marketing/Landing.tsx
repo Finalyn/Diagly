@@ -9,7 +9,6 @@ import catalogue from '@/assets/vitrine/app-catalogue.png'
 import { CarteAdresse } from './CarteAdresse'
 import { BoutonFleche, Pilule, LienFleche, GrandTitre, Chapo, Capture, BadgeAppStore } from './elements'
 import { TempsGagne, Modules, Technique, IntelligenceArtificielle } from './SectionsProduit'
-import { ParcoursSlides } from './ParcoursSlides'
 import { releverBatiment, EXEMPLES } from './registre'
 import type { Lieu } from './registre'
 
@@ -32,7 +31,6 @@ import type { Lieu } from './registre'
  */
 
 const NAV = [
-  { href: '#methode', label: 'Comment ça marche' },
   { href: '#ia', label: "L'IA" },
   { href: '#modules', label: 'Les modules' },
   { href: '#technique', label: 'La méthode' },
@@ -64,7 +62,6 @@ export function Landing() {
       <Entete />
       <main>
         <Hero />
-        <ParcoursSlides />
         <Visite />
         <Adresse />
         <IntelligenceArtificielle />
