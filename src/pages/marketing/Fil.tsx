@@ -12,17 +12,20 @@ import { useEffect, useRef } from 'react'
  * que rangé dans un état React : à soixante images par seconde, faire rendre un
  * composant pour déplacer un trait serait payer très cher un seul nombre.
  *
+ * Rien n'est montré avant : pas de tracé pâle qui annoncerait la suite. Le fil
+ * n'existe qu'à mesure qu'on descend.
+ *
  * Il est posé en débordement au-dessus de la section qui le porte, ce qui le fait
  * traverser la couture entre deux fonds de couleurs différentes.
  */
 
 /**
  * Le trait : il descend, fait un tour sur lui-même en repassant plus haut que
- * son point d'entrée, puis repart. L'arc va de 64 à 52, donc vers le haut : c'est
+ * son point d'entrée, puis repart. L'arc va de 66 à 50, donc vers le haut : c'est
  * ce retour en arrière qui crée le croisement. Le drapeau de sens le fait
  * passer à gauche du trait.
  */
-const TRACE = 'M20 0 L20 64 A 9 9 0 1 1 20 52 L20 150'
+const TRACE = 'M30 0 L30 66 A 13 13 0 1 1 30 50 L30 150'
 
 export function Fil({ className }: { className?: string }) {
   const trait = useRef<SVGPathElement>(null)
@@ -70,11 +73,9 @@ export function Fil({ className }: { className?: string }) {
     <div
       ref={boite}
       aria-hidden="true"
-      className={`pointer-events-none absolute -top-[86px] left-1/2 h-[176px] w-10 -translate-x-1/2 ${className ?? ''}`}
+      className={`pointer-events-none absolute -top-[86px] left-1/2 h-[176px] w-[70px] -translate-x-1/2 ${className ?? ''}`}
     >
-      <svg viewBox="0 0 40 150" className="h-full w-full overflow-visible" fill="none">
-        {/* Le trait complet, très pâle : il montre où le fil va, sans l'annoncer. */}
-        <path d={TRACE} stroke="#0167EA" strokeOpacity="0.12" strokeWidth="2" strokeLinecap="round" />
+      <svg viewBox="0 0 60 150" className="h-full w-full overflow-visible" fill="none">
         <path ref={trait} d={TRACE} stroke="#0167EA" strokeWidth="2" strokeLinecap="round" />
       </svg>
     </div>
