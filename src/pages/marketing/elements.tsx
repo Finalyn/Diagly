@@ -110,7 +110,7 @@ export function Capture({ src, alt, className, sombre }: {
  * porte sa mention : annoncer un telechargement qui n'aboutit pas ferait perdre
  * au visiteur la confiance que tout le reste de la page cherche a etablir.
  */
-export function BadgeAppStore({ mention = 'Bientôt', className }: { mention?: string; className?: string }) {
+export function BadgeAppStore({ mention = 'Bientôt', sombre, className }: { mention?: string; sombre?: boolean; className?: string }) {
   return (
     <span className={cn('inline-flex flex-col items-center gap-2', className)}>
       <span
@@ -126,7 +126,7 @@ export function BadgeAppStore({ mention = 'Bientôt', className }: { mention?: s
           <span className="mt-[3px] block text-[19px] font-semibold leading-none tracking-[-0.02em]">l’App Store</span>
         </span>
       </span>
-      {mention && <span className="text-[12px] text-white/45">{mention}</span>}
+      {mention && <span className={cn('text-[12px]', sombre ? 'text-white/45' : 'text-[#86868b]')}>{mention}</span>}
     </span>
   )
 }

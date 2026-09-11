@@ -174,6 +174,10 @@ function Hero() {
         <LienFleche href="#rapport">Voir un rapport</LienFleche>
       </div>
 
+      <div className="mt-8">
+        <BadgeAppStore mention="Application iOS bientôt disponible" />
+      </div>
+
       {/* Preuve : des faits verifiables, pas des etoiles ni des avatars inventes. */}
       <div className="mx-auto mt-9 flex max-w-2xl flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[13px] text-[#5b6572]">
         <span className="inline-flex items-center gap-2">
@@ -339,10 +343,10 @@ function Adresse() {
 /* -------------------------------------------------------------- precision */
 
 const PRECISION = [
-  { titre: "L'adresse seule", detail: 'GÃ©omÃ©trie du registre des bÃ¢timents. Un ordre de grandeur.', part: 30 },
-  { titre: 'Avec vos photos', detail: "L'Ã©tat de chaque ouvrage est relevÃ©, plus prÃ©sumÃ©.", part: 55 },
-  { titre: 'Avec le relevÃ© sur place', detail: 'PÃ©rimÃ¨tre, Ã©tages, hauteur, logements. Les mÃ©trÃ©s deviennent les vÃ´tres.', part: 80 },
-  { titre: 'Avec les devis reÃ§us', detail: 'Les prix du catalogue cÃ¨dent la place aux montants adjugÃ©s.', part: 100 },
+  { titre: "L'adresse seule", detail: 'Géométrie du registre des bâtiments. Un ordre de grandeur.', part: 30 },
+  { titre: 'Avec vos photos', detail: "L'état de chaque ouvrage est relevé, plus présumé.", part: 55 },
+  { titre: 'Avec le relevé sur place', detail: 'Périmètre, étages, hauteur, logements. Les métrés deviennent les vôtres.', part: 80 },
+  { titre: 'Avec les devis reçus', detail: 'Les prix du catalogue cèdent la place aux montants adjugés.', part: 100 },
 ]
 
 /**
@@ -353,17 +357,17 @@ const PRECISION = [
 function Precision() {
   return (
     <section className="bg-[#0b1220] px-5 py-24 text-white md:py-32">
-      <GrandTitre sombre>La prÃ©cision se gagne.<br className="hidden sm:block" /> Elle ne se promet pas.</GrandTitre>
+      <GrandTitre sombre>La précision se gagne.<br className="hidden sm:block" /> Elle ne se promet pas.</GrandTitre>
       <Chapo sombre>
-        Diagly affiche une fourchette et dit sur quoi elle repose. Un chiffre exact tirÃ©
-        d'une seule photo serait une invention, et vous le sauriez au premier devis reÃ§u.
+        Diagly affiche une fourchette et dit sur quoi elle repose. Un chiffre exact tiré
+        d'une seule photo serait une invention, et vous le sauriez au premier devis reçu.
       </Chapo>
 
       <div className="mx-auto max-w-[760px]">
         <div className="mx-auto mb-16 mt-16 max-w-[300px]">
           <img
             src={visite}
-            alt="Sur tÃ©lÃ©phone, les quatre Ã©tats proposÃ©s pour un ouvrage, chacun avec son constat et les travaux qu'il engage."
+            alt="Sur téléphone, les quatre états proposés pour un ouvrage, chacun avec son constat et les travaux qu'il engage."
             className="w-full rounded-[20px] border border-white/10 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.9)]"
           />
         </div>
@@ -693,9 +697,6 @@ function AppelFinal() {
         <a href="mailto:contact@finalyn.com" className="inline-flex items-center gap-0.5 text-[15px] text-[#4d9bff] hover:underline">
           Parler à quelqu'un<ChevronRight className="h-4 w-4" aria-hidden="true" />
         </a>
-      </div>
-      <div className="mt-14">
-        <BadgeAppStore mention="Application iOS bientôt disponible" />
       </div>
     </section>
   )
