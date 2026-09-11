@@ -29,10 +29,14 @@ import { useEffect, useRef } from 'react'
  * un aplomb : une ligne droite entre deux sections ferait séparateur, alors qu'on
  * veut le geste de quelqu'un qui relie deux idées à la main.
  *
+ * L'écart reste faible, seize unités de part et d'autre du centre. Les grandes
+ * vagues d'une première version en faisaient un ornement qui attirait l'oeil pour
+ * lui-même ; ici il ondule à peine, comme une corde qui pend.
+ *
  * Les points de contrôle prolongent chaque courbe dans la suivante, sinon un
  * angle apparaît à chaque raccord et le geste devient une succession de traits.
  */
-const TRACE = 'M100 0 C100 34 46 48 44 92 C42 138 142 150 144 196 C146 244 58 256 60 300 C61 326 100 322 100 340'
+const TRACE = 'M100 0 C100 32 85 46 85 80 C85 114 116 126 116 160 C116 196 86 208 86 246 C86 278 100 306 100 340'
 
 export function Fil({ className }: { className?: string }) {
   const trait = useRef<SVGPathElement>(null)
