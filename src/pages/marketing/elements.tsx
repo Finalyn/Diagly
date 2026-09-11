@@ -130,3 +130,25 @@ export function BadgeAppStore({ mention = 'Bientôt', sombre, className }: { men
     </span>
   )
 }
+
+/**
+ * Le marqueur d'étape, au-dessus du titre d'une section du parcours.
+ *
+ * Il porte le rang en toutes lettres plutôt qu'en chiffre : « En deux » se lit
+ * comme une phrase qui continue, là où « 02 » se lit comme une référence. Le
+ * trait qui suit dit visuellement qu'il y a une suite.
+ *
+ * Seules les sections qui racontent le déroulé d'un dossier en portent un. Les
+ * autres gardent leur surtitre, sinon la numérotation ne veut plus rien dire.
+ */
+export function Etape({ rang, sombre }: { rang: 'un' | 'deux' | 'trois' | 'quatre'; sombre?: boolean }) {
+  return (
+    <p className="mb-4 flex items-center justify-center gap-3">
+      <span className={cn('text-[12px] font-semibold uppercase tracking-[0.16em]',
+        sombre ? 'text-[#4d9bff]' : 'text-[#0167EA]')}>
+        En {rang}
+      </span>
+      <span aria-hidden="true" className={cn('h-px w-8', sombre ? 'bg-[#4d9bff]/35' : 'bg-[#0167EA]/30')} />
+    </p>
+  )
+}

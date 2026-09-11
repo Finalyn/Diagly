@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BoutonFleche, GrandTitre, Chapo, Surtitre } from './elements'
+import { BoutonFleche, GrandTitre, Chapo, Surtitre, Etape } from './elements'
 
 /**
  * Les sections qui expliquent le produit plutôt que de le montrer.
@@ -308,7 +308,7 @@ const IA_QUAND = [
 export function IntelligenceArtificielle() {
   return (
     <section id="ia" className="scroll-mt-28 px-5 py-24 md:py-32">
-      <Surtitre>L'assistance</Surtitre>
+      <Etape rang="trois" />
       <GrandTitre>L'IA quand vous<br className="hidden sm:block" /> la voulez. Jamais avant.</GrandTitre>
       <Chapo>
         Aucun état n'est rempli dans votre dos. L'assistant ne travaille que si vous le

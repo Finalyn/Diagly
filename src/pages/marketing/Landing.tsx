@@ -7,7 +7,7 @@ import couts from '@/assets/vitrine/app-couts.png'
 import rapport from '@/assets/vitrine/app-rapport.png'
 import catalogue from '@/assets/vitrine/app-catalogue.png'
 import { CarteAdresse } from './CarteAdresse'
-import { BoutonFleche, Pilule, LienFleche, GrandTitre, Chapo, Capture, BadgeAppStore } from './elements'
+import { BoutonFleche, Pilule, LienFleche, GrandTitre, Chapo, Capture, BadgeAppStore, Etape } from './elements'
 import { TempsGagne, Modules, Technique, IntelligenceArtificielle } from './SectionsProduit'
 import { releverBatiment, EXEMPLES } from './registre'
 import type { Lieu } from './registre'
@@ -210,6 +210,7 @@ function Hero() {
 function Visite() {
   return (
     <section id="visite" className="scroll-mt-28 bg-[#f5f7fa] px-5 py-24 md:py-32">
+      <Etape rang="deux" />
       <GrandTitre>Le catalogue suit la visite,<br className="hidden sm:block" /> pas la nomenclature.</GrandTitre>
       <Chapo>
         Façade, porte d'entrée, boîte aux lettres, communs, techniques, toiture. Onze étapes
@@ -283,6 +284,7 @@ function Adresse() {
 
   return (
     <section className="px-5 py-24 md:py-32">
+      <Etape rang="un" />
       <GrandTitre>Tout commence par une adresse.</GrandTitre>
       <Chapo>
         Avant la première photo, Diagly interroge les registres publics suisses et en tire la
@@ -392,6 +394,7 @@ function Precision() {
 function Rapport() {
   return (
     <section id="rapport" className="scroll-mt-28 px-5 py-24 md:py-32">
+      <Etape rang="quatre" />
       <GrandTitre>Le rapport est déjà écrit<br className="hidden sm:block" /> quand vous sortez.</GrandTitre>
       <Chapo>
         Un rapport de l'existant, ouvrage par ouvrage, avec l'état constaté et les travaux à
