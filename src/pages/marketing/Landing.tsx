@@ -8,7 +8,8 @@ import rapport from '@/assets/vitrine/app-rapport.png'
 import catalogue from '@/assets/vitrine/app-catalogue.png'
 import { CarteAdresse } from './CarteAdresse'
 import { BoutonFleche, Pilule, LienFleche, GrandTitre, Chapo, Capture, BadgeAppStore } from './elements'
-import { CommentCaMarche, TempsGagne, Modules, Technique, IntelligenceArtificielle } from './SectionsProduit'
+import { TempsGagne, Modules, Technique, IntelligenceArtificielle } from './SectionsProduit'
+import { ParcoursSlides } from './ParcoursSlides'
 import { releverBatiment, EXEMPLES } from './registre'
 import type { Lieu } from './registre'
 
@@ -63,7 +64,7 @@ export function Landing() {
       <Entete />
       <main>
         <Hero />
-        <CommentCaMarche />
+        <ParcoursSlides />
         <Visite />
         <Adresse />
         <IntelligenceArtificielle />

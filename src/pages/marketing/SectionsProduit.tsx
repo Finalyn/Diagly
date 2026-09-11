@@ -10,63 +10,6 @@ import { BoutonFleche, GrandTitre, Chapo, Surtitre } from './elements'
  * traitements, mais la même règle : rien qui ne soit vérifiable dans le produit.
  */
 
-/* ------------------------------------------------------- comment ça marche */
-
-/**
- * Le parcours, en quatre temps. La numérotation n'est pas décorative : c'est
- * un ordre réel, et le troisième temps n'existe pas sans le deuxième.
- */
-const ETAPES = [
-  {
-    titre: "Vous entrez l'adresse",
-    texte: "Diagly interroge le registre fédéral des bâtiments et en tire l'année de construction, le nombre d'étages, de logements et l'emprise au sol. Les métrés partent de là.",
-    marque: 'Avant de partir',
-  },
-  {
-    titre: 'Vous photographiez pendant la visite',
-    texte: "Le catalogue est rangé par étape de visite, pas par nomenclature. Vous choisissez l'ouvrage, vous photographiez, vous retenez un état. L'application suit votre parcours dans le bâtiment.",
-    marque: 'Sur place',
-  },
-  {
-    titre: 'Les métrés et les prix tombent',
-    texte: "Chaque poste applique sa formule de métré et le prix de votre catalogue. Les totaux se répartissent par priorité I, II et III, honoraires et réserve compris.",
-    marque: 'Au fil de la visite',
-  },
-  {
-    titre: 'Le rapport est déjà écrit',
-    texte: "Rapport de l'existant, chiffrage par code CFC, export tableur, lien de partage en lecture seule pour la gérance. Rien à ressaisir au bureau.",
-    marque: 'En sortant',
-  },
-]
-
-export function CommentCaMarche() {
-  return (
-    <section id="methode" className="scroll-mt-28 px-5 py-24 md:py-32">
-      <Surtitre>Comment ça marche</Surtitre>
-      <GrandTitre>Quatre temps,<br className="hidden sm:block" /> une seule visite.</GrandTitre>
-      <Chapo>
-        Le travail de bureau qui suivait la visite n'est pas accéléré&nbsp;: il est fait pendant
-        la visite. C'est toute la différence.
-      </Chapo>
-
-      <ol className="mx-auto mt-16 grid max-w-[1060px] gap-x-8 gap-y-12 md:grid-cols-2 lg:grid-cols-4">
-        {ETAPES.map((e, i) => (
-          <li key={e.titre} className="relative">
-            <div className="flex items-center gap-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0167EA] text-[14px] font-semibold tabular-nums text-white">
-                {i + 1}
-              </span>
-              <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">{e.marque}</span>
-            </div>
-            <h3 className="mt-4 text-[19px] font-semibold leading-snug tracking-[-0.015em]">{e.titre}</h3>
-            <p className="mt-2.5 text-[16px] leading-relaxed text-[#6e6e73]">{e.texte}</p>
-          </li>
-        ))}
-      </ol>
-    </section>
-  )
-}
-
 /* ------------------------------------------------------------ temps gagné */
 
 const heures = (n: number) => (n >= 100 ? Math.round(n) : Math.round(n * 10) / 10)
