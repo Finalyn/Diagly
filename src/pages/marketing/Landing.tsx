@@ -62,8 +62,8 @@ export function Landing() {
       <Entete />
       <main>
         <Hero />
-        <Visite />
         <Adresse />
+        <Visite />
         <IntelligenceArtificielle />
         <Rapport />
         <Precision />
