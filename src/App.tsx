@@ -82,10 +82,12 @@ function App() {
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          {/* Public : page « bientôt disponible » (l'app reste accessible via /login) */}
-          <Route path="/" element={<Soon />} />
-          {/* Vitrine : visible ici le temps de la relire, avant de remplacer la
-              page « bientot disponible » de la racine. */}
+          {/* Racine. En local on sert la vitrine, c'est elle qu'on relit ; en
+              production la page « bientot disponible » reste, l'app etant
+              accessible via /login. Pour publier la vitrine, remplacer toute
+              la condition par <Landing />. */}
+          <Route path="/" element={import.meta.env.DEV ? <Landing /> : <Soon />} />
+          {/* La vitrine garde son adresse propre, en local comme en ligne. */}
           <Route path="/landing" element={<Landing />} />
           <Route path="/tarifs" element={<Navigate to="/" replace />} />
 
