@@ -17,6 +17,29 @@ export function cfcGroupCode(cfcCode: string | null | undefined): string | null 
   return digits.slice(0, 2)
 }
 
+/**
+ * Position CFC à 3 chiffres d'un code (le niveau « position », niveau 3).
+ * Ex. "221.5" -> "221", "226.2" -> "226". C'est la maille du devis : le client
+ * lit « 226 Crépissages de façade », pas la ligne de catalogue qui la compose.
+ * Retombe sur le groupe à 2 chiffres si le code n'en porte pas davantage.
+ */
+export function cfcPositionCode(cfcCode: string | null | undefined): string | null {
+  if (!cfcCode) return null
+  const digits = cfcCode.replace(/\D/g, '')
+  if (digits.length < 2) return null
+  return digits.slice(0, 3)
+}
+
+/**
+ * Index code -> libellé officiel, tous niveaux confondus (chapitre, groupe, position).
+ * `cfcGroupLabels` ne retient que le niveau 2 ; le devis a besoin du niveau 3.
+ */
+export function cfcLabelIndex(cfcEntries: ApiCfcEntry[]): Map<string, string> {
+  const labels = new Map<string, string>()
+  for (const e of cfcEntries) labels.set(e.code, e.label)
+  return labels
+}
+
 export interface CfcGroup {
   /** Code à 2 chiffres ("22"), ou "" pour les items sans code CFC. */
   code: string

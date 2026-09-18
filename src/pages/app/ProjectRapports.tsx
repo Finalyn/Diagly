@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle, ClipboardCheck, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf } from 'lucide-react'
+import { Loader2, AlertCircle, BookOpen, ClipboardCheck, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf } from 'lucide-react'
 import { Button, Card, CardContent, Badge } from '@/components/ui'
 import { ExportDialog } from '@/components/ExportDialog'
 import { stateLabels, buildingTypeLabels, stateColors } from '@/data/mock'
@@ -12,24 +12,9 @@ import { cfcGroupCode, cfcGroupLabels } from '@/lib/cfc'
 import { api } from '@/lib/api'
 import type { ApiDiagnosticItem, ApiProject, ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
-
-/** En-tête de marque du rapport : logo + identité de l'entreprise (Paramètres → Entreprise). */
-function ReportBrand({ canton }: { canton: string }) {
-  const company = useAuth((s) => s.user?.preferences?.company)
-  const name = company?.name?.trim()
-  const line2 = [company?.postalCode, company?.city].filter(Boolean).join(' ')
-  return (
-    <div className="text-right text-sm shrink-0">
-      {company?.logo && <img src={company.logo} alt="" className="h-12 ml-auto mb-1 object-contain" />}
-      <p className="font-semibold">{name || 'Diagly'}</p>
-      {company?.address && <p className="text-muted-foreground">{company.address}</p>}
-      <p className="text-muted-foreground">{line2 || `${canton} · Suisse`}</p>
-      {company?.vatNumber && <p className="text-muted-foreground text-xs">{company.vatNumber}</p>}
-    </div>
-  )
-}
-
-const TVA = 0.081
+import { RapportComplet } from '@/components/report/RapportComplet'
+import { CHAPITRES, ETATS, TVA, toNum } from '@/components/report/constants'
+import { CaseEtat, Info, Ligne, ReportBrand, Row } from '@/components/report/shared'
 
 /**
  * Prix unitaire réellement appliqué : le coût rapporté à la quantité. C'est la valeur
@@ -41,18 +26,18 @@ function unitPriceOf(it: { area: number | null; estimatedCost: string | null }):
   if (!it.area || it.area <= 0 || cost <= 0) return '—'
   return formatCHF(Math.round(cost / it.area))
 }
-const toNum = (v: string | null | undefined) => (v ? Number(v) : 0)
 
-type ReportKind = 'sommaire' | 'detaille' | 'documente' | 'scenario' | 'rapport' | 'photos' | 'existant'
+type ReportKind = 'complet' | 'sommaire' | 'detaille' | 'documente' | 'scenario' | 'rapport' | 'photos' | 'existant'
 type ScenarioId = 'maintenance' | 'renovation' | 'energetique'
 const REPORT_TITLES: Record<ReportKind, string> = {
+  complet: 'Rapport complet',
   sommaire: 'Rapport sommaire', detaille: 'Rapport détaillé', documente: 'Rapport documenté', scenario: 'Rapport par scénario',
   rapport: 'Rapport de diagnostic', photos: 'Rapport photo', existant: "Rapport de l'existant",
 }
 
 // L'onglet « Variantes » = les 4 types de rapports ; l'onglet « Rapports » = Rapport + Rapports photo.
 const KINDS_VARIANTES = [['sommaire', 'Sommaire', LayoutList], ['detaille', 'Détaillé', FileText], ['documente', 'Documenté', Image], ['scenario', 'Par scénario', Layers]] as const
-const KINDS_RAPPORTS = [['rapport', 'Rapport', FileText], ['existant', "De l'existant", ClipboardList], ['photos', 'Rapports photo', Image]] as const
+const KINDS_RAPPORTS = [['complet', 'Complet', BookOpen], ['rapport', 'Rapport', FileText], ['existant', "De l'existant", ClipboardList], ['photos', 'Rapports photo', Image]] as const
 
 export function ProjectRapports() {
   const { id } = useParams<{ id: string }>()
@@ -61,7 +46,7 @@ export function ProjectRapports() {
   const user = useAuth((s) => s.user)
   const auteur = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.companyName || ''
   const kinds = mode === 'rapports' ? KINDS_RAPPORTS : KINDS_VARIANTES
-  const [report, setReport] = useState<ReportKind>(mode === 'rapports' ? 'rapport' : 'detaille')
+  const [report, setReport] = useState<ReportKind>(mode === 'rapports' ? 'complet' : 'detaille')
   const [scenario, setScenario] = useState<ScenarioId>('energetique')
   const [exportOpen, setExportOpen] = useState(false)
 
@@ -76,6 +61,9 @@ export function ProjectRapports() {
   })
   // Référence stable : `?? []` produirait un tableau neuf à chaque rendu et casserait les mémorisations en aval.
   const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data])
+
+  // Variantes du projet : le rapport complet en fait son chapitre 5.
+  const variantsQuery = useQuery({ queryKey: ['variants', id], queryFn: () => api.variants.list(id!), enabled: !!id })
 
   const cfcQuery = useQuery({ queryKey: ['cfc-catalog'], queryFn: () => api.cfc.catalog(), staleTime: 3.6e6 })
   // Catalogue des items : il porte la description de l'état constaté (« état existant »
@@ -221,7 +209,7 @@ export function ProjectRapports() {
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
       {/* Document */}
-      {report !== 'scenario' && report !== 'photos' && report !== 'existant' && (
+      {report !== 'complet' && report !== 'scenario' && report !== 'photos' && report !== 'existant' && (
       <Card className="print:shadow-none print:border-0">
         <CardContent className="p-6 md:p-10 space-y-6">
           <div className="flex items-start justify-between gap-4 border-b pb-4">
@@ -417,6 +405,19 @@ export function ProjectRapports() {
       </Card>
       )}
 
+      {/* Rapport complet : le livrable clé en main, garde + sommaire + méthode + état + devis */}
+      {report === 'complet' && (
+        <RapportComplet
+          project={project}
+          items={items}
+          etatExistant={etatExistant}
+          cfcEntries={cfcQuery.data?.entries ?? []}
+          catalogItems={catalogQuery.data?.items ?? []}
+          variants={variantsQuery.data?.variants ?? []}
+          auteur={auteur}
+        />
+      )}
+
       {/* Rapport de l'existant : qualitatif, calqué sur le modèle du bureau */}
       {report === 'existant' && (
         <ExistingStateReport project={project} items={items} etatExistant={etatExistant} auteur={auteur} />
@@ -448,28 +449,6 @@ export function ProjectRapports() {
 // une description ouvrage par ouvrage, avec l'état coché et ce qu'il faut prévoir.
 // C'est le document que le client lit vraiment, et il manquait entièrement.
 // ---------------------------------------------------------------------------
-
-/** Chapitres du rapport, dans l'ordre de lecture, par groupe CFC. */
-const CHAPITRES: { titre: string; groupes: string[] }[] = [
-  { titre: 'Enveloppe / thermique', groupes: ['21', '22'] },
-  { titre: 'Techniques CVSE', groupes: ['23', '24', '25', '26'] },
-  { titre: 'Aménagements intérieurs', groupes: ['27', '28'] },
-  { titre: 'Abords et extérieurs', groupes: ['4', '41', '42', '46'] },
-]
-
-const ETATS: ElementState[] = ['TRES_BON', 'BON', 'MOYEN', 'MAUVAIS']
-
-/** Case à cocher du modèle papier : l'état constaté est coché et coloré. */
-function CaseEtat({ etat, actif }: { etat: ElementState; actif: boolean }) {
-  return (
-    <span className={cn('inline-flex items-center gap-1 whitespace-nowrap', actif ? 'font-semibold' : 'text-muted-foreground')}>
-      <span className={cn('inline-flex h-3 w-3 items-center justify-center border text-[9px] leading-none',
-        actif ? `${stateColors[etat]} border-transparent text-white` : 'border-current')}
-      >{actif ? '×' : ''}</span>
-      {stateLabels[etat]}
-    </span>
-  )
-}
 
 function ExistingStateReport({ project, items, etatExistant, auteur }: {
   project: ApiProject
@@ -569,15 +548,6 @@ function ExistingStateReport({ project, items, etatExistant, auteur }: {
         </p>
       </CardContent>
     </Card>
-  )
-}
-
-/** Paragraphe du modèle : intitulé souligné, puis le texte à la suite. */
-function Ligne({ titre, texte }: { titre: string; texte: string }) {
-  return (
-    <p className="mt-1 text-sm">
-      <span className="underline">{titre}</span> : <span className="text-muted-foreground">{texte}</span>
-    </p>
   )
 }
 
@@ -850,9 +820,3 @@ function ShareControl({ projectId, initialToken }: { projectId: string; initialT
   )
 }
 
-function Info({ l, v }: { l: string; v: string }) {
-  return <p><span className="text-muted-foreground">{l} :</span> {v}</p>
-}
-function Row({ l, v, strong }: { l: string; v: string; strong?: boolean }) {
-  return <div className="flex justify-between"><span className="text-muted-foreground">{l}</span><span className={strong ? 'font-semibold' : ''}>{v}</span></div>
-}

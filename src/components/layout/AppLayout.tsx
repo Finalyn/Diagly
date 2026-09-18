@@ -48,17 +48,17 @@ export function AppLayout() {
   }
 
   return (
-    <div className="safe-top safe-sides flex h-dvh overflow-hidden bg-muted">
+    <div className="js-print-shell safe-top safe-sides flex h-dvh overflow-hidden bg-muted">
       {/* Colonne gauche : panneau unique (desktop) */}
-      <div className="hidden md:flex md:flex-col gap-3 pl-3 py-3 w-[15rem] lg:w-[17.5rem] shrink-0">
+      <div className="js-print-hide hidden md:flex md:flex-col gap-3 pl-3 py-3 w-[15rem] lg:w-[17.5rem] shrink-0">
         <Sidebar onOpenAssistant={() => setAssistantOpen(true)} />
       </div>
 
       {/* Zone principale */}
-      <div className="relative flex flex-1 flex-col min-w-0 overflow-hidden p-3">
+      <div className="js-print-column relative flex flex-1 flex-col min-w-0 overflow-hidden p-3">
         {onDashboard && (
           <div
-            className="pointer-events-none absolute inset-0 z-0 bg-no-repeat"
+            className="js-print-hide pointer-events-none absolute inset-0 z-0 bg-no-repeat"
             style={{
               backgroundImage: 'url(/preview-bg.jpg)',
               backgroundSize: '70%',
@@ -70,13 +70,13 @@ export function AppLayout() {
             }}
           />
         )}
-        <div className={`relative z-10 flex min-h-0 flex-1 flex-col ${onDashboard ? 'px-2 pt-1 sm:px-4 lg:px-8 lg:pt-4' : ''}`}>
-          <TopBar />
+        <div className={`js-print-column relative z-10 flex min-h-0 flex-1 flex-col ${onDashboard ? 'px-2 pt-1 sm:px-4 lg:px-8 lg:pt-4' : ''}`}>
+          <div className="js-print-hide"><TopBar /></div>
           <OfflineIndicator />
-          {diagProjectId && !isMobile && <DiagnosticTabs projectId={diagProjectId} />}
+          {diagProjectId && !isMobile && <div className="js-print-hide"><DiagnosticTabs projectId={diagProjectId} /></div>}
           <main
             ref={mainRef}
-            className={`flex-1 overflow-y-auto overscroll-none md:pb-16 ${editeurPleinEcran ? 'pb-6' : 'pb-24'} ${onDashboard ? 'mt-6 lg:mt-8' : 'mt-3'}`}
+            className={`js-print-main flex-1 overflow-y-auto overscroll-none md:pb-16 ${editeurPleinEcran ? 'pb-6' : 'pb-24'} ${onDashboard ? 'mt-6 lg:mt-8' : 'mt-3'}`}
           >
             <Outlet />
           </main>
@@ -85,10 +85,14 @@ export function AppLayout() {
 
       {/* Navigation mobile épurée (masquée dans l'éditeur) */}
       {!editeurPleinEcran && (
-        <MobileNav onToggleAssistant={() => setAssistantOpen((o) => !o)} assistantOpen={assistantOpen} />
+        <div className="js-print-hide">
+          <MobileNav onToggleAssistant={() => setAssistantOpen((o) => !o)} assistantOpen={assistantOpen} />
+        </div>
       )}
 
-      <AssistantWidget open={assistantOpen} onOpenChange={setAssistantOpen} />
+      <div className="js-print-hide">
+        <AssistantWidget open={assistantOpen} onOpenChange={setAssistantOpen} />
+      </div>
     </div>
   )
 }

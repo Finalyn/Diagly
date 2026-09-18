@@ -2,6 +2,7 @@ import { useAuth } from '@/stores/auth'
 import type {
   ApiCatalogItem, ApiCfcEntry, ApiDiagnostic, ApiDiagnosticItem,
   ApiProject, ApiOperation, ApiPlan, ApiBoard, ApiEvent, AuthResponse,
+  ApiVariant, ApiVariantLine, ElementState,
 } from './api-types'
 
 // En prod, l'app est servie par le même domaine que l'API -> requêtes same-origin
@@ -407,6 +408,31 @@ export const api = {
       request<{ event: ApiEvent }>(`/api/events/${id}`, { method: 'PUT', body }),
     delete: (id: string) => request<void>(`/api/events/${id}`, { method: 'DELETE' }),
   },
+  /**
+   * Variantes de projet : les arbitrages qui changent, pas une copie du dossier.
+   * Trois au maximum, la limite est tenue par le serveur.
+   */
+  variants: {
+    list: (projectId: string) =>
+      request<{ variants: ApiVariant[]; count: number; max: number }>(`/api/variants/projects/${projectId}`),
+    create: (projectId: string, body: { name: string; description?: string | null }) =>
+      request<{ variant: ApiVariant }>(`/api/variants/projects/${projectId}`, { method: 'POST', body }),
+    update: (id: string, body: Partial<{ name: string; description: string | null; displayOrder: number }>) =>
+      request<{ variant: ApiVariant }>(`/api/variants/${id}`, { method: 'PUT', body }),
+    remove: (id: string) => request<void>(`/api/variants/${id}`, { method: 'DELETE' }),
+    addLine: (variantId: string, body: {
+      replacesItemId?: string | null; catalogItemId?: number | null; state?: ElementState | null
+      cfcCode: string; label: string; unit?: string | null; area?: number | null
+      amount: number; costManual?: boolean; note?: string | null
+    }) => request<{ line: ApiVariantLine }>(`/api/variants/${variantId}/lines`, { method: 'POST', body }),
+    updateLine: (lineId: string, body: Partial<{
+      replacesItemId: string | null; catalogItemId: number | null; state: ElementState | null
+      cfcCode: string; label: string; unit: string | null; area: number | null
+      amount: number; costManual: boolean; note: string | null
+    }>) => request<{ line: ApiVariantLine }>(`/api/variants/lines/${lineId}`, { method: 'PUT', body }),
+    removeLine: (lineId: string) => request<void>(`/api/variants/lines/${lineId}`, { method: 'DELETE' }),
+  },
+
 
   diagnostics: {
     get: (id: string) =>

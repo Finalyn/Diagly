@@ -15,11 +15,13 @@ export type PriorityCode = "I" | "II" | "III";
 
 /** Année d'intervention déduite de la priorité quand elle n'est pas saisie. */
 export function deriveInterventionYear(priority: PriorityCode | null, baseYear: number): number {
+  // Bareme du bureau : I = 0-5 ans, II = 5-10 ans, III = au-dela de 10 ans.
+  // On propose le debut de chaque fourchette, que le diagnostiqueur peut deplacer.
   switch (priority) {
-    case "I": return baseYear;       // urgent : immédiat
-    case "II": return baseYear + 3;  // à moyen terme
-    case "III": return baseYear + 7; // à long terme
-    default: return baseYear + 5;    // non priorisé : horizon neutre
+    case "I": return baseYear;        // a engager tout de suite
+    case "II": return baseYear + 5;   // entree dans la fourchette 5-10 ans
+    case "III": return baseYear + 10; // au-dela de 10 ans
+    default: return baseYear + 5;     // non priorise : horizon neutre
   }
 }
 

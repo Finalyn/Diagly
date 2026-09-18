@@ -33,6 +33,7 @@ const ProjectPhotos = lazy(() => named(import('@/pages/app/ProjectPhotos'), 'Pro
 // pese pas sur le paquet que tout utilisateur de l'application telecharge.
 const Landing = lazy(() => named(import('@/pages/marketing/Landing'), 'Landing'))
 const ProjectRapports = lazy(() => named(import('@/pages/app/ProjectRapports'), 'ProjectRapports'))
+const ProjectVariantes = lazy(() => named(import('@/pages/app/ProjectVariantes'), 'ProjectVariantes'))
 const ProjectCECB = lazy(() => named(import('@/pages/app/ProjectCECB'), 'ProjectCECB'))
 const ProjectPlanning = lazy(() => named(import('@/pages/app/ProjectPlanning'), 'ProjectPlanning'))
 const DiagnosticDetail = lazy(() => named(import('@/pages/app/DiagnosticDetail'), 'DiagnosticDetail'))
@@ -121,7 +122,7 @@ function App() {
             <Route path="projects/:id/edit" element={<ProjectEdit />} />
             <Route path="projects/:id/diagnostic" element={<ProjectDiagnostic />} />
             <Route path="projects/:id/couts" element={<ProjectMetres />} />
-            <Route path="projects/:id/variantes" element={<ProjectRapports />} />
+            <Route path="projects/:id/variantes" element={<ProjectVariantes />} />
             <Route path="projects/:id/plans" element={<ProjectPlans />} />
             <Route path="projects/:id/photos" element={<ProjectPhotos />} />
             <Route path="projects/:id/rapports" element={<ProjectRapports />} />
