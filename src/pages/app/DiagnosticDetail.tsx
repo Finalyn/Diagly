@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Loader2, AlertCircle, Search, Plus, Check, ImagePlus, X, ArrowRight, ScanSearch, Trash2, ChevronDown, RefreshCw,
+  ArrowLeft, Loader2, AlertCircle, AlertTriangle, Search, Plus, Check, ImagePlus, X, ArrowRight, ScanSearch, Trash2, ChevronDown, RefreshCw,
 } from 'lucide-react'
 import {
   Button, Card, CardHeader, CardTitle, CardContent, Badge, Textarea, Input,
@@ -13,6 +13,8 @@ import { stateLabels, stateColors, priorityColors, priorityDescriptions } from '
 import { formatCHF, cn } from '@/lib/utils'
 import { dureeVieDeReference, dureeVieResiduelle } from '@/lib/duree-vie'
 import { groupItemsByVisitStep, type VisitStepGroup } from '@/lib/visit-steps'
+import { aUnOubliImportant, bilanDesOublis, oublisDUnReleve, phraseDAlerte } from '@/lib/oublis'
+import { circonference, decalageAnneau, partRemplie } from '@/lib/anneau'
 import {
   cleReleve, estArticleInterieur, LIBELLE_LOCALISATION, type Localisation,
 } from '@/lib/localisation'
@@ -424,6 +426,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
           total={avancementVisite.total}
           etapes={avancementVisite.etapes}
           etape={etape}
+          alerte={phraseDAlerte(bilanDesOublis(items))}
         />
 
         <ReindexPanel diagnosticId={id!} />
@@ -798,12 +801,51 @@ function nomCategorie(brut: string): string {
 }
 
 /** Pastille d'avancement : le rang de l'étape, ou une coche quand tout est relevé. */
-function Pastille({ faits, total, rang }: { faits: number; total: number; rang: ReactNode }) {
+/**
+ * L'avancement d'une étape, en anneau.
+ *
+ * Une pastille pleine disait seulement « commencé » ou « fini ». Pendant une
+ * visite, ce qu'on cherche du regard est la proportion : combien reste-t-il
+ * derrière cette porte. L'anneau se remplit relevé par relevé, et le chiffre au
+ * centre reste lisible, parce que la couleur seule ne dit pas où on en est.
+ */
+function Pastille({ faits, total, rang, alerte }: {
+  faits: number
+  total: number
+  rang: ReactNode
+  /** Un relevé de cette étape porte un oubli : l'anneau le signale sans le détailler. */
+  alerte?: boolean
+}) {
   const fini = total > 0 && faits === total
+  // r = 15.5 sur une boîte de 36 : il reste 2 px de part et d'autre du trait de 3.
+  const R = 15.5
+  const part = partRemplie(faits, total)
+
   return (
-    <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold',
-      fini ? 'bg-green-500 text-white' : faits > 0 ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground')}>
-      {fini ? <Check className="h-4 w-4" /> : rang}
+    <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+      <svg className="absolute inset-0 -rotate-90" viewBox="0 0 36 36" aria-hidden="true">
+        <circle cx="18" cy="18" r={R} fill="none" strokeWidth="3" className="stroke-black/[0.07]" />
+        {part > 0 && (
+          <circle
+            cx="18" cy="18" r={R} fill="none" strokeWidth="3" strokeLinecap="round"
+            className={cn('transition-[stroke-dashoffset] duration-500', fini ? 'stroke-green-500' : 'stroke-primary')}
+            strokeDasharray={circonference(R)}
+            strokeDashoffset={decalageAnneau(faits, total, R)}
+          />
+        )}
+      </svg>
+      <span className={cn('relative text-sm font-bold',
+        fini ? 'text-green-600' : faits > 0 ? 'text-primary' : 'text-muted-foreground')}>
+        {fini ? <Check className="h-4 w-4" /> : rang}
+      </span>
+      {alerte && !fini && (
+        <span
+          className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-orange-500 ring-2 ring-background"
+          title="Un relevé de cette étape est incomplet"
+        >
+          <span className="text-[9px] font-bold leading-none text-white">!</span>
+        </span>
+      )}
     </span>
   )
 }
@@ -844,11 +886,13 @@ function Retour({ vers, libelle }: { vers: () => void; libelle: string }) {
  * Les montants gardent leur écran, celui des coûts, où ils ont la place d'être
  * lus poste par poste.
  */
-function AvancementVisite({ faits, total, etapes, etape }: {
+function AvancementVisite({ faits, total, etapes, etape, alerte }: {
   faits: number
   total: number
   etapes: VisitStepGroup[]
   etape: number | null
+  /** Ce qui manque et qui engage, en une phrase. null quand il n'y a rien à dire. */
+  alerte?: string | null
 }) {
   const rang = etapes.findIndex((g) => g.step === etape)
   const courante = rang >= 0 ? etapes[rang] : null
@@ -873,9 +917,19 @@ function AvancementVisite({ faits, total, etapes, etape }: {
       >
         <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${part}%` }} />
       </div>
-      <p className="text-xs text-muted-foreground">
-        {faits} ouvrage{faits > 1 ? 's' : ''} relevé{faits > 1 ? 's' : ''} sur {total}
-      </p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <p className="text-xs text-muted-foreground">
+          {faits} ouvrage{faits > 1 ? 's' : ''} relevé{faits > 1 ? 's' : ''} sur {total}
+        </p>
+        {/* Dit pendant la visite, tant qu'on peut encore y retourner. Au moment du
+            rapport, il faudrait remonter trois étages pour une photo. */}
+        {alerte && (
+          <p className="flex items-center gap-1.5 text-xs font-medium text-orange-700">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {alerte}
+          </p>
+        )}
+      </div>
     </div>
   )
 }
@@ -903,6 +957,18 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
     faits: liste.filter((c) => releve(c, loc)?.state).length,
     total: liste.length,
   })
+  /**
+   * Un relevé de cette liste porte-t-il un oubli qui engage.
+   *
+   * Seuls les oublis importants remontent jusqu'ici : faire clignoter une étape
+   * parce qu'un ouvrage en très bon état n'a pas de photo apprendrait à ignorer
+   * le signal, et c'est alors la vraie alerte qui passerait inaperçue.
+   */
+  const alerte = (liste: ApiCatalogItem[], loc: Localisation | null) =>
+    liste.some((c) => {
+      const r = releve(c, loc)
+      return r ? aUnOubliImportant(r) : false
+    })
   const courante = etapes.find((g) => g.step === etape)
   const titreEtape = (g: VisitStepGroup) => g.label.replace(/^\d+\.\s*/, '')
 
@@ -915,14 +981,16 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
           redescend. Touchez une étape pour relever ce qu'elle contient.
         </p>
         {etapes.map((g) => {
-          const { faits, total } = avancement(g.categories.flatMap((c) => c.items), g.localisation)
+          const ouvrages = g.categories.flatMap((c) => c.items)
+          const { faits, total } = avancement(ouvrages, g.localisation)
+          const incomplet = alerte(ouvrages, g.localisation)
           return (
             <button
               key={g.label}
               onClick={() => { onEtape(g.step); onCategorie(null) }}
               className="flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left hover:bg-muted/50"
             >
-              <Pastille faits={faits} total={total} rang={g.step ?? '·'} />
+              <Pastille faits={faits} total={total} rang={g.step ?? "·"} alerte={incomplet} />
               <span className="min-w-0 flex-1">
                 <span className="block font-medium">{titreEtape(g)}</span>
                 <span className="block text-xs text-muted-foreground">
@@ -962,13 +1030,14 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
         <div className="space-y-2">
           {courante.categories.map((cat) => {
             const a = avancement(cat.items, localisation)
+            const incompletCat = alerte(cat.items, localisation)
             return (
               <button
                 key={cat.category}
                 onClick={() => onCategorie(cat.category)}
                 className="flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left hover:bg-muted/50"
               >
-                <Pastille faits={a.faits} total={a.total} rang={a.total} />
+                <Pastille faits={a.faits} total={a.total} rang={a.total} alerte={incompletCat} />
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium">{nomCategorie(cat.category)}</span>
                   <span className="block text-xs text-muted-foreground">
@@ -1043,6 +1112,20 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
                   ) : (
                     <span className="rounded bg-muted px-1.5 text-[10px] text-muted-foreground">à évaluer</span>
                   )}
+                  {/* L'oubli se dit ici, sur la ligne, pendant qu'on est encore devant
+                      l'ouvrage. Le signaler au moment du rapport serait trop tard. */}
+                  {oublisDUnReleve(existant).map((o) => (
+                    <span
+                      key={o.raison}
+                      title={o.message}
+                      className={cn('rounded px-1.5 text-[10px]',
+                        o.gravite === 'importante'
+                          ? 'bg-orange-100 text-orange-800'
+                          : 'bg-muted text-muted-foreground')}
+                    >
+                      {o.raison === 'photo' ? 'sans photo' : 'sans quantité'}
+                    </span>
+                  ))}
                 </span>
               )}
             </span>
@@ -1647,6 +1730,16 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, yearBuilt, on
         {/* 3. Photos */}
         <div>
           <p className="text-sm font-medium mb-2">Photos</p>
+          {/* L'avertissement est ici, contre le bouton qui le résout, et pas en haut
+              de l'écran : une alerte qu'il faut aller chercher ne sert à rien. */}
+          {oublisDUnReleve(item)
+            .filter((o) => o.raison === 'photo' && o.gravite === 'importante')
+            .map((o) => (
+              <p key={o.raison} className="mb-2 flex items-start gap-2 rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-900">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                {o.message}
+              </p>
+            ))}
           <div className="flex flex-wrap gap-2">
             {item.photos.map((src, i) => (
               <div key={i} className="relative h-20 w-20 rounded-lg overflow-hidden border group">
