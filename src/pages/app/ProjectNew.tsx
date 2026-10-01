@@ -1,10 +1,14 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, Check, Loader2, AlertCircle, Plus, X } from 'lucide-react'
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Badge } from '@/components/ui'
 import { AddressAutocomplete, type AddressSelection } from '@/components/AddressAutocomplete'
 import { fetchRegistryInfo } from '@/lib/geoadmin'
+
+// Leaflet et sa feuille de style pesent : la carte ne se charge qu'une fois une
+// adresse saisie, pas a l'ouverture du formulaire.
+const ProjectMap = lazy(() => import('@/components/ProjectMap').then((m) => ({ default: m.ProjectMap })))
 import { computeProjectMetrics, perimeterWarning } from '@/lib/formulas'
 import { buildingTypeLabels, type BuildingType } from '@/data/mock'
 import { cn } from '@/lib/utils'
@@ -360,6 +364,34 @@ export function ProjectNew() {
                   {CANTONS.map(c => <option key={c}>{c}</option>)}
                 </Select>
               </div>
+
+              {/* La carte, posée juste après la localisation.
+                  Une adresse choisie dans une liste remplit sept champs d'un coup, et
+                  rien ne dit qu'elle désigne le bon bâtiment : deux entrées voisines
+                  portent souvent le même numéro. La carte répond à cette question au
+                  moment où elle se pose, avant que le diagnostiqueur ne se déplace. */}
+              {form.address.trim() && form.city.trim() && (
+                <div className="col-span-2">
+                  <label className="text-sm font-medium mb-1 block">Emplacement</label>
+                  <div className="relative h-56 overflow-hidden rounded-xl border sm:h-64">
+                    <Suspense fallback={
+                      <div className="absolute inset-0 flex items-center justify-center bg-slate-100 text-slate-400">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      </div>
+                    }>
+                      <ProjectMap
+                        address={form.address}
+                        postalCode={form.postalCode}
+                        city={form.city}
+                        canton={form.canton}
+                      />
+                    </Suspense>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Vérifiez que le repère tombe sur le bâtiment à diagnostiquer.
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="text-sm font-medium mb-1 block">Année de construction</label>
                 <Input type="number" value={form.yearBuilt} onChange={e => updateNum('yearBuilt', e.target.value)} placeholder="Ex: 1980" className={errCls('yearBuilt')} />

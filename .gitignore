@@ -33,3 +33,7 @@ Références/
 
 # Extractions locales (catalogue de prix, analyses)
 exports/
+
+# Sauvegardes de base : elles portent les comptes et leurs empreintes de mot de
+# passe. Le depot est public, elles ne doivent jamais y entrer.
+sauvegardes/
