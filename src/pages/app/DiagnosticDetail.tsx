@@ -354,11 +354,11 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     },
   })
 
-  const [etape, setEtape] = useState<number | null>(null)
+  const [etape, setEtape] = useState<EtapeChoisie>(null)
   // Ouvrage choisi dans l'étape (façade, fenêtres…) : le niveau intermédiaire du
   // parcours guidé, entre l'étape et les types.
   const [categorie, setCategorie] = useState<string | null>(null)
-  const etapesVisibles = etape == null ? grouped : grouped.filter(g => g.step === etape)
+  const etapesVisibles = etape == null ? grouped : grouped.filter((g) => cleEtape(g) === etape)
 
   // selected
   const selectedDiagItem = items.find(i => i.id === selectedItemId) ?? null
@@ -508,9 +508,9 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 {grouped.map(g => (
                   <button
                     key={g.label}
-                    onClick={() => setEtape(g.step)}
+                    onClick={() => setEtape(cleEtape(g))}
                     className={cn('shrink-0 rounded-full border px-2.5 py-1 text-[11px]',
-                      etape === g.step ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
+                      etape === cleEtape(g) ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
                   >{g.label}</button>
                 ))}
               </div>
@@ -889,6 +889,20 @@ function Retour({ vers, libelle }: { vers: () => void; libelle: string }) {
 }
 
 /**
+ * L'étape choisie dans le parcours.
+ *
+ * `null` = aucune, on montre la liste des étapes. Le groupe « Autres » porte
+ * `step: null` au catalogue : il lui faut donc sa propre clé, sinon le choisir
+ * revient à ne rien choisir.
+ */
+type EtapeChoisie = number | 'autres' | null
+
+/** Clé de sélection d'un groupe, distincte de « aucune étape ». */
+function cleEtape(g: VisitStepGroup): Exclude<EtapeChoisie, null> {
+  return g.step ?? 'autres'
+}
+
+/**
  * Parcours guidé de la visite, sur téléphone et tablette.
  *
  * On est devant le bâtiment, la tablette à la main. L'écran ne doit pas présenter
@@ -919,7 +933,7 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte, onTer
   faits: number
   total: number
   etapes: VisitStepGroup[]
-  etape: number | null
+  etape: EtapeChoisie
   /** Ce qui manque et qui engage, en une phrase. null quand il n'y a rien à dire. */
   alerte?: string | null
   /** Ouvre la liste de ce qui reste à faire. */
@@ -927,7 +941,7 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte, onTer
   onTerminer?: () => void
   termine?: boolean
 }) {
-  const rang = etapes.findIndex((g) => g.step === etape)
+  const rang = etapes.findIndex((g) => cleEtape(g) === etape)
   const courante = rang >= 0 ? etapes[rang] : null
   const titre = courante
     ? `${courante.label.replace(/^\d+\.\s*/, '')} · étape ${rang + 1} sur ${etapes.length}`
@@ -989,8 +1003,8 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte, onTer
 
 function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsParReleve, onOuvrir, onAjouter, ajoutEnCours }: {
   etapes: VisitStepGroup[]
-  etape: number | null
-  onEtape: (n: number | null) => void
+  etape: EtapeChoisie
+  onEtape: (n: EtapeChoisie) => void
   categorie: string | null
   onCategorie: (c: string | null) => void
   /** Relevés du diagnostic, indexés par article *et* localisation (voir cleReleve). */
@@ -1022,7 +1036,10 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
       const r = releve(c, loc)
       return r ? aUnOubliImportant(r) : false
     })
-  const courante = etapes.find((g) => g.step === etape)
+  // `null` veut dire « aucune etape choisie », jamais « l'etape Autres » : sans
+  // cette distinction, revenir aux etapes retombait sur Autres, qui porte
+  // justement `step: null`, et le bouton Retour paraissait sans effet.
+  const courante = etape == null ? undefined : etapes.find((g) => cleEtape(g) === etape)
   const titreEtape = (g: VisitStepGroup) => g.label.replace(/^\d+\.\s*/, '')
 
   // --- Niveau 1 : les grandes étapes du tour du bâtiment ---
@@ -1040,7 +1057,7 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
           return (
             <button
               key={g.label}
-              onClick={() => { onEtape(g.step); onCategorie(null) }}
+              onClick={() => { onEtape(cleEtape(g)); onCategorie(null) }}
               className="flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left hover:bg-muted/50"
             >
               <Pastille faits={faits} total={total} rang={g.step ?? "·"} alerte={incomplet} />
@@ -1058,7 +1075,7 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
     )
   }
 
-  const rang = etapes.findIndex((g) => g.step === etape)
+  const rang = etapes.findIndex((g) => cleEtape(g) === etape)
   const suivante = etapes[rang + 1] ?? null
   // Une étape qui ne contient qu'un seul ouvrage n'a pas de choix à proposer : on
   // passe directement à ses types plutôt que d'afficher une liste d'un élément.
@@ -1104,7 +1121,7 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
         </div>
         {suivante && (
           <button
-            onClick={() => { vibrer('succes'); onEtape(suivante.step); onCategorie(null) }}
+            onClick={() => { vibrer('succes'); onEtape(cleEtape(suivante)); onCategorie(null) }}
             className="mt-3 flex w-full items-center justify-between rounded-lg border px-3 py-3 text-sm hover:bg-muted/50"
           >
             <span className="text-muted-foreground">Étape suivante</span>
