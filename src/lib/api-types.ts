@@ -299,6 +299,14 @@ export interface PlanAnnotation {
   points: PlanPoint[]
   text?: string
   color?: string
+  /**
+   * Ouvrage du diagnostic que cette zone (ou ce trait) mesure.
+   *
+   * Une surface relevée sur le plan vaut mieux qu'une surface déduite du
+   * périmètre et du nombre d'étages : le lien permet de reporter la quantité
+   * exacte sur l'ouvrage, au lieu de laisser la mesure s'arrêter à l'écran.
+   */
+  itemId?: string | null
 }
 
 export interface ApiPlan {
@@ -314,31 +322,6 @@ export interface ApiPlan {
   annotations: PlanAnnotation[]
   createdAt: string
   updatedAt?: string
-}
-
-// ---- Atelier multi-plans (board) ----
-export interface BoardLayer {
-  id: string
-  planId: string
-  x: number
-  y: number
-  scale: number
-  opacity: number
-  tint?: string | null
-}
-export interface BoardData {
-  layers?: BoardLayer[]
-  annotations?: PlanAnnotation[]
-  bgColor?: string
-  scalePxPerM?: number | null
-}
-export interface ApiBoard {
-  id: string
-  projectId: string
-  name: string
-  data: BoardData
-  createdAt: string
-  updatedAt: string
 }
 
 // ---- Calendrier ----

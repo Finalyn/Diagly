@@ -1,7 +1,7 @@
 import { useAuth } from '@/stores/auth'
 import type {
   ApiCatalogItem, ApiCfcEntry, ApiDiagnostic, ApiDiagnosticItem,
-  ApiProject, ApiOperation, ApiPlan, ApiBoard, ApiEvent, AuthResponse,
+  ApiProject, ApiOperation, ApiPlan, ApiEvent, AuthResponse,
   ApiVariant, ApiVariantLine, ElementState,
 } from './api-types'
 
@@ -273,17 +273,6 @@ export const api = {
     // Le serveur signe l'accès au fichier : on ne reconstruit plus l'URL à partir du
     // nom, sinon le téléchargement est refusé (403).
     fileUrl: (plan: ApiPlan) => `${BASE_URL}${plan.fileUrl}`,
-  },
-
-  boards: {
-    list: (projectId: string) =>
-      request<{ boards: ApiBoard[]; count: number }>('/api/boards', { query: { projectId } }),
-    get: (id: string) => request<{ board: ApiBoard }>(`/api/boards/${id}`),
-    create: (body: { projectId: string; name?: string; data?: unknown }) =>
-      request<{ board: ApiBoard }>('/api/boards', { method: 'POST', body }),
-    update: (id: string, body: { name?: string; data?: unknown }) =>
-      request<{ board: ApiBoard }>(`/api/boards/${id}`, { method: 'PUT', body }),
-    delete: (id: string) => request<void>(`/api/boards/${id}`, { method: 'DELETE' }),
   },
 
   assistant: {

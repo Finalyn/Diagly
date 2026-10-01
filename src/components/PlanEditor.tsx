@@ -3,12 +3,15 @@ import { spring, projeterElan, suiviVitesse, mouvementReduit, RESSORTS, type Spr
 import { useQueryClient } from '@tanstack/react-query'
 import {
   X, Hand, MousePointer2, Crosshair, Ruler, ArrowUpRight, StickyNote, Hash, Pencil,
-  ZoomIn, ZoomOut, Undo2, Check, Trash2, Loader2, ChevronLeft, ChevronRight, Maximize, Download,
+  ZoomIn, ZoomOut, Undo2, Check, Trash2, Loader2, ChevronLeft, ChevronRight, Maximize, Download, Link2,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { ApiPlan, PlanAnnotation, PlanPoint } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
 import { loadPdfjs } from '@/lib/pdf'
+import { airePolygone, natureDe } from '@/lib/plan-quantites'
+import { ChoixOuvrage } from '@/components/plans/ChoixOuvrage'
+import { useOuvragesDuProjet } from '@/components/plans/ouvrages'
 
 type Tool = 'pan' | 'select' | 'calibrate' | 'measure' | 'arrow' | 'note' | 'hatch' | 'draw'
 const TARGET_W = 1600
@@ -22,11 +25,6 @@ const uid = () => `a${Date.now()}_${_c++}`
 const dist = (a: PlanPoint, b: PlanPoint) => Math.hypot(b.x - a.x, b.y - a.y)
 const mid = (a: PlanPoint, b: PlanPoint) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
-function polyArea(pts: PlanPoint[]) {
-  let s = 0
-  for (let i = 0; i < pts.length; i++) { const j = (i + 1) % pts.length; s += pts[i].x * pts[j].y - pts[j].x * pts[i].y }
-  return Math.abs(s) / 2
-}
 function centroid(pts: PlanPoint[]) {
   return { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length }
 }
@@ -111,6 +109,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const [bgColor, setBgColor] = useState('#404040')
   const [selectedAnn, setSelectedAnn] = useState<string | null>(null)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [choixOuvrage, setChoixOuvrage] = useState(false)
 
   const isPdf = plan.mimeType === 'application/pdf'
 
@@ -402,6 +401,23 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   }
   const selAnn = annotations.find((a) => a.id === selectedAnn) ?? null
 
+  // Ouvrages du relevé : ils servent à nommer les zones rattachées, directement
+  // sur le plan. Une zone qui n'affiche que « 142 m² » ne dit pas ce qu'elle
+  // mesure, et c'est justement ce qu'on vient chercher en rouvrant le plan.
+  const { items: ouvrages } = useOuvragesDuProjet(plan.projectId)
+  const libelleLie = useCallback((a: PlanAnnotation): string | null => {
+    if (!a.itemId) return null
+    const it = ouvrages.find((o) => o.id === a.itemId)
+    return it ? `${it.cfcCode} · ${it.cfcLabel}` : null
+  }, [ouvrages])
+
+  const lierSelection = (itemId: string | null) => {
+    if (!selectedAnn) return
+    setAnnotations((l) => l.map((a) => (a.id === selectedAnn ? { ...a, itemId } : a)))
+    setDirty(true)
+    setChoixOuvrage(false)
+  }
+
   const onSave = async () => {
     setSaving(true)
     try {
@@ -616,7 +632,9 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
               ))}
             </defs>
 
-            {annotations.map((a) => <Shape key={a.id} a={a} fmtLen={fmtLen} fmtArea={fmtArea} font={font} strokeW={strokeW} />)}
+            {annotations.map((a) => (
+              <Shape key={a.id} a={a} fmtLen={fmtLen} fmtArea={fmtArea} font={font} strokeW={strokeW} lie={libelleLie(a)} />
+            ))}
 
             {/* Poignées de l'annotation sélectionnée */}
             {selectedAnn && (() => {
@@ -648,13 +666,40 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
           </svg>
         </div>
 
-        {selAnn && (
-          <div className="absolute bottom-4 left-4 z-10 bg-neutral-900/90 backdrop-blur text-white rounded-xl shadow-lg px-3 py-2 flex items-center gap-1.5 max-w-[calc(100%-2rem)] overflow-x-auto">
-            <span className="text-xs text-white/60 mr-1 hidden sm:inline">Couleur</span>
-            {COLORS.map((c) => <button key={c} onClick={() => recolorSelected(c)} className={cn('h-6 w-6 rounded-full border-2 shrink-0', (selAnn.color ?? COLORS[0]) === c ? 'border-white' : 'border-white/20')} style={{ backgroundColor: c }} />)}
-            {selAnn.type === 'note' && <button onClick={editSelectedNote} className="text-xs px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 whitespace-nowrap shrink-0">Éditer le texte</button>}
-          </div>
-        )}
+        {selAnn && (() => {
+          const nature = natureDe(selAnn)
+          const quantite = nature === 'surface'
+            ? fmtArea(airePolygone(selAnn.points))
+            : nature === 'longueur' ? fmtLen(dist(selAnn.points[0], selAnn.points[1])) : null
+          const lie = libelleLie(selAnn)
+          return (
+            <div className="absolute bottom-4 left-4 z-10 max-w-[calc(100%-2rem)] rounded-xl bg-neutral-900/90 px-3 py-2 text-white shadow-lg backdrop-blur">
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                <span className="mr-1 hidden text-xs text-white/60 sm:inline">Couleur</span>
+                {COLORS.map((c) => <button key={c} onClick={() => recolorSelected(c)} className={cn('h-6 w-6 shrink-0 rounded-full border-2', (selAnn.color ?? COLORS[0]) === c ? 'border-white' : 'border-white/20')} style={{ backgroundColor: c }} />)}
+                {selAnn.type === 'note' && <button onClick={editSelectedNote} className="shrink-0 whitespace-nowrap rounded-lg bg-white/10 px-2.5 py-1.5 text-xs hover:bg-white/20">Éditer le texte</button>}
+              </div>
+
+              {/* Ce qui transforme une annotation en quantité : la mesure, et
+                  l'ouvrage du relevé auquel elle se rapporte. Sans échelle, la
+                  mesure s'affiche en pixels et le dit. */}
+              {nature !== 'aucune' && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2">
+                  <span className="text-sm font-semibold tabular-nums">{quantite}</span>
+                  {!scale && <span className="text-xs text-amber-300">plan non étalonné</span>}
+                  <button
+                    onClick={() => setChoixOuvrage(true)}
+                    className={cn('inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium',
+                      lie ? 'bg-primary/80 hover:bg-primary' : 'bg-white/10 hover:bg-white/20')}
+                  >
+                    <Link2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="max-w-[14rem] truncate">{lie ?? 'Rattacher à un ouvrage'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })()}
         {selectedAnn && (
           <button
             type="button"
@@ -689,6 +734,17 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
         </Modal>
       )}
 
+      {/* Rattachement de la zone sélectionnée à un ouvrage du relevé */}
+      {choixOuvrage && selAnn && (
+        <ChoixOuvrage
+          projectId={plan.projectId}
+          nature={natureDe(selAnn)}
+          choisi={selAnn.itemId ?? null}
+          onChoisir={lierSelection}
+          onFermer={() => setChoixOuvrage(false)}
+        />
+      )}
+
       {/* Modale note */}
       {notePoint && (
         <Modal title={editingNoteId ? 'Modifier la note' : 'Ajouter une note'} onCancel={() => { setNotePoint(null); setEditingNoteId(null) }} onConfirm={confirmNote} confirmLabel={editingNoteId ? 'Enregistrer' : 'Ajouter'}>
@@ -718,7 +774,10 @@ function Modal({ title, children, onCancel, onConfirm, confirmLabel }: { title: 
   )
 }
 
-function Shape({ a, fmtLen, fmtArea, font, strokeW }: { a: PlanAnnotation; fmtLen: (px: number) => string; fmtArea: (px2: number) => string; font: number; strokeW: number }) {
+function Shape({ a, fmtLen, fmtArea, font, strokeW, lie }: {
+  a: PlanAnnotation; fmtLen: (px: number) => string; fmtArea: (px2: number) => string
+  font: number; strokeW: number; lie: string | null
+}) {
   const color = a.color ?? '#ef4444'
   const halo = 3 * strokeW
   if (a.type === 'note') {
@@ -751,6 +810,9 @@ function Shape({ a, fmtLen, fmtArea, font, strokeW }: { a: PlanAnnotation; fmtLe
         {a.type === 'measure' && (
           <text x={m.x} y={m.y - 6 * strokeW} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{fmtLen(dist(s, e))}</text>
         )}
+        {a.type === 'measure' && lie && (
+          <text x={m.x} y={m.y + font * 0.9} fontSize={font * 0.8} textAnchor="middle" fill="#111827" stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{lie}</text>
+        )}
       </g>
     )
   }
@@ -759,7 +821,10 @@ function Shape({ a, fmtLen, fmtArea, font, strokeW }: { a: PlanAnnotation; fmtLe
   return (
     <g>
       <polygon points={a.points.map((p) => `${p.x},${p.y}`).join(' ')} fill={`url(#hatch-${color.replace('#', '')})`} stroke={color} strokeWidth={strokeW} fillOpacity={0.9} />
-      <text x={c.x} y={c.y} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{fmtArea(polyArea(a.points))}</text>
+      <text x={c.x} y={c.y} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{fmtArea(airePolygone(a.points))}</text>
+      {lie && (
+        <text x={c.x} y={c.y + font * 1.05} fontSize={font * 0.8} textAnchor="middle" fill="#111827" stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{lie}</text>
+      )}
     </g>
   )
 }
