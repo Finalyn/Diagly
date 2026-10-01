@@ -23,6 +23,10 @@ export function useOuvragesDuProjet(projectId: string) {
   })
   return {
     items: useMemo(() => ouvrages.data?.items ?? [], [ouvrages.data]),
+    // Le bâtiment sert à déduire la quantité d'un article ajouté depuis le plan,
+    // comme le fait l'éditeur de diagnostic.
+    project: projet.data?.project,
+    diagnosticId,
     chargement: projet.isLoading || ouvrages.isLoading,
     aucunDiagnostic: !projet.isLoading && !diagnosticId,
   }
