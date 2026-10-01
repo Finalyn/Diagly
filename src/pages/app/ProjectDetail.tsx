@@ -8,9 +8,11 @@ import { VisitEmail } from '@/components/VisitEmail'
 import { Dropdown } from '@/components/Dropdown'
 import { ProjectMap } from '@/components/ProjectMap'
 import { TerrainConstraintsCard } from '@/components/TerrainConstraintsCard'
+import { StatistiquesDiagnostic, ZoneDanger } from '@/components/diagnostic/StatistiquesDiagnostic'
 import { statusLabels, statusColors, buildingTypeLabels, type BuildingType } from '@/data/mock'
 import type { ProjectStatus, ApiProject, RoofType } from '@/lib/api-types'
 import { computeProjectMetrics, roofSurface, perimeterWarning, floorsWarning } from '@/lib/formulas'
+import { formatDate } from '@/lib/utils'
 import { api } from '@/lib/api'
 
 const STATUSES: ProjectStatus[] = ['NON_PLANIFIE', 'PLANIFIE', 'EN_COURS', 'EN_REVUE', 'TERMINE', 'ARCHIVE']
@@ -243,6 +245,24 @@ export function ProjectDetail() {
       </div>
 
       <TerrainConstraintsCard project={project} />
+
+      {/* L'état du diagnostic, là où l'on vient savoir où en est le bâtiment.
+          Ces chiffres occupaient l'onglet Diagnostic, qui ne porte plus que
+          l'éditeur. */}
+      {diagnostic && (
+        <>
+          <div className="pt-2">
+            <h2 className="text-lg font-semibold">Le diagnostic</h2>
+            <p className="text-sm text-muted-foreground">
+              {diagnostic.visitDate
+                ? `Visite du ${formatDate(new Date(diagnostic.visitDate))}`
+                : 'Visite non planifiée'}
+            </p>
+          </div>
+          <StatistiquesDiagnostic diagnosticId={diagnostic.id} />
+          <ZoneDanger diagnosticId={diagnostic.id} onSupprime={() => navigate('/app/projects')} />
+        </>
+      )}
     </div>
   )
 }

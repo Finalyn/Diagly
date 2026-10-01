@@ -126,8 +126,21 @@ type ItemsData = { items: ApiDiagnosticItem[]; count: number }
 
 // ---------- Component ----------
 
-export function DiagnosticDetail() {
-  const { id } = useParams<{ id: string }>()
+/**
+ * L'éditeur de diagnostic.
+ *
+ * Il sert à deux endroits : à son adresse propre, /app/diagnostic/:id, et encastré
+ * dans l'onglet Diagnostic d'un projet, qui ne contient plus que lui. D'où les deux
+ * paramètres : `diagnosticId` quand l'identifiant ne vient pas de l'URL, et
+ * `encastre` pour retirer la flèche de retour et le titre, que la barre d'onglets
+ * porte déjà.
+ */
+export function DiagnosticDetail({ diagnosticId, encastre = false }: {
+  diagnosticId?: string
+  encastre?: boolean
+} = {}) {
+  const { id: idUrl } = useParams<{ id: string }>()
+  const id = diagnosticId ?? idUrl
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
@@ -330,8 +343,6 @@ export function DiagnosticDetail() {
   // parcours guidé, entre l'étape et les types.
   const [categorie, setCategorie] = useState<string | null>(null)
   const etapesVisibles = etape == null ? grouped : grouped.filter(g => g.step === etape)
-  const rangEtape = grouped.findIndex(g => g.step === etape)
-  const etapeSuivante = rangEtape >= 0 ? grouped[rangEtape + 1] ?? null : null
 
   // selected
   const selectedDiagItem = items.find(i => i.id === selectedItemId) ?? null
@@ -342,13 +353,8 @@ export function DiagnosticDetail() {
   // Pas d'auto-sélection : au chargement, l'éditeur reste vide tant qu'on ne
   // choisit pas un élément (évite de retomber toujours sur le premier).
 
-  // ----- totals -----
-  const totalCost = items.reduce((s, i) => s + toNum(i.estimatedCost), 0)
-  const costByPriority: Record<Priority, number> = {
-    I:   items.filter(i => i.priority === 'I').reduce((s, i) => s + toNum(i.estimatedCost), 0),
-    II:  items.filter(i => i.priority === 'II').reduce((s, i) => s + toNum(i.estimatedCost), 0),
-    III: items.filter(i => i.priority === 'III').reduce((s, i) => s + toNum(i.estimatedCost), 0),
-  }
+  // Les totaux par priorité ne sont plus calculés ici : ils ont rejoint le résumé
+  // du projet, avec le reste des statistiques. L'éditeur ne porte que l'avancement.
 
   // Avancement de la visite, calculé sur le catalogue entier et non sur `grouped` :
   // une recherche en cours filtre l'affichage, elle ne doit pas faire reculer la barre.
@@ -393,39 +399,29 @@ export function DiagnosticDetail() {
     <div className="h-[calc(100vh-7rem)] flex flex-col gap-4">
       {/* Header (masqué sur mobile pendant l'édition d'un élément) */}
       <div className={cn('space-y-3 shrink-0', isMobile && selectedItemId && 'hidden')}>
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-          </button>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold truncate">Diagnostic</h1>
-            <p className="text-sm text-muted-foreground truncate">
-              {items.length} élément{items.length !== 1 ? 's' : ''} diagnostiqué{items.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          {projectId && !isMobile && <ProjectSectionsMenu projectId={projectId} onDeleteDiagnostic={handleDeleteDiagnostic} />}
-        </div>
-        {isMobile ? (
-          <AvancementVisite
-            faits={avancementVisite.faits}
-            total={avancementVisite.total}
-            etapes={avancementVisite.etapes}
-            etape={etape}
-          />
-        ) : (
-          <div className="flex gap-4 text-sm overflow-x-auto pb-1">
-            {PRIORITIES.map(p => (
-              <div key={p} className="text-center shrink-0">
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[p]}`}>{p}</span>
-                <p className="font-semibold mt-1">{formatCHF(costByPriority[p])}</p>
-              </div>
-            ))}
-            <div className="text-center pl-4 border-l shrink-0">
-              <span className="text-xs text-muted-foreground">Total</span>
-              <p className="text-lg font-bold">{formatCHF(totalCost)}</p>
+        {!encastre && (
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate(-1)}>
+              <ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+            </button>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl font-bold truncate">Diagnostic</h1>
+              <p className="text-sm text-muted-foreground truncate">
+                {items.length} élément{items.length !== 1 ? 's' : ''} diagnostiqué{items.length !== 1 ? 's' : ''}
+              </p>
             </div>
+            {projectId && !isMobile && <ProjectSectionsMenu projectId={projectId} onDeleteDiagnostic={handleDeleteDiagnostic} />}
           </div>
         )}
+        {/* Le même bandeau sur les deux tailles d'écran. Les montants par priorité
+            sont partis dans le résumé du projet, avec les autres statistiques : ici,
+            pendant qu'on relève, ce qui se décide est ce qu'il reste à voir. */}
+        <AvancementVisite
+          faits={avancementVisite.faits}
+          total={avancementVisite.total}
+          etapes={avancementVisite.etapes}
+          etape={etape}
+        />
 
         <ReindexPanel diagnosticId={id!} />
 
@@ -455,10 +451,15 @@ export function DiagnosticDetail() {
               <p className="text-xs text-muted-foreground text-center py-4">Aucun résultat</p>
             )}
 
-            {/* Sur le terrain, l'écran doit dire où on en est du tour du bâtiment, pas
-                dérouler 113 lignes. Une recherche en cours rend la liste plate : on
-                cherche alors un ouvrage précis, pas une étape. */}
-            {isMobile && !search.trim() && grouped.length > 0 ? (
+            {/* L'écran doit dire où on en est du tour du bâtiment, pas dérouler 113
+                lignes. Cela valait pour le terrain ; cela vaut aussi au bureau, où le
+                diagnostiqueur relit son dossier dans l'ordre où il l'a rempli. Deux
+                parcours différents selon la taille de l'écran obligeaient à apprendre
+                l'outil deux fois.
+
+                Une recherche en cours rend la liste plate : on cherche alors un ouvrage
+                précis, pas une étape. */}
+            {!search.trim() && grouped.length > 0 ? (
               <ParcoursGuide
                 etapes={grouped}
                 etape={etape}
@@ -562,18 +563,9 @@ export function DiagnosticDetail() {
               </div>
             ))}
 
-            {/* Étape terminée : on passe à la suivante sans revenir chercher dans la liste. */}
-            {!isMobile && etape != null && etapeSuivante && (
-              <button
-                onClick={() => { vibrer('succes'); setEtape(etapeSuivante.step) }}
-                className="mt-1 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-xs hover:bg-muted/50"
-              >
-                <span className="text-muted-foreground">Étape suivante</span>
-                <span className="flex items-center gap-1 font-medium">
-                  {etapeSuivante.label}<ArrowRight className="h-3.5 w-3.5" />
-                </span>
-              </button>
-            )}
+            {/* Plus de bouton « étape suivante » ici : cette branche n'est plus atteinte
+                qu'en cours de recherche, où la notion d'étape n'a pas de sens. Le passage
+                d'une étape à l'autre est porté par le parcours guidé. */}
             </>
             )}
           </CardContent>
