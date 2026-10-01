@@ -173,8 +173,8 @@ export function ProjectRapports() {
        Les types de rapport tenaient dans une pilule horizontale au-dessus du
        document : au quatrième type les libellés se serraient, et le document
        descendait d'autant. En colonne, la liste porte des noms entiers, reste
-       visible pendant qu'on fait défiler le document, et les actions se rangent
-       dessous au lieu de flotter à l'opposé de ce qu'elles actionnent. */
+       visible pendant qu'on fait défiler le document, et les actions restent
+       du côté du document, en haut à droite, au bord de ce qu'elles exportent. */
     <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
       <aside className="shrink-0 space-y-4 print:hidden lg:sticky lg:top-3 lg:w-60">
         <nav className="space-y-1" aria-label="Type de rapport">
@@ -220,18 +220,20 @@ export function ProjectRapports() {
           </div>
         )}
 
-        <div className="space-y-2 border-t pt-4">
-          <Button onClick={() => window.print()} className="w-full justify-start">
-            <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
-          </Button>
-          <Button variant="outline" onClick={() => setExportOpen(true)} className="w-full justify-start">
-            <Download className="mr-2 h-4 w-4" />Exporter
-          </Button>
-          <ShareControl projectId={id!} initialToken={project.shareToken ?? null} />
-        </div>
       </aside>
 
       <div className="min-w-0 flex-1 space-y-4 lg:max-w-4xl">
+      {/* Les actions portent sur le document, elles se tiennent donc au-dessus
+          de lui et alignées à droite, là où se termine la lecture. */}
+      <div className="flex flex-wrap items-center justify-end gap-2 print:hidden">
+        <ShareControl projectId={id!} initialToken={project.shareToken ?? null} />
+        <Button variant="outline" onClick={() => setExportOpen(true)}>
+          <Download className="mr-2 h-4 w-4" />Exporter
+        </Button>
+        <Button onClick={() => window.print()}>
+          <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
+        </Button>
+      </div>
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
       {/* Document */}
