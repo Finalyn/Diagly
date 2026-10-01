@@ -396,7 +396,10 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   }
 
   return (
-    <div className="h-[calc(100vh-7rem)] flex flex-col gap-4">
+    // Encastré, l'éditeur prend la hauteur que son conteneur lui laisse : la barre
+    // d'onglets occupe déjà une place qu'un calcul en hauteur de fenêtre ignorerait,
+    // et les colonnes sortiraient par le bas en faisant défiler la page entière.
+    <div className={cn('flex flex-col gap-4', encastre ? 'h-full' : 'h-[calc(100dvh-7rem)]')}>
       {/* Header (masqué sur mobile pendant l'édition d'un élément) */}
       <div className={cn('space-y-3 shrink-0', isMobile && selectedItemId && 'hidden')}>
         {!encastre && (

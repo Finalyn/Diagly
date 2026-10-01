@@ -38,6 +38,10 @@ export function AppLayout() {
     location.pathname.startsWith('/app/diagnostic/')
     || location.pathname === '/app/projects/new'
     || location.pathname === '/app/assistant'
+  // L'onglet Diagnostic d'un projet ne porte plus que l'éditeur. Celui-ci remplit
+  // la hauteur restante sous la barre d'onglets et defile a l'interieur de ses
+  // colonnes : la page, elle, ne bouge pas.
+  const editeurEncastre = /^\/app\/projects\/[^/]+\/diagnostic$/.test(location.pathname)
   const mainRef = useRef<HTMLDivElement>(null)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const isMobile = useIsMobile()
@@ -78,9 +82,16 @@ export function AppLayout() {
           <div className="js-print-hide"><TopBar /></div>
           <OfflineIndicator />
           {diagProjectId && !isMobile && <div className="js-print-hide"><DiagnosticTabs projectId={diagProjectId} /></div>}
+          {/* L'éditeur encastré se cale sur la hauteur restante et fait défiler ses
+              propres colonnes : c'est ici que la zone cesse de défiler, sinon la page
+              entière glisse sous les panneaux et le catalogue sort par le bas. */}
           <main
             ref={mainRef}
-            className={`js-print-main flex-1 overflow-y-auto overscroll-none md:pb-16 ${editeurPleinEcran ? 'pb-6' : 'pb-24'} ${onDashboard ? 'mt-6 lg:mt-8' : 'mt-3'}`}
+            className={`js-print-main flex-1 overscroll-none ${onDashboard ? 'mt-6 lg:mt-8' : 'mt-3'} ${
+              editeurEncastre
+                ? 'min-h-0 overflow-hidden pb-3'
+                : `overflow-y-auto md:pb-16 ${editeurPleinEcran ? 'pb-6' : 'pb-24'}`
+            }`}
           >
             <Outlet />
           </main>
