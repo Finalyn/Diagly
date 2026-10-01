@@ -970,7 +970,10 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                 n'aurait de sens : on le dit, et on n'ouvre que l'étalonnage. */}
             {!loading && !etalonne && (
               <div className="pointer-events-none absolute inset-x-0 top-14 flex justify-center px-3">
-                <div className="pointer-events-auto flex max-w-full items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 shadow-sm">
+                <div
+                  data-habillage
+                  className="pointer-events-auto flex max-w-full items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 shadow-sm"
+                >
                   <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
                   <p className="text-xs text-amber-900">
                     {isPdf && numPages > 1 ? `Page ${pageNum} non étalonnée.` : 'Plan non étalonné.'}{' '}
