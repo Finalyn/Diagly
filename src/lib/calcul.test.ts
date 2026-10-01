@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { computeProjectMetrics, facadeSurface, roofSurface, perimeterWarning, floorsWarning } from './formulas'
 import {
   buildQuantityContext, resolveQuantity, computeQuantity, computeCost,
-  setMarketCoeff, appliedUnitPrice, priceToNumber, STATE_PRIORITY,
+  setMarketCoeff, appliedUnitPrice, priceToNumber, STATE_PRIORITY, computeCostFromPrice,
 } from './diagnostic-auto'
 import type { ApiCatalogItem } from './api-types'
+import { visitStepLabel } from './visit-steps'
 import seedData from '../../server/prisma/seed-data.json'
 
 // Dossier de référence : Avenue de la Gare 10, 1003 Lausanne (relevé du brief de correction).
@@ -281,5 +282,81 @@ describe('formules du catalogue', () => {
       .filter((f) => resolveQuantity({ quantityFormula: f, unit: 'CHF/m²', cfcCode: '999' }, ctx).quantity == null)
 
     expect(nonResolues).toEqual([])
+  })
+})
+
+describe('portillons et piliers extérieurs', () => {
+  // La graine ne porte pas d'`id` : c'est la base dont la table dérive. On la lit donc
+  // comme la structure qu'elle est, et non comme un article déjà enregistré.
+  const seed = seedData as unknown as { items: ApiCatalogItem[] }
+  const article = (nom: string) => seed.items.find((i) => i.description === nom)!
+
+  beforeEach(() => setMarketCoeff(1))
+
+  it('figurent au catalogue, en clôtures (CFC 422)', () => {
+    expect(article('Portillons').cfcCode).toBe('422')
+    expect(article('Piliers extérieurs en maçonnerie').cfcCode).toBe('422')
+  })
+
+  it('se comptent à la pièce : leur nombre ne se déduit d’aucune dimension', () => {
+    const ctx = buildQuantityContext({
+      perimeter: 346, nbFloors: 2, floorHeight: 2.7, builtArea: 708, floorArea: 1416,
+      terrainArea: 1505, windowPct: 30, nbApartments: 8, nbStaircases: 2,
+    } as never)
+    for (const nom of ['Portillons', 'Piliers extérieurs en maçonnerie']) {
+      const r = resolveQuantity(article(nom), ctx)
+      expect(r.quantity).toBeUndefined()
+      expect(r.origin).toBe('manuelle')
+    }
+  })
+
+  it('chiffrent une fois la quantité relevée', () => {
+    expect(computeCost(article('Portillons'), 'MAUVAIS', 2)).toBe(5600)          // 2 × 2800
+    expect(computeCost(article('Portillons'), 'MOYEN', 2)).toBe(900)             // 2 × 450
+    expect(computeCost(article('Piliers extérieurs en maçonnerie'), 'MAUVAIS', 4)).toBe(16_800)
+  })
+
+  it("portent une amélioration : la mise en peinture, chiffrée à la pièce", () => {
+    expect(article('Portillons').workImprovement).toMatch(/peinture du portillon/i)
+    expect(article('Piliers extérieurs en maçonnerie').workImprovement).toMatch(/peinture des piliers/i)
+    // L'amélioration a son prix propre, indépendant de l'état constaté.
+    expect(computeCostFromPrice(article('Portillons').priceImprovement, 2)).toBe(760)      // 2 × 380
+    expect(computeCostFromPrice(article('Piliers extérieurs en maçonnerie').priceImprovement, 4)).toBe(1120)
+  })
+
+  it('ne chiffrent rien en bon état : le référentiel prévoit « néant »', () => {
+    expect(computeCost(article('Portillons'), 'BON', 2)).toBeUndefined()
+    expect(article('Portillons').workBon).toBe('Néant')
+  })
+})
+
+describe("étapes de visite selon l'affectation", () => {
+  it("nomme les surfaces principales d'après ce qu'on a devant soi", () => {
+    expect(visitStepLabel(5, 'LOGEMENT')).toBe('Appartements')
+    expect(visitStepLabel(5, 'SCOLAIRE')).toBe('Salles de classe')
+    expect(visitStepLabel(5, 'BUREAU')).toBe('Bureaux')
+    expect(visitStepLabel(5, 'HOTEL')).toBe('Chambres')
+    expect(visitStepLabel(5, 'COMMERCIAL')).toBe('Surfaces de vente')
+    expect(visitStepLabel(5, 'INDUSTRIEL')).toBe('Halles et ateliers')
+  })
+
+  it('laisse les autres étapes inchangées : une façade est une façade partout', () => {
+    for (const t of ['LOGEMENT', 'SCOLAIRE', 'INDUSTRIEL'] as const) {
+      expect(visitStepLabel(1, t)).toBe('Façade')
+      expect(visitStepLabel(2, t)).toBe("Cage d'escalier")
+      expect(visitStepLabel(4, t)).toBe('Toiture')
+    }
+  })
+
+  it('range dans les surfaces principales ce qui se relève dans le logement', () => {
+    const seed = seedData as unknown as { items: (ApiCatalogItem & { displayOrder: number })[] }
+    const etapeDe = (nom: string) =>
+      Math.floor(seed.items.find((i) => i.description === nom)!.displayOrder / 1000)
+    // La cuisine et les appareils sanitaires se voient en ouvrant la porte d'un
+    // logement ; la chaufferie, elle, appartient au local technique.
+    expect(etapeDe('Installation de cuisine')).toBe(5)
+    expect(etapeDe('Installation sanitaires courants')).toBe(5)
+    expect(etapeDe('Chauffage – distribution (conduites / corps de chauffe)')).toBe(5)
+    expect(etapeDe('Chaudière à pellets (biomasse)')).toBe(3)
   })
 })

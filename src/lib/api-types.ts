@@ -1,5 +1,9 @@
 // Types partagés entre frontend et API. Doivent rester en phase avec server/prisma/schema.prisma.
 
+import type { Localisation } from './localisation'
+
+export type { Localisation }
+
 export type UserRole = 'DT' | 'REGIE' | 'ARCHITECT' | 'PARTICULIER' | 'ADMIN'
 
 export type BuildingType =
@@ -218,6 +222,8 @@ export interface ApiDiagnosticItem {
   cfcCode: string
   cfcLabel: string
   catalogItemId: number | null
+  /** Communs / logements pour les ouvrages intérieurs ; null pour tous les autres. */
+  localisation?: Localisation | null
   state: ElementState | null
   priority: Priority | null
   notes: string | null
@@ -456,4 +462,39 @@ export interface AuthResponse {
   user: ApiUser
   accessToken: string
   refreshToken: string
+}
+
+/// --- Variantes de projet ---
+
+export interface ApiVariantLine {
+  id: string
+  variantId: string
+  /** Ouvrage du diagnostic auquel la ligne se substitue. null = travail nouveau. */
+  replacesItemId: string | null
+  /** Article du catalogue retenu : il porte les prix par état, donc le calcul du montant. */
+  catalogItemId: number | null
+  /** État retenu dans la variante ; permet de passer un ouvrage de moyen à mauvais. */
+  state: ElementState | null
+  cfcCode: string
+  label: string
+  unit: string | null
+  area: number | null
+  /** Montant HT de la ligne, servi en texte comme tous les décimaux. */
+  amount: string
+  /** true = montant repris à la main, il ne suit plus le catalogue. */
+  costManual: boolean
+  note: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ApiVariant {
+  id: string
+  projectId: string
+  name: string
+  description: string | null
+  displayOrder: number
+  lines: ApiVariantLine[]
+  createdAt: string
+  updatedAt: string
 }

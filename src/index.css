@@ -271,3 +271,188 @@ body {
   mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 @media (min-width: 1024px) { .scroll-fade-r { -webkit-mask-image: none; mask-image: none; } }
+
+/* ============ Impression ============ */
+/*
+ * L'application vit dans une fenêtre de hauteur fixe : `h-dvh overflow-hidden` sur
+ * la coque, `overflow-y-auto` sur la zone de contenu. À l'écran c'est ce qui garde
+ * la barre latérale en place ; à l'impression, c'est ce qui faisait sortir une seule
+ * page — celle qui se trouvait à l'écran — et perdre tout le reste du rapport.
+ *
+ * On rend donc la hauteur au flux du document, on retire la coque (barre latérale,
+ * barre du haut, onglets, navigation mobile, assistant) et on ne laisse que le
+ * document. Les classes `js-print-*` sont posées sur la coque dans AppLayout : elles
+ * servent uniquement de prise pour ces règles.
+ */
+@media print {
+  /* Le fond et les aplats de couleur font partie de la lecture d'un rapport
+     (pastilles d'état, cases cochées) : sans cela le navigateur les efface. */
+  html, body {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+  }
+
+  /* La coque ne contraint plus la hauteur : le document coule sur autant de pages
+     qu'il en faut. */
+  .js-print-shell,
+  .js-print-main,
+  .js-print-column {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  /* Tout ce qui n'est pas le document : hors de la page. */
+  .js-print-hide { display: none !important; }
+
+  /* Marges de page et format. L'en-tête de marque du rapport tient lieu de titre
+     courant ; on laisse au navigateur le pied de page (date, URL) que l'utilisateur
+     peut désactiver dans le dialogue d'impression. */
+  @page {
+    size: A4;
+    margin: 16mm 14mm 16mm;
+  }
+
+  /* Un saut franc, pour ouvrir un chapitre en haut d'une page. */
+  .print-page-break { break-before: page; page-break-before: always; }
+  /* Le premier chapitre ne doit pas pousser une page blanche devant lui. */
+  .print-page-break:first-child { break-before: auto; page-break-before: auto; }
+
+  /* Un bloc qu'on ne coupe pas : une observation, sa photo et son constat
+     restent ensemble, sinon la photo se retrouve orpheline sur la page suivante. */
+  .print-keep { break-inside: avoid; page-break-inside: avoid; }
+
+  /* Un tableau qui court sur plusieurs pages reprend ses en-têtes. */
+  thead { display: table-header-group; }
+  tr, img { break-inside: avoid; page-break-inside: avoid; }
+
+  /* Un titre ne reste pas seul en bas de page. */
+  h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
+
+  /* Deux lignes minimum de part et d'autre d'une coupure de paragraphe. */
+  p, li { orphans: 2; widows: 2; }
+
+  /* Les liens du document restent lisibles en noir : l'URL ne sert à rien sur papier. */
+  a { color: inherit !important; text-decoration: none !important; }
+}
+
+/* ============ Document A4 ============ */
+/*
+ * Le rapport complet n'est pas une page web qui s'imprime : c'est un document
+ * paginé. Les feuilles sont découpées en amont (voir PagesA4.tsx), ce qui permet
+ * de montrer à l'écran exactement ce qui sortira de l'imprimante — logo en haut
+ * de chaque page, numérotation, chapitres qui ouvrent une page.
+ *
+ * Géométrie : A4 = 210 × 297 mm, marges d'impression 14 mm sur les côtés et 16 mm
+ * en haut et en bas, soit une zone utile de 182 × 265 mm. À l'écran, la feuille
+ * affiche ces marges en blanc pour ressembler à une page ; à l'impression, c'est
+ * `@page` qui les fournit et la feuille se réduit à sa zone utile.
+ */
+.doc-a4 {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10pt;
+  line-height: 1.4;
+  color: #000;
+}
+/* Les tailles fines de l'interface (11 px, 10 px) écraseraient la demande d'un
+   corps de texte à 10 points. On ramène donc tout le corps du document à 10 pt.
+   La règle vise `.doc-corps` et non `.doc-a4` : l'en-tête et le pied de page ont
+   leurs propres tailles, et passer par-dessus les gonflerait. */
+.doc-corps :is(p, td, th, li, span, div) { font-size: inherit; }
+.doc-a4 :is(h1, h2, h3) { font-family: inherit; }
+
+/*
+ * Chaque bloc contient ses marges plutôt que de les laisser fusionner avec ses
+ * voisins. `getBoundingClientRect` ne compte pas les marges d'un élément : sans
+ * `flow-root`, un bloc introduit par `mt-5` était mesuré 5 mm trop court, et la
+ * page finissait par déborder de la somme des marges qu'on avait oubliées.
+ * La règle vaut pour la passe de mesure ET pour le rendu, sinon les deux
+ * divergeraient à nouveau.
+ */
+.doc-bloc { display: flow-root; }
+
+/* Les colonnes du devis sont imposées par le `colgroup` : une largeur calculée
+   sur le contenu changerait d'un morceau de tableau à l'autre, donc la hauteur
+   des lignes, donc le découpage. */
+.doc-tableau { table-layout: fixed; }
+/* `break-word` et non `anywhere` : une colonne étroite doit pouvoir couper un mot
+   trop long, pas hacher une étiquette courte au milieu. */
+.doc-tableau td { overflow-wrap: break-word; }
+
+/* Sonde de mesure : 100 mm dont on lit la largeur réelle en pixels. */
+.doc-sonde { position: absolute; width: 100mm; height: 0; visibility: hidden; pointer-events: none; }
+
+/* Passe de mesure : mise en page réelle, mais hors de l'écran et hors du papier. */
+.doc-mesure {
+  position: absolute;
+  top: 0;
+  left: -10000mm;
+  width: 182mm;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.doc-feuille {
+  width: 210mm;
+  height: 297mm;
+  padding: 16mm 14mm;
+  background: #fff;
+  box-sizing: border-box;
+}
+.doc-contenu {
+  width: 182mm;
+  height: 265mm;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* En-tête et pied sont de hauteur fixe : le calcul de pagination compte dessus. */
+.doc-entete {
+  height: 14mm;
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+.doc-corps { flex: 1 1 auto; min-height: 0; }
+.doc-pied {
+  height: 7mm;
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  font-size: 8pt;
+  color: #666;
+  border-top: 0.2mm solid #ddd;
+  padding-top: 1.5mm;
+}
+
+@media screen {
+  .doc-feuille {
+    margin: 0 auto 6mm;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 6px 16px rgba(0, 0, 0, 0.08);
+  }
+}
+
+@media print {
+  /* La passe de mesure ne doit pas produire de pages blanches. */
+  .doc-mesure, .doc-sonde { display: none !important; }
+  /* Les marges physiques viennent de `@page` : la feuille se réduit à sa zone utile. */
+  .doc-feuille {
+    width: auto;
+    height: auto;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+    break-after: page;
+    page-break-after: always;
+  }
+  .doc-feuille:last-child { break-after: auto; page-break-after: auto; }
+  .doc-contenu { width: auto; height: 265mm; }
+}

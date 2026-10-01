@@ -373,6 +373,7 @@ model Project {
   plans       Plan[]
   planBoards  PlanBoard[]
   events      Event[]
+  variants    ProjectVariant[]
 
   @@index([ownerId])
   @@index([operationId])
@@ -489,6 +490,16 @@ enum Priority {
 }
 
 /// Observation faite sur un Diagnostic : un CFC + un état + des photos/notes + un coût estimé.
+/// Où un ouvrage intérieur a été relevé. La note générale du classeur (Feuil2, l. 90)
+/// veut que les mêmes articles se relèvent séparément dans les communs et dans les
+/// logements : la peinture de la cage et celle des appartements ne vieillissent pas
+/// ensemble, et un relevé unique obligeait à en sacrifier une.
+/// null = ouvrage qui n'est ni l'un ni l'autre (façade, toiture, locaux techniques, abords).
+enum Localisation {
+  COMMUNS
+  LOGEMENTS
+}
+
 model DiagnosticItem {
   id             String        @id @default(cuid())
   diagnosticId   String        @map("diagnostic_id")
@@ -497,6 +508,9 @@ model DiagnosticItem {
   cfcLabel       String        @map("cfc_label") @db.VarChar(255)
   /// Optionnel : id du catalog_items utilisé comme template
   catalogItemId  Int?          @map("catalog_item_id")
+  /// Communs / logements pour les articles du chapitre « INTÉRIEUR : » du classeur.
+  /// null pour tous les autres, qui ne se relèvent qu'une fois.
+  localisation   Localisation?
   /// null = élément ajouté mais pas encore évalué (pas d'état imposé par défaut).
   state          ElementState?
   priority       Priority?
@@ -529,6 +543,8 @@ model DiagnosticItem {
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
   diagnostic Diagnostic @relation(fields: [diagnosticId], references: [id], onDelete: Cascade)
+  /// Lignes de variante qui se substituent a cet ouvrage.
+  variantLines VariantLine[]
 
   @@index([diagnosticId])
   @@index([cfcCode])
@@ -594,4 +610,71 @@ model CatalogItem {
   @@index([category], map: "idx_ci_category")
   @@index([ownerId], map: "idx_ci_owner")
   @@map("catalog_items")
+}
+
+/// ---------------------------------------------------------------------------
+/// Variantes de projet
+///
+/// Le diagnostic de base dit ce qu'il faut faire. La variante repond a une autre
+/// question : « et si on isolait par l'interieur plutot que par l'exterieur ? »,
+/// « et si on passait au pellet, ou au chauffage a distance ? ». Elle ne duplique
+/// donc pas le diagnostic : elle ne porte que les arbitrages qui changent, et le
+/// reste du dossier vaut par defaut.
+///
+/// Trois variantes au maximum par projet : au-dela, ce n'est plus un arbitrage
+/// mais un catalogue, et la comparaison ne se lit plus.
+/// ---------------------------------------------------------------------------
+model ProjectVariant {
+  id           String   @id @default(cuid())
+  projectId    String   @map("project_id")
+  name         String   @db.VarChar(120)
+  description  String?  @db.Text
+  /// Ordre d'affichage et de comparaison, 0 = la premiere proposee.
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines   VariantLine[]
+
+  @@index([projectId])
+  @@map("project_variants")
+}
+
+/// Un arbitrage de la variante.
+///
+/// `replacesItemId` porte tout le sens : renseigne, la ligne se substitue a un
+/// ouvrage du diagnostic (son montant sort du total et celui-ci le remplace) ;
+/// vide, c'est un travail qui n'existait pas dans le diagnostic de base.
+/// Un montant a zero sur un remplacement vaut renoncement a l'ouvrage.
+model VariantLine {
+  id             String   @id @default(cuid())
+  variantId      String   @map("variant_id")
+  replacesItemId String?  @map("replaces_item_id")
+  /// Article du catalogue retenu par la variante : c'est lui qui porte les prix par
+  /// etat, donc le calcul automatique de la plus-value. Vide = ligne chiffree a la main.
+  catalogItemId  Int?     @map("catalog_item_id")
+  /// Etat retenu dans la variante. Permet de passer un ouvrage de moyen a mauvais
+  /// sans changer d'article : le prix suit l'etat, comme dans le diagnostic.
+  state          ElementState?
+  cfcCode        String   @map("cfc_code") @db.VarChar(10)
+  label          String   @db.VarChar(255)
+  unit           String?  @db.VarChar(50)
+  area           Float?
+  /// Montant HT. Calcule depuis le catalogue quand `costManual` est faux.
+  amount         Decimal  @default(0) @db.Decimal(12, 2)
+  /// true = montant force a la main : il ne suit plus le catalogue.
+  costManual     Boolean  @default(false) @map("cost_manual")
+  note           String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  variant ProjectVariant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  /// L'ouvrage remplace peut disparaitre du diagnostic : la ligne survit, orpheline,
+  /// et redevient un simple ajout plutot que de faire tomber la variante.
+  replaces DiagnosticItem? @relation(fields: [replacesItemId], references: [id], onDelete: SetNull)
+
+  @@index([variantId])
+  @@index([replacesItemId])
+  @@map("variant_lines")
 }

@@ -15,6 +15,7 @@ import { errorHandler, notFoundHandler } from "./middlewares/error.js";
 import authRouter from "./routes/auth.js";
 import cfcRouter from "./routes/cfc.js";
 import projectsRouter from "./routes/projects.js";
+import variantsRouter from "./routes/variants.js";
 import operationsRouter from "./routes/operations.js";
 import diagnosticsRouter from "./routes/diagnostics.js";
 import plansRouter, { UPLOAD_DIR } from "./routes/plans.js";
@@ -101,6 +102,7 @@ app.use("/api/cfc", cfcRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/operations", operationsRouter);
 app.use("/api/diagnostics", diagnosticsRouter);
+app.use("/api/variants", variantsRouter); // variantes de projet (arbitrages sur le diagnostic de base)
 app.use("/api/plans", plansRouter);
 app.use("/api/boards", boardsRouter);
 app.use("/api/events", eventsRouter);

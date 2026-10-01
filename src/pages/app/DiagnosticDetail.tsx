@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,7 +11,11 @@ import { useGuideMode, GUIDE_MODE_LABELS, type GuideMode } from '@/lib/use-guide
 import { DiagnosticGuide } from '@/components/DiagnosticGuide'
 import { stateLabels, stateColors, priorityColors, priorityDescriptions } from '@/data/mock'
 import { formatCHF, cn } from '@/lib/utils'
-import { groupItemsByVisitStep } from '@/lib/visit-steps'
+import { dureeVieDeReference, dureeVieResiduelle } from '@/lib/duree-vie'
+import { groupItemsByVisitStep, type VisitStepGroup } from '@/lib/visit-steps'
+import {
+  cleReleve, estArticleInterieur, LIBELLE_LOCALISATION, type Localisation,
+} from '@/lib/localisation'
 import {
   STATE_PRIORITY, workForState, priceForState, computeQuantity, resolveQuantity, computeCost, computeCostFromPrice,
   buildQuantityContext, appliedUnitPrice, getMarketCoeff, priceBasisNote, priceToNumber, type QuantityContext,
@@ -110,7 +114,8 @@ const PRIORITIES: Priority[] = ['I', 'II', 'III']
 // que le diagnostiqueur ne l'a pas saisie. Doit rester en phase avec deriveInterventionYear() serveur.
 function deriveInterventionYearClient(priority: Priority | null): number {
   const base = new Date().getFullYear()
-  return priority === 'I' ? base : priority === 'II' ? base + 3 : priority === 'III' ? base + 7 : base + 5
+  // Barème du bureau : I = 0-5 ans, II = 5-10 ans, III = au-delà de 10 ans.
+  return priority === 'I' ? base : priority === 'II' ? base + 5 : priority === 'III' ? base + 10 : base + 5
 }
 
 /** Coût numérique à partir d'un champ Decimal stocké en string (ou null). */
@@ -177,8 +182,8 @@ export function DiagnosticDetail() {
   const snapshotItems = () => queryClient.getQueryData<ItemsData>(itemsKey)
 
   const addItem = useMutation({
-    mutationFn: (input: { catalog: ApiCatalogItem; state?: ElementState | null }) => {
-      const { catalog, state } = input
+    mutationFn: (input: { catalog: ApiCatalogItem; state?: ElementState | null; localisation?: Localisation | null }) => {
+      const { catalog, state, localisation } = input
       const quantity = computeQuantity(catalog, qtyCtx)
       // Ajout « non évalué » par défaut : ni état, ni coût tant que le diagnostiqueur n'a pas choisi.
       const cost = state ? computeCost(catalog, state, quantity) : undefined
@@ -187,6 +192,7 @@ export function DiagnosticDetail() {
         cfcCode: catalog.cfcCode ?? 'N/A',
         cfcLabel: catalog.description,
         catalogItemId: catalog.id,
+        localisation: localisation ?? null,
         state: state ?? null,
         priority: state ? STATE_PRIORITY[state] : null,
         works: work && work !== 'Néant' ? [work] : [],
@@ -199,7 +205,7 @@ export function DiagnosticDetail() {
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: itemsKey })
       const prev = snapshotItems()
-      const { catalog, state } = input
+      const { catalog, state, localisation } = input
       const quantity = computeQuantity(catalog, qtyCtx)
       const cost = state ? computeCost(catalog, state, quantity) : undefined
       const work = state ? workForState(catalog, state) : null
@@ -210,6 +216,7 @@ export function DiagnosticDetail() {
         cfcCode: catalog.cfcCode ?? 'N/A',
         cfcLabel: catalog.description,
         catalogItemId: catalog.id,
+        localisation: localisation ?? null,
         state: state ?? null,
         priority: state ? STATE_PRIORITY[state] : null,
         notes: null,
@@ -289,11 +296,16 @@ export function DiagnosticDetail() {
   const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data])
   const catalogItems = useMemo(() => catalogQuery.data?.items ?? [], [catalogQuery.data])
 
-  // map for fast lookup
-  const itemsByCatalogId = useMemo(() => {
-    const m = new Map<number, ApiDiagnosticItem>()
+  // Index des relevés, par article *et* localisation.
+  //
+  // La clé était l'article seul, ce qui n'autorisait qu'un relevé par article :
+  // peindre les murs de la cage d'escalier interdisait alors de relever ceux des
+  // appartements, alors que la note générale du classeur demande exactement
+  // l'inverse — la même grille, remplie séparément des deux côtés.
+  const itemsParReleve = useMemo(() => {
+    const m = new Map<string, ApiDiagnosticItem>()
     for (const it of items) {
-      if (it.catalogItemId != null) m.set(it.catalogItemId, it)
+      if (it.catalogItemId != null) m.set(cleReleve(it.catalogItemId, it.localisation), it)
     }
     return m
   }, [items])
@@ -307,11 +319,16 @@ export function DiagnosticDetail() {
           || (c.cfcCode?.toLowerCase().includes(q) ?? false)
           || (c.category?.toLowerCase().includes(q) ?? false))
       : catalogItems
-    return groupItemsByVisitStep(filtered)
-  }, [catalogItems, search])
+    // L'intitulé des surfaces principales suit l'affectation : « Salles de classe »
+    // devant une école, « Bureaux » devant un immeuble administratif.
+    return groupItemsByVisitStep(filtered, projectQuery.data?.project?.buildingType)
+  }, [catalogItems, search, projectQuery.data])
 
   // Parcours de visite : une étape à la fois, comme sur le terrain. null = tout voir.
   const [etape, setEtape] = useState<number | null>(null)
+  // Ouvrage choisi dans l'étape (façade, fenêtres…) : le niveau intermédiaire du
+  // parcours guidé, entre l'étape et les types.
+  const [categorie, setCategorie] = useState<string | null>(null)
   const etapesVisibles = etape == null ? grouped : grouped.filter(g => g.step === etape)
   const rangEtape = grouped.findIndex(g => g.step === etape)
   const etapeSuivante = rangEtape >= 0 ? grouped[rangEtape + 1] ?? null : null
@@ -332,6 +349,24 @@ export function DiagnosticDetail() {
     II:  items.filter(i => i.priority === 'II').reduce((s, i) => s + toNum(i.estimatedCost), 0),
     III: items.filter(i => i.priority === 'III').reduce((s, i) => s + toNum(i.estimatedCost), 0),
   }
+
+  // Avancement de la visite, calculé sur le catalogue entier et non sur `grouped` :
+  // une recherche en cours filtre l'affichage, elle ne doit pas faire reculer la barre.
+  // Un ouvrage compte dès qu'il porte un état, même règle que dans le parcours guidé.
+  const avancementVisite = useMemo(() => {
+    const etapes = groupItemsByVisitStep(catalogItems, projectQuery.data?.project?.buildingType)
+    let faits = 0
+    let total = 0
+    for (const g of etapes) {
+      for (const cat of g.categories) {
+        for (const c of cat.items) {
+          total += 1
+          if (itemsParReleve.get(cleReleve(c.id, g.localisation))?.state) faits += 1
+        }
+      }
+    }
+    return { faits, total, etapes }
+  }, [catalogItems, projectQuery.data, itemsParReleve])
 
   // ----- loading / error states -----
   if (diagQuery.isLoading || itemsQuery.isLoading || catalogQuery.isLoading) {
@@ -370,18 +405,27 @@ export function DiagnosticDetail() {
           </div>
           {projectId && !isMobile && <ProjectSectionsMenu projectId={projectId} onDeleteDiagnostic={handleDeleteDiagnostic} />}
         </div>
-        <div className="flex gap-4 text-sm overflow-x-auto pb-1">
-          {PRIORITIES.map(p => (
-            <div key={p} className="text-center shrink-0">
-              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[p]}`}>{p}</span>
-              <p className="font-semibold mt-1">{formatCHF(costByPriority[p])}</p>
+        {isMobile ? (
+          <AvancementVisite
+            faits={avancementVisite.faits}
+            total={avancementVisite.total}
+            etapes={avancementVisite.etapes}
+            etape={etape}
+          />
+        ) : (
+          <div className="flex gap-4 text-sm overflow-x-auto pb-1">
+            {PRIORITIES.map(p => (
+              <div key={p} className="text-center shrink-0">
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[p]}`}>{p}</span>
+                <p className="font-semibold mt-1">{formatCHF(costByPriority[p])}</p>
+              </div>
+            ))}
+            <div className="text-center pl-4 border-l shrink-0">
+              <span className="text-xs text-muted-foreground">Total</span>
+              <p className="text-lg font-bold">{formatCHF(totalCost)}</p>
             </div>
-          ))}
-          <div className="text-center pl-4 border-l shrink-0">
-            <span className="text-xs text-muted-foreground">Total</span>
-            <p className="text-lg font-bold">{formatCHF(totalCost)}</p>
           </div>
-        </div>
+        )}
 
         <ReindexPanel diagnosticId={id!} />
 
@@ -411,6 +455,24 @@ export function DiagnosticDetail() {
               <p className="text-xs text-muted-foreground text-center py-4">Aucun résultat</p>
             )}
 
+            {/* Sur le terrain, l'écran doit dire où on en est du tour du bâtiment, pas
+                dérouler 113 lignes. Une recherche en cours rend la liste plate : on
+                cherche alors un ouvrage précis, pas une étape. */}
+            {isMobile && !search.trim() && grouped.length > 0 ? (
+              <ParcoursGuide
+                etapes={grouped}
+                etape={etape}
+                onEtape={(n) => { setEtape(n); setCategorie(null) }}
+                categorie={categorie}
+                onCategorie={setCategorie}
+                itemsParReleve={itemsParReleve}
+                onOuvrir={setSelectedItemId}
+                onAjouter={(c, loc) => addItem.mutate({ catalog: c, localisation: loc })}
+                ajoutEnCours={addItem.isPending}
+              />
+            ) : (
+            <>
+
             {/* Étapes de la visite : cliquer en isole une, comme un parcours guidé. */}
             {grouped.length > 1 && (
               <div className="no-scrollbar -mx-2 mb-2 flex gap-1.5 overflow-x-auto px-2 pb-1">
@@ -438,12 +500,20 @@ export function DiagnosticDetail() {
                   </div>
                 )}
                 {etapeGroup.categories.map((group) => (
-              <div key={group.category} className="mb-3">
+              <div key={`${etapeGroup.label}-${group.category}`} className="mb-3">
                 <div className="sticky top-0 z-10 bg-card px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-foreground/75">
                   {group.category}
+                  {/* La même grille se remplit dans les communs et dans les logements :
+                      sans ce repère, deux lignes identiques se suivraient sans qu'on
+                      sache laquelle on relève. */}
+                  {etapeGroup.localisation && estArticleInterieur(group.category) && (
+                    <span className="ml-1.5 font-normal normal-case tracking-normal text-muted-foreground">
+                      · {LIBELLE_LOCALISATION[etapeGroup.localisation].toLowerCase()}
+                    </span>
+                  )}
                 </div>
                 {group.items.map(c => {
-                  const existing = itemsByCatalogId.get(c.id)
+                  const existing = itemsParReleve.get(cleReleve(c.id, etapeGroup.localisation))
                   const isAdded = !!existing
                   const isSelected = existing?.id === selectedItemId
                   return (
@@ -451,7 +521,7 @@ export function DiagnosticDetail() {
                       key={c.id}
                       onClick={() => {
                         if (existing) setSelectedItemId(existing.id)
-                        else addItem.mutate({ catalog: c })
+                        else addItem.mutate({ catalog: c, localisation: etapeGroup.localisation })
                       }}
                       disabled={addItem.isPending}
                       className={cn(
@@ -493,7 +563,7 @@ export function DiagnosticDetail() {
             ))}
 
             {/* Étape terminée : on passe à la suivante sans revenir chercher dans la liste. */}
-            {etape != null && etapeSuivante && (
+            {!isMobile && etape != null && etapeSuivante && (
               <button
                 onClick={() => { vibrer('succes'); setEtape(etapeSuivante.step) }}
                 className="mt-1 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-xs hover:bg-muted/50"
@@ -503,6 +573,8 @@ export function DiagnosticDetail() {
                   {etapeSuivante.label}<ArrowRight className="h-3.5 w-3.5" />
                 </span>
               </button>
+            )}
+            </>
             )}
           </CardContent>
         </Card>
@@ -526,6 +598,7 @@ export function DiagnosticDetail() {
                 mobile
                 guideMode={guideMode}
                 projectId={projectId}
+                yearBuilt={projectQuery.data?.project?.yearBuilt ?? null}
                 onBack={() => setSelectedItemId(null)}
                 onUpdate={(data) => updateItem.mutate({ itemId: selectedDiagItem.id, data })}
                 onDelete={() => {
@@ -554,6 +627,7 @@ export function DiagnosticDetail() {
               mobile={isMobile}
               guideMode={guideMode}
               projectId={projectId}
+              yearBuilt={projectQuery.data?.project?.yearBuilt ?? null}
               onBack={() => setSelectedItemId(null)}
               onUpdate={(data) => updateItem.mutate({ itemId: selectedDiagItem.id, data })}
               onDelete={() => {
@@ -623,12 +697,368 @@ function StepHeader({ n, label }: { n: number; label: string }) {
   )
 }
 
+/**
+ * Année de pose de l'ouvrage.
+ *
+ * Elle ne sert pas qu'à l'archive : c'est elle qui donne la durée de vie
+ * résiduelle du rapport. Elle vivait dans les réglages repliés, donc elle n'était
+ * jamais renseignée et le rapport retombait sur l'année de construction pour tout
+ * le bâtiment. Elle est maintenant demandée pour chaque ouvrage, à côté de l'état,
+ * avec le reste à vivre calculé sous le champ — c'est ce retour immédiat qui donne
+ * envie de la saisir.
+ *
+ * Une prestation de chantier (échafaudage, nettoyage) n'a pas de durée de vie : le
+ * champ le dit plutôt que d'afficher un calcul qui n'aurait pas de sens.
+ */
+function AnneeDePose({ item, yearBuilt, onUpdate, isMutating }: {
+  item: ApiDiagnosticItem
+  yearBuilt?: number | null
+  onUpdate: (data: Partial<ApiDiagnosticItem>) => void
+  isMutating: boolean
+}) {
+  const reference = dureeVieDeReference(item.cfcCode)
+  const vie = dureeVieResiduelle(item, { yearBuilt })
+  const anneeCourante = new Date().getFullYear()
+
+  return (
+    <div>
+      <p className="mb-2 text-sm font-medium">Année de pose</p>
+      <div className="flex items-start gap-3">
+        <Input
+          type="number" inputMode="numeric"
+          min="1500" max={anneeCourante + 1}
+          key={`pose-${item.id}-${item.yearInstalled}`}
+          defaultValue={item.yearInstalled ?? ''}
+          placeholder={yearBuilt ? String(yearBuilt) : 'AAAA'}
+          disabled={isMutating}
+          className="h-14 w-24 shrink-0 text-center text-lg tabular-nums"
+          onBlur={(e) => {
+            const brut = e.target.value.trim()
+            const v = brut ? Number(brut) : undefined
+            // Une année aberrante vaut moins que pas d'année : on refuse plutôt que de fausser
+            // la durée résiduelle, et on rend au champ sa valeur précédente.
+            if (brut && (!Number.isInteger(v) || v! < 1500 || v! > anneeCourante + 1)) {
+              e.target.value = String(item.yearInstalled ?? '')
+              return
+            }
+            if (v !== (item.yearInstalled ?? undefined)) onUpdate({ yearInstalled: v ?? null })
+          }}
+        />
+        <div className="min-w-0 pt-0.5 text-xs leading-snug">
+          {reference == null ? (
+            <p className="text-muted-foreground">
+              Prestation de chantier : pas de durée de vie, l'année n'est pas utilisée dans le rapport.
+            </p>
+          ) : (
+            <>
+              <p className="text-muted-foreground">Durée de vie de référence : {reference} ans.</p>
+              {vie ? (
+                <p className={cn('mt-0.5 font-medium', vie.depassement > 0 ? 'text-red-700' : 'text-foreground')}>
+                  {vie.depassement > 0
+                    ? `Durée de vie dépassée de ${vie.depassement} an${vie.depassement > 1 ? 's' : ''}.`
+                    : `Durée de vie résiduelle : ${vie.residuelle} an${vie.residuelle > 1 ? 's' : ''}.`}
+                  {vie.poseEstimee && <span className="font-normal text-muted-foreground"> D'après l'année de construction, à confirmer.</span>}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-amber-700">
+                  Sans année de pose ni année de construction, le rapport n'affichera pas de durée résiduelle.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Nom d'affichage d'une catégorie du catalogue.
+ *
+ * Les catégories viennent du classeur du bureau et gardent sa mise en forme :
+ * capitales sans accent pour les unes, code CFC en tête pour les autres. Devant
+ * le bâtiment, on veut lire « Fenêtres » et « Menuiserie », pas « FENETRES » ni
+ * « 273 Menuiserie » : une mise en minuscules automatique rendrait « Facade »
+ * sans cédille, d'où la table pour les quelques cas en capitales.
+ */
+const NOMS_CATEGORIES: Record<string, string> = {
+  FACADE: 'Façade',
+  FENETRES: 'Fenêtres',
+  'PORTES EXTERIEURES': 'Portes extérieures',
+  'STORES et VOLETS': 'Stores et volets',
+  TOITURE: 'Toiture',
+  STRUCTURE: 'Structure',
+  VENTILATION: 'Ventilation',
+}
+function nomCategorie(brut: string): string {
+  return NOMS_CATEGORIES[brut] ?? brut.replace(/^[\d.]+\s+/, '')
+}
+
+/** Pastille d'avancement : le rang de l'étape, ou une coche quand tout est relevé. */
+function Pastille({ faits, total, rang }: { faits: number; total: number; rang: ReactNode }) {
+  const fini = total > 0 && faits === total
+  return (
+    <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold',
+      fini ? 'bg-green-500 text-white' : faits > 0 ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground')}>
+      {fini ? <Check className="h-4 w-4" /> : rang}
+    </span>
+  )
+}
+
+/** Retour d'un niveau du parcours. */
+function Retour({ vers, libelle }: { vers: () => void; libelle: string }) {
+  return (
+    <button onClick={vers} className="mb-2 flex items-center gap-1.5 px-1 text-sm text-muted-foreground hover:text-foreground">
+      <ArrowRight className="h-4 w-4 rotate-180" />{libelle}
+    </button>
+  )
+}
+
+/**
+ * Parcours guidé de la visite, sur téléphone et tablette.
+ *
+ * On est devant le bâtiment, la tablette à la main. L'écran ne doit pas présenter
+ * 113 lignes de catalogue : il doit dire où on en est du tour du bâtiment. On
+ * descend donc en trois temps avant d'arriver à l'état :
+ *
+ *   1. l'étape — façade, cage d'escalier, locaux techniques, toiture,
+ *      appartements, abords ;
+ *   2. l'ouvrage qu'on a devant les yeux — façade, fenêtres, portes, stores ;
+ *   3. son type — façade ventilée métallique, bardage bois, crépi…
+ *
+ * puis l'éditeur, où se choisissent l'état et la photo. Chaque niveau porte son
+ * avancement : c'est ce qui permet de savoir, en redescendant de la toiture, ce
+ * qui reste à relever.
+ */
+/**
+ * Avancement de la visite, en tête de l'éditeur mobile.
+ *
+ * Le bandeau des montants ne tenait pas sur un téléphone : trois colonnes dont
+ * deux restent à zéro tant que rien n'est relevé, et un total qui débordait du
+ * cadre. Surtout, il répondait à la mauvaise question : pendant la visite, ce
+ * qui se décide n'est pas le budget mais ce qu'il reste à voir avant de quitter
+ * l'étage. On montre donc l'étape en cours et la part du bâtiment déjà relevée.
+ * Les montants gardent leur écran, celui des coûts, où ils ont la place d'être
+ * lus poste par poste.
+ */
+function AvancementVisite({ faits, total, etapes, etape }: {
+  faits: number
+  total: number
+  etapes: VisitStepGroup[]
+  etape: number | null
+}) {
+  const rang = etapes.findIndex((g) => g.step === etape)
+  const courante = rang >= 0 ? etapes[rang] : null
+  const titre = courante
+    ? `${courante.label.replace(/^\d+\.\s*/, '')} · étape ${rang + 1} sur ${etapes.length}`
+    : `Tour du bâtiment · ${etapes.length} étape${etapes.length > 1 ? 's' : ''}`
+  const part = total > 0 ? Math.round((faits / total) * 100) : 0
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="min-w-0 truncate text-sm font-medium">{titre}</p>
+        <p className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{part} %</p>
+      </div>
+      <div
+        className="h-1.5 w-full overflow-hidden rounded-full bg-border"
+        role="progressbar"
+        aria-valuenow={faits}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-label="Avancement de la visite"
+      >
+        <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${part}%` }} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {faits} ouvrage{faits > 1 ? 's' : ''} relevé{faits > 1 ? 's' : ''} sur {total}
+      </p>
+    </div>
+  )
+}
+
+function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsParReleve, onOuvrir, onAjouter, ajoutEnCours }: {
+  etapes: VisitStepGroup[]
+  etape: number | null
+  onEtape: (n: number | null) => void
+  categorie: string | null
+  onCategorie: (c: string | null) => void
+  /** Relevés du diagnostic, indexés par article *et* localisation (voir cleReleve). */
+  itemsParReleve: Map<string, ApiDiagnosticItem>
+  onOuvrir: (itemId: string) => void
+  onAjouter: (c: ApiCatalogItem, localisation: Localisation | null) => void
+  ajoutEnCours: boolean
+}) {
+  /**
+   * Le relevé d'un article dans une localisation donnée.
+   * Les mêmes revêtements se relèvent dans les communs et dans les logements :
+   * chercher par le seul article renverrait celui de l'autre côté du bâtiment.
+   */
+  const releve = (c: ApiCatalogItem, loc: Localisation | null) => itemsParReleve.get(cleReleve(c.id, loc))
+  /** Relevés / total d'une liste d'ouvrages : un ouvrage compte dès qu'il porte un état. */
+  const avancement = (liste: ApiCatalogItem[], loc: Localisation | null) => ({
+    faits: liste.filter((c) => releve(c, loc)?.state).length,
+    total: liste.length,
+  })
+  const courante = etapes.find((g) => g.step === etape)
+  const titreEtape = (g: VisitStepGroup) => g.label.replace(/^\d+\.\s*/, '')
+
+  // --- Niveau 1 : les grandes étapes du tour du bâtiment ---
+  if (!courante) {
+    return (
+      <div className="space-y-2 px-2 py-2">
+        <p className="px-1 text-xs text-muted-foreground">
+          Suivez le bâtiment dans l'ordre : on commence dehors, on entre, on monte, puis on
+          redescend. Touchez une étape pour relever ce qu'elle contient.
+        </p>
+        {etapes.map((g) => {
+          const { faits, total } = avancement(g.categories.flatMap((c) => c.items), g.localisation)
+          return (
+            <button
+              key={g.label}
+              onClick={() => { onEtape(g.step); onCategorie(null) }}
+              className="flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left hover:bg-muted/50"
+            >
+              <Pastille faits={faits} total={total} rang={g.step ?? '·'} />
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">{titreEtape(g)}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {faits} relevé{faits > 1 ? 's' : ''} sur {total}
+                </span>
+              </span>
+              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const rang = etapes.findIndex((g) => g.step === etape)
+  const suivante = etapes[rang + 1] ?? null
+  // Une étape qui ne contient qu'un seul ouvrage n'a pas de choix à proposer : on
+  // passe directement à ses types plutôt que d'afficher une liste d'un élément.
+  const choisie = courante.categories.length === 1
+    ? courante.categories[0]
+    : courante.categories.find((c) => c.category === categorie)
+
+  // --- Niveau 2 : les ouvrages de l'étape ---
+  const localisation = courante.localisation
+
+  if (!choisie) {
+    const { faits, total } = avancement(courante.categories.flatMap((c) => c.items), localisation)
+    return (
+      <div className="px-2 py-2">
+        <Retour vers={() => onEtape(null)} libelle="Étapes" />
+        <div className="mb-3 px-1">
+          <p className="font-semibold">{titreEtape(courante)}</p>
+          <p className="text-xs text-muted-foreground">
+            {faits} relevé{faits > 1 ? 's' : ''} sur {total} · touchez l'ouvrage que vous avez devant vous
+          </p>
+        </div>
+        <div className="space-y-2">
+          {courante.categories.map((cat) => {
+            const a = avancement(cat.items, localisation)
+            return (
+              <button
+                key={cat.category}
+                onClick={() => onCategorie(cat.category)}
+                className="flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left hover:bg-muted/50"
+              >
+                <Pastille faits={a.faits} total={a.total} rang={a.total} />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium">{nomCategorie(cat.category)}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {a.faits} relevé{a.faits > 1 ? 's' : ''} sur {a.total} type{a.total > 1 ? 's' : ''}
+                  </span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+            )
+          })}
+        </div>
+        {suivante && (
+          <button
+            onClick={() => { vibrer('succes'); onEtape(suivante.step); onCategorie(null) }}
+            className="mt-3 flex w-full items-center justify-between rounded-lg border px-3 py-3 text-sm hover:bg-muted/50"
+          >
+            <span className="text-muted-foreground">Étape suivante</span>
+            <span className="flex items-center gap-1 font-medium">
+              {titreEtape(suivante)}<ArrowRight className="h-4 w-4" />
+            </span>
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  // --- Niveau 3 : les types de l'ouvrage choisi ---
+  const a = avancement(choisie.items, localisation)
+  const seulOuvrage = courante.categories.length === 1
+  return (
+    <div className="px-2 py-2">
+      <Retour
+        vers={() => (seulOuvrage ? onEtape(null) : onCategorie(null))}
+        libelle={seulOuvrage ? 'Étapes' : titreEtape(courante)}
+      />
+      <div className="mb-3 px-1">
+        <p className="font-semibold">{nomCategorie(choisie.category)}</p>
+        <p className="text-xs text-muted-foreground">
+          {a.faits} relevé{a.faits > 1 ? 's' : ''} sur {a.total} · touchez le type rencontré
+        </p>
+      </div>
+
+      {choisie.items.map((c) => {
+        const existant = releve(c, localisation)
+        return (
+          <button
+            key={c.id}
+            onClick={() => (existant ? onOuvrir(existant.id) : onAjouter(c, localisation))}
+            disabled={ajoutEnCours}
+            className="flex w-full items-start gap-2.5 rounded-lg px-3 py-3 text-left text-sm hover:bg-muted/50"
+          >
+            <span className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full',
+              existant?.state ? stateColors[existant.state] : existant ? 'bg-amber-400' : 'bg-gray-300')} />
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium leading-snug">
+                {c.cfcCode && <span className="mr-1.5 font-mono text-xs font-normal text-muted-foreground">{c.cfcCode}</span>}
+                {c.description}
+              </span>
+              {existant && (
+                <span className="mt-0.5 flex flex-wrap gap-1">
+                  {existant.state ? (
+                    <>
+                      <span className={cn('rounded px-1.5 text-[10px] text-white', stateColors[existant.state])}>
+                        {stateLabels[existant.state]}
+                      </span>
+                      {existant.priority && (
+                        <span className={cn('rounded px-1.5 text-[10px]', priorityColors[existant.priority])}>
+                          {existant.priority}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="rounded bg-muted px-1.5 text-[10px] text-muted-foreground">à évaluer</span>
+                  )}
+                </span>
+              )}
+            </span>
+            {!existant && <Plus className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 interface ItemEditorProps {
   item: ApiDiagnosticItem
   catalog: ApiCatalogItem | null
   qtyCtx: QuantityContext
   guideMode: GuideMode
   projectId?: string
+  /** Année de construction : repli quand l'ouvrage n'a pas d'année de pose relevée. */
+  yearBuilt?: number | null
   onUpdate: (data: Partial<ApiDiagnosticItem>) => void
   onDelete: () => void
   isMutating: boolean
@@ -818,7 +1248,7 @@ function PerformanceEnvelopes({ item, catalog, quantity, onUpdate, isMutating }:
   )
 }
 
-function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack }: ItemEditorProps) {
+function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack }: ItemEditorProps) {
   const [notes, setNotes] = useState(item.notes ?? '')
   const [showManual, setShowManual] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false) // options expertes repliées (mobile)
@@ -1002,7 +1432,14 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
           <div className="flex-1 min-w-0 text-center">
             {/* Le nom porte la distinction entre deux ouvrages voisins : « ... panneau plein
                 (2 vantaux) » et « ... vitrée (1 vantail) » ne different que par leur fin. */}
-            <p className="text-sm font-semibold leading-tight text-balance">{item.cfcLabel}</p>
+            <p className="text-sm font-semibold leading-tight text-balance">
+              {item.cfcLabel}
+              {item.localisation && (
+                <span className="ml-1.5 font-normal text-muted-foreground">
+                  · {LIBELLE_LOCALISATION[item.localisation].toLowerCase()}
+                </span>
+              )}
+            </p>
             {catalog?.category && <p className="text-[11px] text-muted-foreground truncate">{catalog.category}</p>}
           </div>
           <button onClick={onDelete} disabled={isDeleting} title="Retirer cet élément" className="shrink-0 rounded-lg p-2 text-red-600 hover:bg-red-50">
@@ -1040,13 +1477,18 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
             <StateGuide item={item} catalog={catalog} onApply={applyState} isMutating={isMutating} />
           </section>
 
+          <section className="space-y-3">
+            <StepHeader n={3} label="Année de pose" />
+            <AnneeDePose item={item} yearBuilt={yearBuilt} onUpdate={onUpdate} isMutating={isMutating} />
+          </section>
+
           {/* Étape 3 — métré, seulement quand il ne se déduit pas du bâtiment.
               Sans ce champ, un élément facturé au mètre (garde-corps, modénature) ou à
               la pièce restait sans quantité, donc sans coût, et rien sur l'écran mobile
               ne permettait de le saisir. */}
           {qtyResolution.origin === 'manuelle' && (
             <section className="space-y-3">
-              <StepHeader n={3} label={estLongueur ? 'Mesurer la longueur' : 'Saisir la quantité'} />
+              <StepHeader n={4} label={estLongueur ? 'Mesurer la longueur' : 'Saisir la quantité'} />
               <div className="flex items-center gap-2">
                 <Input
                   type="number" inputMode="decimal" min="1" className="w-32 text-lg"
@@ -1158,7 +1600,14 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="font-mono text-lg text-muted-foreground">{item.cfcCode}</span>
-            <CardTitle>{item.cfcLabel}</CardTitle>
+            <CardTitle>
+              {item.cfcLabel}
+              {item.localisation && (
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  {LIBELLE_LOCALISATION[item.localisation].toLowerCase()}
+                </span>
+              )}
+            </CardTitle>
           </div>
           <Button
             variant="outline"
@@ -1183,7 +1632,10 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
           <StateGuide item={item} catalog={catalog} onApply={applyState} isMutating={isMutating} />
         </div>
 
-        {/* 2. Photos */}
+        {/* 2. Année de pose — elle porte la durée de vie résiduelle du rapport */}
+        <AnneeDePose item={item} yearBuilt={yearBuilt} onUpdate={onUpdate} isMutating={isMutating} />
+
+        {/* 3. Photos */}
         <div>
           <p className="text-sm font-medium mb-2">Photos</p>
           <div className="flex flex-wrap gap-2">
@@ -1322,11 +1774,6 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, onUpdate, onD
                       if (v !== (item.area ?? undefined)) applyQuantity(v)
                     }} />
                   {qtyError && <p className="text-[11px] text-red-600 mt-1">{qtyError}</p>}
-                </div>
-                <div>
-                  <p className="text-xs font-medium mb-1">Année d'installation</p>
-                  <Input type="number" defaultValue={item.yearInstalled ?? ''}
-                    onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : undefined; if (v !== (item.yearInstalled ?? undefined)) onUpdate({ yearInstalled: v ?? null }) }} />
                 </div>
                 <div>
                   <p className="text-xs font-medium mb-1">Année d'intervention</p>

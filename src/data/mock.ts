@@ -70,10 +70,23 @@ export const priorityColors: Record<Priority, string> = {
   III: 'bg-green-500 text-white',
 }
 
+/**
+ * Priorité en couleur de texte, pour les rapports.
+ *
+ * `priorityColors` est une pastille pleine : lisible à l'écran, lourde dans un
+ * document imprimé où la priorité se lit au fil du texte. Les teintes sont assez
+ * sombres pour rester lisibles sur blanc et à l'impression noir et blanc.
+ */
+export const priorityTextColors: Record<Priority, string> = {
+  I:   'text-red-700',
+  II:  'text-orange-700',
+  III: 'text-green-700',
+}
+
 export const priorityDescriptions: Record<Priority, string> = {
-  I:   'Urgent, intervention dans les 12 mois (sécurité, étanchéité ou fonction critique en jeu).',
-  II:  'À planifier sous 1 à 5 ans pour éviter une dégradation accélérée ou des coûts plus élevés.',
-  III: 'Entretien préventif à moyen / long terme (>5 ans), pas de risque immédiat.',
+  I:   "À engager dans les cinq ans : dégradation avérée, sécurité, étanchéité ou fonction critique en jeu.",
+  II:  'À planifier entre cinq et dix ans, avant que la dégradation ne s’accélère et ne renchérisse les travaux.',
+  III: 'Au-delà de dix ans : entretien préventif, à mutualiser avec un chantier ultérieur.',
 }
 
 // ---------- Référentiels métier ----------

@@ -35,8 +35,10 @@ const Landing = lazy(() => named(import('@/pages/marketing/Landing'), 'Landing')
 const LandingV2 = lazy(() => named(import('@/pages/marketing/LandingV2'), 'LandingV2'))
 const LandingV3 = lazy(() => named(import('@/pages/marketing/LandingV3'), 'LandingV3'))
 const ProjectRapports = lazy(() => named(import('@/pages/app/ProjectRapports'), 'ProjectRapports'))
+const ProjectVariantes = lazy(() => named(import('@/pages/app/ProjectVariantes'), 'ProjectVariantes'))
 const ProjectCECB = lazy(() => named(import('@/pages/app/ProjectCECB'), 'ProjectCECB'))
 const ProjectPlanning = lazy(() => named(import('@/pages/app/ProjectPlanning'), 'ProjectPlanning'))
+const AssistantPage = lazy(() => named(import('@/pages/app/AssistantPage'), 'AssistantPage'))
 const DiagnosticDetail = lazy(() => named(import('@/pages/app/DiagnosticDetail'), 'DiagnosticDetail'))
 const DiagnosticItemDetail = lazy(() => named(import('@/pages/app/DiagnosticItemDetail'), 'DiagnosticItemDetail'))
 const PlansList = lazy(() => named(import('@/pages/app/PlansList'), 'PlansList'))
@@ -126,12 +128,15 @@ function App() {
             <Route path="projects/:id/edit" element={<ProjectEdit />} />
             <Route path="projects/:id/diagnostic" element={<ProjectDiagnostic />} />
             <Route path="projects/:id/couts" element={<ProjectMetres />} />
-            <Route path="projects/:id/variantes" element={<ProjectRapports />} />
+            <Route path="projects/:id/variantes" element={<ProjectVariantes />} />
             <Route path="projects/:id/plans" element={<ProjectPlans />} />
             <Route path="projects/:id/photos" element={<ProjectPhotos />} />
             <Route path="projects/:id/rapports" element={<ProjectRapports />} />
             <Route path="projects/:id/cecb" element={<ProjectCECB />} />
             <Route path="projects/:id/calendrier" element={<ProjectPlanning />} />
+
+            {/* Assistant : page plein écran, le parcours mobile n'ouvre pas de fenêtre */}
+            <Route path="assistant" element={<AssistantPage />} />
 
             {/* Diagnostic editor */}
             <Route path="diagnostic/:id" element={<DiagnosticDetail />} />

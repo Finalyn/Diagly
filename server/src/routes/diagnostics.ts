@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { DiagnosticStatus, ElementState, Priority } from "@prisma/client";
+import { DiagnosticStatus, ElementState, Localisation, Priority } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { validateBody } from "../middlewares/validate.js";
@@ -91,11 +91,19 @@ const itemBaseSchema = z.object({
   cfcCode: z.string().min(1).max(10),
   cfcLabel: z.string().min(1).max(255),
   catalogItemId: z.number().int().positive().optional(),
+  /// Communs / logements : la note generale du classeur veut que les articles du
+  /// chapitre interieur se relevent des deux cotes, avec des choix differents.
+  localisation: z.nativeEnum(Localisation).nullable().optional(),
   state: z.nativeEnum(ElementState).nullable().optional(),
   priority: z.nativeEnum(Priority).nullable().optional(),
   notes: z.string().max(10_000).optional(),
-  works: z.array(z.string().min(1)).default([]),
-  photos: z.array(z.string().min(1)).default([]),
+  /// Pas de .default([]) ici : `updateItemSchema` est ce schema rendu partiel, et un
+  /// defaut survit a .partial(). Une mise a jour qui ne renvoyait pas ces deux champs
+  /// les recevait donc a vide et ecrasait le contenu : poser une priorite depuis
+  /// l'editeur effacait les travaux et les photos de la visite. Le defaut est applique
+  /// a la creation seulement, la ou il a un sens.
+  works: z.array(z.string().min(1)).optional(),
+  photos: z.array(z.string().min(1)).optional(),
   area: z.number().positive().nullable().optional(),
   /// Verrous de saisie : une valeur reprise a la main ne doit plus etre recalculee.
   quantityManual: z.boolean().optional(),
@@ -133,11 +141,12 @@ router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
       cfcCode: data.cfcCode,
       cfcLabel: data.cfcLabel,
       catalogItemId: data.catalogItemId,
+      localisation: data.localisation,
       state: data.state,
       priority: data.priority,
       notes: data.notes,
-      works: data.works,
-      photos: data.photos,
+      works: data.works ?? [],
+      photos: data.photos ?? [],
       area: data.area,
       quantityManual: data.quantityManual ?? false,
       costManual: data.costManual ?? false,

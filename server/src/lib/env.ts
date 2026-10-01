@@ -35,7 +35,19 @@ const schema = z.object({
   VAPID_SUBJECT: z.string().default("mailto:contact@diagly.ch"),
 });
 
-const parsed = schema.safeParse(process.env);
+/**
+ * Une variable laissee vide dans .env vaut « absente », pas « chaine vide ».
+ *
+ * Le fichier .env.example livre toutes les options a vide, ce qui est la bonne
+ * facon de documenter ce qui existe. Sans ce nettoyage, zod voit "" la ou le
+ * schema attend undefined : API_KEY_PEPPER= faisait echouer le min(16) et le
+ * serveur refusait de demarrer sur une installation neuve, alors que le code
+ * sait tres bien se passer du poivre (il retombe sur JWT_ACCESS_SECRET).
+ */
+const sansValeursVides = (source: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
+  Object.fromEntries(Object.entries(source).filter(([, v]) => v !== ""));
+
+const parsed = schema.safeParse(sansValeursVides(process.env));
 if (!parsed.success) {
   console.error("Invalid environment configuration:");
   console.error(parsed.error.flatten().fieldErrors);
