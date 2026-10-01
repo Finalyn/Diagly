@@ -105,6 +105,7 @@ const itemBaseSchema = z.object({
   works: z.array(z.string().min(1)).optional(),
   photos: z.array(z.string().min(1)).optional(),
   area: z.number().positive().nullable().optional(),
+  sharePct: z.number().min(0).max(100).nullable().optional(),
   /// Verrous de saisie : une valeur reprise a la main ne doit plus etre recalculee.
   quantityManual: z.boolean().optional(),
   costManual: z.boolean().optional(),
@@ -148,6 +149,7 @@ router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
       works: data.works ?? [],
       photos: data.photos ?? [],
       area: data.area,
+      sharePct: data.sharePct,
       quantityManual: data.quantityManual ?? false,
       costManual: data.costManual ?? false,
       unit: data.unit,

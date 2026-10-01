@@ -520,6 +520,9 @@ model DiagnosticItem {
   /// Liste d'URL/clefs de photos, sérialisée en JSON
   photos         Json          @default("[]")
   area           Float?
+  /// Part de la surface du groupe qui revient a ce type, en pourcent.
+  /// null = pas encore repartie, ou ouvrage qui n'appartient a aucun groupe.
+  sharePct       Float?        @map("share_pct")
   /// true = quantite saisie par le diagnostiqueur : elle ne doit plus etre recalculee.
   quantityManual Boolean       @default(false) @map("quantity_manual")
   /// true = cout force a la main : il ne doit plus etre recalcule depuis le catalogue.
@@ -580,6 +583,10 @@ model CatalogItem {
   /// Pour une personnalisation : l'id de l'item par defaut qu'elle remplace (null si item cree de zero).
   baseId           Int?    @map("base_id") @db.UnsignedInt
   displayOrder     Int     @map("display_order") @db.UnsignedInt
+  /// Groupe de surface : les types alternatifs d'une meme surface le partagent
+  /// (revetement de facade, de sol, de paroi). null = ouvrage non alternatif,
+  /// qui prend sa quantite entiere. Voir src/lib/groupes-surface.ts.
+  surfaceGroup     String? @map("surface_group") @db.VarChar(100)
   category         String? @db.VarChar(150)
   categoryCfc      String? @map("category_cfc") @db.VarChar(10)
   description      String  @db.VarChar(255)

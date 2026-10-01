@@ -232,6 +232,14 @@ export interface ApiDiagnosticItem {
   area: number | null
   /** true = quantité reprise à la main : elle ne suit plus les corrections du dossier. */
   quantityManual?: boolean
+  /**
+   * Part de la surface du groupe qui revient à ce type, en pourcent.
+   *
+   * Une façade peut être en bardage sur 60 % et en crépi sur 40 % : chaque type
+   * ne reçoit alors que sa part, au lieu de la façade entière. null = ouvrage
+   * sans groupe, ou part pas encore répartie.
+   */
+  sharePct?: number | null
   /** true = coût forcé à la main : il ne suit plus le catalogue. */
   costManual?: boolean
   /** Coefficient marché appliqué au coût de cette ligne, pour pouvoir la réindexer. */
@@ -276,6 +284,11 @@ export interface ApiCatalogItem {
   priceImprovement: string | null
   priceNorms: string | null
   scaffoldingNote: string | null
+  /**
+   * Groupe de surface : les types alternatifs d'une même surface le partagent.
+   * null = ouvrage non alternatif, qui prend sa quantité entière.
+   */
+  surfaceGroup?: string | null
 }
 
 export interface ApiCfcEntry {

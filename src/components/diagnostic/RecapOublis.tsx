@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowRight, Check, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { Oubli, ReleveIncomplet } from '@/lib/oublis'
+import { phraseDuGroupe, type GroupeSurface } from '@/lib/groupes-surface'
 import type { ApiDiagnosticItem } from '@/lib/api-types'
 
 /**
@@ -22,11 +23,19 @@ import type { ApiDiagnosticItem } from '@/lib/api-types'
 export type ModeRecap = 'consultation' | 'fin'
 
 export function RecapOublis({
-  incomplets, restants, mode, onOuvrir, onFermer, onTerminer, terminaisonEnCours,
+  incomplets, restants, groupesMalRepartis, mode, onOuvrir, onFermer, onTerminer, terminaisonEnCours,
 }: {
   incomplets: ReleveIncomplet<ApiDiagnosticItem>[]
   /** Ouvrages du catalogue pas encore relevés. Ce n'est pas un oubli, mais ça compte pour clore. */
   restants: number
+  /**
+   * Groupes de surface dont les parts ne font pas 100 %.
+   *
+   * Ce n'est pas un oubli de relevé mais une erreur de calcul : tant qu'une
+   * façade est répartie à 140 %, le devis la chiffre une fois et demie. Elle
+   * passe donc en tête du récapitulatif, avant ce qui manque.
+   */
+  groupesMalRepartis?: GroupeSurface[]
   mode: ModeRecap
   onOuvrir: (itemId: string) => void
   onFermer: () => void
@@ -41,7 +50,8 @@ export function RecapOublis({
 
   const importants = incomplets.filter((r) => r.oublis.some((o) => o.gravite === 'importante'))
   const legers = incomplets.filter((r) => !r.oublis.some((o) => o.gravite === 'importante'))
-  const rienAsignaler = incomplets.length === 0 && restants === 0
+  const malRepartis = groupesMalRepartis ?? []
+  const rienAsignaler = incomplets.length === 0 && restants === 0 && malRepartis.length === 0
 
   return (
     <div
@@ -95,6 +105,22 @@ export function RecapOublis({
               <p className="mt-0.5 text-xs text-muted-foreground">
                 Ce n'est pas un oubli : tout le catalogue ne concerne pas tous les bâtiments.
               </p>
+            </div>
+          )}
+
+          {/* Une surface mal répartie fausse un montant : elle passe avant ce qui
+              manque, parce qu'un chiffre faux se voit moins qu'une photo absente. */}
+          {malRepartis.length > 0 && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+              <p className="text-sm font-semibold text-red-900">Surfaces mal réparties</p>
+              <p className="mt-0.5 text-xs text-red-800">
+                Tant que les parts ne font pas 100 %, le devis chiffre ces surfaces en trop ou en moins.
+              </p>
+              <ul className="mt-2 space-y-1">
+                {malRepartis.map((g) => (
+                  <li key={g.nom} className="text-xs text-red-900">{phraseDuGroupe(g)}</li>
+                ))}
+              </ul>
             </div>
           )}
 

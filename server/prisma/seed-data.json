@@ -7762,7 +7762,8 @@
    "priceMauvais": "650",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Revêtement de façade"
   },
   {
    "displayOrder": 1001,
@@ -7784,7 +7785,8 @@
    "priceMauvais": "580",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Revêtement de façade"
   },
   {
    "displayOrder": 1002,
@@ -7806,7 +7808,8 @@
    "priceMauvais": "450",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Revêtement de façade"
   },
   {
    "displayOrder": 1003,
@@ -7828,7 +7831,8 @@
    "priceMauvais": "1200",
    "priceImprovement": "110",
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Revêtement de façade"
   },
   {
    "displayOrder": 1004,
@@ -7850,7 +7854,8 @@
    "priceMauvais": "850",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Revêtement de façade"
   },
   {
    "displayOrder": 1005,
@@ -7872,7 +7877,8 @@
    "priceMauvais": "=240+40",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Revêtement de façade"
   },
   {
    "displayOrder": 1006,
@@ -7894,7 +7900,8 @@
    "priceMauvais": "180",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Revêtement de façade"
   },
   {
    "displayOrder": 1007,
@@ -7938,7 +7945,8 @@
    "priceMauvais": "1250",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Type de fenêtre"
   },
   {
    "displayOrder": 1009,
@@ -7960,7 +7968,8 @@
    "priceMauvais": "1050",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Type de fenêtre"
   },
   {
    "displayOrder": 1010,
@@ -7982,7 +7991,8 @@
    "priceMauvais": "650",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Type de fenêtre"
   },
   {
    "displayOrder": 1011,
@@ -8004,7 +8014,8 @@
    "priceMauvais": "1500",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Type de fenêtre"
   },
   {
    "displayOrder": 1012,
@@ -8026,7 +8037,8 @@
    "priceMauvais": "1500",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Type de fenêtre"
   },
   {
    "displayOrder": 1013,
@@ -8048,7 +8060,8 @@
    "priceMauvais": "2000",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": "Attention échafaudage"
+   "scaffoldingNote": "Attention échafaudage",
+   "surfaceGroup": "Type de fenêtre"
   },
   {
    "displayOrder": 1014,
@@ -9478,7 +9491,8 @@
    "priceMauvais": "35",
    "priceImprovement": "55",
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de paroi"
   },
   {
    "displayOrder": 5005,
@@ -9500,7 +9514,8 @@
    "priceMauvais": "35",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de paroi"
   },
   {
    "displayOrder": 5006,
@@ -9522,7 +9537,8 @@
    "priceMauvais": "65",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de paroi"
   },
   {
    "displayOrder": 5007,
@@ -9544,7 +9560,8 @@
    "priceMauvais": "120",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de paroi"
   },
   {
    "displayOrder": 5008,
@@ -9566,7 +9583,8 @@
    "priceMauvais": "150",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de paroi"
   },
   {
    "displayOrder": 5009,
@@ -9588,7 +9606,8 @@
    "priceMauvais": "55",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de paroi"
   },
   {
    "displayOrder": 5010,
@@ -9698,7 +9717,8 @@
    "priceMauvais": "=120+40",
    "priceImprovement": "=120+40",
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de plafond"
   },
   {
    "displayOrder": 5015,
@@ -9720,7 +9740,8 @@
    "priceMauvais": "=135+40",
    "priceImprovement": "=135+40",
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de plafond"
   },
   {
    "displayOrder": 5016,
@@ -9742,7 +9763,8 @@
    "priceMauvais": "=40+150",
    "priceImprovement": "=40+150",
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de plafond"
   },
   {
    "displayOrder": 5017,
@@ -9786,7 +9808,8 @@
    "priceMauvais": "90",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de sol"
   },
   {
    "displayOrder": 5019,
@@ -9808,7 +9831,8 @@
    "priceMauvais": "80",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de sol"
   },
   {
    "displayOrder": 5020,
@@ -9830,7 +9854,8 @@
    "priceMauvais": "450",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de sol"
   },
   {
    "displayOrder": 5021,
@@ -9852,7 +9877,8 @@
    "priceMauvais": "350",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de sol"
   },
   {
    "displayOrder": 5022,
@@ -9874,7 +9900,8 @@
    "priceMauvais": "120",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de sol"
   },
   {
    "displayOrder": 5023,
@@ -9896,7 +9923,8 @@
    "priceMauvais": "130",
    "priceImprovement": null,
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de sol"
   },
   {
    "displayOrder": 5024,
@@ -9940,7 +9968,8 @@
    "priceMauvais": "220",
    "priceImprovement": "300",
    "priceNorms": null,
-   "scaffoldingNote": null
+   "scaffoldingNote": null,
+   "surfaceGroup": "Revêtement de sol"
   },
   {
    "displayOrder": 5026,

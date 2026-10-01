@@ -104,6 +104,7 @@ const itemBaseSchema = z.object({
   priceImprovement: z.string().max(100).nullable().optional(),
   priceNorms: z.string().max(100).nullable().optional(),
   scaffoldingNote: z.string().max(255).nullable().optional(),
+  surfaceGroup: z.string().max(100).nullable().optional(),
 });
 const createItemSchema = itemBaseSchema;
 const updateItemSchema = itemBaseSchema.partial();

@@ -10,6 +10,10 @@ import {
 import { useGuideMode, GUIDE_MODE_LABELS, type GuideMode } from '@/lib/use-guide-mode'
 import { DiagnosticGuide } from '@/components/DiagnosticGuide'
 import { stateLabels, stateColors, priorityColors, priorityDescriptions } from '@/data/mock'
+import {
+  groupesDuReleve, groupesIncomplets, partEffective, partALAjout, quantiteDuType,
+  phraseDuGroupe, type GroupeSurface,
+} from '@/lib/groupes-surface'
 import { formatCHF, cn } from '@/lib/utils'
 import { dureeVieDeReference, dureeVieResiduelle } from '@/lib/duree-vie'
 import { groupItemsByVisitStep, type VisitStepGroup } from '@/lib/visit-steps'
@@ -197,8 +201,20 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     queryClient.setQueryData<ItemsData>(itemsKey, (old) => (old ? fn(old) : old))
   const snapshotItems = () => queryClient.getQueryData<ItemsData>(itemsKey)
 
+  /**
+   * Part proposée pour un type qu'on ajoute à un groupe de surface.
+   *
+   * Calculée ici et passée à la mutation : lue depuis `mutationFn`, elle faisait
+   * renoncer le compilateur React à mémoriser le relevé entier.
+   */
+  const partPourUnAjout = (c: ApiCatalogItem) => {
+    if (!c.surfaceGroup) return null
+    const dejaLa = groupesSurface.find((g) => g.nom === c.surfaceGroup)?.membres.length ?? 0
+    return partALAjout(dejaLa)
+  }
+
   const addItem = useMutation({
-    mutationFn: (input: { catalog: ApiCatalogItem; state?: ElementState | null; localisation?: Localisation | null }) => {
+    mutationFn: (input: { catalog: ApiCatalogItem; state?: ElementState | null; localisation?: Localisation | null; sharePct?: number | null }) => {
       const { catalog, state, localisation } = input
       const quantity = computeQuantity(catalog, qtyCtx)
       // Ajout « non évalué » par défaut : ni état, ni coût tant que le diagnostiqueur n'a pas choisi.
@@ -213,6 +229,10 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
         priority: state ? STATE_PRIORITY[state] : null,
         works: work && work !== 'Néant' ? [work] : [],
         photos: [],
+        // Le premier type relevé d'un groupe prend toute la surface ; les
+        // suivants arrivent sans part, parce que la répartition est une
+        // observation de terrain, pas une valeur à inventer.
+        sharePct: input.sharePct ?? null,
         area: quantity,                              // quantité auto (surfaces) conservée
         unit: catalog.unit ?? undefined,
         estimatedCost: (cost ?? undefined) as unknown as string | undefined,
@@ -311,6 +331,19 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   // Référence stable : `?? []` produirait un tableau neuf à chaque rendu et casserait les mémorisations en aval.
   const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data])
   const catalogItems = useMemo(() => catalogQuery.data?.items ?? [], [catalogQuery.data])
+
+  /**
+   * Les groupes de surface du relevé.
+   *
+   * Plusieurs types de façade décrivent une seule façade : chacun ne prend
+   * qu'une part de sa surface. Les groupes sont calculés ici, où l'on voit tout
+   * le relevé, et l'éditeur reçoit celui de l'ouvrage ouvert.
+   */
+  // Sans mémorisation manuelle : le compilateur React s'en charge, et un
+  // `useMemo` qu'il ne sait pas reprendre lui fait abandonner tout le composant.
+  const groupesSurface = groupesDuReleve(items, catalogItems)
+  const groupeDeLOuvrage = (itemId: string) =>
+    groupesSurface.find((g) => g.membres.some((m) => m.id === itemId)) ?? null
 
   // Index des relevés, par article *et* localisation.
   //
@@ -491,7 +524,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 onCategorie={setCategorie}
                 itemsParReleve={itemsParReleve}
                 onOuvrir={setSelectedItemId}
-                onAjouter={(c, loc) => addItem.mutate({ catalog: c, localisation: loc })}
+                onAjouter={(c, loc) => addItem.mutate({ catalog: c, localisation: loc, sharePct: partPourUnAjout(c) })}
                 ajoutEnCours={addItem.isPending}
               />
             ) : (
@@ -545,7 +578,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                       key={c.id}
                       onClick={() => {
                         if (existing) setSelectedItemId(existing.id)
-                        else addItem.mutate({ catalog: c, localisation: etapeGroup.localisation })
+                        else addItem.mutate({ catalog: c, localisation: etapeGroup.localisation, sharePct: partPourUnAjout(c) })
                       }}
                       disabled={addItem.isPending}
                       className={cn(
@@ -610,6 +643,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 item={selectedDiagItem}
                 catalog={selectedCatalog}
                 qtyCtx={qtyCtx}
+                groupe={groupeDeLOuvrage(selectedDiagItem.id)}
                 mobile
                 guideMode={guideMode}
                 projectId={projectId}
@@ -646,6 +680,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
               item={selectedDiagItem}
               catalog={selectedCatalog}
               qtyCtx={qtyCtx}
+              groupe={groupeDeLOuvrage(selectedDiagItem.id)}
               mobile={isMobile}
               guideMode={guideMode}
               projectId={projectId}
@@ -686,6 +721,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
         <RecapOublis
           incomplets={relevesIncomplets(items)}
           restants={Math.max(0, avancementVisite.total - avancementVisite.faits)}
+          groupesMalRepartis={groupesIncomplets(groupesSurface)}
           mode={recap}
           onOuvrir={(itemId) => { setSelectedItemId(itemId); setRecap(null) }}
           onFermer={() => setRecap(null)}
@@ -1211,6 +1247,8 @@ interface ItemEditorProps {
   item: ApiDiagnosticItem
   catalog: ApiCatalogItem | null
   qtyCtx: QuantityContext
+  /** Groupe de surface de l'ouvrage, quand il en a un. */
+  groupe?: GroupeSurface | null
   guideMode: GuideMode
   projectId?: string
   /** Année de construction : repli quand l'ouvrage n'a pas d'année de pose relevée. */
@@ -1410,7 +1448,72 @@ function PerformanceEnvelopes({ item, catalog, quantity, onUpdate, isMutating }:
   )
 }
 
-function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, cadreExterne }: ItemEditorProps) {
+/**
+ * Répartition d'une surface entre les types qui la couvrent.
+ *
+ * Une façade en bardage sur 60 % et en crépi sur 40 % donne deux ouvrages qui se
+ * partagent la même surface. Sans cette répartition, chacun recevait la façade
+ * entière et le devis la chiffrait deux fois.
+ *
+ * Le bloc montre tout le groupe, pas seulement l'ouvrage ouvert : on ne répartit
+ * pas une surface en regardant une seule part, et le total faux doit se voir au
+ * moment où on le saisit, pas à l'édition du rapport.
+ */
+function PartDeSurface({ groupe, item, quantiteDuGroupe, unite, onPart }: {
+  groupe: GroupeSurface
+  item: ApiDiagnosticItem
+  quantiteDuGroupe: number | undefined
+  unite: string
+  onPart: (v: number | null) => void
+}) {
+  const part = partEffective(item, groupe.membres.length)
+  return (
+    <div className={cn('rounded-xl border p-3', groupe.complet ? 'bg-muted/40' : 'border-amber-300 bg-amber-50')}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-xs font-medium">
+          {groupe.nom}
+          {quantiteDuGroupe != null && (
+            <span className="font-normal text-muted-foreground"> · {quantiteDuGroupe} {unite} au total</span>
+          )}
+        </p>
+        <p className={cn('text-[11px]', groupe.complet ? 'text-muted-foreground' : 'text-amber-800')}>
+          {phraseDuGroupe(groupe)}
+        </p>
+      </div>
+
+      <div className="mt-2 flex items-end gap-3">
+        <div className="w-28">
+          <p className="mb-1 text-xs font-medium">Part (%)</p>
+          <Input
+            type="number" min="0" max="100" step="1"
+            key={`part-${item.id}-${part}`}
+            defaultValue={part ?? ''}
+            placeholder="à répartir"
+            onBlur={(e) => {
+              const brut = e.target.value.trim()
+              const v = brut ? Number(brut) : null
+              if (v != null && (!isFinite(v) || v < 0 || v > 100)) { e.target.value = String(part ?? ''); return }
+              if (v !== part) onPart(v)
+            }}
+          />
+        </div>
+        <ul className="min-w-0 flex-1 space-y-0.5 text-[11px] text-muted-foreground">
+          {groupe.membres.map((m) => {
+            const p = partEffective(m, groupe.membres.length)
+            return (
+              <li key={m.id} className={cn('flex justify-between gap-3', m.id === item.id && 'font-medium text-foreground')}>
+                <span className="truncate">{m.cfcLabel}</span>
+                <span className="shrink-0 tabular-nums">{p == null ? '—' : `${p} %`}</span>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function ItemEditor({ item, catalog, qtyCtx, groupe, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, cadreExterne }: ItemEditorProps) {
   const [notes, setNotes] = useState(item.notes ?? '')
   const [showManual, setShowManual] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false) // options expertes repliées (mobile)
@@ -1433,7 +1536,19 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, yearBuilt, on
     () => (catalog ? resolveQuantity(catalog, qtyCtx) : { quantity: undefined, origin: 'manuelle' as const, basis: null }),
     [catalog, qtyCtx],
   )
-  const autoQty = qtyResolution.quantity
+  /**
+   * Part de la surface du groupe qui revient à cet ouvrage.
+   *
+   * Sans groupe, l'ouvrage prend sa quantité entière : c'est le cas de la
+   * plupart des articles. Avec un groupe d'un seul type, aussi. Dès qu'il y a
+   * deux types, la part se saisit, et tant qu'elle manque la quantité n'est pas
+   * calculée : une façade chiffrée en entier alors qu'elle n'en couvre que la
+   * moitié passerait au devis sans rien signaler.
+   */
+  const partDuGroupe = groupe ? partEffective(item, groupe.membres.length) : 100
+  const autoQty = groupe
+    ? quantiteDuType(qtyResolution.quantity, partDuGroupe)
+    : qtyResolution.quantity
   /** Unité affichée à côté d'une quantité (« CHF/m² fenêtres » -> « m² fenêtres »). */
   const qtyUnit = catalog?.unit?.replace(/^CHF\s*\/?\s*/i, '') ?? ''
   const [qtyError, setQtyError] = useState<string | null>(null)
@@ -1456,6 +1571,20 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, yearBuilt, on
             ? 'Quantité à saisir'
             : '—'
 
+
+  /** Pose la part, et recalcule la quantité et le coût qui en découlent. */
+  const appliquerPart = (valeur: number | null) => {
+    const patch: Partial<ApiDiagnosticItem> = { sharePct: valeur }
+    if (!item.quantityManual) {
+      const q = quantiteDuType(qtyResolution.quantity, valeur)
+      patch.area = q ?? null
+      if (!item.costManual && item.state) {
+        patch.estimatedCost = (computeCost(catalog, item.state, q) ?? null) as unknown as string | null
+        patch.costIndex = getMarketCoeff()
+      }
+    }
+    onUpdate(patch)
+  }
 
   // Synchronisation de la quantité automatique. Corriger le périmètre, les étages ou le
   // type de toiture du dossier doit se répercuter sur les éléments qui en dépendent.
@@ -1858,6 +1987,18 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, yearBuilt, on
               </button>
             </div>
           </div>
+          {/* La part de surface n'est pas une option experte : c'est elle qui
+              donne la quantité, donc elle se lit avant elle, et sans déplier. */}
+          {groupe && groupe.membres.length > 1 && (
+            <PartDeSurface
+              groupe={groupe}
+              item={item}
+              quantiteDuGroupe={qtyResolution.quantity}
+              unite={qtyUnit}
+              onPart={appliquerPart}
+            />
+          )}
+
           <div className="grid grid-cols-3 gap-3 text-sm">
             <div>
               <p className="text-xs text-muted-foreground">Priorité</p>
