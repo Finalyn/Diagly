@@ -28,7 +28,7 @@ import { dureeVieResiduelle, phraseDureeVie } from '@/lib/duree-vie'
 import { calculerVariantes, type Variante } from '@/lib/variantes'
 import { buildQuantityContext } from '@/lib/diagnostic-auto'
 import { computeProjectMetrics } from '@/lib/formulas'
-import { cn, formatCHF, formatDate } from '@/lib/utils'
+import { cn, formatCHF, formatDate, formatPrixUnitaire } from '@/lib/utils'
 import type { ApiCatalogItem, ApiCfcEntry, ApiDiagnosticItem, ApiProject, ApiVariant, ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
 import { AvertissementEnergie, CorpsEnergie } from './ChapitreEnergie'
@@ -1072,7 +1072,7 @@ function LignesPosition({ position }: { position: DevisBloc['positions'][number]
             {l.quantite != null ? `${l.quantite}${l.unite ? ` ${l.unite}` : ''}` : '—'}
           </td>
           <td className="py-1 text-right tabular-nums">
-            {l.prixUnitaire != null ? formatCHF(l.prixUnitaire) : '—'}
+            {l.prixUnitaire != null ? formatPrixUnitaire(l.prixUnitaire) : '—'}
           </td>
           <td className="py-1 text-right tabular-nums">{formatCHF(l.montant)}</td>
         </tr>

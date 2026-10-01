@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { buildDevis, cascadeDe, postesDeChantier, uniteCourte, POSTES_AUTOMATIQUES } from './devis'
 import { setMarketCoeff } from './diagnostic-auto'
+import { formatPrixUnitaire } from './utils'
 import type { ApiCatalogItem, ApiDiagnosticItem } from './api-types'
 
 const ouvrage = (o: Partial<ApiDiagnosticItem>): ApiDiagnosticItem => ({
@@ -198,5 +199,67 @@ describe('unité du catalogue', () => {
   it('rend null sur une unité absente ou purement monétaire', () => {
     expect(uniteCourte(null)).toBeNull()
     expect(uniteCourte('CHF')).toBeNull()
+  })
+})
+
+describe('un montant se refait de tête', () => {
+  /**
+   * La règle du lot 1.3 : quantité × prix unitaire = montant, sur chaque ligne.
+   * Un devis que le destinataire ne peut pas recalculer est un devis qu'il
+   * conteste. Le prix unitaire étant arrondi au centime, on tolère l'écart de
+   * cet arrondi, et rien de plus.
+   */
+  /** Toutes les lignes du devis, quel que soit le bloc où elles sont tombées. */
+  const toutesLesLignes = (devis: ReturnType<typeof buildDevis>) =>
+    devis.blocs.flatMap((b) => b.positions.flatMap((p) => p.lignes))
+
+  const verifier = (lignes: { quantite: number | null; prixUnitaire: number | null; montant: number }[]) => {
+    expect(lignes.length).toBeGreaterThan(0)
+    for (const l of lignes) {
+      if (l.quantite == null || l.prixUnitaire == null) continue
+      // Un centime d'écart par unité au maximum : c'est l'arrondi du prix unitaire.
+      expect(Math.abs(l.quantite * l.prixUnitaire - l.montant)).toBeLessThanOrEqual(l.quantite * 0.005 + 0.01)
+    }
+  }
+
+  it('tient sur les trois enveloppes d’un ouvrage', () => {
+    const devis = buildDevis([ouvrage({
+      area: 840, unit: 'CHF/m²', estimatedCost: '94332',
+      improvement: 'Isolation', improvementCost: '12345',
+      norms: 'SIA 358', normsCost: '777',
+    })], LABELS, [], SANS_SURFACE)
+    verifier(toutesLesLignes(devis))
+  })
+
+  it('tient sur une quantité qui ne tombe pas juste', () => {
+    // 94 332 / 840 = 112.30 exactement : c'est le cas releve par le bureau, où
+    // l'affichage arrondi au franc donnait 840 × 112 = 94 080 et faisait douter.
+    const devis = buildDevis([ouvrage({ area: 840, unit: 'CHF/m²', estimatedCost: '94332' })],
+      LABELS, [], SANS_SURFACE)
+    const ligne = toutesLesLignes(devis).find((l) => !l.automatique && l.enveloppe === 'Réparation')!
+    expect(ligne.prixUnitaire).toBe(112.3)
+    expect(ligne.quantite! * ligne.prixUnitaire!).toBe(94332)
+  })
+
+  it('tient aussi sur les postes comptés d’office', () => {
+    verifier(postesDeChantier([ouvrage({ estimatedCost: '50000' })], new Map(),
+      { honoraryPct: 0, reservePct: 0, floorArea: 1100 }))
+  })
+
+  it('ne fabrique pas de prix unitaire sans quantité', () => {
+    const devis = buildDevis([ouvrage({ area: null, estimatedCost: '5000' })], LABELS, [], SANS_SURFACE)
+    // Par le libellé, et non par le montant : un poste compté d'office peut
+    // porter la même somme, et c'est lui qu'on attraperait.
+    const ligne = toutesLesLignes(devis).find((l) => !l.automatique)!
+    expect(ligne.montant).toBe(5000)
+    expect(ligne.quantite).toBeNull()
+    expect(ligne.prixUnitaire).toBeNull()
+  })
+})
+
+describe('affichage du prix unitaire', () => {
+  it('montre les centimes quand il y en a, et pas sinon', () => {
+    expect(formatPrixUnitaire(112.3)).toMatch(/112[.,]30 CHF/)
+    expect(formatPrixUnitaire(112)).toBe('112 CHF')
   })
 })

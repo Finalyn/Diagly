@@ -350,12 +350,17 @@ describe("étapes de visite selon l'affectation", () => {
 
   it('range dans les surfaces principales ce qui se relève dans le logement', () => {
     const seed = seedData as unknown as { items: (ApiCatalogItem & { displayOrder: number })[] }
-    const etapeDe = (nom: string) =>
-      Math.floor(seed.items.find((i) => i.description === nom)!.displayOrder / 1000)
+    const etapeDe = (nom: string) => {
+      const article = seed.items.find((i) => i.description === nom)
+      // Un article renommé au catalogue ne doit pas faire échouer le test sur un
+      // « undefined » : il doit dire quel libellé il ne trouve plus.
+      if (!article) throw new Error(`article absent du catalogue : « ${nom} »`)
+      return Math.floor(article.displayOrder / 1000)
+    }
     // La cuisine et les appareils sanitaires se voient en ouvrant la porte d'un
     // logement ; la chaufferie, elle, appartient au local technique.
     expect(etapeDe('Installation de cuisine')).toBe(5)
-    expect(etapeDe('Installation sanitaires courants')).toBe(5)
+    expect(etapeDe('Installations sanitaires courantes')).toBe(5)
     expect(etapeDe('Chauffage – distribution (conduites / corps de chauffe)')).toBe(5)
     expect(etapeDe('Chaudière à pellets (biomasse)')).toBe(3)
   })
