@@ -96,7 +96,14 @@ export function Landing() {
  * D'où un bandeau d'offre au-dessus, la marque à gauche, et un bouton plein qui
  * ne disparaît jamais, même sur téléphone.
  */
-function Entete() {
+/**
+ * L'en-tête, partagé par les versions de la page publique.
+ *
+ * Les liens sont un paramètre : une version qui ne porte pas les mêmes sections
+ * doit pouvoir donner les siennes, sinon la navigation pointe vers des ancres
+ * qui n'existent plus et le menu devient un piège.
+ */
+export function Entete({ liens = NAV }: { liens?: { href: string; label: string }[] }) {
   const [ouvert, setOuvert] = useState(false)
   return (
     <div className="sticky top-3 z-50 px-3 pt-3 sm:top-4 sm:px-5 sm:pt-4">
@@ -107,7 +114,7 @@ function Entete() {
         </a>
 
         <nav className="hidden flex-1 items-center justify-center gap-7 lg:flex" aria-label="Sections">
-          {NAV.map((n) => (
+          {liens.map((n) => (
             <a key={n.href} href={n.href} className="text-[14px] text-[#1d1d1f]/70 transition-colors hover:text-[#1d1d1f]">
               {n.label}
             </a>
@@ -136,7 +143,7 @@ function Entete() {
 
       {ouvert && (
         <nav className="mx-auto mt-2 w-full max-w-[1160px] rounded-3xl border border-black/[0.06] bg-white/95 px-4 py-2 shadow-lg backdrop-blur-xl lg:hidden" aria-label="Sections">
-          {NAV.map((n) => (
+          {liens.map((n) => (
             <a key={n.href} href={n.href} onClick={() => setOuvert(false)} className="block py-2.5 text-[15px] text-[#1d1d1f]/85">
               {n.label}
             </a>
@@ -152,7 +159,7 @@ function Entete() {
 
 /* ------------------------------------------------------------------- hero */
 
-function Hero() {
+export function Hero() {
   return (
     <section id="haut" className="relative scroll-mt-28 overflow-hidden px-5 pb-2 pt-24 text-center md:pt-28">
       {/* Badge : ce qui vient d'arriver, avant même le titre. */}
@@ -540,7 +547,7 @@ const COMPARATIF: { ligne: string; valeurs: (string | boolean)[] }[] = [
   { ligne: 'Support', valeurs: ['Email', 'Email', 'Prioritaire', 'Dédié'] },
 ]
 
-function Tarifs() {
+export function Tarifs() {
   const [annuel, setAnnuel] = useState(false)
   return (
     <section id="tarifs" className="scroll-mt-28 bg-[#f5f7fa] px-5 py-24 md:py-32">
@@ -718,7 +725,7 @@ const COLONNES = [
   { titre: 'Légal', liens: [['Mentions légales', '/mentions-legales'], ['Confidentialité', '/confidentialite'], ['Conditions générales', '/cgu']] },
 ]
 
-function PiedDePage() {
+export function PiedDePage() {
   return (
     <footer className="border-t border-black/[0.07] bg-[#f5f7fa] px-5 py-12 text-[12px] text-[#6e6e73]">
       <div className="mx-auto w-full max-w-[900px]">

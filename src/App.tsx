@@ -32,6 +32,8 @@ const ProjectPhotos = lazy(() => named(import('@/pages/app/ProjectPhotos'), 'Pro
 // La vitrine embarque Leaflet et ses captures : chargee a la demande, elle ne
 // pese pas sur le paquet que tout utilisateur de l'application telecharge.
 const Landing = lazy(() => named(import('@/pages/marketing/Landing'), 'Landing'))
+const LandingV2 = lazy(() => named(import('@/pages/marketing/LandingV2'), 'LandingV2'))
+const LandingV3 = lazy(() => named(import('@/pages/marketing/LandingV3'), 'LandingV3'))
 const ProjectRapports = lazy(() => named(import('@/pages/app/ProjectRapports'), 'ProjectRapports'))
 const ProjectCECB = lazy(() => named(import('@/pages/app/ProjectCECB'), 'ProjectCECB'))
 const ProjectPlanning = lazy(() => named(import('@/pages/app/ProjectPlanning'), 'ProjectPlanning'))
@@ -82,13 +84,16 @@ function App() {
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          {/* Racine. En local on sert la vitrine, c'est elle qu'on relit ; en
-              production la page « bientot disponible » reste, l'app etant
-              accessible via /login. Pour publier la vitrine, remplacer toute
-              la condition par <Landing />. */}
-          <Route path="/" element={import.meta.env.DEV ? <Landing /> : <Soon />} />
-          {/* La vitrine garde son adresse propre, en local comme en ligne. */}
+          {/* Racine : la vitrine est publiée. La page « bientôt disponible »
+              garde son adresse, elle sert encore à fermer le site le temps
+              d'une intervention sans toucher au routage. */}
+          <Route path="/" element={<LandingV3 />} />
+          <Route path="/bientot" element={<Soon />} />
+          {/* Les deux versions précédentes restent accessibles le temps de la
+              comparaison. Elles ne sont liées depuis nulle part. */}
           <Route path="/landing" element={<Landing />} />
+          <Route path="/landing-2" element={<LandingV2 />} />
+          <Route path="/landing-3" element={<Navigate to="/" replace />} />
           <Route path="/tarifs" element={<Navigate to="/" replace />} />
 
           {/* Raccourci : /dashboard -> app (redirige vers /login si non connecté) */}

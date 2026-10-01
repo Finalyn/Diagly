@@ -78,7 +78,7 @@ const TOITURES: { cle: RoofType; libelle: string }[] = [
   { cle: 'MIXTE', libelle: 'Mixte' },
 ]
 
-export function EtapeGeometrie() {
+export function DemoGeometrie({ className }: { className?: string }) {
   const [perimeter, setPerimetre] = useState(88)
   const [nbFloors, setEtages] = useState(6)
   const [builtArea, setEmprise] = useState(420)
@@ -93,16 +93,7 @@ export function EtapeGeometrie() {
   })
 
   return (
-    <section className="relative bg-[#f5f7fa] px-5 py-24 md:py-32">
-      <Fil />
-      <Etape rang="deux" />
-      <GrandTitre>Vous posez vos ratios,<br className="hidden sm:block" /> les métrés suivent.</GrandTitre>
-      <Chapo>
-        Rien n'est deviné. La surface de façade, la surface vitrée, l'échafaudage et les
-        communs sortent de coefficients que vous voyez et que vous changez.
-      </Chapo>
-
-      <div className="mx-auto mt-14 grid max-w-[980px] items-start gap-6 md:grid-cols-2 md:gap-8">
+    <div className={cn('mx-auto grid max-w-[980px] items-start gap-6 md:grid-cols-2 md:gap-8', className)}>
         <Panneau titre="Le bâtiment">
           <div className="space-y-6">
             <Curseur libelle="Périmètre" valeur={perimeter} min={30} max={200} pas={1} suffixe="ml" onChange={setPerimetre} />
@@ -140,7 +131,21 @@ export function EtapeGeometrie() {
             quelle. Dans un dossier, chacune se reprend à la main quand le terrain dit autre chose.
           </p>
         </Panneau>
-      </div>
+    </div>
+  )
+}
+
+export function EtapeGeometrie() {
+  return (
+    <section className="relative bg-[#f5f7fa] px-5 py-24 md:py-32">
+      <Fil />
+      <Etape rang="deux" />
+      <GrandTitre>Vous posez vos ratios,<br className="hidden sm:block" /> les métrés suivent.</GrandTitre>
+      <Chapo>
+        Rien n'est deviné. La surface de façade, la surface vitrée, l'échafaudage et les
+        communs sortent de coefficients que vous voyez et que vous changez.
+      </Chapo>
+      <DemoGeometrie className="mt-14" />
     </section>
   )
 }
@@ -183,22 +188,13 @@ const PRIORITE_TEXTE: Record<string, string> = {
   III: 'à surveiller',
 }
 
-export function EtapeEtat() {
+export function DemoEtat({ className }: { className?: string }) {
   const [choisi, setChoisi] = useState<ElementState>('MOYEN')
   const etat = ETATS.find((e) => e.cle === choisi)!
   const priorite = STATE_PRIORITY[choisi]
 
   return (
-    <section className="relative bg-[#f5f7fa] px-5 py-24 md:py-32">
-      <Fil />
-      <Etape rang="quatre" />
-      <GrandTitre>Un état, et tout<br className="hidden sm:block" /> ce qu'il engage.</GrandTitre>
-      <Chapo>
-        Devant la façade, personne ne tranche entre « bon » et « moyen » sur quatre boutons nus.
-        Chaque état porte son constat, ses travaux et la priorité qu'il déclenche.
-      </Chapo>
-
-      <div className="mx-auto mt-14 max-w-[860px]">
+    <div className={cn('mx-auto max-w-[860px]', className)}>
         <div className="rounded-[20px] border border-black/[0.07] bg-white p-6 shadow-[0_20px_60px_-34px_rgba(20,45,90,0.4)] sm:p-8">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-[15px] font-semibold">
@@ -246,7 +242,21 @@ export function EtapeEtat() {
           Ces quatre textes viennent du catalogue d'un bureau romand, tels qu'il les a écrits.
           Le vôtre les remplace, poste par poste.
         </p>
-      </div>
+    </div>
+  )
+}
+
+export function EtapeEtat() {
+  return (
+    <section className="relative bg-[#f5f7fa] px-5 py-24 md:py-32">
+      <Fil />
+      <Etape rang="quatre" />
+      <GrandTitre>Un état, et tout<br className="hidden sm:block" /> ce qu'il engage.</GrandTitre>
+      <Chapo>
+        Devant la façade, personne ne tranche entre « bon » et « moyen » sur quatre boutons nus.
+        Chaque état porte son constat, ses travaux et la priorité qu'il déclenche.
+      </Chapo>
+      <DemoEtat className="mt-14" />
     </section>
   )
 }
@@ -255,7 +265,7 @@ export function EtapeEtat() {
 
 const TVA = 8.1
 
-export function EtapeChiffrage() {
+export function DemoChiffrage({ className }: { className?: string }) {
   const [quantite, setQuantite] = useState(1188)
   const [prix, setPrix] = useState(95)
   const [honoraryPct, setHonoraires] = useState(12)
@@ -272,16 +282,7 @@ export function EtapeChiffrage() {
   const total = sousTotal + tva
 
   return (
-    <section className="relative px-5 py-24 md:py-32">
-      <Fil />
-      <Etape rang="cinq" />
-      <GrandTitre>Chaque montant<br className="hidden sm:block" /> dit d'où il vient.</GrandTitre>
-      <Chapo>
-        Prix du catalogue multiplié par la quantité, puis vos honoraires, votre réserve et la
-        TVA suisse. Aucune majoration cachée, aucun coefficient maison.
-      </Chapo>
-
-      <div className="mx-auto mt-14 grid max-w-[980px] items-start gap-6 md:grid-cols-2 md:gap-8">
+    <div className={cn('mx-auto grid max-w-[980px] items-start gap-6 md:grid-cols-2 md:gap-8', className)}>
         <Panneau titre="Le poste">
           <div className="space-y-6">
             <Curseur libelle="Quantité" valeur={quantite} min={50} max={4000} pas={10} suffixe="m²" onChange={setQuantite} />
@@ -310,7 +311,21 @@ export function EtapeChiffrage() {
             est annoncée à ±15 %.
           </p>
         </Panneau>
-      </div>
+    </div>
+  )
+}
+
+export function EtapeChiffrage() {
+  return (
+    <section className="relative px-5 py-24 md:py-32">
+      <Fil />
+      <Etape rang="cinq" />
+      <GrandTitre>Chaque montant<br className="hidden sm:block" /> dit d'où il vient.</GrandTitre>
+      <Chapo>
+        Prix du catalogue multiplié par la quantité, puis vos honoraires, votre réserve et la
+        TVA suisse. Aucune majoration cachée, aucun coefficient maison.
+      </Chapo>
+      <DemoChiffrage className="mt-14" />
     </section>
   )
 }
