@@ -33,7 +33,7 @@ import type { ApiCatalogItem, ApiCfcEntry, ApiDiagnosticItem, ApiProject, ApiVar
 import { useAuth } from '@/stores/auth'
 import { AvertissementEnergie, CorpsEnergie } from './ChapitreEnergie'
 import { CHAPITRES, ETATS, PAGE } from './constants'
-import { CaseEtat, Info, Ligne, Row } from './shared'
+import { CaseEtat, Info, Ligne, LogoEntete, Row } from './shared'
 import { DocumentA4, type BlocDocument } from './PagesA4'
 import { usePageDuBloc } from './page-contexte'
 
@@ -358,30 +358,9 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
   return (
     <DocumentA4
       blocs={blocs}
-      entete={<LogoEntete company={company} />}
+      entete={<LogoEntete />}
       mentionPied={`${project.name} · ${aujourdhui}`}
     />
-  )
-}
-
-/**
- * Logo répété en haut de chaque page.
- *
- * Celui de l'entreprise s'il est renseigné dans Paramètres → Entreprise, sinon
- * celui de Diagly : un rapport sans logo n'a l'air de rien, et c'est la première
- * chose que le destinataire voit.
- */
-function LogoEntete({ company }: { company: Entreprise }) {
-  const nom = company?.name?.trim()
-  return (
-    <div className="flex items-center gap-2">
-      {nom && <span className="text-[9pt] font-semibold text-muted-foreground">{nom}</span>}
-      <img
-        src={company?.logo || '/diagly-logo.svg'}
-        alt={nom || 'Diagly'}
-        className="max-h-[10mm] w-auto object-contain"
-      />
-    </div>
   )
 }
 

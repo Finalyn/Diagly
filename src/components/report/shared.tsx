@@ -6,40 +6,63 @@
  * ou une case d'état qui diverge d'un rapport à l'autre se remarque tout de suite
  * quand les deux documents partent chez le même client.
  */
+import type { ReactNode } from 'react'
 import { stateColors, stateLabels } from '@/data/mock'
 import { cn } from '@/lib/utils'
 import type { ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
 
 /**
- * En-tête de marque du rapport : logo + identité de l'entreprise (Paramètres → Entreprise).
+ * Logo répété en haut de chaque feuille A4.
  *
- * Le logo est toujours là, en haut à droite, dans tous les rapports. Il ne
- * dépendait jusqu'ici que de la présence d'un logo d'entreprise : un bureau qui
- * n'en avait pas configuré rendait des documents à en-tête purement textuel,
- * alors que le rapport complet, lui, posait celui de Diagly. Deux documents
- * partis le même jour chez le même client ne se ressemblaient pas.
+ * Celui de l'entreprise s'il est renseigné dans Paramètres → Entreprise, sinon
+ * celui de Diagly : un rapport sans logo n'a l'air de rien, et c'est la première
+ * chose que le destinataire voit. Il était auparavant posé une seule fois, en
+ * tête du document ; depuis que tous les rapports sont paginés, il revient sur
+ * chaque page, comme sur un papier à en-tête.
  */
-export function ReportBrand() {
+export function LogoEntete() {
   const company = useAuth((s) => s.user?.preferences?.company)
-  const name = company?.name?.trim()
-  const ville = [company?.postalCode, company?.city].filter(Boolean).join(' ')
+  const nom = company?.name?.trim()
   return (
-    <div className="shrink-0 text-right text-sm">
+    <div className="flex items-center gap-2">
+      {nom && <span className="text-[9pt] font-semibold text-muted-foreground">{nom}</span>}
       <img
         src={company?.logo || '/diagly-logo.svg'}
-        alt={name || 'Diagly'}
-        className="ml-auto h-12 w-auto object-contain"
+        alt={nom || 'Diagly'}
+        className="max-h-[10mm] w-auto object-contain"
       />
-      {/* Les coordonnées ne paraissent que si le bureau les a renseignées.
-          Sans elles, le logo écrivait son propre nom juste en dessous, suivi du
-          canton du bâtiment présenté comme une adresse d'expéditeur : un en-tête
-          doit dire qui envoie le document, pas où il se trouve. */}
-      {name && <p className="mt-1.5 font-semibold">{name}</p>}
-      {company?.address && <p className="text-muted-foreground">{company.address}</p>}
-      {ville && <p className="text-muted-foreground">{ville}</p>}
-      {company?.vatNumber && <p className="text-xs text-muted-foreground">{company.vatNumber}</p>}
     </div>
+  )
+}
+
+/** Titre d'ouverture d'un rapport paginé : il occupe le premier bloc de la page 1. */
+export function TitreRapport({ titre, projet, mention }: {
+  titre: string
+  projet: string
+  mention?: ReactNode
+}) {
+  return (
+    <div className="mb-4 border-b-2 border-foreground pb-2">
+      <h1 className="text-2xl font-bold">{titre}</h1>
+      <p className="text-muted-foreground">{projet}</p>
+      {mention && <p className="text-muted-foreground">{mention}</p>}
+    </div>
+  )
+}
+
+/**
+ * Intitulé de section à l'intérieur d'un rapport.
+ *
+ * Il porte lui-même son espace au-dessus : chaque section étant un bloc distinct
+ * de la pagination, la marge d'un voisin ne se propage pas jusqu'à lui, et le
+ * titre venait coller la dernière ligne de la section précédente.
+ */
+export function SectionTitre({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="mb-2 mt-5 border-b border-foreground/40 pb-1 font-bold uppercase tracking-wide">
+      {children}
+    </h2>
   )
 }
 

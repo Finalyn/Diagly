@@ -2,33 +2,24 @@ import { useMemo, useState } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, AlertCircle, BookOpen, ClipboardCheck, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf } from 'lucide-react'
-import { Button, Card, CardContent, Badge } from '@/components/ui'
+import { Button, Card, CardContent } from '@/components/ui'
 import { ExportDialog } from '@/components/ExportDialog'
-import { stateLabels, buildingTypeLabels, stateColors } from '@/data/mock'
-import { formatCHF, cn, formatDate } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { computeProjectMetrics } from '@/lib/formulas'
-import { getMarketCoeff, getMarketInfo, marketPeriodLabel, priceBasisNote } from '@/lib/diagnostic-auto'
+import { getMarketCoeff } from '@/lib/diagnostic-auto'
 import { cfcGroupCode, cfcGroupLabels } from '@/lib/cfc'
 import { api } from '@/lib/api'
-import type { ApiDiagnosticItem, ApiProject, ElementState } from '@/lib/api-types'
+import type { ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
 import { RapportComplet } from '@/components/report/RapportComplet'
-import { CHAPITRES, ETATS, TVA, toNum } from '@/components/report/constants'
-import { CaseEtat, Info, Ligne, ReportBrand, Row } from '@/components/report/shared'
-
-/**
- * Prix unitaire réellement appliqué : le coût rapporté à la quantité. C'est la valeur
- * qui permet à un destinataire de contester un montant, contrairement au prix catalogue
- * qui n'inclut pas l'indice de construction.
- */
-function unitPriceOf(it: { area: number | null; estimatedCost: string | null }): string {
-  const cost = toNum(it.estimatedCost)
-  if (!it.area || it.area <= 0 || cost <= 0) return '—'
-  return formatCHF(Math.round(cost / it.area))
-}
+import { RapportStandard } from '@/components/report/RapportStandard'
+import { RapportExistant } from '@/components/report/RapportExistant'
+import { RapportPhoto } from '@/components/report/RapportPhoto'
+import { RapportScenario } from '@/components/report/RapportScenario'
+import type { RVariant, ScenarioId } from '@/components/report/scenarios'
+import { TVA, toNum } from '@/components/report/constants'
 
 type ReportKind = 'complet' | 'sommaire' | 'detaille' | 'documente' | 'scenario' | 'rapport' | 'photos' | 'existant'
-type ScenarioId = 'maintenance' | 'renovation' | 'energetique'
 const REPORT_TITLES: Record<ReportKind, string> = {
   complet: 'Rapport complet',
   sommaire: 'Rapport sommaire', detaille: 'Rapport détaillé', documente: 'Rapport documenté', scenario: 'Rapport par scénario',
@@ -38,6 +29,9 @@ const REPORT_TITLES: Record<ReportKind, string> = {
 // L'onglet « Variantes » = les 4 types de rapports ; l'onglet « Rapports » = Rapport + Rapports photo.
 const KINDS_VARIANTES = [['sommaire', 'Sommaire', LayoutList], ['detaille', 'Détaillé', FileText], ['documente', 'Documenté', Image], ['scenario', 'Par scénario', Layers]] as const
 const KINDS_RAPPORTS = [['complet', 'Complet', BookOpen], ['rapport', 'Rapport', FileText], ['existant', "De l'existant", ClipboardList], ['photos', 'Rapports photo', Image]] as const
+
+/** Les quatre types qui partagent le corps du rapport standard. */
+const STANDARDS: ReportKind[] = ['sommaire', 'detaille', 'documente', 'rapport']
 
 export function ProjectRapports() {
   const { id } = useParams<{ id: string }>()
@@ -113,21 +107,7 @@ export function ProjectRapports() {
 
   const metrics = computeProjectMetrics(project)
   const roof = metrics.roof
-
   const htRepair = items.reduce((s, i) => s + toNum(i.estimatedCost), 0)
-  const htImprovement = items.reduce((s, i) => s + toNum(i.improvementCost), 0)
-  const htNorms = items.reduce((s, i) => s + toNum(i.normsCost), 0)
-  const ht = htRepair + htImprovement + htNorms
-  const honoraires = ht * (project.honoraryPct ?? 0) / 100
-  const afterH = ht + honoraires
-  const reserve = afterH * (project.reservePct ?? 0) / 100
-  const sousTotal = afterH + reserve
-  const tva = sousTotal * TVA
-  const total = sousTotal + tva
-  const byPriority = (['I', 'II', 'III'] as const).map(p => ({
-    p, total: items.filter(i => i.priority === p).reduce((s, i) => s + toNum(i.estimatedCost), 0),
-    count: items.filter(i => i.priority === p).length,
-  }))
 
   // 3 scénarios de rénovation cumulatifs, cascade honoraires/réserve/TVA sur chaque HT.
   const cascade = (h: number) => {
@@ -149,8 +129,8 @@ export function ProjectRapports() {
   const improvementPack = Math.round(floor * 120 * coeff)
   const energyPack = Math.round((opaque * 220 + windowArea * 250 + roofM * 180) * coeff)
   // Forfaits de scénario : estimés depuis la géométrie, donc absents de la liste des
-  // éléments diagnostiqués. Ils sont désormais énoncés ligne par ligne, avec leur base
-  // de calcul, pour que le total du scénario se retrouve à la main.
+  // éléments diagnostiqués. Ils sont énoncés ligne par ligne, avec leur base de calcul,
+  // pour que le total du scénario se retrouve à la main.
   const packRenovation = {
     label: 'Rénovation intérieure (forfait)',
     basis: `${Math.round(floor)} m² de plancher × 120 CHF × indice ${coeff}`,
@@ -161,12 +141,13 @@ export function ProjectRapports() {
     basis: `${Math.round(opaque)} m² opaque × 220 + ${Math.round(windowArea)} m² vitré × 250${roofM ? ` + ${Math.round(roofM)} m² toiture × 180` : ''} CHF × indice ${coeff}`,
     amount: energyPack,
   }
-  const variants = [
-    { id: 'maintenance' as ScenarioId, name: 'Maintenance', envelopes: ['Réparation'], energyFocus: false, packs: [], ...cascade(htRepair) },
-    { id: 'renovation' as ScenarioId, name: 'Rénovation', envelopes: ['Réparation', 'Rénovation intérieure'], energyFocus: false, packs: [packRenovation], ...cascade(htRepair + improvementPack) },
-    { id: 'energetique' as ScenarioId, name: 'Rénovation énergétique', envelopes: ['Réparation', 'Rénovation intérieure', 'Isolation enveloppe'], energyFocus: true, packs: [packRenovation, packEnergie], ...cascade(htRepair + improvementPack + energyPack) },
+  const variants: RVariant[] = [
+    { id: 'maintenance', name: 'Maintenance', envelopes: ['Réparation'], energyFocus: false, packs: [], ...cascade(htRepair) },
+    { id: 'renovation', name: 'Rénovation', envelopes: ['Réparation', 'Rénovation intérieure'], energyFocus: false, packs: [packRenovation], ...cascade(htRepair + improvementPack) },
+    { id: 'energetique', name: 'Rénovation énergétique', envelopes: ['Réparation', 'Rénovation intérieure', 'Isolation enveloppe'], energyFocus: true, packs: [packRenovation, packEnergie], ...cascade(htRepair + improvementPack + energyPack) },
   ]
   const currentVariant = variants.find(v => v.id === scenario) ?? variants[2]
+  const classeEnergie = project.energyClassGlobal ?? project.energyClassEnvelope ?? null
 
   return (
     /* Une colonne à gauche, le document à droite.
@@ -231,205 +212,11 @@ export function ProjectRapports() {
         </div>
       </aside>
 
-      <div className="min-w-0 flex-1 space-y-4 lg:max-w-4xl">
+      {/* Les feuilles A4 ont une largeur fixe : quand la fenêtre offre moins de
+          210 mm, on les fait défiler horizontalement plutôt que de laisser toute
+          la page déborder. À l'impression, la contrainte disparaît. */}
+      <div className="min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible">
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
-
-      {/* Document */}
-      {report !== 'complet' && report !== 'scenario' && report !== 'photos' && report !== 'existant' && (
-      <Card className="print:shadow-none print:border-0">
-        <CardContent className="p-6 md:p-10 space-y-6">
-          <div className="flex items-start justify-between gap-4 border-b pb-4">
-            <div>
-              <h1 className="text-2xl font-bold">{REPORT_TITLES[report]}</h1>
-              <p className="text-muted-foreground">{project.name}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Édité le {formatDate(new Date())}{auteur ? ` par ${auteur}` : ''}
-              </p>
-            </div>
-            <ReportBrand />
-          </div>
-
-          {/* Bâtiment */}
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bâtiment</h2>
-            <div className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
-              <Info l="Adresse" v={`${project.address}, ${project.postalCode ?? ''} ${project.city} (${project.canton})`} />
-              <Info l="Type" v={buildingTypeLabels[project.buildingType]} />
-              <Info l="Année de construction" v={project.yearBuilt ? String(project.yearBuilt) : '—'} />
-              <Info l="Année de rénovation" v={project.renovationYear ? String(project.renovationYear) : '—'} />
-              <Info l="Parcelle" v={project.parcelNumber ?? '—'} />
-              <Info l="Logements / étages" v={`${project.nbApartments ?? '—'} / ${project.nbFloors ?? '—'}`} />
-              <Info l="Surface plancher / bâtie" v={`${project.floorArea ?? '—'} / ${project.builtArea ?? '—'} m²`} />
-              <Info l="Façade / Toiture" v={`${metrics.facade.toFixed(0)} m² / ${roof != null ? roof + ' m²' : 'à préciser'}`} />
-            </div>
-          </section>
-
-          {/* Contraintes & données géo/énergétiques */}
-          {(project.geoData || project.energyClassGlobal || project.sre != null) && (() => {
-            const g = project.geoData
-            const heritage = [
-              g?.heritage?.isos && `ISOS (${g.heritage.isos})`,
-              g?.heritage?.unesco && `UNESCO (${g.heritage.unesco})`,
-              g?.heritage?.bln && `BLN (${g.heritage.bln})`,
-            ].filter(Boolean).join(' · ')
-            const radonHigh = g?.radonPct != null && g.radonPct >= 20
-            const notes = [
-              heritage && 'Bâtiment en secteur protégé : surcoûts patrimoniaux possibles.',
-              radonHigh && 'Zone radon élevée : mesures de mitigation possibles.',
-            ].filter(Boolean).join(' ')
-            return (
-              <section>
-                <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Contraintes &amp; données géo/énergétiques</h2>
-                <div className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
-                  {(g?.affectationDetail || g?.affectation) && <Info l="Affectation" v={(g?.affectationDetail ?? g?.affectation) as string} />}
-                  {g?.noise && <Info l="Sensibilité au bruit" v={g.noise} />}
-                  {project.egid && <Info l="EGID" v={project.egid} />}
-                  {g?.radonPct != null && <Info l="Radon (dépassement)" v={`${g.radonPct} %`} />}
-                  {g?.seismic && <Info l="Classe de sol sismique" v={g.seismic} />}
-                  {heritage && <Info l="Patrimoine protégé" v={heritage} />}
-                  {project.energyClassGlobal && <Info l="Classe énergétique" v={project.energyClassGlobal} />}
-                  {project.sre != null && <Info l="SRE (certificat)" v={`${project.sre} m²`} />}
-                  {project.energyAgent && <Info l="Agent énergétique" v={project.energyAgent} />}
-                </div>
-                {notes && <p className="mt-2 text-xs text-amber-700">{notes}</p>}
-              </section>
-            )
-          })()}
-
-          {/* Synthèse coûts */}
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Synthèse des coûts</h2>
-            <div className="grid sm:grid-cols-2 gap-6">
-              <div className="space-y-1 text-sm">
-                {/* Le détail par enveloppe n'a de sens que s'il y en a plusieurs :
-                    sinon « Réparation » et « Travaux » affichaient deux fois le même montant. */}
-                {(htImprovement > 0 || htNorms > 0) && <Row l="Réparation (HT)" v={formatCHF(htRepair)} />}
-                {htImprovement > 0 && <Row l="Amélioration (HT)" v={formatCHF(htImprovement)} />}
-                {htNorms > 0 && <Row l="Remise aux normes (HT)" v={formatCHF(htNorms)} />}
-                <Row l="Travaux (HT)" v={formatCHF(ht)} strong />
-                <Row l={`Honoraires (${project.honoraryPct ?? 0}%)`} v={formatCHF(honoraires)} />
-                <Row l={`Réserve (${project.reservePct ?? 0}%)`} v={formatCHF(reserve)} />
-                <Row l="Sous-total" v={formatCHF(sousTotal)} />
-                <Row l="TVA 8.1%" v={formatCHF(tva)} />
-                <div className="flex justify-between pt-2 border-t font-bold">
-                  <span>Total TTC</span><span>{formatCHF(total)}</span>
-                </div>
-              </div>
-              <div className="space-y-1 text-sm">
-                {byPriority.map(b => (
-                  <Row key={b.p} l={`Priorité ${b.p} (${b.count})`} v={formatCHF(b.total)} />
-                ))}
-                <p className="text-xs text-muted-foreground pt-2">Estimation ±15%. {items.length} élément{items.length !== 1 ? 's' : ''} diagnostiqué{items.length !== 1 ? 's' : ''}.</p>
-              </div>
-            </div>
-          </section>
-
-          {/* Scénarios de rénovation (sommaire) */}
-          {report === 'sommaire' && (
-            <section>
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Scénarios de rénovation</h2>
-              <VariantsCompare variants={variants} energyClass={project.energyClassGlobal ?? project.energyClassEnvelope ?? null} />
-            </section>
-          )}
-
-          {/* Détail par CFC */}
-          {report !== 'sommaire' && (
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Détail des observations (par CFC)</h2>
-            {items.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucun élément observé.</p>
-            ) : (
-              <div className="space-y-4">
-                {groups.map(g => (
-                  <div key={g.code || 'nc'} className="break-inside-avoid">
-                    <h3 className="text-sm font-bold uppercase tracking-wide border-b pb-1 mb-1">{g.code ? `${g.code} · ${g.label}` : g.label}</h3>
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-muted-foreground">
-                          <th className="font-medium py-1 w-14">CFC</th>
-                          <th className="font-medium">Élément</th>
-                          <th className="font-medium w-20">État</th>
-                          <th className="font-medium w-10">Prio.</th>
-                          <th className="font-medium text-right w-20">Quantité</th>
-                          <th className="font-medium text-right w-24">Prix unit.</th>
-                          <th className="font-medium text-right w-24">Coût</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {g.items.map(it => (
-                          <tr key={it.id} className="border-t align-top">
-                            <td className="font-mono py-1">{it.cfcCode}</td>
-                            <td className="py-1">
-                              {it.cfcLabel}
-                              {/* État existant constaté : c'est le cœur du livrable, pas seulement une aide à la saisie. */}
-                              {etatExistant(it) && <div className="text-muted-foreground">{etatExistant(it)}</div>}
-                              {it.works.length > 0 && <div className="text-muted-foreground italic">Travaux : {it.works.join(' · ')}</div>}
-                            </td>
-                            <td className="py-1">
-                              {it.state ? (
-                                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                  <span className={cn('inline-block h-2.5 w-2.5 rounded-full print:border print:border-black/20', stateColors[it.state])} />
-                                  {stateLabels[it.state]}
-                                </span>
-                              ) : 'À évaluer'}
-                            </td>
-                            <td className="py-1">{it.priority ?? '—'}</td>
-                            <td className="py-1 text-right tabular-nums">
-                              {it.area != null ? `${it.area}${it.unit ? ` ${it.unit.replace(/^CHF\s*\/?\s*/i, '')}` : ''}` : '—'}
-                              {it.quantityManual && <span className="ml-1 text-muted-foreground" title="Quantité relevée sur place">·</span>}
-                            </td>
-                            <td className="py-1 text-right tabular-nums">{unitPriceOf(it)}</td>
-                            <td className="py-1 text-right font-medium">{it.estimatedCost ? formatCHF(toNum(it.estimatedCost)) : '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-          )}
-
-          {/* Hypothèses : ce qui a été relevé, ce qui a été présumé. */}
-          <section className="break-inside-avoid">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Hypothèses retenues</h2>
-            <table className="w-full text-xs">
-              <tbody>
-                {[
-                  ['Surface de façade', `${Math.round(metrics.facade)} m²`,
-                    project.perimeter ? `périmètre ${project.perimeter} ml × ${project.nbFloors ?? '?'} étages × ${project.floorHeight ?? 2.7} m` : 'surface relevée'],
-                  ["Hauteur d'étage", `${project.floorHeight ?? 2.7} m`, project.floorHeight ? 'renseignée' : 'valeur par défaut, non relevée'],
-                  ['Part vitrée', `${project.windowPct} %`, 'appliquée à la surface de façade'],
-                  ['Surface de toiture', roof != null ? `${roof} m²` : `${Math.round(metrics.flatRoof)}–${Math.round(metrics.slopedRoof)} m²`,
-                    roof != null ? `type ${project.roofType === 'PENTE' ? 'en pente' : project.roofType === 'MIXTE' ? 'mixte' : 'plate'}` : 'type de toiture non précisé, aucune présomption'],
-                  ['Indice de construction', `× ${getMarketCoeff()}`,
-                    `indice suisse des prix de la construction (OFS)${getMarketInfo().indexDate ? `, ${getMarketInfo().index} (${marketPeriodLabel()})` : ''}`],
-                  ['Honoraires / Réserve', `${project.honoraryPct ?? 0} % / ${project.reservePct ?? 0} %`, 'réserve calculée sur le montant déjà majoré'],
-                  ['TVA', '8.1 %', 'appliquée au sous-total'],
-                ].map(([l, v, note]) => (
-                  <tr key={l} className="border-t align-top">
-                    <td className="py-1 w-44">{l}</td>
-                    <td className="py-1 w-28 font-medium tabular-nums">{v}</td>
-                    <td className="py-1 text-muted-foreground">{note}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="text-[11px] text-muted-foreground mt-2">
-              Les quantités suivies d'un point ont été relevées sur place et ne sont plus recalculées. Les
-              autres sont déduites des dimensions du bâtiment ci-dessus, à la date d'édition : corriger une
-              dimension du dossier met à jour les montants correspondants.
-            </p>
-          </section>
-
-          <p className="text-[10px] text-muted-foreground border-t pt-3">
-            {priceBasisNote()} Surfaces et coûts estimés par formules, à vérifier sur place.
-            Rapport généré par Diagly.
-          </p>
-        </CardContent>
-      </Card>
-      )}
 
       {/* Rapport complet : le livrable clé en main, garde + sommaire + méthode + état + devis */}
       {report === 'complet' && (
@@ -444,348 +231,44 @@ export function ProjectRapports() {
         />
       )}
 
-      {/* Rapport de l'existant : qualitatif, calqué sur le modèle du bureau */}
-      {report === 'existant' && (
-        <ExistingStateReport project={project} items={items} etatExistant={etatExistant} auteur={auteur} />
+      {/* Corps commun : sommaire, détaillé, documenté, et le rapport de l'onglet Rapports */}
+      {STANDARDS.includes(report) && (
+        <RapportStandard
+          project={project}
+          items={items}
+          groups={groups}
+          etatExistant={etatExistant}
+          auteur={auteur}
+          titre={REPORT_TITLES[report]}
+          sommaire={report === 'sommaire'}
+          avecPhotos={report === 'documente'}
+          variants={variants}
+        />
       )}
 
-      {/* Reportage photo : dans « Documenté » et dans « Rapports photo » */}
-      {(report === 'documente' || report === 'photos') && <PhotoReport projectName={project.name} groups={groups} />}
+      {/* Rapport de l'existant : qualitatif, calqué sur le modèle du bureau */}
+      {report === 'existant' && (
+        <RapportExistant project={project} items={items} etatExistant={etatExistant} auteur={auteur} />
+      )}
+
+      {/* Reportage photo seul */}
+      {report === 'photos' && (
+        <RapportPhoto projectName={project.name} groups={groups} auteur={auteur} />
+      )}
 
       {/* Rapport par scénario de rénovation */}
       {report === 'scenario' && (
-        <ScenarioReport
+        <RapportScenario
           projectName={project.name}
           variant={currentVariant}
           allVariants={variants}
           items={items}
-          energyClass={project.energyClassGlobal ?? project.energyClassEnvelope ?? null}
+          energyClass={classeEnergie}
+          auteur={auteur}
         />
       )}
       </div>
     </div>
-  )
-}
-
-
-// ---------------------------------------------------------------------------
-// Rapport de l'existant
-//
-// Le livrable que le bureau remet à la gérance : pas un tableau de coûts, mais
-// une description ouvrage par ouvrage, avec l'état coché et ce qu'il faut prévoir.
-// C'est le document que le client lit vraiment, et il manquait entièrement.
-// ---------------------------------------------------------------------------
-
-function ExistingStateReport({ project, items, etatExistant, auteur }: {
-  project: ApiProject
-  items: ApiDiagnosticItem[]
-  etatExistant: (it: { catalogItemId: number | null; state: ElementState | null }) => string | null
-  auteur: string
-}) {
-  const chapitres = useMemo(() => {
-    const reste = new Set(items.map((i) => i.id))
-    const sortis = CHAPITRES.map((ch) => {
-      const dedans = items
-        .filter((i) => ch.groupes.includes(cfcGroupCode(i.cfcCode) ?? ''))
-        .sort((a, b) => (a.cfcCode ?? '').localeCompare(b.cfcCode ?? '', undefined, { numeric: true }))
-      for (const i of dedans) reste.delete(i.id)
-      return { titre: ch.titre, items: dedans }
-    })
-    // Un ouvrage dont le CFC ne tombe dans aucun chapitre ne doit pas disparaître du rapport.
-    const orphelins = items.filter((i) => reste.has(i.id))
-    if (orphelins.length) sortis.push({ titre: 'Divers', items: orphelins })
-    return sortis.filter((c) => c.items.length > 0)
-  }, [items])
-
-  const niveaux = project.nbFloors ? `${project.nbFloors} niveau${project.nbFloors > 1 ? 'x' : ''}` : null
-  const photo = items.find((i) => i.photos.length > 0)?.photos[0]
-
-  return (
-    <Card className="print:border-0 print:shadow-none">
-      <CardContent className="p-6 sm:p-8 space-y-6 print:p-0">
-        <ReportBrand />
-
-        <div>
-          <h1 className="text-xl font-bold">Rapport de l'existant</h1>
-          <p className="text-sm text-muted-foreground">{project.name}</p>
-        </div>
-
-        <section className="break-inside-avoid">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Description du bâtiment</h2>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-            <div className="flex-1 space-y-1 text-sm">
-              <Info l="Adresse" v={[project.address, [project.postalCode, project.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')} />
-              {project.yearBuilt && <Info l="Date de construction" v={String(project.yearBuilt)} />}
-              {niveaux && <Info l="Nombre de niveaux" v={niveaux} />}
-              {project.floorArea != null && <Info l="Surface de plancher" v={`${Math.round(project.floorArea)} m²`} />}
-              {project.nbApartments != null && <Info l="Nombre d'appartements" v={String(project.nbApartments)} />}
-              <Info l="Type" v={buildingTypeLabels[project.buildingType] ?? project.buildingType} />
-            </div>
-            {photo && <img src={photo} alt="" className="w-full rounded border object-cover sm:w-56" />}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">État de l'existant</h2>
-          {chapitres.length === 0 && (
-            <p className="text-sm text-muted-foreground">Aucun ouvrage relevé pour l'instant.</p>
-          )}
-          <div className="space-y-6">
-            {chapitres.map((ch) => (
-              <div key={ch.titre}>
-                <h3 className="mb-2 border-b-2 border-foreground pb-1 text-sm font-bold uppercase italic">{ch.titre}</h3>
-                <div className="space-y-4">
-                  {ch.items.map((it) => {
-                    const constat = etatExistant(it)
-                    const travaux = it.works.filter((w) => w && w !== 'Néant')
-                    return (
-                      <article key={it.id} className="break-inside-avoid border-t pt-2 first:border-t-0">
-                        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                          <p className="text-sm font-semibold">
-                            {it.cfcLabel}
-                            <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{it.cfcCode}</span>
-                          </p>
-                          <div className="flex flex-wrap gap-3 text-[11px]">
-                            {ETATS.map((e) => <CaseEtat key={e} etat={e} actif={it.state === e} />)}
-                          </div>
-                        </div>
-                        {constat && <Ligne titre="État constaté" texte={constat} />}
-                        {it.notes && <Ligne titre="Observations" texte={it.notes} />}
-                        {travaux.length > 0 && <Ligne titre="Travaux à prévoir" texte={travaux.join(' ')} />}
-                        {it.improvement && <Ligne titre="Amélioration possible" texte={it.improvement} />}
-                        {it.norms && <Ligne titre="Remise aux normes" texte={it.norms} />}
-                        {!constat && !it.notes && travaux.length === 0 && !it.improvement && !it.norms && (
-                          <p className="mt-1 text-xs italic text-muted-foreground">
-                            {it.state ? 'Aucune observation saisie.' : 'Élément non encore évalué.'}
-                          </p>
-                        )}
-                      </article>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <p className="border-t pt-3 text-[10px] text-muted-foreground">
-          Date d'édition : {formatDate(new Date())}{auteur ? ` · ${auteur}` : ''}.
-          Rapport descriptif, établi sur la base d'une visite. Il ne comporte pas de sondage destructif.
-        </p>
-      </CardContent>
-    </Card>
-  )
-}
-
-function PhotoReport({ projectName, groups }: {
-  projectName: string
-  groups: { code: string; label: string; items: { id: string; cfcCode: string; cfcLabel: string; state: keyof typeof stateLabels | null; priority: string | null; photos: string[]; notes: string | null; works: string[] }[] }[]
-}) {
-  // On ne garde que les éléments qui ont des photos.
-  const withPhotos = groups
-    .map(g => ({ ...g, items: g.items.filter(i => i.photos.length > 0) }))
-    .filter(g => g.items.length > 0)
-  const total = withPhotos.reduce((s, g) => s + g.items.reduce((n, i) => n + i.photos.length, 0), 0)
-
-  return (
-    <Card className="print:shadow-none print:border-0">
-      <CardContent className="p-6 md:p-10 space-y-6">
-        <div className="flex items-start justify-between gap-4 border-b pb-4">
-          <div>
-            <h1 className="text-2xl font-bold">Rapport photo</h1>
-            <p className="text-muted-foreground">{projectName}</p>
-          </div>
-          <ReportBrand />
-        </div>
-
-        {total === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucune photo n'a encore été prise dans le diagnostic. Ajoutez des photos sur les éléments depuis l'éditeur.</p>
-        ) : (
-          <div className="space-y-6">
-            {withPhotos.map(g => (
-              <section key={g.code || 'nc'}>
-                <h2 className="text-sm font-bold uppercase tracking-wide border-b pb-1 mb-3">{g.code ? `${g.code} · ${g.label}` : g.label}</h2>
-                <div className="space-y-5">
-                  {g.items.map(it => (
-                    <div key={it.id} className="break-inside-avoid">
-                      <div className="flex flex-wrap items-baseline gap-x-3 mb-2">
-                        <span className="font-mono text-sm text-muted-foreground">{it.cfcCode}</span>
-                        <span className="font-medium">{it.cfcLabel}</span>
-                        <span className="text-xs text-muted-foreground">{it.state ? stateLabels[it.state] : 'À évaluer'}{it.priority ? ` · Priorité ${it.priority}` : ''}</span>
-                      </div>
-                      {(it.notes || it.works.length > 0) && (
-                        <p className="text-xs text-muted-foreground mb-2">{it.notes || it.works.join(' · ')}</p>
-                      )}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {it.photos.map((src, i) => (
-                          <img key={i} src={src} alt="" className="w-full aspect-[4/3] object-cover rounded border" />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
-
-        <p className="text-[10px] text-muted-foreground border-t pt-3">
-          Rapport photo généré par Diagly · {total} photo{total !== 1 ? 's' : ''}.
-        </p>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ---- Scénarios de rénovation ----
-/** Forfait de scénario : estimé depuis la géométrie, hors éléments diagnostiqués. */
-interface RPack { label: string; basis: string; amount: number }
-
-interface RVariant {
-  id: ScenarioId; name: string; envelopes: string[]; energyFocus: boolean
-  packs: RPack[]
-  ht: number; honoraires: number; reserve: number; sousTotal: number; tva: number; total: number
-}
-type RItem = {
-  id: string; cfcCode: string; cfcLabel: string; state: keyof typeof stateLabels | null
-  priority: string | null; estimatedCost: string | null; improvementCost: string | null; normsCost: string | null
-}
-
-/** Tableau comparatif compact des 3 scénarios (utilisé dans le rapport sommaire). */
-function VariantsCompare({ variants, energyClass }: { variants: RVariant[]; energyClass: string | null }) {
-  const v0 = variants[0]
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-muted-foreground border-b">
-            <th className="font-medium py-1.5">Poste</th>
-            {variants.map(v => <th key={v.id} className="font-medium text-right py-1.5 whitespace-nowrap">{v.name}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          <tr className="border-b"><td className="py-1 text-muted-foreground">Périmètre</td>{variants.map(v => <td key={v.id} className="py-1 text-right text-[11px] text-muted-foreground">{v.envelopes.join(' + ')}</td>)}</tr>
-          <tr className="border-b"><td className="py-1">Travaux (HT)</td>{variants.map(v => <td key={v.id} className="py-1 text-right">{formatCHF(v.ht)}</td>)}</tr>
-          <tr className="border-t-2 font-bold"><td className="py-2">Total TTC</td>{variants.map(v => <td key={v.id} className="py-2 text-right text-primary">{formatCHF(v.total)}</td>)}</tr>
-          <tr className="text-xs text-muted-foreground"><td className="py-1">Écart vs Maintenance</td>{variants.map(v => <td key={v.id} className="py-1 text-right">{v.total === v0.total ? '—' : `+${formatCHF(v.total - v0.total)}`}</td>)}</tr>
-        </tbody>
-      </table>
-      <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1"><Leaf className="h-3.5 w-3.5 text-emerald-600 shrink-0" />Classe énergétique actuelle : <b>{energyClass ?? 'non renseignée'}</b>. La variante énergétique vise l'amélioration de la performance.</p>
-    </div>
-  )
-}
-
-/** Rapport dédié à un scénario de rénovation : périmètre, cascade de coûts, éléments concernés. */
-function ScenarioReport({ projectName, variant, allVariants, items, energyClass }: {
-  projectName: string; variant: RVariant; allVariants: RVariant[]; items: RItem[]; energyClass: string | null
-}) {
-  const amountFor = (it: RItem) => {
-    let a = toNum(it.estimatedCost)
-    if (variant.id !== 'maintenance') a += toNum(it.improvementCost)
-    if (variant.id === 'energetique') a += toNum(it.normsCost)
-    return a
-  }
-  const lines = items.map(it => ({ it, amount: amountFor(it) })).filter(l => l.amount > 0).sort((a, b) => b.amount - a.amount)
-  const v0 = allVariants[0]
-
-  return (
-    <Card className="print:shadow-none print:border-0">
-      <CardContent className="p-6 md:p-10 space-y-6">
-        <div className="flex items-start justify-between gap-4 border-b pb-4">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              {variant.energyFocus && <Leaf className="h-6 w-6 text-emerald-600" />}Scénario : {variant.name}
-            </h1>
-            <p className="text-muted-foreground">{projectName}</p>
-          </div>
-          <ReportBrand />
-        </div>
-
-        <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Périmètre du scénario</h2>
-          <div className="flex flex-wrap gap-1.5">
-            {variant.envelopes.map(e => <Badge key={e} variant="outline">{e}</Badge>)}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Coût du scénario</h2>
-          <div className="grid sm:grid-cols-2 gap-6 text-sm">
-            <div className="space-y-1">
-              <Row l="Travaux (HT)" v={formatCHF(variant.ht)} strong />
-              <Row l="Honoraires" v={formatCHF(variant.honoraires)} />
-              <Row l="Réserve" v={formatCHF(variant.reserve)} />
-              <Row l="Sous-total" v={formatCHF(variant.sousTotal)} />
-              <Row l="TVA 8.1%" v={formatCHF(variant.tva)} />
-              <div className="flex justify-between pt-2 border-t font-bold"><span>Total TTC</span><span>{formatCHF(variant.total)}</span></div>
-            </div>
-            <div className="space-y-1 text-muted-foreground">
-              {allVariants.map(v => (
-                <Row key={v.id} l={v.name} v={`${formatCHF(v.total)}${v.total === v0.total ? '' : ` (+${formatCHF(v.total - v0.total)})`}`} />
-              ))}
-              <p className="text-xs pt-2">
-                Estimation ±15%. {lines.length} élément{lines.length !== 1 ? 's' : ''} diagnostiqué{lines.length !== 1 ? 's' : ''}
-                {variant.packs.length > 0 && ` + ${variant.packs.length} forfait${variant.packs.length !== 1 ? 's' : ''} de scénario`}.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">Éléments concernés</h2>
-          {lines.length === 0 && variant.packs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aucun coût pour ce scénario. Renseignez les enveloppes correspondantes dans le diagnostic.</p>
-          ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-muted-foreground border-b">
-                  <th className="font-medium py-1 w-14">CFC</th>
-                  <th className="font-medium">Élément</th>
-                  <th className="font-medium w-20">État</th>
-                  <th className="font-medium w-10">Prio.</th>
-                  <th className="font-medium text-right w-24">Montant</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map(({ it, amount }) => (
-                  <tr key={it.id} className="border-t align-top">
-                    <td className="font-mono py-1">{it.cfcCode}</td>
-                    <td className="py-1">{it.cfcLabel}</td>
-                    <td className="py-1">{it.state ? stateLabels[it.state] : 'À évaluer'}</td>
-                    <td className="py-1">{it.priority ?? '—'}</td>
-                    <td className="py-1 text-right font-medium">{formatCHF(amount)}</td>
-                  </tr>
-                ))}
-                {variant.packs.map(pack => (
-                  <tr key={pack.label} className="border-t align-top">
-                    <td className="py-1 text-muted-foreground">—</td>
-                    <td className="py-1">
-                      {pack.label}
-                      <div className="text-muted-foreground">{pack.basis}</div>
-                    </td>
-                    <td className="py-1 text-muted-foreground">estimé</td>
-                    <td className="py-1 text-muted-foreground">—</td>
-                    <td className="py-1 text-right font-medium">{formatCHF(pack.amount)}</td>
-                  </tr>
-                ))}
-                <tr className="border-t-2 font-semibold">
-                  <td className="py-1" colSpan={4}>Total travaux (HT)</td>
-                  <td className="py-1 text-right">{formatCHF(variant.ht)}</td>
-                </tr>
-              </tbody>
-            </table>
-          )}
-        </section>
-
-        {variant.energyFocus && (
-          <p className="text-xs text-emerald-700 flex items-center gap-1"><Leaf className="h-3.5 w-3.5 shrink-0" />Scénario à visée énergétique — classe actuelle : <b>{energyClass ?? 'non renseignée'}</b>. Inclut isolation et remise aux normes.</p>
-        )}
-
-        <p className="text-[10px] text-muted-foreground border-t pt-3">
-          {priceBasisNote()} Scénario « {variant.name} », rapport généré par Diagly.
-        </p>
-      </CardContent>
-    </Card>
   )
 }
 
@@ -814,7 +297,7 @@ function ShareControl({ projectId, initialToken }: { projectId: string; initialT
 
   return (
     <div className="relative">
-      <Button variant="outline" onClick={() => (token ? setOpen((o) => !o) : enable())} disabled={loading}>
+      <Button variant="outline" onClick={() => (token ? setOpen((o) => !o) : enable())} disabled={loading} className="w-full justify-start">
         {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />}
         {token ? 'Lien de partage' : 'Partager'}
       </Button>
@@ -844,4 +327,3 @@ function ShareControl({ projectId, initialToken }: { projectId: string; initialT
     </div>
   )
 }
-
