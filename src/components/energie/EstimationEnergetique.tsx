@@ -6,11 +6,11 @@ import { api } from '@/lib/api'
 import type { ApiProject } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
 import {
-  AGENTS, appliquerMesures, calculer, comparer, libelleAgent, libelleElement,
-  type Agent, type Categorie, type ElementEnveloppe, type EntreeEnergie, type Etat,
-  type Ligne, type Mesure, type Resultat,
+  AGENTS, comparer, libelleAgent, libelleElement,
+  type Categorie, type Etat, type Ligne, type Resultat,
 } from '@/lib/energie/calcul'
-import { reprendreDuDiagnostic, type OuvrageReleve } from '@/lib/energie/depuis-diagnostic'
+import { assembler, ELEMENTS, type SaisieEnergie } from '@/lib/energie/entree'
+import type { OuvrageReleve } from '@/lib/energie/depuis-diagnostic'
 import { AvantApres } from './EtiquetteAG'
 
 /**
@@ -25,8 +25,6 @@ import { AvantApres } from './EtiquetteAG'
  * se range dans energyData du projet, pour que l'écran rouvre où on l'a laissé.
  */
 
-const ELEMENTS: ElementEnveloppe[] = ['toiture', 'facades', 'fenetres', 'sol', 'ventilation']
-
 const ETATS: { v: Etat; label: string; couleur: string }[] = [
   { v: 1, label: 'Très bon', couleur: 'bg-green-500' },
   { v: 2, label: 'Bon', couleur: 'bg-green-400' },
@@ -40,35 +38,19 @@ const CATEGORIES: { v: Categorie; label: string }[] = [
   { v: 'ADMINISTRATIF', label: 'Administratif' },
 ]
 
-/** Ce que l'utilisateur a corrigé à la main, et qui survit au rechargement. */
-interface Saisie {
-  categorie?: Categorie
-  sre?: number | null
-  anneeConstruction?: number | null
-  agentChauffage?: Agent
-  agentEcs?: Agent | null
-  photovoltaiqueKwc?: number | null
-  etats?: Partial<Record<ElementEnveloppe | 'production', Etat>>
-  renovations?: Partial<Record<ElementEnveloppe, number | null>>
-  mesures?: string[]
-}
-
-const categorieParDefaut = (t: string): Categorie => {
-  if (t === 'LOGEMENT') return 'COLLECTIF'
-  if (t === 'BUREAU' || t === 'ADMINISTRATIF') return 'ADMINISTRATIF'
-  return 'INDIVIDUEL'
-}
+/* La saisie corrigée à la main et l'assemblage de l'entrée vivent dans
+   `@/lib/energie/entree`, partagés avec le rapport. */
 
 export function EstimationEnergetique({ project, ouvrages }: {
   project: ApiProject
   ouvrages: OuvrageReleve[]
 }) {
   const queryClient = useQueryClient()
-  const enregistre = (project.energyData?.estimation as Saisie | undefined) ?? {}
-  const [saisie, setSaisie] = useState<Saisie>(enregistre)
+  const enregistre = (project.energyData?.estimation as SaisieEnergie | undefined) ?? {}
+  const [saisie, setSaisie] = useState<SaisieEnergie>(enregistre)
 
   const sauver = useMutation({
-    mutationFn: (s: Saisie) => api.projects.update(project.id, {
+    mutationFn: (s: SaisieEnergie) => api.projects.update(project.id, {
       energyData: { ...(project.energyData ?? {}), estimation: s },
     }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', project.id] }),
@@ -83,61 +65,14 @@ export function EstimationEnergetique({ project, ouvrages }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saisie])
 
-  const reprise = useMemo(() => reprendreDuDiagnostic(ouvrages), [ouvrages])
+  const modifier = (p: Partial<SaisieEnergie>) => setSaisie((s) => ({ ...s, ...p }))
 
-  const modifier = (p: Partial<Saisie>) => setSaisie((s) => ({ ...s, ...p }))
-
-  const entree: EntreeEnergie = useMemo(() => ({
-    anneeConstruction: saisie.anneeConstruction ?? project.yearBuilt ?? 1970,
-    categorie: saisie.categorie ?? categorieParDefaut(project.buildingType),
-    sre: saisie.sre ?? project.sre ?? project.floorArea ?? 0,
-    agentChauffage: saisie.agentChauffage ?? 'MAZOUT_ANCIEN',
-    etatProduction: saisie.etats?.production ?? reprise.etatProduction,
-    agentEcs: saisie.agentEcs ?? null,
-    photovoltaiqueKwc: saisie.photovoltaiqueKwc ?? null,
-    elements: Object.fromEntries(ELEMENTS.map((e) => [e, {
-      etat: saisie.etats?.[e] ?? reprise.elements[e].etat,
-      anneeRenovation: saisie.renovations?.[e] ?? null,
-    }])) as EntreeEnergie['elements'],
-  }), [saisie, project, reprise])
-
-  /** Les mesures que le diagnostic justifie : un élément dégradé appelle sa rénovation. */
-  const mesuresPossibles = useMemo(() => {
-    const liste: { cle: string; libelle: string; mesure: Mesure; conseillee: boolean }[] = []
-    for (const e of ELEMENTS) {
-      const etat = entree.elements[e].etat
-      liste.push({
-        cle: `isoler:${e}`,
-        libelle: e === 'ventilation' ? "Reprendre l'étanchéité et la ventilation" : `Isoler ${libelleElement(e).toLowerCase()}`,
-        mesure: { type: 'ISOLER', element: e },
-        conseillee: etat >= 3,
-      })
-    }
-    liste.push({
-      cle: 'production:PAC_AIR_EAU',
-      libelle: 'Remplacer la production par une pompe à chaleur air-eau',
-      mesure: { type: 'PRODUCTION', agent: 'PAC_AIR_EAU' },
-      conseillee: entree.etatProduction >= 3,
-    })
-    if (!entree.photovoltaiqueKwc) {
-      liste.push({
-        cle: 'pv:10',
-        libelle: 'Poser 10 kWc de photovoltaïque',
-        mesure: { type: 'PHOTOVOLTAIQUE', kwc: 10 },
-        conseillee: false,
-      })
-    }
-    return liste
-  }, [entree])
-
-  // Au premier affichage, les mesures conseillées sont cochées, comme le veut la spec.
-  const cochees = saisie.mesures ?? mesuresPossibles.filter((m) => m.conseillee).map((m) => m.cle)
-
-  const avant = useMemo(() => calculer(entree), [entree])
-  const apres = useMemo(() => {
-    const retenues = mesuresPossibles.filter((m) => cochees.includes(m.cle)).map((m) => m.mesure)
-    return calculer(appliquerMesures(entree, retenues))
-  }, [entree, mesuresPossibles, cochees])
+  // Un seul assemblage, partagé avec le rapport : deux constructions séparées du
+  // même bâtiment finiraient par donner deux classes selon l'écran regardé.
+  const { entree, reprise, mesuresPossibles, cochees, avant, apres } = useMemo(
+    () => assembler(project, ouvrages, saisie),
+    [project, ouvrages, saisie],
+  )
 
   const gain = comparer(avant, apres, entree.sre)
 

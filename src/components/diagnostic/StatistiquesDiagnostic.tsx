@@ -47,23 +47,10 @@ export function StatistiquesDiagnostic({ diagnosticId }: { diagnosticId: string 
   }
 
   const items = itemsQuery.data?.items ?? []
-
-  if (items.length === 0) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center">
-          <ClipboardCheck className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-          <h3 className="font-semibold mb-1">Aucun ouvrage relevé</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Les chiffres apparaîtront ici dès le premier relevé.
-          </p>
-          <Link to={`/app/diagnostic/${diagnosticId}`}>
-            <Button><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir l'éditeur</Button>
-          </Link>
-        </CardContent>
-      </Card>
-    )
-  }
+  // Les sections restent en place quand le dossier est vide, avec leurs zéros.
+  // Un écran qui change de forme au premier relevé oblige à réapprendre où
+  // regarder, et on ne voit plus que ce qui vient d'apparaître.
+  const vide = items.length === 0
 
   const total = items.reduce((s, i) => s + toNum(i.estimatedCost), 0)
   const pI = items.filter(i => i.priority === 'I')
@@ -94,13 +81,28 @@ export function StatistiquesDiagnostic({ diagnosticId }: { diagnosticId: string 
         <Chiffre valeur={formatCHF(total)} libelle="de travaux estimés" />
       </div>
 
-      <Suspense fallback={<div className="h-[260px] rounded-xl border bg-muted/30 animate-pulse" />}>
-        <DiagnosticCharts priorityData={priorityData} stateDistribution={stateDistribution} />
-      </Suspense>
+      {vide ? (
+        <Card>
+          <CardContent className="flex h-[260px] flex-col items-center justify-center gap-3 text-center">
+            <ClipboardCheck className="h-9 w-9 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">
+              Les graphiques apparaîtront au premier relevé.
+            </p>
+            <Link to={`/app/diagnostic/${diagnosticId}`}>
+              <Button variant="outline"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir l'éditeur</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        <Suspense fallback={<div className="h-[260px] rounded-xl border bg-muted/30 animate-pulse" />}>
+          <DiagnosticCharts priorityData={priorityData} stateDistribution={stateDistribution} />
+        </Suspense>
+      )}
 
       <Card>
         <CardHeader><CardTitle>Ouvrages les plus coûteux</CardTitle></CardHeader>
         <CardContent>
+          {vide && <p className="py-2 text-sm text-muted-foreground">Aucun ouvrage relevé.</p>}
           <div className="space-y-1">
             {topCFC.map((item, i) => {
               const pc = item.priority ? priorityCircleColors[item.priority] : { bg: 'bg-gray-400', ring: 'ring-gray-200' }
@@ -165,6 +167,13 @@ export function StatistiquesDiagnostic({ diagnosticId }: { diagnosticId: string 
               </TableRow>
             </TableHeader>
             <TableBody>
+              {vide && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                    Aucun ouvrage relevé.
+                  </TableCell>
+                </TableRow>
+              )}
               {items.map(item => (
                 <TableRow key={item.id} className="hover:bg-muted/50">
                   <TableCell className="font-mono text-sm">{item.cfcCode}</TableCell>

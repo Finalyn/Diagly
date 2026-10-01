@@ -31,10 +31,14 @@ import { computeProjectMetrics } from '@/lib/formulas'
 import { cn, formatCHF, formatDate } from '@/lib/utils'
 import type { ApiCatalogItem, ApiCfcEntry, ApiDiagnosticItem, ApiProject, ApiVariant, ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
+import { AvertissementEnergie, CorpsEnergie } from './ChapitreEnergie'
 import { CHAPITRES, ETATS, PAGE } from './constants'
 import { CaseEtat, Info, Ligne, Row } from './shared'
 import { DocumentA4, type BlocDocument } from './PagesA4'
 import { usePageDuBloc } from './page-contexte'
+
+/** Titre du chapitre énergétique : il vit avec le sommaire, qui l'annonce. */
+const TITRE_ENERGIE = 'Estimation énergétique indicative'
 
 /**
  * Chapitres du document, dans l'ordre. Sert au sommaire et aux titres.
@@ -48,8 +52,25 @@ const SOMMAIRE = [
   { n: 4, titre: 'Devis estimatif ±15 %', bloc: 'c4-titre' },
 ]
 
-/** Chapitre des variantes : il ne paraît que si le projet en porte. */
-const CHAPITRE_VARIANTES = { n: 5, titre: 'Variantes de projet', bloc: 'c5-titre' }
+type Chapitre = { n: number; titre: string; bloc: string }
+
+/**
+ * Les chapitres du document, numérotés à la volée.
+ *
+ * Deux d'entre eux ne paraissent pas toujours : l'estimation énergétique suit la
+ * présence d'une surface de référence, les variantes celle d'au moins une
+ * variante. Numéroter en dur obligeait à renuméroter la main à chaque ajout, et
+ * laissait le sommaire annoncer un chapitre quatre devant un chapitre cinq absent.
+ */
+function chapitresDuDocument(avecEnergie: boolean, avecVariantes: boolean): Chapitre[] {
+  const l: Chapitre[] = SOMMAIRE.map((c) => ({ ...c }))
+  if (avecEnergie) l.push({ n: l.length + 1, titre: TITRE_ENERGIE, bloc: 'c-energie-titre' })
+  if (avecVariantes) l.push({ n: l.length + 1, titre: 'Variantes de projet', bloc: 'c5-titre' })
+  return l
+}
+
+const numeroDe = (chapitres: Chapitre[], bloc: string) =>
+  chapitres.find((c) => c.bloc === bloc)?.n ?? 0
 
 /** Identité d'entreprise reprise des réglages ; le logo par défaut est celui de Diagly. */
 type Entreprise = {
@@ -108,6 +129,14 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
     [variants, items, project, devis.ht, catalogue],
   )
 
+  // Sans surface de référence énergétique, tout le calcul au mètre carré tombe :
+  // mieux vaut pas de chapitre qu'un chapitre qui divise par zéro.
+  const avecEnergie = Boolean(project.sre ?? project.floorArea)
+  const chapitresDoc = useMemo(
+    () => chapitresDuDocument(avecEnergie, variantes.length > 0),
+    [avecEnergie, variantes.length],
+  )
+
   const aujourdhui = formatDate(new Date())
   const adresse = [project.address, [project.postalCode, project.city].filter(Boolean).join(' ')]
     .filter(Boolean).join(', ')
@@ -128,7 +157,7 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
     // ------------------------------------------------------------- sommaire
     bloc('sommaire-titre', <h2 className="mb-4 text-2xl font-bold">Sommaire</h2>,
       { nouvellePage: true, avecSuivant: true })
-    bloc('sommaire', <Sommaire avecVariantes={variantes.length > 0} />)
+    bloc('sommaire', <Sommaire chapitres={chapitresDoc} />)
 
     // ------------------------------------------------------- 1. la méthode
     bloc('c1-titre', <ChapitreTitre n={1} titre="La méthode Diagly" />,
@@ -281,9 +310,22 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
       bloc('c4-total', <TotalOperation devis={devis} project={project} />)
     }
 
-    // ------------------------------------------------------- 5. variantes
+    // -------------------------------------------- estimation énergétique
+    // Elle ne demande aucune saisie supplémentaire : les états viennent des
+    // ouvrages relevés, le reste du dossier. Sans surface de référence, en
+    // revanche, le calcul au mètre carré n'a pas de sens et le chapitre saute.
+    if (avecEnergie) {
+      bloc('c-energie-titre',
+        <ChapitreTitre n={numeroDe(chapitresDoc, 'c-energie-titre')} titre={TITRE_ENERGIE} />,
+        { nouvellePage: true, avecSuivant: true })
+      bloc('c-energie-avertissement', <AvertissementEnergie />, { avecSuivant: true })
+      bloc('c-energie-corps', <CorpsEnergie project={project} ouvrages={items} />)
+    }
+
+    // ------------------------------------------------------- variantes
     if (variantes.length > 0) {
-      bloc('c5-titre', <ChapitreTitre n={5} titre="Variantes de projet" />,
+      bloc('c5-titre',
+        <ChapitreTitre n={numeroDe(chapitresDoc, 'c5-titre')} titre="Variantes de projet" />,
         { nouvellePage: true, avecSuivant: true })
       bloc('c5-intro', (
         <p className="mb-4 text-muted-foreground">
@@ -311,7 +353,7 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
     ))
 
     return out
-  }, [project, items, chapitres, devis, variantes, catalogue, etatExistant, metrics, adresse, aujourdhui, auteur, company])
+  }, [project, items, chapitres, chapitresDoc, avecEnergie, devis, variantes, catalogue, etatExistant, metrics, adresse, aujourdhui, auteur, company])
 
   return (
     <DocumentA4
@@ -391,8 +433,7 @@ function PageDeGarde({ project, items, adresse, aujourdhui, auteur, company }: {
  * second rendu. Un tiret tient la place en attendant, plutôt qu'un vide qui
  * ferait sauter la ligne quand le chiffre arrive.
  */
-function Sommaire({ avecVariantes }: { avecVariantes: boolean }) {
-  const chapitres = avecVariantes ? [...SOMMAIRE, CHAPITRE_VARIANTES] : SOMMAIRE
+function Sommaire({ chapitres }: { chapitres: Chapitre[] }) {
   return (
     <ol>
       {chapitres.map((c) => <LigneSommaire key={c.n} chapitre={c} />)}
@@ -400,7 +441,7 @@ function Sommaire({ avecVariantes }: { avecVariantes: boolean }) {
   )
 }
 
-function LigneSommaire({ chapitre }: { chapitre: (typeof SOMMAIRE)[number] }) {
+function LigneSommaire({ chapitre }: { chapitre: Chapitre }) {
   const page = usePageDuBloc(chapitre.bloc)
   return (
     <li className="flex items-baseline gap-3 border-b py-2">
