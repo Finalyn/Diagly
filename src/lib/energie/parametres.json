@@ -1,0 +1,144 @@
+{
+  "_lisezMoi": [
+    "Paramètres de l'estimation énergétique indicative.",
+    "",
+    "Ce fichier est volontairement séparé du code : les valeurs se corrigent ici, sans",
+    "toucher au calcul. Le moteur ne porte aucune constante.",
+    "",
+    "ATTENTION : les entrées listées dans « aValider » sont des valeurs provisoires,",
+    "posées pour que le calcul tourne. Elles ne sont PAS officielles. Le libellé",
+    "« estimation indicative » de l'interface ne couvre pas une table fausse : tant que",
+    "ces valeurs ne sont pas remplacées, le résultat global ne doit pas être présenté",
+    "comme une classe, seulement comme un ordre de grandeur.",
+    "",
+    "Ce n'est jamais un CECB officiel. Seul un expert CECB certifié peut en délivrer un."
+  ],
+
+  "version": "2026-10-01",
+
+  "aValider": [
+    "qhLimite",
+    "ponderation",
+    "seuilsGlobal",
+    "photovoltaique"
+  ],
+
+  "besoinDeBase": {
+    "_unite": "kWh/m²·an",
+    "_source": "valeurs par défaut fournies dans la spécification, à valider",
+    "periodes": [
+      { "jusqua": 1919, "valeur": 150, "libelle": "avant 1920" },
+      { "jusqua": 1945, "valeur": 160, "libelle": "1920 à 1945" },
+      { "jusqua": 1960, "valeur": 170, "libelle": "1946 à 1960" },
+      { "jusqua": 1975, "valeur": 160, "libelle": "1961 à 1975" },
+      { "jusqua": 1985, "valeur": 120, "libelle": "1976 à 1985" },
+      { "jusqua": 1995, "valeur": 95, "libelle": "1986 à 1995" },
+      { "jusqua": 2005, "valeur": 75, "libelle": "1996 à 2005" },
+      { "jusqua": 2015, "valeur": 50, "libelle": "2006 à 2015" },
+      { "jusqua": 9999, "valeur": 35, "libelle": "après 2015" }
+    ]
+  },
+
+  "partsDeperdition": {
+    "_somme": 1,
+    "toiture": 0.2,
+    "facades": 0.35,
+    "fenetres": 0.25,
+    "sol": 0.1,
+    "ventilation": 0.1
+  },
+
+  "coefEtat": {
+    "_note": "1 = très bon, 2 = bon, 3 = moyen, 4 = mauvais",
+    "1": 1.0,
+    "2": 1.05,
+    "3": 1.15,
+    "4": 1.3
+  },
+
+  "qhLimite": {
+    "_unite": "kWh/m²·an",
+    "_note": "Valeur limite du neuf, par catégorie. 40 par défaut, À VALIDER.",
+    "INDIVIDUEL": 40,
+    "COLLECTIF": 40,
+    "ADMINISTRATIF": 40
+  },
+
+  "seuilsEnveloppe": [
+    { "classe": "A", "ratioMax": 0.5 },
+    { "classe": "B", "ratioMax": 1.0 },
+    { "classe": "C", "ratioMax": 1.5 },
+    { "classe": "D", "ratioMax": 2.0 },
+    { "classe": "E", "ratioMax": 2.4 },
+    { "classe": "F", "ratioMax": 2.9 },
+    { "classe": "G", "ratioMax": null }
+  ],
+
+  "besoinECS": {
+    "_unite": "kWh/m²·an",
+    "INDIVIDUEL": 14,
+    "COLLECTIF": 21,
+    "ADMINISTRATIF": 14
+  },
+
+  "agents": {
+    "_note": "rendement = facteur de conversion besoin utile vers énergie finale. Au-dessus de 1 pour les pompes à chaleur (COP). ponderation À VALIDER.",
+    "MAZOUT_ANCIEN": { "libelle": "Mazout, chaudière ancienne", "rendement": 0.8, "ponderation": 1.0 },
+    "MAZOUT_CONDENSATION": { "libelle": "Mazout à condensation", "rendement": 0.95, "ponderation": 1.0 },
+    "GAZ_ANCIEN": { "libelle": "Gaz, chaudière ancienne", "rendement": 0.8, "ponderation": 1.0 },
+    "GAZ_CONDENSATION": { "libelle": "Gaz à condensation", "rendement": 0.95, "ponderation": 1.0 },
+    "BOIS": { "libelle": "Bois ou pellets", "rendement": 0.75, "ponderation": 0.5 },
+    "PAC_AIR_EAU": { "libelle": "Pompe à chaleur air-eau", "rendement": 2.8, "ponderation": 2.0 },
+    "PAC_SOL_EAU": { "libelle": "Pompe à chaleur sol-eau", "rendement": 3.8, "ponderation": 2.0 },
+    "CAD": { "libelle": "Chauffage à distance", "rendement": 1.0, "ponderation": 0.6 },
+    "ELECTRIQUE_DIRECT": { "libelle": "Électrique direct", "rendement": 1.0, "ponderation": 2.0 }
+  },
+
+  "degradationRendement": {
+    "_note": "Appliquée au rendement de la production quand son état est 3 ou 4.",
+    "part": 0.1,
+    "etatsConcernes": [3, 4]
+  },
+
+  "photovoltaique": {
+    "_note": "À VALIDER. Production annuelle par kWc installé, et part réellement autoconsommée.",
+    "productionParKwc": 950,
+    "partAutoconsommee": 0.3
+  },
+
+  "seuilsGlobal": {
+    "_note": "À VALIDER, tables officielles attendues. Seuils en énergie pondérée, kWh/m²·an.",
+    "paliers": [
+      { "classe": "A", "max": 35 },
+      { "classe": "B", "max": 70 },
+      { "classe": "C", "max": 105 },
+      { "classe": "D", "max": 140 },
+      { "classe": "E", "max": 170 },
+      { "classe": "F", "max": 200 },
+      { "classe": "G", "max": null }
+    ]
+  },
+
+  "renovation": {
+    "_note": "Niveau atteint par un élément rénové : il prend le besoin de base de cette année-là, et l'état neuf.",
+    "anneeEquivalente": 2020,
+    "etatEquivalent": 1
+  },
+
+  "correspondanceCfc": {
+    "_note": [
+      "Quels ouvrages du diagnostic alimentent quel élément énergétique, par préfixe de code CFC.",
+      "À RELIRE par le bureau : un préfixe oublié rend un élément muet, et l'onglet",
+      "retombe alors sur l'état par défaut sans le dire. La liste est volontairement ici",
+      "et non dans le code, pour que le catalogue puisse évoluer sans livraison.",
+      "L'état retenu pour un élément est le PLUS MAUVAIS des ouvrages qui lui correspondent :",
+      "une façade dont un pan est en ruine n'est pas une façade moyenne."
+    ],
+    "toiture": ["214", "222", "224", "225", "227"],
+    "facades": ["215", "216", "217", "226", "228"],
+    "fenetres": ["221"],
+    "sol": ["211", "213", "271"],
+    "ventilation": ["244"],
+    "production": ["242", "243", "245", "246", "247"]
+  }
+}

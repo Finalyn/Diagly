@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, AlertCircle, Zap, Upload, Check, AlertTriangle, FileText } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui'
+import { EstimationEnergetique } from '@/components/energie/EstimationEnergetique'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { buildingTypeLabels } from '@/data/mock'
 import { cn, formatDate } from '@/lib/utils'
@@ -63,6 +64,16 @@ export function ProjectCECB() {
   const queryClient = useQueryClient()
   const { data, isLoading, isError } = useQuery({ queryKey: ['project', id], queryFn: () => api.projects.get(id!), enabled: !!id })
   const project = data?.project
+
+  // Les ouvrages relevés alimentent l'estimation : inutile de redemander l'état de
+  // la toiture à quelqu'un qui vient de le saisir dans le diagnostic.
+  const diagnosticId = data?.diagnostics?.[0]?.id
+  const itemsQuery = useQuery({
+    queryKey: ['diagnostic-items', diagnosticId],
+    queryFn: () => api.diagnostics.listItems(diagnosticId!),
+    enabled: !!diagnosticId,
+  })
+  const ouvrages = itemsQuery.data?.items ?? []
 
   const fileInput = useRef<HTMLInputElement>(null)
   const [extraction, setExtraction] = useState<CecbExtraction | null>(null)
@@ -154,6 +165,17 @@ export function ProjectCECB() {
           <AlertTriangle className="h-4 w-4 shrink-0" />{msg}
         </div>
       )}
+
+      {/* L'estimation calculée depuis le diagnostic. Elle vient avant le certificat
+          importé : la plupart des dossiers n'en ont pas, et c'est elle qu'on consulte. */}
+      <EstimationEnergetique project={project} ouvrages={ouvrages} />
+
+      <div className="pt-2">
+        <h2 className="text-lg font-semibold">Certificat officiel</h2>
+        <p className="text-sm text-muted-foreground">
+          Si le bâtiment possède un CECB, importez-le : ses valeurs mesurées remplacent l'estimation.
+        </p>
+      </div>
 
       <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
         {/* Classe (mesurée ou estimée) */}
