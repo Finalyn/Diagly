@@ -36,6 +36,7 @@ const ProjectRapports = lazy(() => named(import('@/pages/app/ProjectRapports'), 
 const ProjectVariantes = lazy(() => named(import('@/pages/app/ProjectVariantes'), 'ProjectVariantes'))
 const ProjectCECB = lazy(() => named(import('@/pages/app/ProjectCECB'), 'ProjectCECB'))
 const ProjectPlanning = lazy(() => named(import('@/pages/app/ProjectPlanning'), 'ProjectPlanning'))
+const AssistantPage = lazy(() => named(import('@/pages/app/AssistantPage'), 'AssistantPage'))
 const DiagnosticDetail = lazy(() => named(import('@/pages/app/DiagnosticDetail'), 'DiagnosticDetail'))
 const DiagnosticItemDetail = lazy(() => named(import('@/pages/app/DiagnosticItemDetail'), 'DiagnosticItemDetail'))
 const PlansList = lazy(() => named(import('@/pages/app/PlansList'), 'PlansList'))
@@ -128,6 +129,9 @@ function App() {
             <Route path="projects/:id/rapports" element={<ProjectRapports />} />
             <Route path="projects/:id/cecb" element={<ProjectCECB />} />
             <Route path="projects/:id/calendrier" element={<ProjectPlanning />} />
+
+            {/* Assistant : page plein écran, le parcours mobile n'ouvre pas de fenêtre */}
+            <Route path="assistant" element={<AssistantPage />} />
 
             {/* Diagnostic editor */}
             <Route path="diagnostic/:id" element={<DiagnosticDetail />} />

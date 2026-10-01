@@ -19,6 +19,7 @@ function isMobileAllowed(pathname: string): boolean {
   if (/^\/app\/projects\/[^/]+$/.test(pathname)) return true // fiche projet -> redirige vers l'éditeur
   if (pathname.startsWith('/app/diagnostic/')) return true    // éditeur de diagnostic + item
   if (pathname === '/app/cfc') return true                    // base de données
+  if (pathname === '/app/assistant') return true              // assistant, en page plein écran
   if (pathname.startsWith('/app/settings')) return true       // paramètres
   if (pathname.startsWith('/app/join/')) return true          // acceptation d'invitation
   return false
@@ -31,9 +32,12 @@ export function AppLayout() {
   const diagProjectId = projMatch && projMatch[1] !== 'new' ? projMatch[1] : null
   // L'editeur de diagnostic est un ecran de saisie plein cadre : la barre du bas
   // recouvrait la liste du catalogue sans rien apporter (le retour se fait par la
-  // fleche de l'en-tete).
+  // fleche de l'en-tete). L'assistant suit la meme regle : sa zone de saisie est
+  // en bas de page, la barre flottante serait posee dessus.
   const editeurPleinEcran =
-    location.pathname.startsWith('/app/diagnostic/') || location.pathname === '/app/projects/new'
+    location.pathname.startsWith('/app/diagnostic/')
+    || location.pathname === '/app/projects/new'
+    || location.pathname === '/app/assistant'
   const mainRef = useRef<HTMLDivElement>(null)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const isMobile = useIsMobile()
@@ -86,13 +90,16 @@ export function AppLayout() {
       {/* Navigation mobile épurée (masquée dans l'éditeur) */}
       {!editeurPleinEcran && (
         <div className="js-print-hide">
-          <MobileNav onToggleAssistant={() => setAssistantOpen((o) => !o)} assistantOpen={assistantOpen} />
+          <MobileNav />
         </div>
       )}
 
-      <div className="js-print-hide">
-        <AssistantWidget open={assistantOpen} onOpenChange={setAssistantOpen} />
-      </div>
+      {/* Le panneau flottant est un objet de bureau : sur mobile, l'assistant a sa page. */}
+      {!isMobile && (
+        <div className="js-print-hide">
+          <AssistantWidget open={assistantOpen} onOpenChange={setAssistantOpen} />
+        </div>
+      )}
     </div>
   )
 }

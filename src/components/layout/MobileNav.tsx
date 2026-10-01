@@ -7,10 +7,12 @@ import { cn } from '@/lib/utils'
  * Barre de navigation mobile « liquid glass » (réf. iOS 26).
  *
  * La pilule ne porte que la navigation (Diagnostics · Base de données · Paramètres),
- * centrée. L'assistant IA n'est pas une destination mais une action : il est détaché
- * en bouton rond à droite, pour ne pas se confondre avec les onglets.
+ * centrée. L'assistant garde son bouton rond détaché à droite, pour ne pas se
+ * confondre avec les onglets, mais il ouvre désormais sa propre page plutôt qu'une
+ * fenêtre posée sur l'application : sur un téléphone, une conversation se lit en
+ * plein écran.
  */
-export function MobileNav({ onToggleAssistant, assistantOpen }: { onToggleAssistant: () => void; assistantOpen: boolean }) {
+export function MobileNav() {
   const item = 'relative z-10 flex h-11 w-11 items-center justify-center rounded-full transition-colors'
   const icon = (Icon: LucideIcon, active: boolean) => (
     <>
@@ -35,16 +37,14 @@ export function MobileNav({ onToggleAssistant, assistantOpen }: { onToggleAssist
           </NavLink>
         </div>
 
-        {/* Assistant IA : action détachée, à portée du pouce droit */}
-        <button
-          type="button"
-          onClick={onToggleAssistant}
+        {/* Assistant IA : page dédiée, à portée du pouce droit */}
+        <NavLink
+          to="/app/assistant"
           aria-label="Assistant IA"
-          aria-pressed={assistantOpen}
           className="liquid-nav pointer-events-auto flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full"
         >
-          {icon(MessageCircle, assistantOpen)}
-        </button>
+          {({ isActive }) => icon(MessageCircle, isActive)}
+        </NavLink>
       </div>
     </nav>
   )

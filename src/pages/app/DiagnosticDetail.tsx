@@ -350,6 +350,24 @@ export function DiagnosticDetail() {
     III: items.filter(i => i.priority === 'III').reduce((s, i) => s + toNum(i.estimatedCost), 0),
   }
 
+  // Avancement de la visite, calculé sur le catalogue entier et non sur `grouped` :
+  // une recherche en cours filtre l'affichage, elle ne doit pas faire reculer la barre.
+  // Un ouvrage compte dès qu'il porte un état, même règle que dans le parcours guidé.
+  const avancementVisite = useMemo(() => {
+    const etapes = groupItemsByVisitStep(catalogItems, projectQuery.data?.project?.buildingType)
+    let faits = 0
+    let total = 0
+    for (const g of etapes) {
+      for (const cat of g.categories) {
+        for (const c of cat.items) {
+          total += 1
+          if (itemsParReleve.get(cleReleve(c.id, g.localisation))?.state) faits += 1
+        }
+      }
+    }
+    return { faits, total, etapes }
+  }, [catalogItems, projectQuery.data, itemsParReleve])
+
   // ----- loading / error states -----
   if (diagQuery.isLoading || itemsQuery.isLoading || catalogQuery.isLoading) {
     return (
@@ -387,18 +405,27 @@ export function DiagnosticDetail() {
           </div>
           {projectId && !isMobile && <ProjectSectionsMenu projectId={projectId} onDeleteDiagnostic={handleDeleteDiagnostic} />}
         </div>
-        <div className="flex gap-4 text-sm overflow-x-auto pb-1">
-          {PRIORITIES.map(p => (
-            <div key={p} className="text-center shrink-0">
-              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[p]}`}>{p}</span>
-              <p className="font-semibold mt-1">{formatCHF(costByPriority[p])}</p>
+        {isMobile ? (
+          <AvancementVisite
+            faits={avancementVisite.faits}
+            total={avancementVisite.total}
+            etapes={avancementVisite.etapes}
+            etape={etape}
+          />
+        ) : (
+          <div className="flex gap-4 text-sm overflow-x-auto pb-1">
+            {PRIORITIES.map(p => (
+              <div key={p} className="text-center shrink-0">
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[p]}`}>{p}</span>
+                <p className="font-semibold mt-1">{formatCHF(costByPriority[p])}</p>
+              </div>
+            ))}
+            <div className="text-center pl-4 border-l shrink-0">
+              <span className="text-xs text-muted-foreground">Total</span>
+              <p className="text-lg font-bold">{formatCHF(totalCost)}</p>
             </div>
-          ))}
-          <div className="text-center pl-4 border-l shrink-0">
-            <span className="text-xs text-muted-foreground">Total</span>
-            <p className="text-lg font-bold">{formatCHF(totalCost)}</p>
           </div>
-        </div>
+        )}
 
         <ReindexPanel diagnosticId={id!} />
 
@@ -803,6 +830,53 @@ function Retour({ vers, libelle }: { vers: () => void; libelle: string }) {
  * avancement : c'est ce qui permet de savoir, en redescendant de la toiture, ce
  * qui reste à relever.
  */
+/**
+ * Avancement de la visite, en tête de l'éditeur mobile.
+ *
+ * Le bandeau des montants ne tenait pas sur un téléphone : trois colonnes dont
+ * deux restent à zéro tant que rien n'est relevé, et un total qui débordait du
+ * cadre. Surtout, il répondait à la mauvaise question : pendant la visite, ce
+ * qui se décide n'est pas le budget mais ce qu'il reste à voir avant de quitter
+ * l'étage. On montre donc l'étape en cours et la part du bâtiment déjà relevée.
+ * Les montants gardent leur écran, celui des coûts, où ils ont la place d'être
+ * lus poste par poste.
+ */
+function AvancementVisite({ faits, total, etapes, etape }: {
+  faits: number
+  total: number
+  etapes: VisitStepGroup[]
+  etape: number | null
+}) {
+  const rang = etapes.findIndex((g) => g.step === etape)
+  const courante = rang >= 0 ? etapes[rang] : null
+  const titre = courante
+    ? `${courante.label.replace(/^\d+\.\s*/, '')} · étape ${rang + 1} sur ${etapes.length}`
+    : `Tour du bâtiment · ${etapes.length} étape${etapes.length > 1 ? 's' : ''}`
+  const part = total > 0 ? Math.round((faits / total) * 100) : 0
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="min-w-0 truncate text-sm font-medium">{titre}</p>
+        <p className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{part} %</p>
+      </div>
+      <div
+        className="h-1.5 w-full overflow-hidden rounded-full bg-border"
+        role="progressbar"
+        aria-valuenow={faits}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-label="Avancement de la visite"
+      >
+        <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${part}%` }} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {faits} ouvrage{faits > 1 ? 's' : ''} relevé{faits > 1 ? 's' : ''} sur {total}
+      </p>
+    </div>
+  )
+}
+
 function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsParReleve, onOuvrir, onAjouter, ajoutEnCours }: {
   etapes: VisitStepGroup[]
   etape: number | null

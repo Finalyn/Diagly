@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Search, Loader2, AlertCircle, ChevronRight, ChevronDown, Plus, Pencil, Trash2, X, Check, RotateCcw } from 'lucide-react'
 import {
@@ -9,6 +9,7 @@ import {
 import { api } from '@/lib/api'
 import type { ApiCatalogItem, ApiCfcEntry } from '@/lib/api-types'
 import { groupItemsByCategory } from '@/lib/cfc'
+import { useIsMobile } from '@/lib/use-mobile'
 import { cn } from '@/lib/utils'
 
 export function CFCManager() {
@@ -148,10 +149,12 @@ function CatalogItemsTab() {
         </p>
 
         {editing && (
-          <EditItemForm
-            initial={editing === 'new' ? null : editing}
-            onDone={() => setEditing(null)}
-          />
+          <FeuilletEdition onFermer={() => setEditing(null)}>
+            <EditItemForm
+              initial={editing === 'new' ? null : editing}
+              onDone={() => setEditing(null)}
+            />
+          </FeuilletEdition>
         )}
 
         <p className="text-xs text-muted-foreground">{totalResults} résultat{totalResults !== 1 ? 's' : ''}</p>
@@ -372,6 +375,42 @@ const STATE_FIELDS = [
   { key: 'Improvement', label: 'Amélioration' },
   { key: 'Norms', label: 'Normes' },
 ] as const
+
+/**
+ * L'édition d'un article, amenée là où l'oeil se trouve déjà.
+ *
+ * Le formulaire vit en haut de la page. Sur un téléphone, toucher le crayon d'un
+ * article situé deux cents lignes plus bas ouvrait donc un formulaire hors champ,
+ * qu'il fallait aller chercher en remontant tout le catalogue, puis redescendre
+ * à l'endroit où l'on en était. Sur mobile il passe en plein écran par-dessus la
+ * liste, qui garde sa position de défilement pour la suite.
+ *
+ * Sur grand écran, rien ne change : le formulaire et la ligne éditée tiennent
+ * ensemble à l'écran, et le recouvrir serait une perte.
+ */
+function FeuilletEdition({ children, onFermer }: { children: ReactNode; onFermer: () => void }) {
+  const isMobile = useIsMobile()
+
+  useEffect(() => {
+    if (!isMobile) return
+    const auClavier = (e: KeyboardEvent) => { if (e.key === 'Escape') onFermer() }
+    window.addEventListener('keydown', auClavier)
+    return () => window.removeEventListener('keydown', auClavier)
+  }, [isMobile, onFermer])
+
+  if (!isMobile) return <>{children}</>
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Édition d'un article du catalogue"
+      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-muted px-3 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-[calc(env(safe-area-inset-top)+0.75rem)]"
+    >
+      {children}
+    </div>
+  )
+}
 
 function EditItemForm({ initial, onDone }: { initial: ApiCatalogItem | null; onDone: () => void }) {
   const qc = useQueryClient()
