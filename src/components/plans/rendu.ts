@@ -103,3 +103,69 @@ export function useRenduPlan(plan: ApiPlan | null, largeurCible: number) {
   const courant = resultat?.cle === cle ? resultat : null
   return { rendu: courant?.rendu ?? null, erreur: courant?.erreur ?? false }
 }
+
+/** Une page d'un PDF : sa vignette, et sa largeur physique en points. */
+export interface ApercuPage {
+  numero: number
+  url: string
+  /** Largeur de la feuille en points PDF (72 pt = 1 pouce), pour comparer les formats. */
+  largeurBase: number
+}
+
+const cachePages = new Map<string, Promise<ApercuPage[]>>()
+
+async function rendrePages(plan: ApiPlan): Promise<ApercuPage[]> {
+  if (plan.mimeType !== 'application/pdf') return []
+  const buf = await (await fetch(api.plans.fileUrl(plan))).arrayBuffer()
+  const pdfjsLib = await loadPdfjs()
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise
+  const out: ApercuPage[] = []
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const page = await pdf.getPage(n)
+    const base = page.getViewport({ scale: 1 })
+    const vue = page.getViewport({ scale: 200 / base.width })
+    const canvas = document.createElement('canvas')
+    canvas.width = vue.width
+    canvas.height = vue.height
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    await page.render({ canvasContext: ctx, viewport: vue }).promise
+    out.push({ numero: n, url: canvas.toDataURL('image/jpeg', 0.7), largeurBase: base.width })
+  }
+  return out
+}
+
+/**
+ * Vignettes de toutes les pages d'un PDF.
+ *
+ * Elles servent à deux choses : naviguer dans un document de plusieurs feuilles
+ * sans avancer page par page à l'aveugle, et choisir à quelles pages s'applique
+ * un étalonnage. `largeurBase` est là pour la seconde : deux feuilles de formats
+ * différents n'ont pas la même échelle une fois rendues à la même largeur.
+ */
+export function useApercusPages(plan: ApiPlan | null, actif: boolean) {
+  const voulu = !!plan && actif && plan.mimeType === 'application/pdf'
+  const cle = voulu ? plan.id : ''
+  // L'état porte la clé de ce qu'il contient : sans elle, il faudrait le remettre
+  // à zéro depuis l'effet, et les vignettes du plan précédent resteraient un
+  // instant sous le nom du nouveau.
+  const [resultat, setResultat] = useState<{ cle: string; pages: ApercuPage[] } | null>(null)
+
+  useEffect(() => {
+    if (!voulu) return
+    let abandonne = false
+    let p = cachePages.get(cle)
+    if (!p) {
+      p = rendrePages(plan)
+      cachePages.set(cle, p)
+      p.catch(() => cachePages.delete(cle))
+    }
+    p.then((r) => { if (!abandonne) setResultat({ cle, pages: r }) })
+     .catch(() => { if (!abandonne) setResultat({ cle, pages: [] }) })
+    return () => { abandonne = true }
+  }, [plan, voulu, cle])
+
+  const courant = resultat?.cle === cle ? resultat.pages : null
+  return { pages: courant ?? [], chargement: voulu && courant == null }
+}

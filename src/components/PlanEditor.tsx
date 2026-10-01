@@ -4,15 +4,16 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   X, Hand, MousePointer2, Crosshair, Ruler, ArrowUpRight, StickyNote, Hash, Pencil,
   ZoomIn, ZoomOut, Undo2, Check, Trash2, Loader2, ChevronLeft, ChevronRight, Maximize, Download, Link2, Layers,
+  AlertTriangle,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { ApiPlan, PlanAnnotation, PlanAnnotationType, PlanPoint } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
 import { loadPdfjs } from '@/lib/pdf'
-import { airePolygone, natureDe } from '@/lib/plan-quantites'
+import { airePolygone, echelleDansTable, natureDe } from '@/lib/plan-quantites'
 import { useQuery } from '@tanstack/react-query'
 import { ChoixOuvrage } from '@/components/plans/ChoixOuvrage'
-import { useRenduPlan } from '@/components/plans/rendu'
+import { useApercusPages, useRenduPlan } from '@/components/plans/rendu'
 import { useOuvragesDuProjet } from '@/components/plans/ouvrages'
 
 type Tool = 'pan' | 'select' | 'calibrate' | 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference'
@@ -107,6 +108,9 @@ const HINTS: Record<Tool, string> = {
 const NOMS: Record<PlanAnnotationType, string> = {
   measure: 'Cote', hatch: 'Zone', note: 'Note', arrow: 'Flèche', draw: 'Croquis',
   reference: 'Référence',
+  // Le calque et la table d'échelles ne sont pas des tracés : ces noms ne servent
+  // qu'aux panneaux, jamais à un libellé posé sur le plan.
+  pages: 'Échelles par page',
 }
 
 /**
@@ -154,7 +158,14 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const stopElan = () => { elan.current.x?.stop(); elan.current.y?.stop(); elan.current = { x: null, y: null } }
   useEffect(() => stopElan, [])
   const [scale, setScale] = useState<number | null>(plan.scalePxPerM)
-  const [annotations, setAnnotations] = useState<PlanAnnotation[]>(plan.annotations ?? [])
+  /** Échelles propres aux pages d'un PDF, quand les feuilles diffèrent de format. */
+  const [echelles, setEchelles] = useState<Record<string, number>>(
+    () => plan.annotations?.find((a) => a.type === 'pages')?.pageScales ?? {},
+  )
+  const isPdf = plan.mimeType === 'application/pdf'
+  const [annotations, setAnnotations] = useState<PlanAnnotation[]>(
+    () => (plan.annotations ?? []).filter((a) => a.type !== 'pages'),
+  )
   const [pending, setPending] = useState<PlanPoint | null>(null)
   const [draft, setDraft] = useState<PlanPoint[]>([])
   const [cursor, setCursor] = useState<PlanPoint | null>(null)
@@ -171,6 +182,9 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const [selectedAnn, setSelectedAnn] = useState<string | null>(null)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [choixOuvrage, setChoixOuvrage] = useState(false)
+  /** Étalonnage mesuré, en attente du choix des pages auxquelles il s'applique. */
+  const [echelleEnAttente, setEchelleEnAttente] = useState<number | null>(null)
+  const [pagesRetenues, setPagesRetenues] = useState<number[]>([])
   const [arrondi, setArrondi] = useState<PasArrondi>(0)
 
   /**
@@ -188,6 +202,9 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const autresPlans = (plansDuDossier.data?.plans ?? []).filter((x) => x.id !== plan.id)
   const planReference = autresPlans.find((x) => x.id === reference?.planId) ?? null
   const renduReference = useRenduPlan(planReference, 1600)
+  // Les vignettes servent à naviguer dans un document de plusieurs feuilles, et
+  // à choisir à quelles pages s'applique un étalonnage.
+  const apercus = useApercusPages(plan, isPdf && numPages > 1)
 
   const poserReference = (planId: string) => {
     setAnnotations((l) => {
@@ -209,7 +226,6 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     setDirty(true)
   }
 
-  const isPdf = plan.mimeType === 'application/pdf'
 
   // ---- Chargement (image ou PDF -> canvas) ----
   useEffect(() => {
@@ -292,7 +308,10 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   )
   const dragRef = useRef<{ id: string; lastX: number; lastY: number; pointIndex?: number } | null>(null)
 
-  const addAnn = (a: Omit<PlanAnnotation, 'id'>) => { setAnnotations((l) => [...l, { id: uid(), ...a }]); setDirty(true) }
+  const addAnn = (a: Omit<PlanAnnotation, 'id'>) => {
+    setAnnotations((l) => [...l, { id: uid(), page: isPdf ? pageNum : undefined, ...a }])
+    setDirty(true)
+  }
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (calibrateSeg || notePoint || surHabillage(e)) return
@@ -342,8 +361,8 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       }
       // 2. Sinon, sélectionne l'annotation touchée -> déplace l'ensemble ; si rien, on déplace le plan.
       let hitId: string | null = null
-      for (let i = annotations.length - 1; i >= 0 && !hitId; i--) {
-        const a = annotations[i]
+      for (let i = annotationsPage.length - 1; i >= 0 && !hitId; i--) {
+        const a = annotationsPage[i]
         if (a.type === 'note') { if (dist(sp, a.points[0]) < tol * 2) hitId = a.id }
         else if (a.type === 'measure' || a.type === 'arrow') { if (pointSegDist(sp, a.points[0], a.points[1]) < tol) hitId = a.id }
         else if (a.type === 'draw') { for (let j = 0; j < a.points.length - 1 && !hitId; j++) if (pointSegDist(sp, a.points[j], a.points[j + 1]) < tol) hitId = a.id }
@@ -480,10 +499,40 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     // dessin, pas le document qu'on a posé dessous pour comparer.
     setAnnotations((a) => {
       for (let i = a.length - 1; i >= 0; i--) {
-        if (a[i].type !== 'reference') return [...a.slice(0, i), ...a.slice(i + 1)]
+        if (a[i].type !== 'reference' && surLaPage(a[i])) return [...a.slice(0, i), ...a.slice(i + 1)]
       }
       return a
     })
+    setDirty(true)
+  }
+
+  /**
+   * Applique une échelle mesurée sur la page courante aux pages choisies.
+   *
+   * Toutes les pages sont rendues à la même largeur : une feuille A3 couvre donc
+   * deux fois plus de mètres qu'une A4 pour le même nombre de pixels. On reporte
+   * l'échelle au prorata des formats plutôt que telle quelle, sinon une coupe sur
+   * A3 serait mesurée au double de sa taille sans que rien ne le signale.
+   */
+  const appliquerEchelle = (pxParM: number, pages: number[]) => {
+    const largeur = (n: number) => apercus.pages.find((x) => x.numero === n)?.largeurBase ?? null
+    const source = largeur(pageNum)
+    const pourPage = (n: number) => {
+      const l = largeur(n)
+      return source && l ? pxParM * (source / l) : pxParM
+    }
+    if (isPdf) {
+      setEchelles((t) => {
+        const suite = { ...t }
+        for (const n of pages) suite[String(n)] = pourPage(n)
+        return suite
+      })
+      // La page 1 porte aussi l'échelle du plan : c'est elle que lit tout ce qui
+      // ne connaît pas les pages, à commencer par la liste des plans.
+      if (pages.includes(1)) setScale(pourPage(1))
+    } else {
+      setScale(pxParM)
+    }
     setDirty(true)
   }
 
@@ -491,8 +540,17 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     if (!calibrateSeg) return
     const m = parseFloat(calibrateVal.replace(',', '.'))
     const px = dist(calibrateSeg[0], calibrateSeg[1])
-    if (m > 0 && px > 0) { setScale(px / m); setDirty(true) }
     setCalibrateSeg(null); setCalibrateVal('')
+    if (!(m > 0 && px > 0)) return
+    const pxParM = px / m
+    if (isPdf && numPages > 1) {
+      // Document de plusieurs feuilles : on demande lesquelles sont au même
+      // tirage plutôt que de décider à la place du diagnostiqueur.
+      setPagesRetenues(Array.from({ length: numPages }, (_, i) => i + 1))
+      setEchelleEnAttente(pxParM)
+    } else {
+      appliquerEchelle(pxParM, [1])
+    }
   }
   const confirmNote = () => {
     const text = noteVal.trim()
@@ -525,8 +583,18 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     return it ? `${it.cfcCode} · ${it.cfcLabel}` : null
   }, [ouvrages])
 
+  /**
+   * Outils accessibles tant que la page n'est pas étalonnée.
+   *
+   * Relever une surface sur un plan sans échelle produit des pixels, et un
+   * nombre de pixels n'a aucun sens dans un devis. On laisse donc regarder et
+   * étalonner, rien d'autre, jusqu'à ce qu'un mètre soit défini.
+   */
+  const outilAutorise = (k: Tool) => etalonne || k === 'pan' || k === 'calibrate'
+
   /** Choisir un outil abandonne ce qui était en cours de tracé. */
   const choisirOutil = (k: Tool) => {
+    if (!outilAutorise(k)) return
     setTool(k)
     setPending(null)
     setSelectedAnn(null)
@@ -543,7 +611,13 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const onSave = async () => {
     setSaving(true)
     try {
-      await api.plans.update(plan.id, { scalePxPerM: scale, annotations })
+      // La table d'échelles voyage avec les annotations : un seul bloc JSON,
+      // relu d'une pièce, sans colonne supplémentaire en base.
+      const sansTable = annotations.filter((a) => a.type !== 'pages')
+      const aEnvoyer = Object.keys(echelles).length
+        ? [...sansTable, { id: 'pages', type: 'pages' as const, points: [], pageScales: echelles }]
+        : sansTable
+      await api.plans.update(plan.id, { scalePxPerM: scale, annotations: aEnvoyer })
       queryClient.invalidateQueries({ queryKey: ['plans', plan.projectId] })
       setDirty(false)
     } finally { setSaving(false) }
@@ -555,7 +629,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     const t = setTimeout(() => { onSave() }, 1000)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty, annotations, scale])
+  }, [dirty, annotations, scale, echelles])
 
   // Format de sortie = format d'entrée (PDF -> PDF, JPG -> JPG, sinon PNG).
   const outExt = plan.mimeType === 'application/pdf' ? 'PDF' : plan.mimeType === 'image/jpeg' ? 'JPG' : 'PNG'
@@ -664,18 +738,36 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const LEN_DEC = { m: 2, cm: 1, mm: 0 } as const
   const AREA_DEC = { m: 2, cm: 0, mm: 0 } as const
   const fmtLen = (px: number) => {
-    if (!scale) return `${Math.round(px)} px`
+    if (!echelleCourante) return `${Math.round(px)} px`
     // L'arrondi se fait en mètres, puis la valeur est convertie : arrondir après
     // conversion donnerait un pas de 5 cm différent selon qu'on affiche des
     // mètres ou des millimètres.
-    const m = auPas(px / scale, arrondi)
+    const m = auPas(px / echelleCourante, arrondi)
     return `${(m * UNIT_F[unit]).toFixed(LEN_DEC[unit])} ${unit}`
   }
   const fmtArea = (px2: number) => {
-    if (!scale) return `${Math.round(px2)} px²`
-    const m2 = auPas(px2 / (scale * scale), arrondi)
+    if (!echelleCourante) return `${Math.round(px2)} px²`
+    const m2 = auPas(px2 / (echelleCourante * echelleCourante), arrondi)
     return `${(m2 * UNIT_F[unit] ** 2).toFixed(AREA_DEC[unit])} ${unit}²`
   }
+  /**
+   * Ce qui est posé sur la page affichée.
+   *
+   * Un PDF de coupes porte des annotations par feuille. Elles étaient toutes
+   * dessinées sur toutes les pages : la cote de la coupe AA se retrouvait au
+   * milieu de la coupe BB, sans rapport avec ce qu'on voyait.
+   */
+  const surLaPage = useCallback(
+    (a: PlanAnnotation) => !isPdf || (a.page ?? 1) === pageNum,
+    [isPdf, pageNum],
+  )
+  const annotationsPage = annotations.filter(surLaPage)
+
+  /** Échelle de la page affichée, selon la même règle que le calcul des quantités. */
+  const echelleCourante = echelleDansTable(echelles, scale, pageNum)
+  /** Tant qu'on ne sait pas combien vaut un mètre, on ne peut rien relever ici. */
+  const etalonne = echelleCourante != null
+
   /** Mesure lisible d'une annotation, ou null si elle ne mesure rien. */
   const quantiteDe = (a: PlanAnnotation): string | null => {
     const nature = natureDe(a)
@@ -687,7 +779,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   // sinon sur le prochain trace : elles doivent montrer celle qui s'applique.
   const couleurActive = selAnn ? (selAnn.color ?? COLORS[0]) : color
 
-  const hatchColors = Array.from(new Set(annotations.filter((a) => a.type === 'hatch').map((a) => a.color ?? '#ef4444')))
+  const hatchColors = Array.from(new Set(annotationsPage.filter((a) => a.type === 'hatch').map((a) => a.color ?? '#ef4444')))
   const font = 13 / view.zoom // labels lisibles quel que soit le zoom
   const strokeW = 2 / view.zoom
 
@@ -740,7 +832,9 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
         {/* Rail d'outils : vertical sur grand écran, il repasse en bande sous la
             scène sur mobile, à portée de pouce. */}
         <nav className="hidden w-20 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2 sm:flex" aria-label="Outils">
-          {TOOLS.map((t) => <BoutonOutil key={t.key} outil={t} actif={tool === t.key} onChoisir={choisirOutil} />)}
+          {TOOLS.map((t) => (
+            <BoutonOutil key={t.key} outil={t} actif={tool === t.key} bloque={!outilAutorise(t.key)} onChoisir={choisirOutil} />
+          ))}
           <div className="mt-3 border-t pt-3">
             <p className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Couleur</p>
             <div className="flex flex-col items-center gap-2">
@@ -818,7 +912,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                 ))}
               </defs>
 
-              {annotations.map((a) => (
+              {annotationsPage.map((a) => (
                 <Shape key={a.id} a={a} fmtLen={fmtLen} fmtArea={fmtArea} font={font} strokeW={strokeW} lie={libelleLie(a)} />
               ))}
 
@@ -872,6 +966,26 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
               </button>
             )}
 
+            {/* Tant que la page n'a pas d'échelle, rien de ce qu'on relèverait
+                n'aurait de sens : on le dit, et on n'ouvre que l'étalonnage. */}
+            {!loading && !etalonne && (
+              <div className="pointer-events-none absolute inset-x-0 top-14 flex justify-center px-3">
+                <div className="pointer-events-auto flex max-w-full items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 shadow-sm">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+                  <p className="text-xs text-amber-900">
+                    {isPdf && numPages > 1 ? `Page ${pageNum} non étalonnée.` : 'Plan non étalonné.'}{' '}
+                    Tracez un trait sur une cote connue pour définir l’échelle.
+                  </p>
+                  <button
+                    onClick={() => choisirOutil('calibrate')}
+                    className="shrink-0 rounded-lg bg-amber-600 px-2.5 py-1.5 text-xs font-semibold text-white"
+                  >
+                    Étalonner
+                  </button>
+                </div>
+              </div>
+            )}
+
             {tool === 'reference' && (
               <PanneauReference
                 reference={reference}
@@ -901,7 +1015,9 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
           {/* Bande du bas : les outils sur mobile, puis les réglages de la scène. */}
           <div className="shrink-0 border-t">
             <div className="flex gap-1 overflow-x-auto p-2 sm:hidden">
-              {TOOLS.map((t) => <BoutonOutil key={t.key} outil={t} actif={tool === t.key} onChoisir={choisirOutil} compact />)}
+              {TOOLS.map((t) => (
+                <BoutonOutil key={t.key} outil={t} actif={tool === t.key} bloque={!outilAutorise(t.key)} onChoisir={choisirOutil} compact />
+              ))}
             </div>
             <div className="flex items-center gap-3 overflow-x-auto px-3 py-2 text-xs text-muted-foreground sm:px-4">
               <div className="flex shrink-0 items-center gap-1.5 sm:hidden">
@@ -960,6 +1076,33 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                 </div>
               )}
             </div>
+
+            {/* Bande de pages : un document de coupes se parcourt à vue, pas en
+                avançant d'une feuille à l'aveugle. L'étalonnage de chacune s'y lit. */}
+            {isPdf && numPages > 1 && (
+              <div className="flex gap-2 overflow-x-auto border-t px-3 py-2">
+                {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
+                  const vignette = apercus.pages.find((x) => x.numero === n)
+                  const sansEchelle = echelleDansTable(echelles, scale, n) == null
+                  return (
+                    <button
+                      key={n}
+                      onClick={() => setPageNum(n)}
+                      title={`Page ${n}${sansEchelle ? ' — non étalonnée' : ''}`}
+                      className={cn('relative w-16 shrink-0 overflow-hidden rounded-lg border bg-white transition-colors',
+                        n === pageNum ? 'border-foreground ring-1 ring-foreground' : 'hover:border-foreground/40')}
+                    >
+                      {vignette
+                        ? <img src={vignette.url} alt="" className="h-20 w-full object-contain" />
+                        : <span className="flex h-20 items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></span>}
+                      <span className="block border-t py-0.5 text-[10px] tabular-nums">
+                        {n}{sansEchelle && <span className="ml-0.5 text-amber-600">•</span>}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1000,6 +1143,52 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
         />
       )}
 
+      {/* À quelles pages l'étalonnage s'applique-t-il ? */}
+      {echelleEnAttente != null && (
+        <Modal
+          title="Appliquer l’échelle"
+          onCancel={() => setEchelleEnAttente(null)}
+          onConfirm={() => { appliquerEchelle(echelleEnAttente, pagesRetenues); setEchelleEnAttente(null) }}
+          confirmLabel={`Appliquer à ${pagesRetenues.length} page${pagesRetenues.length > 1 ? 's' : ''}`}
+        >
+          <p className="mb-3 text-sm text-muted-foreground">
+            Les pages au même tirage partagent cette échelle. Celles d’un autre format sont
+            ajustées au prorata ; décochez les pages qui n’ont rien à voir.
+          </p>
+          <div className="mb-3 flex gap-2 text-xs">
+            <button
+              onClick={() => setPagesRetenues(Array.from({ length: numPages }, (_, i) => i + 1))}
+              className="rounded-lg border px-2.5 py-1.5 hover:bg-muted"
+            >Tout cocher</button>
+            <button
+              onClick={() => setPagesRetenues([pageNum])}
+              className="rounded-lg border px-2.5 py-1.5 hover:bg-muted"
+            >Cette page seule</button>
+          </div>
+          <div className="grid max-h-64 grid-cols-4 gap-2 overflow-y-auto">
+            {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
+              const vignette = apercus.pages.find((x) => x.numero === n)
+              const coche = pagesRetenues.includes(n)
+              return (
+                <button
+                  key={n}
+                  onClick={() => setPagesRetenues((l) => (coche ? l.filter((x) => x !== n) : [...l, n]))}
+                  className={cn('overflow-hidden rounded-lg border bg-white transition-colors',
+                    coche ? 'border-foreground ring-1 ring-foreground' : 'opacity-60 hover:opacity-100')}
+                >
+                  {vignette
+                    ? <img src={vignette.url} alt="" className="h-20 w-full object-contain" />
+                    : <span className="flex h-20 items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></span>}
+                  <span className="flex items-center justify-center gap-1 border-t py-1 text-[11px] tabular-nums">
+                    {coche && <Check className="h-3 w-3" />}Page {n}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </Modal>
+      )}
+
       {/* Modale note */}
       {notePoint && (
         <Modal title={editingNoteId ? 'Modifier la note' : 'Ajouter une note'} onCancel={() => { setNotePoint(null); setEditingNoteId(null) }} onConfirm={confirmNote} confirmLabel={editingNoteId ? 'Enregistrer' : 'Ajouter'}>
@@ -1014,9 +1203,11 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   )
 }
 
-function BoutonOutil({ outil, actif, onChoisir, compact }: {
+function BoutonOutil({ outil, actif, bloque, onChoisir, compact }: {
   outil: { key: Tool; icon: typeof Ruler; label: string }
   actif: boolean
+  /** Outil indisponible tant que la page n'a pas d'échelle. */
+  bloque?: boolean
   onChoisir: (k: Tool) => void
   compact?: boolean
 }) {
@@ -1024,11 +1215,13 @@ function BoutonOutil({ outil, actif, onChoisir, compact }: {
   return (
     <button
       onClick={() => onChoisir(outil.key)}
-      title={outil.label}
+      disabled={bloque}
+      title={bloque ? `${outil.label} — étalonnez d’abord la page` : outil.label}
       aria-pressed={actif}
       className={cn('flex shrink-0 items-center rounded-lg transition-colors',
         compact ? 'gap-1.5 px-3 py-2' : 'flex-col gap-1 px-1 py-2',
-        actif ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}
+        bloque ? 'cursor-not-allowed text-muted-foreground/40'
+          : actif ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}
     >
       <Icon className="h-4 w-4 shrink-0" />
       <span className={cn('font-medium', compact ? 'text-xs' : 'text-[10px] leading-tight')}>{outil.label}</span>

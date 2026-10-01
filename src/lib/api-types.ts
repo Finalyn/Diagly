@@ -296,15 +296,24 @@ export interface PlanPoint { x: number; y: number }
  * Ce qu'on pose sur un plan.
  *
  * `reference` n'est pas un tracé mais un calque : un autre plan du dossier,
- * posé en transparence par-dessus celui-ci pour comparer deux états. Il vit avec
- * les annotations parce qu'il appartient au plan au même titre qu'elles, et
- * qu'on veut le retrouver aligné en rouvrant le document.
+ * posé en transparence par-dessus celui-ci pour comparer deux états. `pages`
+ * n'en est pas un non plus : c'est l'échelle propre à chaque page d'un PDF.
+ *
+ * Les deux vivent avec les annotations parce qu'ils appartiennent au plan au même
+ * titre qu'elles, et qu'un document stocké en un seul bloc JSON se relit d'une
+ * pièce. Les composants qui dessinent doivent donc les ignorer explicitement.
  */
-export type PlanAnnotationType = 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference'
+export type PlanAnnotationType = 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference' | 'pages'
 export interface PlanAnnotation {
   id: string
   type: PlanAnnotationType
   points: PlanPoint[]
+  /**
+   * Page du PDF sur laquelle l'annotation est posée. Absent = la première, ce
+   * qui garde leur place aux annotations tracées avant que les pages ne soient
+   * distinguées.
+   */
+  page?: number
   text?: string
   color?: string
   /**
@@ -325,6 +334,14 @@ export interface PlanAnnotation {
   scale?: number
   /** Teinte appliquée au calque, pour le distinguer du plan du dessous. */
   tint?: string | null
+
+  // ---- Échelles par page (type `pages`) ----
+  /**
+   * Pixels par mètre, page par page, pour un PDF dont les feuilles n'ont pas
+   * toutes le même format. L'échelle du plan reste le repli pour les pages
+   * absentes de cette table.
+   */
+  pageScales?: Record<string, number>
 }
 
 export interface ApiPlan {

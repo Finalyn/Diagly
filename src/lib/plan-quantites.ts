@@ -35,6 +35,40 @@ export function longueurPolyligne(pts: PlanPoint[]): number {
   return s
 }
 
+/**
+ * Échelle qui s'applique à une page donnée.
+ *
+ * Un PDF peut mêler une coupe au 1:50 sur A3 et un détail sur A4 : toutes les
+ * pages sont rendues à la même largeur en pixels, donc une page plus grande
+ * couvre plus de mètres pour le même nombre de pixels. Mesurer une zone de la
+ * page 3 avec l'échelle de la page 1 donnerait un résultat faux sans prévenir.
+ */
+export function echelleDansTable(
+  table: Record<string, number> | undefined,
+  echelleDuPlan: number | null,
+  page: number | undefined,
+): number | null {
+  // Une table existe dès qu'on a étalonné page par page : elle fait alors
+  // autorité, et une page absente n'a pas d'échelle. Sans cette règle, « appliquer
+  // à cette page seule » ne voudrait rien dire, puisque toutes les autres
+  // retomberaient sur l'échelle du plan.
+  if (table && Object.keys(table).length > 0) return table[String(page ?? 1)] ?? null
+  // Pas de table : le plan a été étalonné d'un bloc, avant que les pages ne
+  // soient distinguées. Son échelle vaut pour tout le document.
+  return echelleDuPlan
+}
+
+export function echelleDePage(
+  plan: { scalePxPerM: number | null; annotations: PlanAnnotation[] },
+  page: number | undefined,
+): number | null {
+  return echelleDansTable(
+    plan.annotations?.find((a) => a.type === 'pages')?.pageScales,
+    plan.scalePxPerM,
+    page,
+  )
+}
+
 /** Ce que cette annotation sait mesurer. */
 export function natureDe(a: Pick<PlanAnnotation, 'type' | 'points'>): NatureQuantite {
   if (a.type === 'hatch') return a.points.length >= 3 ? 'surface' : 'aucune'
@@ -76,6 +110,8 @@ export interface ZoneLiee {
   planId: string
   planName: string
   annotationId: string
+  /** Page du PDF où elle est tracée. */
+  page: number
   label: string | null
   nature: NatureQuantite
   /** En m² ou en m. null si le plan n'est pas étalonné. */
@@ -127,11 +163,12 @@ export function apportsDesPlans(plans: PlanMesurable[]): Map<string, ApportPlan>
       }
       if (apport.nature !== nature) continue
 
-      const valeur = mesureDe(a, plan.scalePxPerM)
+      const valeur = mesureDe(a, echelleDePage(plan, a.page))
       apport.zones.push({
         planId: plan.id,
         planName: plan.name,
         annotationId: a.id,
+        page: a.page ?? 1,
         label: a.text?.trim() || null,
         nature,
         valeur,

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   airePolygone, longueurPolyligne, natureDe, mesureDe, natureDeLUnite,
-  apportsDesPlans, reportPossible, type PlanMesurable,
+  apportsDesPlans, reportPossible, echelleDansTable, echelleDePage, type PlanMesurable,
 } from './plan-quantites'
 import type { PlanAnnotation } from './api-types'
 
@@ -161,5 +161,51 @@ describe('report dans le diagnostic', () => {
     ]).get('i1')
     expect(reportPossible(brut, { unit: 'CHF/m²', area: null }))
       .toEqual({ ok: false, raison: 'non-etalonne' })
+  })
+})
+
+describe('échelle d’une page', () => {
+  const page = (n: number, v: number): PlanAnnotation =>
+    ({ id: `p${n}`, type: 'pages', points: [], pageScales: { [String(n)]: v } })
+
+  it('sans table, l’échelle du plan vaut pour tout le document', () => {
+    // Les plans étalonnés avant que les pages ne soient distinguées gardent
+    // leur échelle : elle ne doit pas disparaître sous eux.
+    expect(echelleDansTable(undefined, 100, 1)).toBe(100)
+    expect(echelleDansTable(undefined, 100, 7)).toBe(100)
+    expect(echelleDansTable({}, 100, 3)).toBe(100)
+  })
+
+  it('avec une table, une page absente n’a pas d’échelle', () => {
+    // Sinon « appliquer à cette page seule » ne voudrait rien dire.
+    expect(echelleDansTable({ '1': 120 }, 100, 1)).toBe(120)
+    expect(echelleDansTable({ '1': 120 }, 100, 2)).toBeNull()
+  })
+
+  it('la page par défaut est la première', () => {
+    expect(echelleDansTable({ '1': 120 }, 100, undefined)).toBe(120)
+  })
+
+  it('se lit aussi depuis les annotations du plan', () => {
+    const plan = { scalePxPerM: 100, annotations: [page(2, 80)] }
+    expect(echelleDePage(plan, 2)).toBe(80)
+    expect(echelleDePage(plan, 1)).toBeNull()
+  })
+})
+
+describe('mesures réparties sur plusieurs pages', () => {
+  it('chaque zone est mesurée à l’échelle de sa page', () => {
+    // 500 px de côté : 25 m² à 100 px/m, 100 m² à 50 px/m.
+    const plans: PlanMesurable[] = [{
+      id: 'p', name: 'Coupes', scalePxPerM: 100,
+      annotations: [
+        { id: 'e', type: 'pages', points: [], pageScales: { '1': 100, '2': 50 } },
+        { ...zone('z1', 500, 'i1'), page: 1 },
+        { ...zone('z2', 500, 'i1'), page: 2 },
+      ],
+    }]
+    const a = apportsDesPlans(plans).get('i1')!
+    expect(a.zones.map((z) => z.page)).toEqual([1, 2])
+    expect(a.total).toBe(125)
   })
 })
