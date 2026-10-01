@@ -292,7 +292,15 @@ export interface ApiCfcEntry {
 }
 
 export interface PlanPoint { x: number; y: number }
-export type PlanAnnotationType = 'measure' | 'arrow' | 'note' | 'hatch' | 'draw'
+/**
+ * Ce qu'on pose sur un plan.
+ *
+ * `reference` n'est pas un tracé mais un calque : un autre plan du dossier,
+ * posé en transparence par-dessus celui-ci pour comparer deux états. Il vit avec
+ * les annotations parce qu'il appartient au plan au même titre qu'elles, et
+ * qu'on veut le retrouver aligné en rouvrant le document.
+ */
+export type PlanAnnotationType = 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference'
 export interface PlanAnnotation {
   id: string
   type: PlanAnnotationType
@@ -307,6 +315,16 @@ export interface PlanAnnotation {
    * exacte sur l'ouvrage, au lieu de laisser la mesure s'arrêter à l'écran.
    */
   itemId?: string | null
+
+  // ---- Calque de référence (type `reference`) ----
+  /** Plan du dossier posé en transparence. `points[0]` donne son coin haut-gauche. */
+  planId?: string
+  /** Opacité du calque, de 0 à 1. */
+  opacity?: number
+  /** Facteur d'échelle du calque, pour recaler deux plans de tirages différents. */
+  scale?: number
+  /** Teinte appliquée au calque, pour le distinguer du plan du dessous. */
+  tint?: string | null
 }
 
 export interface ApiPlan {

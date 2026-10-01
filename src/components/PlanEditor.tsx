@@ -3,17 +3,19 @@ import { spring, projeterElan, suiviVitesse, mouvementReduit, RESSORTS, type Spr
 import { useQueryClient } from '@tanstack/react-query'
 import {
   X, Hand, MousePointer2, Crosshair, Ruler, ArrowUpRight, StickyNote, Hash, Pencil,
-  ZoomIn, ZoomOut, Undo2, Check, Trash2, Loader2, ChevronLeft, ChevronRight, Maximize, Download, Link2,
+  ZoomIn, ZoomOut, Undo2, Check, Trash2, Loader2, ChevronLeft, ChevronRight, Maximize, Download, Link2, Layers,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { ApiPlan, PlanAnnotation, PlanAnnotationType, PlanPoint } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
 import { loadPdfjs } from '@/lib/pdf'
 import { airePolygone, natureDe } from '@/lib/plan-quantites'
+import { useQuery } from '@tanstack/react-query'
 import { ChoixOuvrage } from '@/components/plans/ChoixOuvrage'
+import { useRenduPlan } from '@/components/plans/rendu'
 import { useOuvragesDuProjet } from '@/components/plans/ouvrages'
 
-type Tool = 'pan' | 'select' | 'calibrate' | 'measure' | 'arrow' | 'note' | 'hatch' | 'draw'
+type Tool = 'pan' | 'select' | 'calibrate' | 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference'
 const TARGET_W = 1600
 const MIN_ZOOM = 0.05
 const MAX_ZOOM = 20
@@ -23,6 +25,27 @@ const COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#111827'
    les plans inversés. Le défaut n'est plus un anthracite isolé mais le gris que
    l'app emploie déjà pour ses bordures appuyées. */
 const FONDS = ['#d1d1d6', '#f5f5f7', '#ffffff', '#1d1d1f']
+
+/**
+ * Arrondi des cotes, en metres.
+ *
+ * Une cote relevee au doigt sur un plan tombe sur 5.23 m la ou l'ouvrage mesure
+ * 5.20 m : la precision affichee depasse celle du trace, et un plan rendu au
+ * client ne doit pas annoncer un centimetre qu'on n'a pas mesure. Le pas arrondit
+ * ce qui s'affiche ; les surfaces suivent le meme pas, en metres carres.
+ */
+const ARRONDIS = [
+  { pas: 0, label: 'exact' },
+  { pas: 0.01, label: '1 cm' },
+  { pas: 0.05, label: '5 cm' },
+  { pas: 0.1, label: '10 cm' },
+] as const
+type PasArrondi = (typeof ARRONDIS)[number]['pas']
+
+/** Arrondit au pas demande. Un pas nul laisse la valeur intacte. */
+function auPas(v: number, pas: number): number {
+  return pas > 0 ? Math.round(v / pas) * pas : v
+}
 
 let _c = 0
 const uid = () => `a${Date.now()}_${_c++}`
@@ -57,6 +80,15 @@ const TOOLS: { key: Tool; icon: typeof Ruler; label: string }[] = [
   { key: 'arrow', icon: ArrowUpRight, label: 'Flèche' },
   { key: 'note', icon: StickyNote, label: 'Note' },
   { key: 'hatch', icon: Hash, label: 'Zone' },
+  { key: 'reference', icon: Layers, label: 'Référence' },
+]
+
+/** Teintes du calque de référence : claires, pour que les traits restent noirs. */
+const TEINTES: { valeur: string | null; nom: string }[] = [
+  { valeur: null, nom: 'Aucune' },
+  { valeur: '#dbeafe', nom: 'Bleu' },
+  { valeur: '#fee2e2', nom: 'Rouge' },
+  { valeur: '#dcfce7', nom: 'Vert' },
 ]
 
 const HINTS: Record<Tool, string> = {
@@ -68,11 +100,13 @@ const HINTS: Record<Tool, string> = {
   note: 'Touche le plan pour poser une note.',
   hatch: 'Glisse pour une zone rectangulaire, ou touche chaque sommet puis « Fermer la zone ».',
   draw: 'Dessine à main levée en gardant le doigt / la souris appuyé.',
+  reference: 'Pose un autre plan du dossier en transparence, puis glisse pour le recaler sur celui-ci.',
 }
 
 /** Nom lisible d'une annotation, pour l'entête du panneau de sélection. */
 const NOMS: Record<PlanAnnotationType, string> = {
   measure: 'Cote', hatch: 'Zone', note: 'Note', arrow: 'Flèche', draw: 'Croquis',
+  reference: 'Référence',
 }
 
 /**
@@ -137,6 +171,43 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const [selectedAnn, setSelectedAnn] = useState<string | null>(null)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [choixOuvrage, setChoixOuvrage] = useState(false)
+  const [arrondi, setArrondi] = useState<PasArrondi>(0)
+
+  /**
+   * Calque de référence : un autre plan du dossier, posé par-dessus celui-ci.
+   *
+   * Comparer un état existant et un projet demandait jusqu'ici d'ouvrir deux
+   * onglets et de faire l'aller-retour de mémoire. Le calque se range avec les
+   * annotations : on le retrouve recalé en rouvrant le plan.
+   */
+  const reference = annotations.find((a) => a.type === 'reference') ?? null
+  const plansDuDossier = useQuery({
+    queryKey: ['plans', plan.projectId],
+    queryFn: () => api.plans.list(plan.projectId),
+  })
+  const autresPlans = (plansDuDossier.data?.plans ?? []).filter((x) => x.id !== plan.id)
+  const planReference = autresPlans.find((x) => x.id === reference?.planId) ?? null
+  const renduReference = useRenduPlan(planReference, 1600)
+
+  const poserReference = (planId: string) => {
+    setAnnotations((l) => {
+      const sansAncien = l.filter((a) => a.type !== 'reference')
+      return [...sansAncien, {
+        id: uid(), type: 'reference', planId,
+        points: [{ x: 0, y: 0 }], opacity: 0.5, scale: 1, tint: null,
+      }]
+    })
+    setDirty(true)
+  }
+  const majReference = (patch: Partial<PlanAnnotation>) => {
+    if (!reference) return
+    setAnnotations((l) => l.map((a) => (a.id === reference.id ? { ...a, ...patch } : a)))
+    setDirty(true)
+  }
+  const retirerReference = () => {
+    setAnnotations((l) => l.filter((a) => a.type !== 'reference'))
+    setDirty(true)
+  }
 
   const isPdf = plan.mimeType === 'application/pdf'
 
@@ -281,6 +352,11 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       if (hitId) { setSelectedAnn(hitId); dragRef.current = { id: hitId, lastX: sp.x, lastY: sp.y }; gesture.current.mode = 'dragAnn' }
       else { setSelectedAnn(null); gesture.current.mode = 'pan' }
     }
+    else if (tool === 'reference') {
+      // Le calque se déplace comme une annotation : il n'a qu'un point, son coin.
+      if (reference) { dragRef.current = { id: reference.id, lastX: sp.x, lastY: sp.y }; gesture.current.mode = 'dragAnn' }
+      else gesture.current.mode = 'pan'
+    }
     else if (tool === 'draw') { gesture.current.mode = 'draw'; setDraft([sp]) }
     else if (tool === 'measure' || tool === 'arrow' || tool === 'calibrate') { gesture.current.mode = 'segment'; setPending(sp); setCursor(sp) }
     else if (tool === 'hatch') { gesture.current.mode = 'hatch'; setPending(sp); setCursor(sp) }
@@ -399,7 +475,17 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   }
 
   const closeHatch = () => { if (draft.length >= 3) { addAnn({ type: 'hatch', points: draft, color }); setDraft([]) } }
-  const undo = () => { setAnnotations((a) => a.slice(0, -1)); setDirty(true) }
+  const undo = () => {
+    // Le calque de référence n'est pas un tracé : annuler défait le dernier
+    // dessin, pas le document qu'on a posé dessous pour comparer.
+    setAnnotations((a) => {
+      for (let i = a.length - 1; i >= 0; i--) {
+        if (a[i].type !== 'reference') return [...a.slice(0, i), ...a.slice(i + 1)]
+      }
+      return a
+    })
+    setDirty(true)
+  }
 
   const confirmCalibrate = () => {
     if (!calibrateSeg) return
@@ -494,6 +580,34 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     const ctx = out.getContext('2d')!
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, out.width, out.height)
     ctx.drawImage(base, 0, 0)
+
+    // Le calque de référence fait partie de ce qu'on regarde : un export qui
+    // l'oublierait ne montrerait pas la comparaison qu'on vient de faire.
+    if (reference && renduReference.rendu) {
+      const r = renduReference.rendu
+      const k = reference.scale ?? 1
+      const calque = document.createElement('canvas')
+      calque.width = Math.max(1, Math.round(r.largeur * k))
+      calque.height = Math.max(1, Math.round(r.hauteur * k))
+      const cctx = calque.getContext('2d')!
+      await new Promise<void>((res) => {
+        const img = new Image()
+        img.onload = () => {
+          if (reference.tint) {
+            cctx.fillStyle = reference.tint
+            cctx.fillRect(0, 0, calque.width, calque.height)
+            cctx.globalCompositeOperation = 'multiply'
+          }
+          cctx.drawImage(img, 0, 0, calque.width, calque.height)
+          res()
+        }
+        img.onerror = () => res()
+        img.src = r.url
+      })
+      ctx.globalAlpha = reference.opacity ?? 0.5
+      ctx.drawImage(calque, reference.points[0].x, reference.points[0].y)
+      ctx.globalAlpha = 1
+    }
     if (svgRef.current) {
       const svgStr = new XMLSerializer().serializeToString(svgRef.current)
       const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr)
@@ -551,11 +665,16 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const AREA_DEC = { m: 2, cm: 0, mm: 0 } as const
   const fmtLen = (px: number) => {
     if (!scale) return `${Math.round(px)} px`
-    return `${(px / scale * UNIT_F[unit]).toFixed(LEN_DEC[unit])} ${unit}`
+    // L'arrondi se fait en mètres, puis la valeur est convertie : arrondir après
+    // conversion donnerait un pas de 5 cm différent selon qu'on affiche des
+    // mètres ou des millimètres.
+    const m = auPas(px / scale, arrondi)
+    return `${(m * UNIT_F[unit]).toFixed(LEN_DEC[unit])} ${unit}`
   }
   const fmtArea = (px2: number) => {
     if (!scale) return `${Math.round(px2)} px²`
-    return `${(px2 / (scale * scale) * UNIT_F[unit] ** 2).toFixed(AREA_DEC[unit])} ${unit}²`
+    const m2 = auPas(px2 / (scale * scale), arrondi)
+    return `${(m2 * UNIT_F[unit] ** 2).toFixed(AREA_DEC[unit])} ${unit}²`
   }
   /** Mesure lisible d'une annotation, ou null si elle ne mesure rien. */
   const quantiteDe = (a: PlanAnnotation): string | null => {
@@ -624,7 +743,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
           {TOOLS.map((t) => <BoutonOutil key={t.key} outil={t} actif={tool === t.key} onChoisir={choisirOutil} />)}
           <div className="mt-3 border-t pt-3">
             <p className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Couleur</p>
-            <div className="grid grid-cols-3 gap-1.5 px-1">
+            <div className="flex flex-col items-center gap-2">
               {COLORS.map((c) => (
                 <button
                   key={c}
@@ -664,7 +783,32 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
             style={{ width: stage.w, height: stage.h, transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.zoom})`, transformOrigin: '0 0' }}
             className={cn('absolute left-0 top-0 bg-white shadow-xl ring-1 ring-black/5', loading && 'hidden')}
           >
-            <canvas ref={canvasRef} className="block pointer-events-none" />
+              <canvas ref={canvasRef} className="block pointer-events-none" />
+
+              {/* Le calque se glisse entre le plan et les annotations : on compare
+                  deux documents, et ce qu'on a tracé reste lisible par-dessus. */}
+              {reference && renduReference.rendu && (
+                <div
+                  className="pointer-events-none absolute"
+                  style={{
+                    left: reference.points[0].x,
+                    top: reference.points[0].y,
+                    width: renduReference.rendu.largeur * (reference.scale ?? 1),
+                    height: renduReference.rendu.hauteur * (reference.scale ?? 1),
+                    opacity: reference.opacity ?? 0.5,
+                    background: reference.tint ?? undefined,
+                  }}
+                >
+                  <img
+                    src={renduReference.rendu.url}
+                    alt=""
+                    className="h-full w-full"
+                    // Multiplier plutôt que superposer : le blanc du plan prend la
+                    // teinte, ses traits restent noirs et donc lisibles.
+                    style={{ mixBlendMode: reference.tint ? 'multiply' : undefined }}
+                  />
+                </div>
+              )}
             <svg ref={svgRef} viewBox={`0 0 ${stage.w} ${stage.h}`} width={stage.w} height={stage.h} className="absolute inset-0 pointer-events-none">
               <defs>
                 {hatchColors.map((c) => (
@@ -728,6 +872,19 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
               </button>
             )}
 
+            {tool === 'reference' && (
+              <PanneauReference
+                reference={reference}
+                plans={autresPlans}
+                nomReference={planReference?.name ?? null}
+                chargement={plansDuDossier.isLoading || (!!reference && !renduReference.rendu && !renduReference.erreur)}
+                erreur={renduReference.erreur}
+                onPoser={poserReference}
+                onMaj={majReference}
+                onRetirer={retirerReference}
+              />
+            )}
+
             {selAnn && (
               <PanneauSelection
                 annotation={selAnn}
@@ -765,6 +922,18 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                     <button key={u} onClick={() => setUnit(u)}
                       className={cn('rounded-md px-2 py-1 font-medium transition-colors', unit === u ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground')}>
                       {u}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="hidden sm:inline">Arrondi</span>
+                <div className="flex rounded-lg bg-muted p-0.5">
+                  {ARRONDIS.map((a) => (
+                    <button key={a.label} onClick={() => setArrondi(a.pas)}
+                      className={cn('rounded-md px-2 py-1 font-medium transition-colors', arrondi === a.pas ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground')}>
+                      {a.label}
                     </button>
                   ))}
                 </div>
@@ -868,6 +1037,129 @@ function BoutonOutil({ outil, actif, onChoisir, compact }: {
 }
 
 /**
+ * Réglages du calque de référence.
+ *
+ * Deux plans du même bâtiment sortent rarement du même tirage : l'un est à
+ * l'échelle 1:50, l'autre recadré. Le calque se déplace au doigt et se
+ * redimensionne ici, sans quoi la superposition ne vaut rien.
+ */
+function PanneauReference({ reference, plans, nomReference, chargement, erreur, onPoser, onMaj, onRetirer }: {
+  reference: PlanAnnotation | null
+  plans: ApiPlan[]
+  nomReference: string | null
+  chargement: boolean
+  erreur: boolean
+  onPoser: (planId: string) => void
+  onMaj: (patch: Partial<PlanAnnotation>) => void
+  onRetirer: () => void
+}) {
+  return (
+    <div
+      data-habillage
+      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:right-3 sm:w-80"
+    >
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Calque de référence</p>
+
+      {plans.length === 0 ? (
+        <p className="mt-1 text-sm text-muted-foreground">
+          Ce dossier n’a pas d’autre plan. Ajoutez-en un pour pouvoir comparer deux documents.
+        </p>
+      ) : !reference ? (
+        <>
+          <p className="mb-2 mt-0.5 text-sm text-muted-foreground">Choisissez le plan à poser par-dessus.</p>
+          <div className="max-h-52 space-y-1 overflow-y-auto">
+            {plans.map((x) => (
+              <button
+                key={x.id}
+                onClick={() => onPoser(x.id)}
+                className="block w-full truncate rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted"
+                title={x.name}
+              >
+                {x.name}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mt-0.5 flex items-center justify-between gap-2">
+            <p className="min-w-0 truncate text-sm font-medium" title={nomReference ?? ''}>
+              {nomReference ?? 'Plan introuvable'}
+            </p>
+            <button
+              onClick={onRetirer}
+              className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              title="Retirer le calque"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+
+          {chargement && (
+            <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />Rendu du plan…
+            </p>
+          )}
+          {erreur && <p className="mt-1 text-xs text-destructive">Ce plan n’a pas pu être affiché.</p>}
+
+          <Reglage
+            libelle="Transparence"
+            valeur={`${Math.round((reference.opacity ?? 0.5) * 100)} %`}
+            min={5} max={100} pas={5}
+            courant={Math.round((reference.opacity ?? 0.5) * 100)}
+            onChange={(v) => onMaj({ opacity: v / 100 })}
+          />
+          <Reglage
+            libelle="Échelle"
+            valeur={`${Math.round((reference.scale ?? 1) * 100)} %`}
+            min={20} max={300} pas={1}
+            courant={Math.round((reference.scale ?? 1) * 100)}
+            onChange={(v) => onMaj({ scale: v / 100 })}
+          />
+
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Teinte</span>
+            {TEINTES.map((t) => (
+              <button
+                key={t.nom}
+                onClick={() => onMaj({ tint: t.valeur })}
+                title={t.nom}
+                className={cn('h-5 w-5 rounded-full border ring-offset-2',
+                  (reference.tint ?? null) === t.valeur && 'ring-2 ring-foreground')}
+                style={{ backgroundColor: t.valeur ?? 'transparent' }}
+              />
+            ))}
+          </div>
+
+          <p className="mt-2 text-xs text-muted-foreground">
+            Glissez sur le plan pour recaler le calque.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Une réglette, avec sa valeur lue à côté de son intitulé. */
+function Reglage({ libelle, valeur, min, max, pas, courant, onChange }: {
+  libelle: string; valeur: string; min: number; max: number; pas: number
+  courant: number; onChange: (v: number) => void
+}) {
+  return (
+    <label className="mt-2 block">
+      <span className="flex items-center justify-between text-xs text-muted-foreground">
+        {libelle}<span className="tabular-nums">{valeur}</span>
+      </span>
+      <input
+        type="range" min={min} max={max} step={pas} value={courant}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-1 w-full accent-foreground"
+      />
+    </label>
+  )
+}
+
+/**
  * Carte de l'annotation sélectionnée.
  *
  * Elle remplace la barrette de couleurs qui flottait en bas à gauche : ce qu'on
@@ -953,6 +1245,8 @@ function Shape({ a, fmtLen, fmtArea, font, strokeW, lie }: {
   a: PlanAnnotation; fmtLen: (px: number) => string; fmtArea: (px2: number) => string
   font: number; strokeW: number; lie: string | null
 }) {
+  // Le calque de référence est une image posée sous les annotations, pas un tracé.
+  if (a.type === 'reference') return null
   const color = a.color ?? '#ef4444'
   const halo = 3 * strokeW
   if (a.type === 'note') {
