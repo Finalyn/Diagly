@@ -75,6 +75,24 @@ const NOMS: Record<PlanAnnotationType, string> = {
   measure: 'Cote', hatch: 'Zone', note: 'Note', arrow: 'Flèche', draw: 'Croquis',
 }
 
+/**
+ * L'evenement vient-il d'un element pose PAR-DESSUS la scene ?
+ *
+ * Le panneau de selection et le bouton « Fermer la zone » flottent a l'interieur
+ * du conteneur qui porte les gestes : sans ce garde-fou, appuyer sur « Supprimer »
+ * ou sur « Rattacher a un ouvrage » commencait par un appui sur le plan, qui ne
+ * touchait aucune annotation et deselectionnait donc tout. Le panneau disparaissait
+ * avant que le clic n'arrive sur son bouton.
+ *
+ * Le test ne gene pas un geste legitime : le conteneur capture le pointeur des
+ * l'appui, et les evenements d'un pointeur capture sont adresses a l'element qui
+ * capture, jamais a ce qui passe dessous.
+ */
+function surHabillage(e: React.PointerEvent): boolean {
+  const cible = e.target as HTMLElement | null
+  return !!cible?.closest?.('[data-habillage]')
+}
+
 interface View { zoom: number; tx: number; ty: number }
 
 export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => void }) {
@@ -206,7 +224,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const addAnn = (a: Omit<PlanAnnotation, 'id'>) => { setAnnotations((l) => [...l, { id: uid(), ...a }]); setDirty(true) }
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (calibrateSeg || notePoint) return
+    if (calibrateSeg || notePoint || surHabillage(e)) return
     // Le plan est peut-être encore en train de glisser : on le rattrape là où il est
     // affiché, sans attendre la fin de sa course. C'est ce qui distingue un mouvement
     // qu'on peut reprendre d'une animation qu'on subit.
@@ -317,6 +335,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   }
 
   const onPointerUp = (e: React.PointerEvent) => {
+    if (surHabillage(e)) return
     const g = gesture.current
     const wasTap = !g.moved
 
@@ -702,6 +721,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
             {tool === 'hatch' && draft.length >= 3 && (
               <button
                 onClick={closeHatch}
+                data-habillage
                 className="absolute left-1/2 top-14 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-xs font-semibold text-background shadow-lg"
               >
                 Fermer la zone
@@ -865,7 +885,10 @@ function PanneauSelection({ annotation, lie, etalonne, quantite, onLier, onEdite
   onSupprimer: () => void
 }) {
   return (
-    <div className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:left-3 sm:w-80">
+    <div
+      data-habillage
+      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:left-3 sm:w-80"
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
