@@ -35,7 +35,7 @@ export interface Rendu {
  */
 const cache = new Map<string, Promise<Rendu>>()
 
-async function rendre(plan: ApiPlan, largeurCible: number): Promise<Rendu> {
+async function rendre(plan: ApiPlan, largeurCible: number, numeroPage: number): Promise<Rendu> {
   const url = api.plans.fileUrl(plan)
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')!
@@ -44,7 +44,9 @@ async function rendre(plan: ApiPlan, largeurCible: number): Promise<Rendu> {
     const buf = await (await fetch(url)).arrayBuffer()
     const pdfjsLib = await loadPdfjs()
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise
-    const page = await pdf.getPage(1)
+    // Une page demandée hors du document retombe sur la première plutôt que de
+    // faire échouer le rendu : un PDF remplacé peut avoir perdu des feuilles.
+    const page = await pdf.getPage(Math.min(Math.max(1, numeroPage), pdf.numPages))
     const base = page.getViewport({ scale: 1 })
     const repere = page.getViewport({ scale: LARGEUR_REPERE / base.width })
     const vue = page.getViewport({ scale: largeurCible / base.width })
@@ -77,8 +79,8 @@ async function rendre(plan: ApiPlan, largeurCible: number): Promise<Rendu> {
   }
 }
 
-export function useRenduPlan(plan: ApiPlan | null, largeurCible: number) {
-  const cle = plan ? `${plan.id}@${largeurCible}` : ''
+export function useRenduPlan(plan: ApiPlan | null, largeurCible: number, numeroPage = 1) {
+  const cle = plan ? `${plan.id}@${largeurCible}@${numeroPage}` : ''
   // L'état porte la clé du rendu qu'il contient. Sans elle, il faudrait remettre
   // l'état à zéro depuis l'effet au changement de plan, et l'aperçu précédent
   // resterait affiché un instant sous le nom du nouveau plan.
@@ -89,7 +91,7 @@ export function useRenduPlan(plan: ApiPlan | null, largeurCible: number) {
     let abandonne = false
     let p = cache.get(cle)
     if (!p) {
-      p = rendre(plan, largeurCible)
+      p = rendre(plan, largeurCible, numeroPage)
       cache.set(cle, p)
       // Un rendu raté ne doit pas rester en cache : le plan réessaierait sur la
       // même promesse rejetée et paraîtrait définitivement cassé.
@@ -98,7 +100,7 @@ export function useRenduPlan(plan: ApiPlan | null, largeurCible: number) {
     p.then((r) => { if (!abandonne) setResultat({ cle, rendu: r }) })
      .catch(() => { if (!abandonne) setResultat({ cle, erreur: true }) })
     return () => { abandonne = true }
-  }, [plan, largeurCible, cle])
+  }, [plan, largeurCible, numeroPage, cle])
 
   const courant = resultat?.cle === cle ? resultat : null
   return { rendu: courant?.rendu ?? null, erreur: courant?.erreur ?? false }

@@ -328,6 +328,11 @@ export interface PlanAnnotation {
   // ---- Calque de référence (type `reference`) ----
   /** Plan du dossier posé en transparence. `points[0]` donne son coin haut-gauche. */
   planId?: string
+  /**
+   * Page du plan de référence, quand c'est un PDF de plusieurs feuilles.
+   * Distinct de `page`, qui dit sur quelle page du plan courant l'élément est posé.
+   */
+  planPage?: number
   /** Opacité du calque, de 0 à 1. */
   opacity?: number
   /** Facteur d'échelle du calque, pour recaler deux plans de tirages différents. */

@@ -13,7 +13,7 @@ import { loadPdfjs } from '@/lib/pdf'
 import { airePolygone, echelleDansTable, natureDe } from '@/lib/plan-quantites'
 import { useQuery } from '@tanstack/react-query'
 import { ChoixOuvrage } from '@/components/plans/ChoixOuvrage'
-import { useApercusPages, useRenduPlan } from '@/components/plans/rendu'
+import { useApercusPages, useRenduPlan, type ApercuPage } from '@/components/plans/rendu'
 import { useOuvragesDuProjet } from '@/components/plans/ouvrages'
 
 type Tool = 'pan' | 'select' | 'calibrate' | 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference'
@@ -201,7 +201,9 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   })
   const autresPlans = (plansDuDossier.data?.plans ?? []).filter((x) => x.id !== plan.id)
   const planReference = autresPlans.find((x) => x.id === reference?.planId) ?? null
-  const renduReference = useRenduPlan(planReference, 1600)
+  const renduReference = useRenduPlan(planReference, 1600, reference?.planPage ?? 1)
+  /** Pages du document posé en référence, pour pouvoir choisir laquelle comparer. */
+  const apercusReference = useApercusPages(planReference, tool === 'reference')
   // Les vignettes servent à naviguer dans un document de plusieurs feuilles, et
   // à choisir à quelles pages s'applique un étalonnage.
   const apercus = useApercusPages(plan, isPdf && numPages > 1)
@@ -211,7 +213,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       const sansAncien = l.filter((a) => a.type !== 'reference')
       return [...sansAncien, {
         id: uid(), type: 'reference', planId,
-        points: [{ x: 0, y: 0 }], opacity: 0.5, scale: 1, tint: null,
+        points: [{ x: 0, y: 0 }], planPage: 1, opacity: 0.5, scale: 1, tint: null,
       }]
     })
     setDirty(true)
@@ -994,6 +996,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                 reference={reference}
                 plans={autresPlans}
                 nomReference={planReference?.name ?? null}
+                pagesReference={apercusReference.pages}
                 chargement={plansDuDossier.isLoading || (!!reference && !renduReference.rendu && !renduReference.erreur)}
                 erreur={renduReference.erreur}
                 onPoser={poserReference}
@@ -1239,10 +1242,12 @@ function BoutonOutil({ outil, actif, bloque, onChoisir, compact }: {
  * l'échelle 1:50, l'autre recadré. Le calque se déplace au doigt et se
  * redimensionne ici, sans quoi la superposition ne vaut rien.
  */
-function PanneauReference({ reference, plans, nomReference, chargement, erreur, onPoser, onMaj, onRetirer }: {
+function PanneauReference({ reference, plans, nomReference, pagesReference, chargement, erreur, onPoser, onMaj, onRetirer }: {
   reference: PlanAnnotation | null
   plans: ApiPlan[]
   nomReference: string | null
+  /** Vignettes du document de référence, s'il a plusieurs feuilles. */
+  pagesReference: ApercuPage[]
   chargement: boolean
   erreur: boolean
   onPoser: (planId: string) => void
@@ -1297,6 +1302,28 @@ function PanneauReference({ reference, plans, nomReference, chargement, erreur, 
             </p>
           )}
           {erreur && <p className="mt-1 text-xs text-destructive">Ce plan n’a pas pu être affiché.</p>}
+
+          {/* Un document de référence peut avoir plusieurs feuilles : on compare
+              une coupe précise, pas forcément la première page du fichier. */}
+          {pagesReference.length > 1 && (
+            <div className="mt-2">
+              <p className="mb-1 text-xs text-muted-foreground">Page comparée</p>
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {pagesReference.map((pg) => (
+                  <button
+                    key={pg.numero}
+                    onClick={() => onMaj({ planPage: pg.numero })}
+                    title={`Page ${pg.numero}`}
+                    className={cn('w-12 shrink-0 overflow-hidden rounded-lg border bg-white transition-colors',
+                      (reference.planPage ?? 1) === pg.numero ? 'border-foreground ring-1 ring-foreground' : 'hover:border-foreground/40')}
+                  >
+                    <img src={pg.url} alt="" className="h-14 w-full object-contain" />
+                    <span className="block border-t py-0.5 text-[10px] tabular-nums">{pg.numero}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <Reglage
             libelle="Transparence"
