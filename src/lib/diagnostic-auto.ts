@@ -478,11 +478,23 @@ export function priceBasisNote(): string {
  * savoir s'il s'agissait de trois choses ou d'une seule. C'est une seule.
  */
 export function phraseIndexation(): string {
-  // Coefficient à 1 : les prix du catalogue sont déjà ceux du marché, on n'indexe pas.
-  if (market.coeff === 1) return 'Prix du catalogue Diagly au marché actuel, sans indexation.'
-  return "Prix du catalogue Diagly indexés selon l'indice suisse des prix de la construction (OFS)"
-    + `, facteur ${nb(market.coeff, 3)}.`
+  return `Prix du catalogue Diagly ${inciseIndexation()}.`
 }
+
+/**
+ * La même chose, en incise, pour une phrase qui a déjà nommé le catalogue.
+ *
+ * Le préambule disait « Il repose sur les prix du catalogue Diagly. Prix du
+ * catalogue Diagly au marché actuel, sans indexation. » : la phrase se répétait
+ * à un mot près, et le lecteur cherchait la différence.
+ */
+export function inciseIndexation(): string {
+  if (market.coeff === 1) return 'au marché actuel, sans indexation'
+  return "indexés selon l'indice suisse des prix de la construction (OFS)"
+    + `, facteur ${nb(market.coeff, 3)}`
+}
+
+
 
 /** Version courte, pour les endroits où la place manque. */
 export function priceBasisShort(): string {

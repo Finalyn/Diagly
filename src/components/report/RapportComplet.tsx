@@ -22,7 +22,7 @@ import { useMemo, type ReactNode } from 'react'
 import { buildingTypeLabels, priorityDescriptions, priorityTextColors, stateLabels } from '@/data/mock'
 import { cfcGroupCode, cfcLabelIndex } from '@/lib/cfc'
 import { LIBELLE_LOCALISATION } from '@/lib/localisation'
-import { getMarketInfo, phraseIndexation, priceBasisNote } from '@/lib/diagnostic-auto'
+import { getMarketInfo, inciseIndexation, phraseIndexation, priceBasisNote } from '@/lib/diagnostic-auto'
 import { buildDevis, HORIZON, PRIORITES, uniteCourte, type Devis, type DevisBloc } from '@/lib/devis'
 import { dureeVieResiduelle, phraseDureeVie } from '@/lib/duree-vie'
 import { calculerVariantes, type Variante } from '@/lib/variantes'
@@ -595,8 +595,8 @@ function blocsPreambule(project: ApiProject): [string, ReactNode][] {
     <div className="mt-5">
       <SousTitre>Le coût</SousTitre>
       <p>
-        Il repose sur les prix du catalogue Diagly. {phraseIndexation()} Ces prix sont majorés
-        des honoraires ({pct(project.honoraryPct)}), d'une réserve pour imprévus
+        Il repose sur les prix du catalogue Diagly, {inciseIndexation()}, majorés des
+        honoraires ({pct(project.honoraryPct)}), d'une réserve pour imprévus
         ({pct(project.reservePct)}) et de la TVA ({nombreFr(TVA * 100)} %). La précision est de
         ±15 % : c'est une enveloppe pour décider, pas un prix d'entreprise.
       </p>
