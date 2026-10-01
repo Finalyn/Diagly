@@ -64,6 +64,34 @@ export function oublisDUnReleve(item: ReleveAControler): Oubli[] {
 
 export const aUnOubli = (item: ReleveAControler): boolean => oublisDUnReleve(item).length > 0
 
+export interface ReleveIncomplet<T> {
+  item: T
+  oublis: Oubli[]
+}
+
+/**
+ * Les relevés qui ont laissé quelque chose derrière eux, les plus graves d'abord.
+ *
+ * C'est la liste qu'on ouvre depuis l'alerte, et celle qu'on relit avant de dire
+ * que la visite est terminée. L'ordre compte : on veut retrouver en haut les
+ * constats qui engagent, pas le premier de la nomenclature.
+ */
+export function relevesIncomplets<T extends ReleveAControler>(items: T[]): ReleveIncomplet<T>[] {
+  const liste: ReleveIncomplet<T>[] = []
+  for (const item of items) {
+    const oublis = oublisDUnReleve(item)
+    if (oublis.length > 0) liste.push({ item, oublis })
+  }
+  const poids = (r: ReleveIncomplet<T>) =>
+    r.oublis.some((o) => o.gravite === 'importante') ? 0 : 1
+  // Tri stable : à gravité égale, on garde l'ordre du catalogue, qui est celui de
+  // la visite. Le diagnostiqueur retrouve sa liste dans l'ordre où il l'a remplie.
+  return liste
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => poids(a.r) - poids(b.r) || a.i - b.i)
+    .map(({ r }) => r)
+}
+
 export const aUnOubliImportant = (item: ReleveAControler): boolean =>
   oublisDUnReleve(item).some((o) => o.gravite === 'importante')
 

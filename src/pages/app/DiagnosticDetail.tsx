@@ -13,8 +13,9 @@ import { stateLabels, stateColors, priorityColors, priorityDescriptions } from '
 import { formatCHF, cn } from '@/lib/utils'
 import { dureeVieDeReference, dureeVieResiduelle } from '@/lib/duree-vie'
 import { groupItemsByVisitStep, type VisitStepGroup } from '@/lib/visit-steps'
-import { aUnOubliImportant, bilanDesOublis, oublisDUnReleve, phraseDAlerte } from '@/lib/oublis'
+import { aUnOubliImportant, bilanDesOublis, oublisDUnReleve, phraseDAlerte, relevesIncomplets } from '@/lib/oublis'
 import { circonference, decalageAnneau, partRemplie } from '@/lib/anneau'
+import { RecapOublis, type ModeRecap } from '@/components/diagnostic/RecapOublis'
 import {
   cleReleve, estArticleInterieur, LIBELLE_LOCALISATION, type Localisation,
 } from '@/lib/localisation'
@@ -340,6 +341,19 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   }, [catalogItems, search, projectQuery.data])
 
   // Parcours de visite : une étape à la fois, comme sur le terrain. null = tout voir.
+  // Le récapitulatif de ce qui reste à faire, ouvert soit depuis l'alerte, soit
+  // au moment de clore la visite.
+  const [recap, setRecap] = useState<ModeRecap | null>(null)
+
+  const terminer = useMutation({
+    mutationFn: () => api.diagnostics.update(id!, { status: 'COMPLETED' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['diagnostic', id] })
+      queryClient.invalidateQueries({ queryKey: ['project'] })
+      setRecap(null)
+    },
+  })
+
   const [etape, setEtape] = useState<number | null>(null)
   // Ouvrage choisi dans l'étape (façade, fenêtres…) : le niveau intermédiaire du
   // parcours guidé, entre l'étape et les types.
@@ -427,6 +441,9 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
           etapes={avancementVisite.etapes}
           etape={etape}
           alerte={phraseDAlerte(bilanDesOublis(items))}
+          onAlerte={() => setRecap('consultation')}
+          onTerminer={() => setRecap('fin')}
+          termine={diagQuery.data?.diagnostic?.status === 'COMPLETED'}
         />
 
         <ReindexPanel diagnosticId={id!} />
@@ -664,6 +681,18 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
         </div>
         )}
       </div>
+
+      {recap && (
+        <RecapOublis
+          incomplets={relevesIncomplets(items)}
+          restants={Math.max(0, avancementVisite.total - avancementVisite.faits)}
+          mode={recap}
+          onOuvrir={(itemId) => { setSelectedItemId(itemId); setRecap(null) }}
+          onFermer={() => setRecap(null)}
+          onTerminer={() => terminer.mutate()}
+          terminaisonEnCours={terminer.isPending}
+        />
+      )}
     </div>
   )
 }
@@ -886,13 +915,17 @@ function Retour({ vers, libelle }: { vers: () => void; libelle: string }) {
  * Les montants gardent leur écran, celui des coûts, où ils ont la place d'être
  * lus poste par poste.
  */
-function AvancementVisite({ faits, total, etapes, etape, alerte }: {
+function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte, onTerminer, termine }: {
   faits: number
   total: number
   etapes: VisitStepGroup[]
   etape: number | null
   /** Ce qui manque et qui engage, en une phrase. null quand il n'y a rien à dire. */
   alerte?: string | null
+  /** Ouvre la liste de ce qui reste à faire. */
+  onAlerte?: () => void
+  onTerminer?: () => void
+  termine?: boolean
 }) {
   const rang = etapes.findIndex((g) => g.step === etape)
   const courante = rang >= 0 ? etapes[rang] : null
@@ -922,12 +955,32 @@ function AvancementVisite({ faits, total, etapes, etape, alerte }: {
           {faits} ouvrage{faits > 1 ? 's' : ''} relevé{faits > 1 ? 's' : ''} sur {total}
         </p>
         {/* Dit pendant la visite, tant qu'on peut encore y retourner. Au moment du
-            rapport, il faudrait remonter trois étages pour une photo. */}
+            rapport, il faudrait remonter trois étages pour une photo. L'alerte est
+            un bouton : nommer un manque sans donner le chemin oblige à redescendre
+            toute la nomenclature pour le retrouver. */}
         {alerte && (
-          <p className="flex items-center gap-1.5 text-xs font-medium text-orange-700">
+          <button
+            onClick={onAlerte}
+            className="flex items-center gap-1.5 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700 transition-colors hover:bg-orange-100"
+          >
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             {alerte}
-          </p>
+            <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+          </button>
+        )}
+        <span className="flex-1" />
+        {onTerminer && (
+          <button
+            onClick={onTerminer}
+            className={cn(
+              'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+              termine
+                ? 'bg-green-100 text-green-800'
+                : 'border border-black/[0.08] hover:bg-muted',
+            )}
+          >
+            {termine ? 'Relevé terminé' : 'Terminer le relevé'}
+          </button>
         )}
       </div>
     </div>

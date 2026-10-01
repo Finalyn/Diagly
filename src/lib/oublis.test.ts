@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { oublisDUnReleve, aUnOubliImportant, bilanDesOublis, phraseDAlerte } from './oublis'
+import { oublisDUnReleve, aUnOubliImportant, bilanDesOublis, phraseDAlerte, relevesIncomplets } from './oublis'
 
 describe('un ouvrage pas encore relevé', () => {
   it("n'a rien oublié", () => {
@@ -87,6 +87,43 @@ describe('bilan', () => {
     expect(b.sansPhoto).toBe(3)
     expect(b.sansPhotoDegrade).toBe(2)
     expect(b.sansQuantite).toBe(1)
+  })
+})
+
+describe('liste des relevés incomplets', () => {
+  const items = [
+    { id: 'a', state: 'BON', photos: [] },                            // léger
+    { id: 'b', state: 'TRES_BON', photos: ['x'] },                    // complet
+    { id: 'c', state: 'MAUVAIS', photos: [] },                        // important
+    { id: 'd', state: null, photos: [] },                             // pas relevé
+    { id: 'e', state: 'BON', photos: ['x'], unit: 'm²', area: null }, // important
+  ]
+
+  it('ne retient que ce qui manque', () => {
+    expect(relevesIncomplets(items).map((r) => r.item.id)).toHaveLength(3)
+  })
+
+  it("met les constats qui engagent en premier", () => {
+    expect(relevesIncomplets(items).map((r) => r.item.id)).toEqual(['c', 'e', 'a'])
+  })
+
+  it("garde l'ordre de la visite à gravité égale", () => {
+    const deux = relevesIncomplets([
+      { id: '1', state: 'MOYEN', photos: [] },
+      { id: '2', state: 'MAUVAIS', photos: [] },
+    ])
+    expect(deux.map((r) => r.item.id)).toEqual(['1', '2'])
+  })
+
+  it('porte le détail de chaque oubli', () => {
+    const c = relevesIncomplets(items).find((r) => r.item.id === 'c')!
+    expect(c.oublis).toHaveLength(1)
+    expect(c.oublis[0].raison).toBe('photo')
+  })
+
+  it('rend une liste vide quand tout est complet', () => {
+    expect(relevesIncomplets([{ state: 'BON', photos: ['x'] }])).toEqual([])
+    expect(relevesIncomplets([])).toEqual([])
   })
 })
 
