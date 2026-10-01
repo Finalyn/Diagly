@@ -613,9 +613,16 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
             )}
           </PanneauGlissant>
         ) : (
-        <div className={cn('flex-1 overflow-y-auto overflow-x-hidden min-w-0')}>
+        /* Un cadre fixe, dont le contenu defile a l'interieur, comme la colonne du
+           catalogue. Avant, c'etait la carte de l'editeur elle-meme qui defilait :
+           elle se faisait trancher net au bas de la fenetre, sans bord ni angle, et
+           on lisait cela comme une page qui deborde plutot que comme une liste a
+           derouler. */
+        <div className="flex-1 min-w-0 overflow-hidden rounded-2xl border border-black/[0.06] bg-card shadow-[0_1px_2px_rgba(0,0,0,0.03),0_12px_32px_-16px_rgba(0,0,0,0.10)]">
+        <div className="h-full overflow-y-auto overflow-x-hidden pb-4">
           {selectedDiagItem ? (
             <ItemEditor
+              cadreExterne
               item={selectedDiagItem}
               catalog={selectedCatalog}
               qtyCtx={qtyCtx}
@@ -642,14 +649,15 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
               isDeleting={deleteItem.isPending}
             />
           ) : (
-            <Card>
-              <CardContent className="py-16 text-center">
-                <p className="text-muted-foreground">
-                  Cliquez sur un élément du catalogue à gauche pour l'ajouter au diagnostic.
-                </p>
-              </CardContent>
-            </Card>
+            /* Le cadre est désormais porté par la colonne : une carte de plus ici
+               dessinerait une bordure dans une bordure. */
+            <div className="flex h-full items-center justify-center p-10 text-center">
+              <p className="text-muted-foreground">
+                Cliquez sur un élément du catalogue à gauche pour l'ajouter au diagnostic.
+              </p>
+            </div>
           )}
+        </div>
         </div>
         )}
       </div>
@@ -1060,6 +1068,12 @@ interface ItemEditorProps {
   isDeleting: boolean
   mobile?: boolean
   onBack?: () => void
+  /**
+   * Vrai quand la colonne qui accueille l'éditeur porte déjà le cadre.
+   * L'éditeur abandonne alors le sien, sinon on dessine une bordure dans une
+   * bordure et le contenu se retrouve enfermé deux fois.
+   */
+  cadreExterne?: boolean
 }
 
 /** Sélecteur d'état guidé : chaque état avec sa description (Feuille 3). Fallback = boutons simples. */
@@ -1243,7 +1257,7 @@ function PerformanceEnvelopes({ item, catalog, quantity, onUpdate, isMutating }:
   )
 }
 
-function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack }: ItemEditorProps) {
+function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, cadreExterne }: ItemEditorProps) {
   const [notes, setNotes] = useState(item.notes ?? '')
   const [showManual, setShowManual] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false) // options expertes repliées (mobile)
@@ -1590,7 +1604,7 @@ function ItemEditor({ item, catalog, qtyCtx, guideMode, projectId, yearBuilt, on
   }
 
   return (
-    <Card>
+    <Card className={cadreExterne ? "rounded-none border-0 bg-transparent shadow-none" : undefined}>
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
