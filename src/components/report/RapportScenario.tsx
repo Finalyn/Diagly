@@ -12,7 +12,7 @@ import { LogoEntete, Row, SectionTitre, TitreRapport } from './shared'
 import { toNum } from './constants'
 import type { RItem, RVariant } from './scenarios'
 import { stateLabels } from '@/data/mock'
-import { getMarketCoeff, priceBasisNote } from '@/lib/diagnostic-auto'
+import { priceBasisNote } from '@/lib/diagnostic-auto'
 import { formatCHF, formatDate } from '@/lib/utils'
 
 const COLONNES = (
@@ -170,8 +170,7 @@ export function RapportScenario({ projectName, variant, allVariants, items, ener
 
     bloc('mentions', (
       <p className="mt-6 border-t pt-3 text-muted-foreground">
-        {priceBasisNote()} Indice de construction × {getMarketCoeff()}.
-        Scénario « {variant.name} », rapport généré par Diagly.
+        {priceBasisNote()} Scénario « {variant.name} », rapport généré par Diagly.
       </p>
     ))
 

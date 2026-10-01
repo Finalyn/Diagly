@@ -90,7 +90,7 @@ function addCostsSheet(wb: ExcelJS.Workbook, payload: DiagnosticExport) {
   const rows: [string, number][] = [
     ["Réparation (HT)", c.htRepair],
     ["Amélioration (HT)", c.htImprovement],
-    ["Remise aux normes (HT)", c.htNorms],
+    ["Mise aux normes (HT)", c.htNorms],
     ["Travaux (HT)", c.ht],
     [`Honoraires (${c.honoraryPct}%)`, c.honoraires],
     [`Réserve (${c.reservePct}%)`, c.reserve],

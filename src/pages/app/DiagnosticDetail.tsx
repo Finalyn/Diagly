@@ -1346,7 +1346,7 @@ function InsulationInputs({ value, quantity, onChange }: {
   )
 }
 
-/** Un bloc d'enveloppe (Amélioration ou Remise aux normes) : retenable, éditable, chiffré. */
+/** Un bloc d'enveloppe (Amélioration ou Mise aux normes) : retenable, éditable, chiffré. */
 function PerfBlock({ label, catalogWork, catalogPrice, value, cost, quantity, onChange, isMutating }: {
   label: string; catalogWork: string | null; catalogPrice: string | null
   value: string | null; cost: string | null; quantity: number | undefined
@@ -1389,7 +1389,7 @@ function PerfBlock({ label, catalogWork, catalogPrice, value, cost, quantity, on
   )
 }
 
-/** Enveloppes distinctes Amélioration + Remise aux normes (dimension « performance » du diag). */
+/** Enveloppes distinctes Amélioration + Mise aux normes (dimension « performance » du diag). */
 function PerformanceEnvelopes({ item, catalog, quantity, onUpdate, isMutating }: {
   item: ApiDiagnosticItem; catalog: ApiCatalogItem | null; quantity: number | undefined
   onUpdate: (data: Partial<ApiDiagnosticItem>) => void; isMutating: boolean
@@ -1403,7 +1403,7 @@ function PerformanceEnvelopes({ item, catalog, quantity, onUpdate, isMutating }:
       <PerfBlock key={`imp-${item.id}`} label="Amélioration" catalogWork={catalog?.workImprovement ?? null} catalogPrice={catalog?.priceImprovement ?? null}
         value={item.improvement} cost={item.improvementCost} quantity={quantity} isMutating={isMutating}
         onChange={(w, c) => onUpdate({ improvement: w, improvementCost: (c as unknown as string | null) })} />
-      <PerfBlock key={`norm-${item.id}`} label="Remise aux normes" catalogWork={catalog?.workNorms ?? null} catalogPrice={catalog?.priceNorms ?? null}
+      <PerfBlock key={`norm-${item.id}`} label="Mise aux normes" catalogWork={catalog?.workNorms ?? null} catalogPrice={catalog?.priceNorms ?? null}
         value={item.norms} cost={item.normsCost} quantity={quantity} isMutating={isMutating}
         onChange={(w, c) => onUpdate({ norms: w, normsCost: (c as unknown as string | null) })} />
     </div>

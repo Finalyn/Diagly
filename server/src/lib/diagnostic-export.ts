@@ -65,7 +65,7 @@ export interface ExportVariant extends CostCascade {
   id: "maintenance" | "renovation" | "energetique";
   name: string;
   scope: string;
-  envelopes: string[]; // enveloppes incluses (Réparation / Amélioration / Remise aux normes)
+  envelopes: string[]; // enveloppes incluses (Réparation / Amélioration / Mise aux normes)
   energyFocus: boolean; // scénario à visée énergétique (isolation / mise aux normes)
 }
 

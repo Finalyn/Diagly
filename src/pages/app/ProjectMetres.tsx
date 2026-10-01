@@ -153,7 +153,7 @@ export function ProjectMetres() {
             <CardContent className="space-y-3 text-sm">
               <Row label="Réparation (HT)" value={formatCHF(htRepair)} />
               {htImprovement > 0 && <Row label="Amélioration (HT)" value={formatCHF(htImprovement)} />}
-              {htNorms > 0 && <Row label="Remise aux normes (HT)" value={formatCHF(htNorms)} />}
+              {htNorms > 0 && <Row label="Mise aux normes (HT)" value={formatCHF(htNorms)} />}
               <Row label="Travaux (HT)" value={formatCHF(ht)} strong />
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground flex items-center gap-1">

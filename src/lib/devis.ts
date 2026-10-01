@@ -57,7 +57,7 @@ export const POSTES_AUTOMATIQUES = {
 /** Catégories du classeur qui déclenchent l'échafaudage de cage d'escalier. */
 const CATEGORIES_MURS_PLAFONDS = ['Revêtement de murs', 'Revêtement de plafonds']
 
-export type Enveloppe = 'Réparation' | 'Amélioration' | 'Remise aux normes' | 'Poste de chantier'
+export type Enveloppe = 'Réparation' | 'Amélioration' | 'Mise aux normes' | 'Poste de chantier'
 
 export interface DevisLigne {
   /** Unique dans le devis : un ouvrage peut produire plusieurs lignes. */
@@ -151,7 +151,7 @@ function lignesDeLOuvrage(it: ApiDiagnosticItem): DevisLigne[] {
   const enveloppes: [Enveloppe, number, string][] = [
     ['Réparation', num(it.estimatedCost), travaux],
     ['Amélioration', num(it.improvementCost), it.improvement ?? ''],
-    ['Remise aux normes', num(it.normsCost), it.norms ?? ''],
+    ['Mise aux normes', num(it.normsCost), it.norms ?? ''],
   ]
 
   return enveloppes

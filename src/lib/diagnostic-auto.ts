@@ -466,24 +466,28 @@ const nb = (v: number, dec: number) =>
  * produit, qui suit l'indice servi par le serveur.
  */
 export function priceBasisNote(): string {
-  const fin = " Estimation indicative, elle ne remplace pas un devis d'entreprise."
+  return phraseIndexation() + " Estimation indicative, elle ne remplace pas un devis d'entreprise."
+}
+
+/**
+ * D'où viennent les prix, en une phrase et une seule.
+ *
+ * Le rapport en donnait trois formulations différentes — le préambule parlait de
+ * « prix de référence », le devis de « prix du catalogue », et la source du
+ * fichier de marché s'invitait parfois à leur place. Le lecteur ne pouvait pas
+ * savoir s'il s'agissait de trois choses ou d'une seule. C'est une seule.
+ */
+export function phraseIndexation(): string {
   // Coefficient à 1 : les prix du catalogue sont déjà ceux du marché, on n'indexe pas.
-  if (market.coeff === 1) {
-    const base = market.source || 'Prix du catalogue, sans indexation'
-    return (base.endsWith('.') ? base : base + '.') + fin
-  }
-  const periode = marketPeriodLabel()
-  const de = /^[aeiouàâéèêîôû]/i.test(periode) ? "d'" : 'de '
-  return "Prix de référence indexés sur l'indice suisse des prix de la construction (OFS)"
-    + `, indice ${nb(market.index, 1)}${periode ? ` ${de}${periode}` : ''}`
-    + `, coefficient ×${nb(market.coeff, 3)}.` + fin
+  if (market.coeff === 1) return 'Prix du catalogue Diagly au marché actuel, sans indexation.'
+  return "Prix du catalogue Diagly indexés selon l'indice suisse des prix de la construction (OFS)"
+    + `, facteur ${nb(market.coeff, 3)}.`
 }
 
 /** Version courte, pour les endroits où la place manque. */
 export function priceBasisShort(): string {
-  if (market.coeff === 1) return 'prix du catalogue, sans indexation'
-  const periode = marketPeriodLabel()
-  return `indice OFS ${nb(market.index, 1)}${periode ? ` (${periode})` : ''}, ×${nb(market.coeff, 3)}`
+  if (market.coeff === 1) return 'catalogue Diagly, sans indexation'
+  return `catalogue Diagly indexé OFS, facteur ${nb(market.coeff, 3)}`
 }
 
 /** Prix unitaire réellement appliqué = prix catalogue × coefficient marché. */

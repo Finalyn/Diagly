@@ -51,7 +51,7 @@ describe('enveloppes d’un ouvrage', () => {
     })], LABELS, [], SANS_SURFACE)
 
     const lignes = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes
-    expect(lignes.map((l) => l.enveloppe)).toEqual(['Réparation', 'Amélioration', 'Remise aux normes'])
+    expect(lignes.map((l) => l.enveloppe)).toEqual(['Réparation', 'Amélioration', 'Mise aux normes'])
     expect(lignes.map((l) => l.montant)).toEqual([1000, 500, 250])
   })
 

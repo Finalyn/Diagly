@@ -80,7 +80,7 @@ export const DEFAULT_TEMPLATE: ExportTemplate = {
         { key: "estimatedCost", label: "Réparation (CHF)", active: true },
         { key: "improvement", label: "Amélioration", active: false },
         { key: "improvementCost", label: "Amélioration (CHF)", active: true },
-        { key: "norms", label: "Remise aux normes", active: false },
+        { key: "norms", label: "Mise aux normes", active: false },
         { key: "normsCost", label: "Normes (CHF)", active: true },
       ],
     },

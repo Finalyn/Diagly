@@ -22,7 +22,7 @@ import { useMemo, type ReactNode } from 'react'
 import { buildingTypeLabels, priorityDescriptions, priorityTextColors, stateLabels } from '@/data/mock'
 import { cfcGroupCode, cfcLabelIndex } from '@/lib/cfc'
 import { LIBELLE_LOCALISATION } from '@/lib/localisation'
-import { getMarketInfo, marketPeriodLabel, priceBasisNote } from '@/lib/diagnostic-auto'
+import { getMarketInfo, phraseIndexation, priceBasisNote } from '@/lib/diagnostic-auto'
 import { buildDevis, HORIZON, PRIORITES, uniteCourte, type Devis, type DevisBloc } from '@/lib/devis'
 import { dureeVieResiduelle, phraseDureeVie } from '@/lib/duree-vie'
 import { calculerVariantes, type Variante } from '@/lib/variantes'
@@ -32,7 +32,7 @@ import { cn, formatCHF, formatDate } from '@/lib/utils'
 import type { ApiCatalogItem, ApiCfcEntry, ApiDiagnosticItem, ApiProject, ApiVariant, ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
 import { AvertissementEnergie, CorpsEnergie } from './ChapitreEnergie'
-import { CHAPITRES, ETATS, PAGE } from './constants'
+import { CHAPITRES, ETATS, PAGE, TVA } from './constants'
 import { CaseEtat, Info, Ligne, LogoEntete, Row } from './shared'
 import { DocumentA4, type BlocDocument } from './PagesA4'
 import { usePageDuBloc } from './page-contexte'
@@ -46,13 +46,25 @@ const TITRE_ENERGIE = 'Estimation énergétique indicative'
  * retrouve la page où le chapitre est tombé.
  */
 const SOMMAIRE = [
-  { n: 1, titre: 'La méthode Diagly', bloc: 'c1-titre' },
+  { n: 1, titre: 'Comment ce rapport est établi', bloc: 'c1-titre' },
   { n: 2, titre: 'Le bâtiment', bloc: 'c2-titre' },
   { n: 3, titre: "État de l'existant et travaux proposés", bloc: 'c3-titre' },
   { n: 4, titre: 'Devis estimatif ±15 %', bloc: 'c4-titre' },
 ]
 
-type Chapitre = { n: number; titre: string; bloc: string }
+/**
+ * Annexes, numérotées en lettres et listées après les chapitres.
+ *
+ * La méthode occupait huit sous-chapitres en tête de rapport : le lecteur devait
+ * traverser le mode d'emploi avant d'arriver à son bâtiment. Elle est conservée
+ * entière, mais déplacée derrière le devis, et une page la résume à l'entrée.
+ */
+const ANNEXES = [
+  { lettre: 'A', titre: 'Méthode détaillée', bloc: 'cA-titre' },
+  { lettre: 'B', titre: 'Cadre normatif', bloc: 'cB-titre' },
+] as const
+
+type Chapitre = { n: number; titre: string; bloc: string; lettre?: string }
 
 /**
  * Les chapitres du document, numérotés à la volée.
@@ -66,6 +78,9 @@ function chapitresDuDocument(avecEnergie: boolean, avecVariantes: boolean): Chap
   const l: Chapitre[] = SOMMAIRE.map((c) => ({ ...c }))
   if (avecEnergie) l.push({ n: l.length + 1, titre: TITRE_ENERGIE, bloc: 'c-energie-titre' })
   if (avecVariantes) l.push({ n: l.length + 1, titre: 'Variantes de projet', bloc: 'c5-titre' })
+  // Les annexes closent le sommaire : elles portent une lettre, pas un numéro,
+  // pour qu'on voie d'un coup d'œil où s'arrête le rapport proprement dit.
+  for (const a of ANNEXES) l.push({ n: 0, lettre: a.lettre, titre: a.titre, bloc: a.bloc })
   return l
 }
 
@@ -160,9 +175,9 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
     bloc('sommaire', <Sommaire chapitres={chapitresDoc} />)
 
     // ------------------------------------------------------- 1. la méthode
-    bloc('c1-titre', <ChapitreTitre n={1} titre="La méthode Diagly" />,
+    bloc('c1-titre', <ChapitreTitre n={1} titre="Comment ce rapport est établi" />,
       { nouvellePage: true, avecSuivant: true })
-    for (const [cle, noeud] of blocsMethode(project, devis)) bloc(cle, noeud)
+    for (const [cle, noeud] of blocsPreambule(project)) bloc(cle, noeud)
 
     // ------------------------------------------------------- 2. le bâtiment
     bloc('c2-titre', <ChapitreTitre n={2} titre="Le bâtiment" />,
@@ -204,8 +219,7 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
                   : 'type de toiture non précisé, aucune présomption'],
               ['Surface à échafauder', `${Math.round(metrics.scaffolding)} m²`,
                 'façade + débord et retours ; le vitrage n’est pas déduit'],
-              ['Indice de construction', `× ${getMarketInfo().coeff}`,
-                `indice OFS${getMarketInfo().indexDate ? ` ${getMarketInfo().index} (${marketPeriodLabel()})` : ''}`],
+              ['Indice de construction', `× ${getMarketInfo().coeff}`, phraseIndexation()],
             ].map(([l, v, note]) => (
               <tr key={l} className="border-t align-top">
                 <td className="w-44 py-1">{l}</td>
@@ -345,6 +359,15 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
       }
     }
 
+    // ------------------------------------------------------------- annexes
+    bloc('cA-titre', <AnnexeTitre lettre="A" titre="Méthode détaillée" />,
+      { nouvellePage: true, avecSuivant: true })
+    for (const [cle, noeud] of blocsMethode(project, devis)) bloc(cle, noeud)
+
+    bloc('cB-titre', <AnnexeTitre lettre="B" titre="Cadre normatif" />,
+      { nouvellePage: true, avecSuivant: true })
+    bloc('cB-corps', blocCadreNormatif())
+
     bloc('mentions', (
       <p className="mt-6 border-t pt-3 text-muted-foreground">
         {priceBasisNote()} Diagnostic établi à vue, sans sondage destructif, le {aujourdhui}
@@ -415,7 +438,7 @@ function PageDeGarde({ project, items, adresse, aujourdhui, auteur, company }: {
 function Sommaire({ chapitres }: { chapitres: Chapitre[] }) {
   return (
     <ol>
-      {chapitres.map((c) => <LigneSommaire key={c.n} chapitre={c} />)}
+      {chapitres.map((c) => <LigneSommaire key={c.bloc} chapitre={c} />)}
     </ol>
   )
 }
@@ -424,7 +447,9 @@ function LigneSommaire({ chapitre }: { chapitre: Chapitre }) {
   const page = usePageDuBloc(chapitre.bloc)
   return (
     <li className="flex items-baseline gap-3 border-b py-2">
-      <span className="w-6 shrink-0 font-bold tabular-nums">{chapitre.n}.</span>
+      <span className="w-10 shrink-0 font-bold tabular-nums">
+        {chapitre.lettre ? `Ann. ${chapitre.lettre}` : `${chapitre.n}.`}
+      </span>
       <span className="font-medium">{chapitre.titre}</span>
       {/* Ligne de points : l'œil suit le titre jusqu'à son numéro. */}
       <span className="min-w-6 flex-1 self-end border-b border-dotted border-muted-foreground/50" aria-hidden />
@@ -443,6 +468,15 @@ function ChapitreTitre({ n, titre }: { n: number; titre: string }) {
 }
 
 /** Intertitre de section à l'intérieur d'un chapitre. */
+/** Titre d'annexe : une lettre là où les chapitres portent un numéro. */
+function AnnexeTitre({ lettre, titre }: { lettre: string; titre: string }) {
+  return (
+    <h2 className="mb-4 border-b-2 border-foreground pb-2 text-2xl font-bold">
+      <span className="text-muted-foreground">Annexe {lettre}</span> — {titre}
+    </h2>
+  )
+}
+
 function SousTitre({ children, className }: { children: ReactNode; className?: string }) {
   return <h3 className={cn('mb-2 font-bold uppercase tracking-wide', className)}>{children}</h3>
 }
@@ -461,47 +495,43 @@ function couleurDeBloc(cle: DevisBloc['cle']): string {
  * leurs travaux, les trois enveloppes, l'origine des quantités et des prix, les
  * postes comptés d'office — et non une présentation générale de la démarche.
  */
-function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] {
+/**
+ * Préambule : une page, en tête de rapport.
+ *
+ * Le rapport s'ouvrait sur huit sous-chapitres de méthode. Le destinataire —
+ * une gérance, un propriétaire — n'ouvre pas un diagnostic pour lire un mode
+ * d'emploi : il l'ouvre pour savoir ce qu'il doit faire de son bâtiment. La
+ * méthode complète est conservée, en annexe A ; ici tient ce qu'il faut avoir
+ * lu pour comprendre les chapitres suivants.
+ *
+ * Les taux sont lus sur le dossier et sur la configuration, jamais écrits dans
+ * le texte : un rapport qui annonce 12 % d'honoraires alors que le dossier en
+ * applique 15 se contredit tout seul, et c'est le texte qu'on croit.
+ */
+function blocsPreambule(project: ApiProject): [string, ReactNode][] {
   const sections: [string, ReactNode][] = []
+  const pct = (v: number | null | undefined) => `${nombreFr(v ?? 0)} %`
 
   sections.push(['c1-intro', (
-    <>
-      <p className="mb-3">
-        Le bâtiment est parcouru ouvrage par ouvrage, sur place et à vue, en suivant le
-        référentiel du bureau : une liste fermée d'ouvrages types, rangés par domaine —
-        structure, façade, fenêtres, portes extérieures, stores et volets, toiture, électricité,
-        chauffage, ventilation, sanitaires, revêtements de murs, de plafonds et de sols,
-        serrurerie, menuiserie, aménagements extérieurs. Pour chacun, le diagnostiqueur ne
-        saisit qu'une chose : l'état constaté. Tout le reste — les travaux qui en découlent, la
-        priorité, la quantité, le prix — est déduit de ce référentiel, puis corrigé à la main si
-        la visite l'impose.
-      </p>
-      <p>
-        Ce rapport n'est donc pas une appréciation d'ensemble du bâtiment : c'est la somme
-        d'observations individuelles, chacune traçable de la photo prise sur place jusqu'au prix
-        unitaire appliqué au chapitre 4. Deux bâtiments diagnostiqués par deux personnes
-        différentes sont comparables, parce qu'ils sont lus avec la même grille.
-      </p>
-    </>
+    <p>
+      Nous avons parcouru le bâtiment élément par élément : structure, façades, fenêtres,
+      toiture, installations techniques et aménagements intérieurs. Pour chacun, nous avons noté
+      son état. Les travaux, leur priorité et leur coût en découlent, selon une grille identique
+      pour tous les bâtiments, puis sont ajustés si la visite l'exige. Chaque montant peut ainsi
+      être retracé jusqu'à la photo prise sur place.
+    </p>
   )])
 
   sections.push(['c1-etats', (
     <div className="mt-5">
-      <SousTitre>Les quatre états</SousTitre>
-      <p className="mb-2">
-        Quatre états, et quatre seulement. L'état décrit ce qui a été vu, jamais ce qu'il faut
-        faire : c'est ce qui permet de séparer le constat, qui engage le diagnostiqueur, de la
-        décision de travaux, qui appartient au propriétaire. À chaque état, le référentiel
-        associe d'avance une description type et les travaux correspondants — de « néant » pour
-        un ouvrage sain jusqu'au remplacement complet en fin de vie.
-      </p>
+      <SousTitre>Quatre états</SousTitre>
       <table className="w-full">
         <tbody>
           {([
-            ['TRES_BON', "Aucune dégradation. L'ouvrage remplit sa fonction et n'appelle aucune dépense : le référentiel prévoit « néant »."],
-            ['BON', "Usure normale, sans conséquence sur la fonction. L'entretien courant suffit ; aucun travail n'est chiffré, ou seulement un entretien léger."],
-            ['MOYEN', "Dégradation visible et qui progresse. Une intervention partielle maintenant — réparation, reprise, traitement de surface — évite un remplacement complet ensuite."],
-            ['MAUVAIS', "Fin de vie, fonction compromise ou sécurité en jeu. Le référentiel bascule sur la dépose et le remplacement complet de l'ouvrage."],
+            ['TRES_BON', 'Aucune dégradation, rien à prévoir.'],
+            ['BON', 'Usure normale, un entretien courant suffit.'],
+            ['MOYEN', 'Dégradation visible. Une réparation maintenant évite un remplacement plus tard.'],
+            ['MAUVAIS', 'Fin de vie ou sécurité en jeu. Remplacement à prévoir.'],
           ] as [ElementState, string][]).map(([e, texte]) => (
             <tr key={e} className="border-t align-top">
               <td className="w-32 py-1.5"><CaseEtat etat={e} actif /></td>
@@ -513,19 +543,15 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
     </div>
   )])
 
-  sections.push(['c1-enveloppes', (
+  sections.push(['c1-travaux', (
     <div className="mt-5">
-      <SousTitre>Les trois enveloppes de travaux</SousTitre>
-      <p className="mb-2">
-        Un même ouvrage peut appeler trois dépenses de nature différente, que le rapport ne
-        mélange jamais : les additionner masquerait ce qui est subi et ce qui est choisi.
-      </p>
+      <SousTitre>Trois types de travaux</SousTitre>
       <table className="w-full">
         <tbody>
           {[
-            ['Réparation', "Remettre l'ouvrage dans l'état où il devrait être. C'est la seule enveloppe imposée par la dégradation constatée."],
-            ['Amélioration', "Aller au-delà de l'état d'origine : meilleure performance, meilleur confort, valeur d'usage supérieure. Facultative, elle relève d'un choix."],
-            ['Remise aux normes', "Rattraper un écart avec une norme en vigueur — hauteur de garde-corps, résistance au feu d'une porte palière, sécurité électrique. Elle ne dépend pas de l'état : un ouvrage en bon état peut être non conforme."],
+            ['Réparation', "Remettre l'élément en état. C'est ce que la dégradation impose."],
+            ['Amélioration', "Faire mieux qu'à l'origine (énergie, confort, valeur). C'est un choix du propriétaire."],
+            ['Mise aux normes', "Corriger un écart avec une norme actuelle, même si l'élément est en bon état."],
           ].map(([l, note]) => (
             <tr key={l} className="border-t align-top">
               <td className="w-40 py-1.5 font-medium">{l}</td>
@@ -539,22 +565,13 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
 
   sections.push(['c1-priorites', (
     <div className="mt-5">
-      <SousTitre>La priorité d'intervention</SousTitre>
-      <p className="mb-2">
-        La priorité est proposée d'après l'état — un ouvrage en fin de vie est urgent, un ouvrage
-        dégradé est à planifier — puis arbitrée par le diagnostiqueur, qui seul voit le contexte :
-        un ouvrage en état moyen devient urgent s'il en met un autre en péril, et une réfection
-        sans enjeu peut attendre le prochain chantier pour mutualiser l'échafaudage. C'est la
-        priorité, et non l'état, qui structure le devis du chapitre 4.
-      </p>
+      <SousTitre>Trois priorités</SousTitre>
       <table className="w-full">
         <tbody>
           {PRIORITES.map((p) => (
             <tr key={p} className="border-t align-top">
-              <td className={cn('w-40 py-1.5 font-semibold', priorityTextColors[p])}>
-                Priorité {p} <span className="font-normal text-muted-foreground">({HORIZON[p]})</span>
-              </td>
-              <td className="py-1.5 text-muted-foreground">{priorityDescriptions[p]}</td>
+              <td className={cn('w-40 py-1.5 font-semibold', priorityTextColors[p])}>Priorité {p}</td>
+              <td className="py-1.5 text-muted-foreground">{HORIZON[p]}</td>
             </tr>
           ))}
         </tbody>
@@ -562,7 +579,65 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
     </div>
   )])
 
-  sections.push(['c1-normes', (
+  sections.push(['c1-dureevie', (
+    <div className="mt-5">
+      <SousTitre>Durée de vie restante</SousTitre>
+      <p>
+        Elle se calcule ainsi : année de pose + durée de vie de référence − année actuelle.
+        Lorsque l'année de pose n'a pas pu être relevée, nous utilisons l'année de construction,
+        avec la mention « à confirmer ». Lorsqu'elle est inconnue, la durée restante n'est pas
+        calculée.
+      </p>
+    </div>
+  )])
+
+  sections.push(['c1-cout', (
+    <div className="mt-5">
+      <SousTitre>Le coût</SousTitre>
+      <p>
+        Il repose sur les prix du catalogue Diagly. {phraseIndexation()} Ces prix sont majorés
+        des honoraires ({pct(project.honoraryPct)}), d'une réserve pour imprévus
+        ({pct(project.reservePct)}) et de la TVA ({nombreFr(TVA * 100)} %). La précision est de
+        ±15 % : c'est une enveloppe pour décider, pas un prix d'entreprise.
+      </p>
+    </div>
+  )])
+
+  sections.push(['c1-perimetre', (
+    <div className="mt-5">
+      <SousTitre>Ce que le rapport ne couvre pas</SousTitre>
+      <p>
+        Sondages destructifs, calcul de structure, amiante et polluants, protection incendie,
+        transformations, planification et direction des travaux. Ces points relèvent de mandats
+        spécialisés.
+      </p>
+    </div>
+  )])
+
+  return sections
+}
+
+/** Nombre à la française : la virgule décimale, et pas de décimale inutile. */
+function nombreFr(v: number): string {
+  return String(Math.round(v * 100) / 100).replace('.', ',')
+}
+
+/**
+ * Méthode détaillée, en annexe A.
+ *
+ * C'était le chapitre 1 du rapport. Le texte n'a pas changé : seule sa place
+ * l'a fait, derrière le devis, pour que le lecteur arrive à son bâtiment sans
+ * traverser d'abord le mode d'emploi.
+ */
+/**
+ * Cadre normatif, en annexe B.
+ *
+ * Le diagnostic ne certifie aucune conformité. Les normes citées fixent le
+ * vocabulaire, la structure des coûts et les seuils auxquels un ouvrage est
+ * comparé : elles éclairent le rapport sans l'engager.
+ */
+function blocCadreNormatif(): ReactNode {
+  return (
     <div className="mt-5">
       <SousTitre>Le cadre normatif</SousTitre>
       <p className="mb-2">
@@ -598,9 +673,111 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
         mandats distincts : le rapport peut les signaler, il ne les instruit pas.
       </p>
     </div>
+  )
+}
+
+function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] {
+  const sections: [string, ReactNode][] = []
+
+  sections.push(['cA-intro', (
+    <>
+      <p className="mb-3">
+        Le bâtiment est parcouru ouvrage par ouvrage, sur place et à vue, en suivant le
+        référentiel du bureau : une liste fermée d'ouvrages types, rangés par domaine —
+        structure, façade, fenêtres, portes extérieures, stores et volets, toiture, électricité,
+        chauffage, ventilation, sanitaires, revêtements de murs, de plafonds et de sols,
+        serrurerie, menuiserie, aménagements extérieurs. Pour chacun, le diagnostiqueur ne
+        saisit qu'une chose : l'état constaté. Tout le reste — les travaux qui en découlent, la
+        priorité, la quantité, le prix — est déduit de ce référentiel, puis corrigé à la main si
+        la visite l'impose.
+      </p>
+      <p>
+        Ce rapport n'est donc pas une appréciation d'ensemble du bâtiment : c'est la somme
+        d'observations individuelles, chacune traçable de la photo prise sur place jusqu'au prix
+        unitaire appliqué au chapitre 4. Deux bâtiments diagnostiqués par deux personnes
+        différentes sont comparables, parce qu'ils sont lus avec la même grille.
+      </p>
+    </>
   )])
 
-  sections.push(['c1-dureevie', (
+  sections.push(['cA-etats', (
+    <div className="mt-5">
+      <SousTitre>Les quatre états</SousTitre>
+      <p className="mb-2">
+        Quatre états, et quatre seulement. L'état décrit ce qui a été vu, jamais ce qu'il faut
+        faire : c'est ce qui permet de séparer le constat, qui engage le diagnostiqueur, de la
+        décision de travaux, qui appartient au propriétaire. À chaque état, le référentiel
+        associe d'avance une description type et les travaux correspondants — de « néant » pour
+        un ouvrage sain jusqu'au remplacement complet en fin de vie.
+      </p>
+      <table className="w-full">
+        <tbody>
+          {([
+            ['TRES_BON', "Aucune dégradation. L'ouvrage remplit sa fonction et n'appelle aucune dépense : le référentiel prévoit « néant »."],
+            ['BON', "Usure normale, sans conséquence sur la fonction. L'entretien courant suffit ; aucun travail n'est chiffré, ou seulement un entretien léger."],
+            ['MOYEN', "Dégradation visible et qui progresse. Une intervention partielle maintenant — réparation, reprise, traitement de surface — évite un remplacement complet ensuite."],
+            ['MAUVAIS', "Fin de vie, fonction compromise ou sécurité en jeu. Le référentiel bascule sur la dépose et le remplacement complet de l'ouvrage."],
+          ] as [ElementState, string][]).map(([e, texte]) => (
+            <tr key={e} className="border-t align-top">
+              <td className="w-32 py-1.5"><CaseEtat etat={e} actif /></td>
+              <td className="py-1.5 text-muted-foreground">{texte}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )])
+
+  sections.push(['cA-enveloppes', (
+    <div className="mt-5">
+      <SousTitre>Les trois enveloppes de travaux</SousTitre>
+      <p className="mb-2">
+        Un même ouvrage peut appeler trois dépenses de nature différente, que le rapport ne
+        mélange jamais : les additionner masquerait ce qui est subi et ce qui est choisi.
+      </p>
+      <table className="w-full">
+        <tbody>
+          {[
+            ['Réparation', "Remettre l'ouvrage dans l'état où il devrait être. C'est la seule enveloppe imposée par la dégradation constatée."],
+            ['Amélioration', "Aller au-delà de l'état d'origine : meilleure performance, meilleur confort, valeur d'usage supérieure. Facultative, elle relève d'un choix."],
+            ['Mise aux normes', "Rattraper un écart avec une norme en vigueur — hauteur de garde-corps, résistance au feu d'une porte palière, sécurité électrique. Elle ne dépend pas de l'état : un ouvrage en bon état peut être non conforme."],
+          ].map(([l, note]) => (
+            <tr key={l} className="border-t align-top">
+              <td className="w-40 py-1.5 font-medium">{l}</td>
+              <td className="py-1.5 text-muted-foreground">{note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )])
+
+  sections.push(['cA-priorites', (
+    <div className="mt-5">
+      <SousTitre>La priorité d'intervention</SousTitre>
+      <p className="mb-2">
+        La priorité est proposée d'après l'état — un ouvrage en fin de vie est urgent, un ouvrage
+        dégradé est à planifier — puis arbitrée par le diagnostiqueur, qui seul voit le contexte :
+        un ouvrage en état moyen devient urgent s'il en met un autre en péril, et une réfection
+        sans enjeu peut attendre le prochain chantier pour mutualiser l'échafaudage. C'est la
+        priorité, et non l'état, qui structure le devis du chapitre 4.
+      </p>
+      <table className="w-full">
+        <tbody>
+          {PRIORITES.map((p) => (
+            <tr key={p} className="border-t align-top">
+              <td className={cn('w-40 py-1.5 font-semibold', priorityTextColors[p])}>
+                Priorité {p} <span className="font-normal text-muted-foreground">({HORIZON[p]})</span>
+              </td>
+              <td className="py-1.5 text-muted-foreground">{priorityDescriptions[p]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )])
+
+  sections.push(['cA-dureevie', (
     <div className="mt-5">
       <SousTitre>La durée de vie résiduelle</SousTitre>
       <p className="mb-2">
@@ -623,7 +800,7 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
     </div>
   )])
 
-  sections.push(['c1-quantites', (
+  sections.push(['cA-quantites', (
     <div className="mt-5">
       <SousTitre>Les quantités</SousTitre>
       <p className="mb-2">
@@ -642,7 +819,7 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
     </div>
   )])
 
-  sections.push(['c1-prix', (
+  sections.push(['cA-prix', (
     <div className="mt-5">
       <SousTitre>Les prix et leur indexation</SousTitre>
       <p className="mb-2">
@@ -672,7 +849,7 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
   )])
 
   if (devis.reglesAppliquees.length > 0) {
-    sections.push(['c1-postes', (
+    sections.push(['cA-postes', (
       <div className="mt-5">
         <SousTitre>Les postes comptés d'office</SousTitre>
         <p className="mb-2">
@@ -689,7 +866,7 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
     )])
   }
 
-  sections.push(['c1-precision', (
+  sections.push(['cA-precision', (
     <div className="mt-5">
       <SousTitre>La précision de l'estimation</SousTitre>
       <p>
@@ -703,7 +880,7 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
     </div>
   )])
 
-  sections.push(['c1-perimetre', (
+  sections.push(['cA-perimetre', (
     <div className="mt-5">
       <SousTitre>Ce que le rapport couvre, et ce qu'il ne couvre pas</SousTitre>
       <table className="w-full">
@@ -780,7 +957,7 @@ function FicheOuvrage({ it, constat, article, yearBuilt }: {
       {it.notes && <Ligne titre="Observations" texte={it.notes} />}
       {travaux.length > 0 && <Ligne titre="Travaux à prévoir" texte={travaux.join(' ')} />}
       {it.improvement && <Ligne titre="Amélioration possible" texte={it.improvement} />}
-      {it.norms && <Ligne titre="Remise aux normes" texte={it.norms} />}
+      {it.norms && <Ligne titre="Mise aux normes" texte={it.norms} />}
       {article?.scaffoldingNote && (
         <p className="mt-1 text-amber-700">
           {article.scaffoldingNote} — l'accès conditionne le coût et la date d'intervention.

@@ -101,7 +101,7 @@ export function RapportExistant({ project, items, etatExistant, auteur }: {
             {it.notes && <Ligne titre="Observations" texte={it.notes} />}
             {travaux.length > 0 && <Ligne titre="Travaux à prévoir" texte={travaux.join(' ')} />}
             {it.improvement && <Ligne titre="Amélioration possible" texte={it.improvement} />}
-            {it.norms && <Ligne titre="Remise aux normes" texte={it.norms} />}
+            {it.norms && <Ligne titre="Mise aux normes" texte={it.norms} />}
             {!constat && !it.notes && travaux.length === 0 && !it.improvement && !it.norms && (
               <p className="mt-1 italic text-muted-foreground">
                 {it.state ? 'Aucune observation saisie.' : 'Élément non encore évalué.'}

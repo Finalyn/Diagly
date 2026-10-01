@@ -18,7 +18,7 @@ import { VariantsCompare, type RVariant } from './scenarios'
 import { blocsPhotos } from './photos'
 import { buildingTypeLabels, stateColors, stateLabels } from '@/data/mock'
 import { computeProjectMetrics } from '@/lib/formulas'
-import { getMarketCoeff, getMarketInfo, marketPeriodLabel, priceBasisNote } from '@/lib/diagnostic-auto'
+import { getMarketCoeff, phraseIndexation, priceBasisNote } from '@/lib/diagnostic-auto'
 import { cn, formatCHF, formatDate } from '@/lib/utils'
 import type { ApiDiagnosticItem, ApiProject, ElementState } from '@/lib/api-types'
 
@@ -172,7 +172,7 @@ export function RapportStandard({
                 sinon « Réparation » et « Travaux » affichaient deux fois le même montant. */}
             {(couts.htImprovement > 0 || couts.htNorms > 0) && <Row l="Réparation (HT)" v={formatCHF(couts.htRepair)} />}
             {couts.htImprovement > 0 && <Row l="Amélioration (HT)" v={formatCHF(couts.htImprovement)} />}
-            {couts.htNorms > 0 && <Row l="Remise aux normes (HT)" v={formatCHF(couts.htNorms)} />}
+            {couts.htNorms > 0 && <Row l="Mise aux normes (HT)" v={formatCHF(couts.htNorms)} />}
             <Row l="Travaux (HT)" v={formatCHF(couts.ht)} strong />
             <Row l={`Honoraires (${project.honoraryPct ?? 0}%)`} v={formatCHF(couts.honoraires)} />
             <Row l={`Réserve (${project.reservePct ?? 0}%)`} v={formatCHF(couts.reserve)} />
@@ -273,8 +273,7 @@ export function RapportStandard({
               ['Part vitrée', `${project.windowPct} %`, 'appliquée à la surface de façade'],
               ['Surface de toiture', roof != null ? `${roof} m²` : `${Math.round(metrics.flatRoof)}–${Math.round(metrics.slopedRoof)} m²`,
                 roof != null ? `type ${project.roofType === 'PENTE' ? 'en pente' : project.roofType === 'MIXTE' ? 'mixte' : 'plate'}` : 'type de toiture non précisé, aucune présomption'],
-              ['Indice de construction', `× ${getMarketCoeff()}`,
-                `indice suisse des prix de la construction (OFS)${getMarketInfo().indexDate ? `, ${getMarketInfo().index} (${marketPeriodLabel()})` : ''}`],
+              ['Indice de construction', `× ${getMarketCoeff()}`, phraseIndexation()],
               ['Honoraires / Réserve', `${project.honoraryPct ?? 0} % / ${project.reservePct ?? 0} %`, 'réserve calculée sur le montant déjà majoré'],
               ['TVA', '8.1 %', 'appliquée au sous-total'],
             ] as [string, string, string][]).map(([l, v, note]) => (

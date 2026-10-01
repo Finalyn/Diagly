@@ -31,7 +31,7 @@ export const FAQ: FaqCategory[] = [
     label: 'Coûts & variantes',
     items: [
       { q: 'Comment le coût d\'un élément est-il calculé ?', a: "Coût = prix unitaire de l'état × quantité, indexé sur un coefficient marché (indice suisse des prix de la construction, OFS). La quantité est estimée depuis la géométrie du bâtiment ou saisie à la main." },
-      { q: 'Que contiennent les trois enveloppes ?', a: "Réparation (remise en état de l'existant), Amélioration (montée en gamme, confort) et Remise aux normes (isolation, énergie, mise aux normes). Elles sont chiffrées séparément par élément." },
+      { q: 'Que contiennent les trois enveloppes ?', a: "Réparation (remise en état de l'existant), Amélioration (montée en gamme, confort) et Mise aux normes (isolation, énergie, mise aux normes). Elles sont chiffrées séparément par élément." },
       { q: 'Comment fonctionnent les honoraires, la réserve et la TVA ?', a: "Total = HT × (1 + honoraires %) × (1 + réserve %) × 1.081 (TVA 8.1 %). Les pourcentages d'honoraires et de réserve sont ajustables par projet dans l'onglet Coûts." },
       { q: 'Que sont les 3 variantes de rénovation ?', a: "Trois scénarios comparés : Maintenance (réparation), Rénovation (+ rénovation intérieure estimée) et Rénovation énergétique (+ isolation de l'enveloppe). Chaque variante affiche son budget complet (HT → TTC). Les enveloppes V2/V3 sont estimées depuis la géométrie." },
       { q: 'D\'où vient le coefficient marché ?', a: "De l'indice suisse des prix de la construction (OFS/BFS). Les prix du catalogue sont une base de référence, indexée sur le marché actuel. Le coefficient appliqué est affiché dans la synthèse des coûts." },
