@@ -246,7 +246,7 @@ export function ProjectRapports() {
                 Édité le {formatDate(new Date())}{auteur ? ` par ${auteur}` : ''}
               </p>
             </div>
-            <ReportBrand canton={project.canton} />
+            <ReportBrand />
           </div>
 
           {/* Bâtiment */}
@@ -450,13 +450,12 @@ export function ProjectRapports() {
       )}
 
       {/* Reportage photo : dans « Documenté » et dans « Rapports photo » */}
-      {(report === 'documente' || report === 'photos') && <PhotoReport projectName={project.name} canton={project.canton} groups={groups} />}
+      {(report === 'documente' || report === 'photos') && <PhotoReport projectName={project.name} groups={groups} />}
 
       {/* Rapport par scénario de rénovation */}
       {report === 'scenario' && (
         <ScenarioReport
           projectName={project.name}
-          canton={project.canton}
           variant={currentVariant}
           allVariants={variants}
           items={items}
@@ -504,7 +503,7 @@ function ExistingStateReport({ project, items, etatExistant, auteur }: {
   return (
     <Card className="print:border-0 print:shadow-none">
       <CardContent className="p-6 sm:p-8 space-y-6 print:p-0">
-        <ReportBrand canton={project.canton} />
+        <ReportBrand />
 
         <div>
           <h1 className="text-xl font-bold">Rapport de l'existant</h1>
@@ -578,9 +577,8 @@ function ExistingStateReport({ project, items, etatExistant, auteur }: {
   )
 }
 
-function PhotoReport({ projectName, canton, groups }: {
+function PhotoReport({ projectName, groups }: {
   projectName: string
-  canton: string
   groups: { code: string; label: string; items: { id: string; cfcCode: string; cfcLabel: string; state: keyof typeof stateLabels | null; priority: string | null; photos: string[]; notes: string | null; works: string[] }[] }[]
 }) {
   // On ne garde que les éléments qui ont des photos.
@@ -597,7 +595,7 @@ function PhotoReport({ projectName, canton, groups }: {
             <h1 className="text-2xl font-bold">Rapport photo</h1>
             <p className="text-muted-foreground">{projectName}</p>
           </div>
-          <ReportBrand canton={canton} />
+          <ReportBrand />
         </div>
 
         {total === 0 ? (
@@ -678,8 +676,8 @@ function VariantsCompare({ variants, energyClass }: { variants: RVariant[]; ener
 }
 
 /** Rapport dédié à un scénario de rénovation : périmètre, cascade de coûts, éléments concernés. */
-function ScenarioReport({ projectName, canton, variant, allVariants, items, energyClass }: {
-  projectName: string; canton: string; variant: RVariant; allVariants: RVariant[]; items: RItem[]; energyClass: string | null
+function ScenarioReport({ projectName, variant, allVariants, items, energyClass }: {
+  projectName: string; variant: RVariant; allVariants: RVariant[]; items: RItem[]; energyClass: string | null
 }) {
   const amountFor = (it: RItem) => {
     let a = toNum(it.estimatedCost)
@@ -700,7 +698,7 @@ function ScenarioReport({ projectName, canton, variant, allVariants, items, ener
             </h1>
             <p className="text-muted-foreground">{projectName}</p>
           </div>
-          <ReportBrand canton={canton} />
+          <ReportBrand />
         </div>
 
         <section>

@@ -20,21 +20,25 @@ import { useAuth } from '@/stores/auth'
  * alors que le rapport complet, lui, posait celui de Diagly. Deux documents
  * partis le même jour chez le même client ne se ressemblaient pas.
  */
-export function ReportBrand({ canton }: { canton: string }) {
+export function ReportBrand() {
   const company = useAuth((s) => s.user?.preferences?.company)
   const name = company?.name?.trim()
-  const line2 = [company?.postalCode, company?.city].filter(Boolean).join(' ')
+  const ville = [company?.postalCode, company?.city].filter(Boolean).join(' ')
   return (
-    <div className="text-right text-sm shrink-0">
+    <div className="shrink-0 text-right text-sm">
       <img
         src={company?.logo || '/diagly-logo.svg'}
         alt={name || 'Diagly'}
-        className="mb-1.5 ml-auto h-12 w-auto object-contain"
+        className="ml-auto h-12 w-auto object-contain"
       />
-      <p className="font-semibold">{name || 'Diagly'}</p>
+      {/* Les coordonnées ne paraissent que si le bureau les a renseignées.
+          Sans elles, le logo écrivait son propre nom juste en dessous, suivi du
+          canton du bâtiment présenté comme une adresse d'expéditeur : un en-tête
+          doit dire qui envoie le document, pas où il se trouve. */}
+      {name && <p className="mt-1.5 font-semibold">{name}</p>}
       {company?.address && <p className="text-muted-foreground">{company.address}</p>}
-      <p className="text-muted-foreground">{line2 || `${canton} · Suisse`}</p>
-      {company?.vatNumber && <p className="text-muted-foreground text-xs">{company.vatNumber}</p>}
+      {ville && <p className="text-muted-foreground">{ville}</p>}
+      {company?.vatNumber && <p className="text-xs text-muted-foreground">{company.vatNumber}</p>}
     </div>
   )
 }
