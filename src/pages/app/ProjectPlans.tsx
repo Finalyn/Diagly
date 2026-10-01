@@ -43,7 +43,6 @@ export function ProjectPlans() {
   const queryClient = useQueryClient()
   const champFichier = useRef<HTMLInputElement>(null)
   const [edite, setEdite] = useState<ApiPlan | null>(null)
-  const [choisiId, setChoisiId] = useState<string | null>(null)
   const [erreur, setErreur] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery({
@@ -52,13 +51,10 @@ export function ProjectPlans() {
     enabled: !!id,
   })
   const plans = useMemo(() => data?.plans ?? [], [data])
-  // Le plan choisi suit la liste : un plan supprimé ne doit pas laisser l'aperçu
-  // sur un document qui n'existe plus.
-  const choisi = plans.find((p) => p.id === choisiId) ?? plans[0] ?? null
 
   const envoyer = useMutation({
     mutationFn: (file: File) => api.plans.upload(id!, file),
-    onSuccess: (r) => { queryClient.invalidateQueries({ queryKey: ['plans', id] }); setChoisiId(r.plan.id) },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['plans', id] }),
     onError: (e) => setErreur((e as Error)?.message ?? "Échec de l'envoi"),
   })
   const supprimer = useMutation({
@@ -122,24 +118,19 @@ export function ProjectPlans() {
           </CardContent>
         </Card>
       ) : (
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-          <aside className="shrink-0 space-y-2 lg:w-64">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {plans.map((p) => (
               <VignettePlan
                 key={p.id}
                 plan={p}
-                actif={p.id === choisi?.id}
                 zonesLiees={zonesLiees}
-                onChoisir={() => setChoisiId(p.id)}
+                onOuvrir={() => setEdite(p)}
                 onSupprimer={() => { if (confirm(`Supprimer « ${p.name} » ?`)) supprimer.mutate(p.id) }}
               />
             ))}
-          </aside>
-
-          <div className="min-w-0 flex-1 space-y-4">
-            {choisi && <ApercuDetaille plan={choisi} zonesLiees={zonesLiees} onEditer={() => setEdite(choisi)} />}
-            <Quantites projectId={id!} apports={apports} />
           </div>
+          <Quantites projectId={id!} apports={apports} />
         </div>
       )}
 
@@ -148,83 +139,63 @@ export function ProjectPlans() {
   )
 }
 
-/** Entrée de la colonne de gauche : l'aperçu plutôt que le nom du fichier. */
-function VignettePlan({ plan, actif, zonesLiees, onChoisir, onSupprimer }: {
+/**
+ * Une vignette par plan : l'aperçu, son nom, et ce qu'il vaut pour le relevé.
+ *
+ * Le plan s'ouvrait auparavant en grand dans la page avant de pouvoir être
+ * édité. C'était une étape pour rien : on vient ici pour dessiner, pas pour
+ * regarder. La vignette dit l'essentiel, et le clic mène directement à
+ * l'éditeur.
+ */
+function VignettePlan({ plan, zonesLiees, onOuvrir, onSupprimer }: {
   plan: ApiPlan
-  actif: boolean
   zonesLiees: Set<string>
-  onChoisir: () => void
+  onOuvrir: () => void
   onSupprimer: () => void
 }) {
-  const zones = (plan.annotations ?? []).filter((a) => a.type === 'hatch').length
+  const mesures = (plan.annotations ?? []).filter((a) => natureDe(a) !== 'aucune')
+  const rattachees = mesures.filter((a) => zonesLiees.has(a.id)).length
+
   return (
     /* La suppression est posée par-dessus la vignette et non dedans : un bouton
        dans un bouton n'est pas du HTML valide, et le navigateur défait alors
        l'imbrication en déplaçant les nœuds. */
-    <div className={cn('group relative overflow-hidden rounded-xl border transition-colors',
-      actif ? 'border-primary bg-primary/5' : 'hover:bg-muted/50')}
-    >
-      <button onClick={onChoisir} className="block w-full text-left">
-        <ApercuPlan plan={plan} largeurCible={420} zonesLiees={zonesLiees} className="aspect-[4/3] w-full border-b" />
-        <div className="p-2.5 pr-9">
+    <div className="group relative overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-md">
+      <button onClick={onOuvrir} className="block w-full text-left" title={`Ouvrir ${plan.name}`}>
+        <div className="relative">
+          <ApercuPlan plan={plan} largeurCible={480} zonesLiees={zonesLiees} className="aspect-[4/3] w-full border-b" />
+          <span className="absolute inset-0 flex items-center justify-center bg-foreground/0 transition-colors group-hover:bg-foreground/10">
+            <span className="flex items-center gap-1.5 rounded-lg bg-background/95 px-2.5 py-1.5 text-xs font-medium opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+              <Pencil className="h-3.5 w-3.5" />Éditer
+            </span>
+          </span>
+        </div>
+        <div className="p-3 pr-10">
           <p className="truncate text-sm font-medium" title={plan.name}>{plan.name}</p>
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            {plan.mimeType === 'application/pdf' ? <FileText className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
+          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+            {plan.mimeType === 'application/pdf' ? <FileText className="h-3 w-3 shrink-0" /> : <ImageIcon className="h-3 w-3 shrink-0" />}
             {formatTaille(plan.size)}
-            {zones > 0 && <span>· {zones} zone{zones !== 1 ? 's' : ''}</span>}
           </p>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {plan.scalePxPerM
+              ? <Badge variant="outline" className="gap-1 text-[11px] font-normal"><Check className="h-3 w-3" />Étalonné</Badge>
+              : <Badge variant="outline" className="gap-1 text-[11px] font-normal text-amber-700"><AlertCircle className="h-3 w-3" />Pas d’échelle</Badge>}
+            {mesures.length > 0 && (
+              <Badge variant="outline" className="gap-1 text-[11px] font-normal">
+                <Link2 className="h-3 w-3" />{rattachees}/{mesures.length}
+              </Badge>
+            )}
+          </div>
         </div>
       </button>
       <button
         onClick={onSupprimer}
-        className="absolute bottom-2.5 right-2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-600"
+        className="absolute right-2 top-2 rounded-lg bg-background/90 p-1.5 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-destructive focus:opacity-100 group-hover:opacity-100"
         title="Supprimer"
       >
         <Trash2 className="h-4 w-4" />
       </button>
     </div>
-  )
-}
-
-/** Aperçu en grand du plan choisi, avec son état d'étalonnage. */
-function ApercuDetaille({ plan, zonesLiees, onEditer }: {
-  plan: ApiPlan
-  zonesLiees: Set<string>
-  onEditer: () => void
-}) {
-  const annotations = plan.annotations ?? []
-  const zones = annotations.filter((a) => natureDe(a) !== 'aucune')
-  const rattachees = zones.filter((a) => zonesLiees.has(a.id)).length
-
-  return (
-    <Card className="overflow-hidden">
-      <button onClick={onEditer} className="block w-full" title="Ouvrir l'éditeur">
-        <ApercuPlan plan={plan} largeurCible={1400} zonesLiees={zonesLiees} className="aspect-[4/3] w-full bg-muted/30 sm:aspect-[16/10]" />
-      </button>
-      <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold" title={plan.name}>{plan.name}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            {plan.scalePxPerM
-              ? <Badge variant="outline" className="gap-1 text-emerald-700"><Check className="h-3 w-3" />Étalonné</Badge>
-              : <Badge variant="outline" className="gap-1 text-amber-700"><AlertCircle className="h-3 w-3" />Pas d’échelle</Badge>}
-            <Badge variant="outline">{zones.length} mesure{zones.length !== 1 ? 's' : ''}</Badge>
-            {zones.length > 0 && (
-              <Badge variant="outline" className={rattachees > 0 ? 'text-primary' : undefined}>
-                <Link2 className="mr-1 h-3 w-3" />{rattachees} rattachée{rattachees !== 1 ? 's' : ''}
-              </Badge>
-            )}
-          </div>
-        </div>
-        <Button onClick={onEditer}><Pencil className="mr-2 h-4 w-4" />Ouvrir l’éditeur</Button>
-      </CardContent>
-      {!plan.scalePxPerM && (
-        <p className="border-t bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-          Étalonnez le plan dans l’éditeur (outil « Étalonner », sur une cote connue) : sans échelle,
-          les zones se tracent mais ne donnent aucune surface exploitable.
-        </p>
-      )}
-    </Card>
   )
 }
 

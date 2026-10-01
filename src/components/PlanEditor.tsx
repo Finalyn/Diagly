@@ -6,7 +6,7 @@ import {
   ZoomIn, ZoomOut, Undo2, Check, Trash2, Loader2, ChevronLeft, ChevronRight, Maximize, Download, Link2,
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { ApiPlan, PlanAnnotation, PlanPoint } from '@/lib/api-types'
+import type { ApiPlan, PlanAnnotation, PlanAnnotationType, PlanPoint } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
 import { loadPdfjs } from '@/lib/pdf'
 import { airePolygone, natureDe } from '@/lib/plan-quantites'
@@ -19,6 +19,10 @@ const MIN_ZOOM = 0.05
 const MAX_ZOOM = 20
 const TAP_PX = 6
 const COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#111827']
+/* Fonds de scène : les gris de la charte, plus un blanc et un fond sombre pour
+   les plans inversés. Le défaut n'est plus un anthracite isolé mais le gris que
+   l'app emploie déjà pour ses bordures appuyées. */
+const FONDS = ['#d1d1d6', '#f5f5f7', '#ffffff', '#1d1d1f']
 
 let _c = 0
 const uid = () => `a${Date.now()}_${_c++}`
@@ -66,6 +70,11 @@ const HINTS: Record<Tool, string> = {
   draw: 'Dessine à main levée en gardant le doigt / la souris appuyé.',
 }
 
+/** Nom lisible d'une annotation, pour l'entête du panneau de sélection. */
+const NOMS: Record<PlanAnnotationType, string> = {
+  measure: 'Cote', hatch: 'Zone', note: 'Note', arrow: 'Flèche', draw: 'Croquis',
+}
+
 interface View { zoom: number; tx: number; ty: number }
 
 export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => void }) {
@@ -106,7 +115,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const [notePoint, setNotePoint] = useState<PlanPoint | null>(null)
   const [noteVal, setNoteVal] = useState('')
   const [exportOpen, setExportOpen] = useState(false)
-  const [bgColor, setBgColor] = useState('#404040')
+  const [bgColor, setBgColor] = useState(FONDS[0])
   const [selectedAnn, setSelectedAnn] = useState<string | null>(null)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [choixOuvrage, setChoixOuvrage] = useState(false)
@@ -411,6 +420,14 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     return it ? `${it.cfcCode} · ${it.cfcLabel}` : null
   }, [ouvrages])
 
+  /** Choisir un outil abandonne ce qui était en cours de tracé. */
+  const choisirOutil = (k: Tool) => {
+    setTool(k)
+    setPending(null)
+    setSelectedAnn(null)
+    if (k !== 'hatch') setDraft([])
+  }
+
   const lierSelection = (itemId: string | null) => {
     if (!selectedAnn) return
     setAnnotations((l) => l.map((a) => (a.id === selectedAnn ? { ...a, itemId } : a)))
@@ -521,203 +538,252 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     if (!scale) return `${Math.round(px2)} px²`
     return `${(px2 / (scale * scale) * UNIT_F[unit] ** 2).toFixed(AREA_DEC[unit])} ${unit}²`
   }
+  /** Mesure lisible d'une annotation, ou null si elle ne mesure rien. */
+  const quantiteDe = (a: PlanAnnotation): string | null => {
+    const nature = natureDe(a)
+    if (nature === 'surface') return fmtArea(airePolygone(a.points))
+    if (nature === 'longueur') return fmtLen(dist(a.points[0], a.points[1]))
+    return null
+  }
+  // Les pastilles de couleur agissent sur la selection quand il y en a une,
+  // sinon sur le prochain trace : elles doivent montrer celle qui s'applique.
+  const couleurActive = selAnn ? (selAnn.color ?? COLORS[0]) : color
+
   const hatchColors = Array.from(new Set(annotations.filter((a) => a.type === 'hatch').map((a) => a.color ?? '#ef4444')))
   const font = 13 / view.zoom // labels lisibles quel que soit le zoom
   const strokeW = 2 / view.zoom
 
   return (
-    <div className="fixed inset-0 z-50 bg-neutral-800 flex flex-col select-none">
-      {/* Barre d'outils */}
-      <div className="flex items-center gap-2 px-2 sm:px-3 py-2 bg-neutral-900 text-white shrink-0">
-        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded shrink-0" title="Fermer"><X className="h-5 w-5" /></button>
-        <p className="font-medium truncate max-w-[8rem] sm:max-w-[14rem] hidden sm:block">{plan.name}</p>
-
-        <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1 overflow-x-auto">
-          {TOOLS.map((t) => {
-            const Icon = t.icon
-            return (
-              <button
-                key={t.key}
-                onClick={() => { setTool(t.key); setPending(null); setSelectedAnn(null); if (t.key !== 'hatch') setDraft([]) }}
-                title={t.label}
-                className={cn('flex items-center gap-1.5 px-2.5 py-2 rounded-lg transition-colors shrink-0', tool === t.key ? 'bg-primary text-white' : 'hover:bg-white/10')}
-              >
-                <Icon className="h-4 w-4" /><span className="text-xs font-medium hidden md:inline">{t.label}</span>
-              </button>
-            )
-          })}
+    /* L'éditeur reprend la mise en page de l'app : barres claires, texte presque
+       noir, coins arrondis. Il était jusqu'ici en gris anthracite avec ses propres
+       gris, si bien qu'on changeait d'application en ouvrant un plan, et l'outil
+       actif, posé en `bg-primary` sur un fond déjà sombre, ne se voyait pas. Seule
+       la scène garde un fond neutre réglable : c'est lui qui détache la feuille. */
+    <div className="fixed inset-0 z-50 flex select-none flex-col bg-background">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b px-2 sm:px-3">
+        <button onClick={onClose} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Fermer">
+          <X className="h-5 w-5" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold">{plan.name}</p>
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {saving
+              ? <><Loader2 className="h-3 w-3 animate-spin" />Enregistrement…</>
+              : dirty
+                ? 'Modifications en cours…'
+                : <><Check className="h-3 w-3 text-emerald-600" />Enregistré</>}
+            <span aria-hidden>·</span>
+            {scale ? <span>échelle définie</span> : <span className="text-amber-600">pas d’échelle</span>}
+          </p>
         </div>
 
-        {tool !== 'pan' && tool !== 'select' && (
-          <div className="flex items-center gap-1 shrink-0">
-            {COLORS.map((c) => (
-              <button key={c} onClick={() => setColor(c)} className={cn('h-6 w-6 rounded-full border-2', color === c ? 'border-white' : 'border-transparent')} style={{ backgroundColor: c }} />
-            ))}
-          </div>
-        )}
-
-        {tool === 'hatch' && draft.length >= 3 && (
-          <button onClick={closeHatch} className="px-3 py-1.5 rounded-lg bg-primary text-xs font-semibold shrink-0">Fermer la zone</button>
-        )}
-
-        <div className="ml-auto flex items-center gap-1 shrink-0">
-          <button onClick={() => zoomButton(1 / 1.25)} className="p-2 hover:bg-white/10 rounded" title="Dézoomer"><ZoomOut className="h-4 w-4" /></button>
-          <span className="text-xs tabular-nums w-11 text-center hidden sm:block">{Math.round(view.zoom * 100)}%</span>
-          <button onClick={() => zoomButton(1.25)} className="p-2 hover:bg-white/10 rounded" title="Zoomer"><ZoomIn className="h-4 w-4" /></button>
-          <button onClick={fitView} className="p-2 hover:bg-white/10 rounded" title="Ajuster"><Maximize className="h-4 w-4" /></button>
-          <button onClick={undo} disabled={annotations.length === 0} className="p-2 hover:bg-white/10 rounded disabled:opacity-40" title="Annuler"><Undo2 className="h-4 w-4" /></button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button onClick={() => zoomButton(1 / 1.25)} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Dézoomer"><ZoomOut className="h-4 w-4" /></button>
+          <span className="hidden w-12 text-center text-xs tabular-nums text-muted-foreground sm:block">{Math.round(view.zoom * 100)}%</span>
+          <button onClick={() => zoomButton(1.25)} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Zoomer"><ZoomIn className="h-4 w-4" /></button>
+          <button onClick={fitView} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Ajuster"><Maximize className="h-4 w-4" /></button>
+          <button onClick={undo} disabled={annotations.length === 0} className="rounded-lg p-2 transition-colors hover:bg-muted disabled:opacity-40" title="Annuler"><Undo2 className="h-4 w-4" /></button>
           <div className="relative">
-            <button onClick={() => setExportOpen((o) => !o)} className="p-2 hover:bg-white/10 rounded" title="Exporter"><Download className="h-4 w-4" /></button>
+            <button onClick={() => setExportOpen((o) => !o)} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Exporter"><Download className="h-4 w-4" /></button>
             {exportOpen && (
-              <div className="absolute right-0 top-full mt-1 w-56 bg-white text-slate-800 rounded-lg shadow-lg py-1 z-20">
-                <button onClick={() => { setExportOpen(false); downloadOriginal() }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100">Plan seul ({outExt} original)</button>
-                <button onClick={() => { setExportOpen(false); exportAnnotated() }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100">Plan + annotations ({outExt})</button>
-              </div>
-            )}
-          </div>
-          <span className="text-xs text-white/60 flex items-center gap-1.5 px-2 hidden sm:flex">
-            {saving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Enregistrement…</> : dirty ? 'Modifications…' : <><Check className="h-3.5 w-3.5 text-green-400" />Enregistré</>}
-          </span>
-        </div>
-      </div>
-
-      {/* Aide contextuelle + unité + échelle */}
-      <div className="bg-neutral-900/80 text-white/80 text-xs px-3 py-1.5 flex items-center justify-between gap-3 shrink-0">
-        <span className="truncate">{HINTS[tool]}</span>
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="flex items-center gap-1">
-            <span className="text-white/50 hidden sm:inline">Fond</span>
-            {['#404040', '#ffffff', '#000000', '#0f2f6b'].map((c) => (
-              <button key={c} onClick={() => setBgColor(c)} className={cn('h-4 w-4 rounded border', bgColor === c ? 'border-white ring-1 ring-white' : 'border-white/20')} style={{ backgroundColor: c }} />
-            ))}
-            <label className="relative h-4 w-4 rounded border border-white/20 overflow-hidden cursor-pointer" title="Autre couleur">
-              <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
-              <span className="absolute inset-0" style={{ background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }} />
-            </label>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-white/50 hidden sm:inline">Unité</span>
-            {(['m', 'cm', 'mm'] as const).map((u) => (
-              <button key={u} onClick={() => setUnit(u)} className={cn('px-1.5 py-0.5 rounded font-medium', unit === u ? 'bg-primary text-white' : 'bg-white/10 hover:bg-white/20')}>{u}</button>
-            ))}
-          </div>
-          <span className="hidden sm:inline">{scale ? 'Échelle ✓' : 'Non étalonné'}</span>
-        </div>
-      </div>
-
-      {/* Zone plan */}
-      <div
-        ref={containerRef}
-        style={{ background: bgColor }}
-        className={cn('flex-1 min-h-0 overflow-hidden relative touch-none', tool === 'pan' ? 'cursor-grab active:cursor-grabbing' : tool === 'select' ? 'cursor-default' : 'cursor-crosshair')}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-      >
-        {loading && <div className="absolute inset-0 text-white flex items-center gap-2 justify-center"><Loader2 className="h-6 w-6 animate-spin" />Chargement du plan…</div>}
-        {loadError && <div className="absolute inset-0 text-red-300 flex items-center justify-center">Impossible de charger le plan ({loadError}).</div>}
-
-        <div
-          style={{ width: stage.w, height: stage.h, transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.zoom})`, transformOrigin: '0 0' }}
-          className={cn('absolute top-0 left-0 shadow-2xl bg-white', loading && 'hidden')}
-        >
-          <canvas ref={canvasRef} className="block pointer-events-none" />
-          <svg ref={svgRef} viewBox={`0 0 ${stage.w} ${stage.h}`} width={stage.w} height={stage.h} className="absolute inset-0 pointer-events-none">
-            <defs>
-              {hatchColors.map((c) => (
-                <pattern key={c} id={`hatch-${c.replace('#', '')}`} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                  <line x1="0" y1="0" x2="0" y2="8" stroke={c} strokeWidth="1.5" />
-                </pattern>
-              ))}
-            </defs>
-
-            {annotations.map((a) => (
-              <Shape key={a.id} a={a} fmtLen={fmtLen} fmtArea={fmtArea} font={font} strokeW={strokeW} lie={libelleLie(a)} />
-            ))}
-
-            {/* Poignées de l'annotation sélectionnée */}
-            {selectedAnn && (() => {
-              const a = annotations.find((x) => x.id === selectedAnn)
-              if (!a) return null
-              return <g>{a.points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={6 / view.zoom} fill="#fff" stroke="#2563eb" strokeWidth={2.5 / view.zoom} />)}</g>
-            })()}
-
-            {pending && cursor && (
-              <line x1={pending.x} y1={pending.y} x2={cursor.x} y2={cursor.y} stroke={color} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} />
-            )}
-            {tool === 'draw' && draft.length > 0 && (
-              <polyline points={draft.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" />
-            )}
-            {tool === 'hatch' && pending && cursor && dist(pending, cursor) > 5 / view.zoom && (
-              <rect
-                x={Math.min(pending.x, cursor.x)} y={Math.min(pending.y, cursor.y)}
-                width={Math.abs(cursor.x - pending.x)} height={Math.abs(cursor.y - pending.y)}
-                fill={color} fillOpacity={0.15} stroke={color} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`}
-              />
-            )}
-            {tool === 'hatch' && draft.length > 0 && (
               <>
-                <polyline points={draft.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={color} strokeWidth={strokeW} />
-                {cursor && <line x1={draft[draft.length - 1].x} y1={draft[draft.length - 1].y} x2={cursor.x} y2={cursor.y} stroke={color} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} />}
-                {draft.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={5 / view.zoom} fill={color} />)}
+                <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
+                <div className="absolute right-0 top-full z-20 mt-1 w-60 overflow-hidden rounded-xl border bg-popover py-1 shadow-lg">
+                  <button onClick={() => { setExportOpen(false); downloadOriginal() }} className="w-full px-3 py-2 text-left text-sm hover:bg-muted">Plan seul ({outExt} original)</button>
+                  <button onClick={() => { setExportOpen(false); exportAnnotated() }} className="w-full px-3 py-2 text-left text-sm hover:bg-muted">Plan + annotations ({outExt})</button>
+                </div>
               </>
             )}
-          </svg>
+          </div>
         </div>
+      </header>
 
-        {selAnn && (() => {
-          const nature = natureDe(selAnn)
-          const quantite = nature === 'surface'
-            ? fmtArea(airePolygone(selAnn.points))
-            : nature === 'longueur' ? fmtLen(dist(selAnn.points[0], selAnn.points[1])) : null
-          const lie = libelleLie(selAnn)
-          return (
-            <div className="absolute bottom-4 left-4 z-10 max-w-[calc(100%-2rem)] rounded-xl bg-neutral-900/90 px-3 py-2 text-white shadow-lg backdrop-blur">
-              <div className="flex items-center gap-1.5 overflow-x-auto">
-                <span className="mr-1 hidden text-xs text-white/60 sm:inline">Couleur</span>
-                {COLORS.map((c) => <button key={c} onClick={() => recolorSelected(c)} className={cn('h-6 w-6 shrink-0 rounded-full border-2', (selAnn.color ?? COLORS[0]) === c ? 'border-white' : 'border-white/20')} style={{ backgroundColor: c }} />)}
-                {selAnn.type === 'note' && <button onClick={editSelectedNote} className="shrink-0 whitespace-nowrap rounded-lg bg-white/10 px-2.5 py-1.5 text-xs hover:bg-white/20">Éditer le texte</button>}
+      <div className="flex min-h-0 flex-1">
+        {/* Rail d'outils : vertical sur grand écran, il repasse en bande sous la
+            scène sur mobile, à portée de pouce. */}
+        <nav className="hidden w-20 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2 sm:flex" aria-label="Outils">
+          {TOOLS.map((t) => <BoutonOutil key={t.key} outil={t} actif={tool === t.key} onChoisir={choisirOutil} />)}
+          <div className="mt-3 border-t pt-3">
+            <p className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Couleur</p>
+            <div className="grid grid-cols-3 gap-1.5 px-1">
+              {COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => (selectedAnn ? recolorSelected(c) : setColor(c))}
+                  className={cn('h-5 w-5 rounded-full ring-offset-2 transition-shadow', couleurActive === c && 'ring-2 ring-foreground')}
+                  style={{ backgroundColor: c }}
+                  title={c}
+                />
+              ))}
+            </div>
+          </div>
+        </nav>
+
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          <div
+            ref={containerRef}
+            style={{ background: bgColor }}
+            className={cn('relative min-h-0 flex-1 touch-none overflow-hidden',
+              tool === 'pan' ? 'cursor-grab active:cursor-grabbing' : tool === 'select' ? 'cursor-default' : 'cursor-crosshair')}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          >
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />Chargement du plan…
+              </div>
+            )}
+            {loadError && (
+              <div className="absolute inset-0 flex items-center justify-center text-sm text-destructive">
+                Impossible de charger le plan ({loadError}).
+              </div>
+            )}
+
+          <div
+            style={{ width: stage.w, height: stage.h, transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.zoom})`, transformOrigin: '0 0' }}
+            className={cn('absolute left-0 top-0 bg-white shadow-xl ring-1 ring-black/5', loading && 'hidden')}
+          >
+            <canvas ref={canvasRef} className="block pointer-events-none" />
+            <svg ref={svgRef} viewBox={`0 0 ${stage.w} ${stage.h}`} width={stage.w} height={stage.h} className="absolute inset-0 pointer-events-none">
+              <defs>
+                {hatchColors.map((c) => (
+                  <pattern key={c} id={`hatch-${c.replace('#', '')}`} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                    <line x1="0" y1="0" x2="0" y2="8" stroke={c} strokeWidth="1.5" />
+                  </pattern>
+                ))}
+              </defs>
+
+              {annotations.map((a) => (
+                <Shape key={a.id} a={a} fmtLen={fmtLen} fmtArea={fmtArea} font={font} strokeW={strokeW} lie={libelleLie(a)} />
+              ))}
+
+              {/* Poignées de l'annotation sélectionnée */}
+              {selectedAnn && (() => {
+                const a = annotations.find((x) => x.id === selectedAnn)
+                if (!a) return null
+                return <g>{a.points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={6 / view.zoom} fill="#fff" stroke="#2563eb" strokeWidth={2.5 / view.zoom} />)}</g>
+              })()}
+
+              {pending && cursor && (
+                <line x1={pending.x} y1={pending.y} x2={cursor.x} y2={cursor.y} stroke={color} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} />
+              )}
+              {tool === 'draw' && draft.length > 0 && (
+                <polyline points={draft.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" />
+              )}
+              {tool === 'hatch' && pending && cursor && dist(pending, cursor) > 5 / view.zoom && (
+                <rect
+                  x={Math.min(pending.x, cursor.x)} y={Math.min(pending.y, cursor.y)}
+                  width={Math.abs(cursor.x - pending.x)} height={Math.abs(cursor.y - pending.y)}
+                  fill={color} fillOpacity={0.15} stroke={color} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`}
+                />
+              )}
+              {tool === 'hatch' && draft.length > 0 && (
+                <>
+                  <polyline points={draft.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={color} strokeWidth={strokeW} />
+                  {cursor && <line x1={draft[draft.length - 1].x} y1={draft[draft.length - 1].y} x2={cursor.x} y2={cursor.y} stroke={color} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} />}
+                  {draft.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={5 / view.zoom} fill={color} />)}
+                </>
+              )}
+            </svg>
+          </div>
+
+            {/* L'aide tient sur une ligne, posée sur la scène : elle suit l'outil
+                choisi sans prendre une barre entière à l'écran. */}
+            {!loading && (
+              <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center px-3">
+                <p className="max-w-full truncate rounded-full border bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur">
+                  {HINTS[tool]}
+                </p>
+              </div>
+            )}
+
+            {tool === 'hatch' && draft.length >= 3 && (
+              <button
+                onClick={closeHatch}
+                className="absolute left-1/2 top-14 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-xs font-semibold text-background shadow-lg"
+              >
+                Fermer la zone
+              </button>
+            )}
+
+            {selAnn && (
+              <PanneauSelection
+                annotation={selAnn}
+                lie={libelleLie(selAnn)}
+                etalonne={!!scale}
+                quantite={quantiteDe(selAnn)}
+                onLier={() => setChoixOuvrage(true)}
+                onEditerNote={editSelectedNote}
+                onSupprimer={() => { setAnnotations((a) => a.filter((x) => x.id !== selectedAnn)); setSelectedAnn(null); setDirty(true) }}
+              />
+            )}
+          </div>
+
+          {/* Bande du bas : les outils sur mobile, puis les réglages de la scène. */}
+          <div className="shrink-0 border-t">
+            <div className="flex gap-1 overflow-x-auto p-2 sm:hidden">
+              {TOOLS.map((t) => <BoutonOutil key={t.key} outil={t} actif={tool === t.key} onChoisir={choisirOutil} compact />)}
+            </div>
+            <div className="flex items-center gap-3 overflow-x-auto px-3 py-2 text-xs text-muted-foreground sm:px-4">
+              <div className="flex shrink-0 items-center gap-1.5 sm:hidden">
+                {COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => (selectedAnn ? recolorSelected(c) : setColor(c))}
+                    className={cn('h-5 w-5 rounded-full ring-offset-2', couleurActive === c && 'ring-2 ring-foreground')}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
               </div>
 
-              {/* Ce qui transforme une annotation en quantité : la mesure, et
-                  l'ouvrage du relevé auquel elle se rapporte. Sans échelle, la
-                  mesure s'affiche en pixels et le dit. */}
-              {nature !== 'aucune' && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2">
-                  <span className="text-sm font-semibold tabular-nums">{quantite}</span>
-                  {!scale && <span className="text-xs text-amber-300">plan non étalonné</span>}
-                  <button
-                    onClick={() => setChoixOuvrage(true)}
-                    className={cn('inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium',
-                      lie ? 'bg-primary/80 hover:bg-primary' : 'bg-white/10 hover:bg-white/20')}
-                  >
-                    <Link2 className="h-3.5 w-3.5 shrink-0" />
-                    <span className="max-w-[14rem] truncate">{lie ?? 'Rattacher à un ouvrage'}</span>
-                  </button>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="hidden sm:inline">Unité</span>
+                <div className="flex rounded-lg bg-muted p-0.5">
+                  {(['m', 'cm', 'mm'] as const).map((u) => (
+                    <button key={u} onClick={() => setUnit(u)}
+                      className={cn('rounded-md px-2 py-1 font-medium transition-colors', unit === u ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground')}>
+                      {u}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="hidden sm:inline">Fond</span>
+                {FONDS.map((c) => (
+                  <button key={c} onClick={() => setBgColor(c)}
+                    className={cn('h-5 w-5 rounded-full border ring-offset-2', bgColor === c && 'ring-2 ring-foreground')}
+                    style={{ backgroundColor: c }} />
+                ))}
+                <label className="relative h-5 w-5 cursor-pointer overflow-hidden rounded-full border" title="Autre couleur">
+                  <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
+                  <span className="absolute inset-0" style={{ background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }} />
+                </label>
+              </div>
+
+              {isPdf && numPages > 1 && (
+                <div className="ml-auto flex shrink-0 items-center gap-1">
+                  <button onClick={() => setPageNum((n) => Math.max(1, n - 1))} disabled={pageNum <= 1} className="rounded-lg p-1.5 hover:bg-muted disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+                  <span className="tabular-nums">Page {pageNum} / {numPages}</span>
+                  <button onClick={() => setPageNum((n) => Math.min(numPages, n + 1))} disabled={pageNum >= numPages} className="rounded-lg p-1.5 hover:bg-muted disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
                 </div>
               )}
             </div>
-          )
-        })()}
-        {selectedAnn && (
-          <button
-            type="button"
-            onClick={() => { setAnnotations((a) => a.filter((x) => x.id !== selectedAnn)); setSelectedAnn(null); setDirty(true) }}
-            className="absolute bottom-4 right-4 z-10 h-12 px-4 rounded-full bg-red-600 text-white shadow-lg flex items-center gap-2 text-sm font-medium active:scale-95"
-          >
-            <Trash2 className="h-4 w-4" />Supprimer
-          </button>
-        )}
+          </div>
+        </div>
       </div>
 
-      {/* Pagination PDF */}
-      {isPdf && numPages > 1 && (
-        <div className="flex items-center justify-center gap-3 bg-neutral-900 text-white py-2 shrink-0">
-          <button onClick={() => setPageNum((n) => Math.max(1, n - 1))} disabled={pageNum <= 1} className="p-1.5 hover:bg-white/10 rounded disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
-          <span className="text-sm">Page {pageNum} / {numPages}</span>
-          <button onClick={() => setPageNum((n) => Math.min(numPages, n + 1))} disabled={pageNum >= numPages} className="p-1.5 hover:bg-white/10 rounded disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
-        </div>
+      {/* Rattachement de la zone sélectionnée à un ouvrage du relevé */}
+      {choixOuvrage && selAnn && (
+        <ChoixOuvrage
+          projectId={plan.projectId}
+          nature={natureDe(selAnn)}
+          choisi={selAnn.itemId ?? null}
+          onChoisir={lierSelection}
+          onFermer={() => setChoixOuvrage(false)}
+        />
       )}
 
       {/* Modale étalonnage */}
@@ -759,15 +825,101 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   )
 }
 
+function BoutonOutil({ outil, actif, onChoisir, compact }: {
+  outil: { key: Tool; icon: typeof Ruler; label: string }
+  actif: boolean
+  onChoisir: (k: Tool) => void
+  compact?: boolean
+}) {
+  const Icon = outil.icon
+  return (
+    <button
+      onClick={() => onChoisir(outil.key)}
+      title={outil.label}
+      aria-pressed={actif}
+      className={cn('flex shrink-0 items-center rounded-lg transition-colors',
+        compact ? 'gap-1.5 px-3 py-2' : 'flex-col gap-1 px-1 py-2',
+        actif ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className={cn('font-medium', compact ? 'text-xs' : 'text-[10px] leading-tight')}>{outil.label}</span>
+    </button>
+  )
+}
+
+/**
+ * Carte de l'annotation sélectionnée.
+ *
+ * Elle remplace la barrette de couleurs qui flottait en bas à gauche : ce qu'on
+ * veut savoir d'une zone, c'est ce qu'elle mesure et à quel ouvrage elle se
+ * rapporte. Les couleurs ont rejoint le rail d'outils, où elles valent aussi
+ * bien pour le prochain tracé.
+ */
+function PanneauSelection({ annotation, lie, etalonne, quantite, onLier, onEditerNote, onSupprimer }: {
+  annotation: PlanAnnotation
+  lie: string | null
+  etalonne: boolean
+  quantite: string | null
+  onLier: () => void
+  onEditerNote: () => void
+  onSupprimer: () => void
+}) {
+  return (
+    <div className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:left-3 sm:w-80">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {NOMS[annotation.type]}
+          </p>
+          {quantite
+            ? <p className="text-lg font-semibold tabular-nums">{quantite}</p>
+            : <p className="truncate text-sm">{annotation.text || 'Sans texte'}</p>}
+        </div>
+        <button
+          onClick={onSupprimer}
+          className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          title="Supprimer"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      {quantite && !etalonne && (
+        <p className="mt-1 text-xs text-amber-600">
+          Plan non étalonné : la mesure est en pixels tant que l’échelle n’est pas définie.
+        </p>
+      )}
+
+      {annotation.type === 'note' && (
+        <button onClick={onEditerNote} className="mt-2 w-full rounded-lg border px-3 py-2 text-sm transition-colors hover:bg-muted">
+          Éditer le texte
+        </button>
+      )}
+
+      {quantite && (
+        <button
+          onClick={onLier}
+          className={cn('mt-2 flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors hover:bg-muted',
+            lie && 'bg-muted')}
+        >
+          <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate">{lie ?? 'Rattacher à un ouvrage'}</span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+      )}
+    </div>
+  )
+}
+
 function Modal({ title, children, onCancel, onConfirm, confirmLabel }: { title: string; children: React.ReactNode; onCancel: () => void; onConfirm: () => void; confirmLabel: string }) {
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold text-slate-900 mb-3">{title}</h3>
+      <div className="w-full max-w-sm rounded-2xl border bg-background p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-3 text-lg font-semibold">{title}</h3>
         {children}
         <div className="flex gap-2 mt-4">
-          <button onClick={onCancel} className="flex-1 h-11 rounded-lg border text-sm font-medium hover:bg-muted/50">Annuler</button>
-          <button onClick={onConfirm} className="flex-1 h-11 rounded-lg bg-primary text-primary-foreground text-sm font-semibold">{confirmLabel}</button>
+          <button onClick={onCancel} className="h-11 flex-1 rounded-lg border text-sm font-medium transition-colors hover:bg-muted">Annuler</button>
+          <button onClick={onConfirm} className="h-11 flex-1 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90">{confirmLabel}</button>
         </div>
       </div>
     </div>
