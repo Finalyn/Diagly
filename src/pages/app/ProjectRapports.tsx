@@ -169,43 +169,69 @@ export function ProjectRapports() {
   const currentVariant = variants.find(v => v.id === scenario) ?? variants[2]
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
-      {/* Barre d'actions (non imprimée) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex rounded-lg bg-muted p-1">
-            {kinds.map(([k, label, Icon]) => (
-              <button
-                key={k}
-                onClick={() => setReport(k)}
-                className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
-                  report === k ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}
-              >
-                <Icon className="h-4 w-4" />{label}
-              </button>
-            ))}
-          </div>
-          {report === 'scenario' && (
-            <div className="inline-flex rounded-lg bg-muted p-1">
+    /* Une colonne à gauche, le document à droite.
+       Les types de rapport tenaient dans une pilule horizontale au-dessus du
+       document : au quatrième type les libellés se serraient, et le document
+       descendait d'autant. En colonne, la liste porte des noms entiers, reste
+       visible pendant qu'on fait défiler le document, et les actions se rangent
+       dessous au lieu de flotter à l'opposé de ce qu'elles actionnent. */
+    <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+      <aside className="shrink-0 space-y-4 print:hidden lg:sticky lg:top-3 lg:w-60">
+        <nav className="space-y-1" aria-label="Type de rapport">
+          {kinds.map(([k, label, Icon]) => (
+            <button
+              key={k}
+              onClick={() => setReport(k)}
+              aria-current={report === k ? 'page' : undefined}
+              className={cn(
+                'flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors',
+                report === k
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />{label}
+            </button>
+          ))}
+        </nav>
+
+        {report === 'scenario' && (
+          <div>
+            <p className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Scénario
+            </p>
+            <div className="space-y-1">
               {variants.map(v => (
                 <button
                   key={v.id}
                   onClick={() => setScenario(v.id)}
-                  className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
-                    scenario === v.id ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}
+                  aria-current={scenario === v.id ? 'true' : undefined}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                    scenario === v.id
+                      ? 'bg-primary/10 font-medium text-primary'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  )}
                 >
-                  {v.energyFocus && <Leaf className="h-3.5 w-3.5 text-emerald-600" />}{v.name}
+                  {v.energyFocus && <Leaf className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}{v.name}
                 </button>
               ))}
             </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
+          </div>
+        )}
+
+        <div className="space-y-2 border-t pt-4">
+          <Button onClick={() => window.print()} className="w-full justify-start">
+            <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
+          </Button>
+          <Button variant="outline" onClick={() => setExportOpen(true)} className="w-full justify-start">
+            <Download className="mr-2 h-4 w-4" />Exporter
+          </Button>
           <ShareControl projectId={id!} initialToken={project.shareToken ?? null} />
-          <Button variant="outline" onClick={() => setExportOpen(true)}><Download className="mr-2 h-4 w-4" />Exporter</Button>
-          <Button onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />Imprimer / PDF</Button>
         </div>
-      </div>
+      </aside>
+
+      <div className="min-w-0 flex-1 space-y-4 lg:max-w-4xl">
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
       {/* Document */}
@@ -437,6 +463,7 @@ export function ProjectRapports() {
           energyClass={project.energyClassGlobal ?? project.energyClassEnvelope ?? null}
         />
       )}
+      </div>
     </div>
   )
 }

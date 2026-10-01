@@ -11,14 +11,26 @@ import { cn } from '@/lib/utils'
 import type { ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
 
-/** En-tête de marque du rapport : logo + identité de l'entreprise (Paramètres → Entreprise). */
+/**
+ * En-tête de marque du rapport : logo + identité de l'entreprise (Paramètres → Entreprise).
+ *
+ * Le logo est toujours là, en haut à droite, dans tous les rapports. Il ne
+ * dépendait jusqu'ici que de la présence d'un logo d'entreprise : un bureau qui
+ * n'en avait pas configuré rendait des documents à en-tête purement textuel,
+ * alors que le rapport complet, lui, posait celui de Diagly. Deux documents
+ * partis le même jour chez le même client ne se ressemblaient pas.
+ */
 export function ReportBrand({ canton }: { canton: string }) {
   const company = useAuth((s) => s.user?.preferences?.company)
   const name = company?.name?.trim()
   const line2 = [company?.postalCode, company?.city].filter(Boolean).join(' ')
   return (
     <div className="text-right text-sm shrink-0">
-      {company?.logo && <img src={company.logo} alt="" className="h-12 ml-auto mb-1 object-contain" />}
+      <img
+        src={company?.logo || '/diagly-logo.svg'}
+        alt={name || 'Diagly'}
+        className="mb-1.5 ml-auto h-12 w-auto object-contain"
+      />
       <p className="font-semibold">{name || 'Diagly'}</p>
       {company?.address && <p className="text-muted-foreground">{company.address}</p>}
       <p className="text-muted-foreground">{line2 || `${canton} · Suisse`}</p>
