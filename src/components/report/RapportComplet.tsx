@@ -603,13 +603,39 @@ function blocsPreambule(project: ApiProject): [string, ReactNode][] {
     </div>
   )])
 
+  /* Un tableau plutôt qu'une phrase : le lecteur cherche un point précis — « et
+     l'amiante ? » — et le trouve d'un coup d'œil, avec la réponse en face. La
+     colonne « oui » compte autant que la « non » : elle dit ce qu'il a acheté. */
   sections.push(['c1-perimetre', (
     <div className="mt-5">
-      <SousTitre>Ce que le rapport ne couvre pas</SousTitre>
-      <p>
-        Sondages destructifs, calcul de structure, amiante et polluants, protection incendie,
-        transformations, planification et direction des travaux. Ces points relèvent de mandats
-        spécialisés.
+      <SousTitre>Ce que le rapport couvre, et ce qu'il ne couvre pas</SousTitre>
+      <table className="w-full">
+        <tbody>
+          {([
+            ['État physique et fonctionnel des ouvrages visibles', true],
+            ['Travaux de remise en état et leur estimation', true],
+            ['Installations techniques accessibles à la visite', true],
+            ['Améliorations de performance et remises aux normes identifiées', true],
+            ['Sondages destructifs et ouvertures de parois', false],
+            ['Calcul de structure et vérification portante', false],
+            ["Repérage de l'amiante et des polluants du bâtiment", false],
+            ['Mise en conformité incendie et sécurité', false],
+            ["Transformation, changement d'affectation, besoins nouveaux", false],
+            ['Planification, appels d’offres et direction des travaux', false],
+          ] as [string, boolean][]).map(([l, inclus]) => (
+            <tr key={l} className="border-t align-top">
+              <td className="py-1.5">{l}</td>
+              <td className={cn('w-20 py-1.5 text-right font-medium', inclus ? 'text-emerald-700' : 'text-muted-foreground')}>
+                {inclus ? 'Oui' : 'Non'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-2 text-muted-foreground">
+        Le diagnostic est établi à vue, sans sondage. Une dégradation masquée qui ne pouvait pas
+        être détectée lors de la visite n'est pas couverte par l'estimation. Les points marqués
+        « non » ne sont pas des oublis : ils relèvent de spécialistes et de mandats distincts.
       </p>
     </div>
   )])
@@ -880,39 +906,6 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
     </div>
   )])
 
-  sections.push(['cA-perimetre', (
-    <div className="mt-5">
-      <SousTitre>Ce que le rapport couvre, et ce qu'il ne couvre pas</SousTitre>
-      <table className="w-full">
-        <tbody>
-          {([
-            ['État physique et fonctionnel des ouvrages visibles', true],
-            ['Travaux de remise en état et leur estimation', true],
-            ['Installations techniques accessibles à la visite', true],
-            ['Améliorations de performance et remises aux normes identifiées', true],
-            ['Sondages destructifs et ouvertures de parois', false],
-            ['Calcul de structure et vérification portante', false],
-            ["Repérage de l'amiante et des polluants du bâtiment", false],
-            ['Mise en conformité incendie et sécurité', false],
-            ["Transformation, changement d'affectation, besoins nouveaux", false],
-            ['Planification, appels d’offres et direction des travaux', false],
-          ] as [string, boolean][]).map(([l, inclus]) => (
-            <tr key={l} className="border-t align-top">
-              <td className="py-1.5">{l}</td>
-              <td className={cn('w-20 py-1.5 text-right font-medium', inclus ? 'text-emerald-700' : 'text-muted-foreground')}>
-                {inclus ? 'Oui' : 'Non'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="mt-2 text-muted-foreground">
-        Le diagnostic est établi à vue, sans sondage. Une dégradation masquée qui ne pouvait pas
-        être détectée lors de la visite n'est pas couverte par l'estimation. Les points marqués
-        « non » ne sont pas des oublis : ils relèvent de spécialistes et de mandats distincts.
-      </p>
-    </div>
-  )])
 
   return sections
 }

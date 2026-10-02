@@ -175,6 +175,14 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const [numPages, setNumPages] = useState(1)
   const [calibrateSeg, setCalibrateSeg] = useState<[PlanPoint, PlanPoint] | null>(null)
   const [calibrateVal, setCalibrateVal] = useState('')
+  /**
+   * Unité de la cote saisie à l'étalonnage.
+   *
+   * Un plan se cote en mètres, mais un détail se cote en centimètres et une
+   * menuiserie en millimètres. Imposer le mètre obligeait à convertir de tête
+   * — 1250 mm saisis en « 1.25 » — et une virgule oubliée fausse tout le plan.
+   */
+  const [calibrateUnite, setCalibrateUnite] = useState<'m' | 'cm' | 'mm'>('m')
   const [notePoint, setNotePoint] = useState<PlanPoint | null>(null)
   const [noteVal, setNoteVal] = useState('')
   const [exportOpen, setExportOpen] = useState(false)
@@ -540,7 +548,8 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
   const confirmCalibrate = () => {
     if (!calibrateSeg) return
-    const m = parseFloat(calibrateVal.replace(',', '.'))
+    const saisi = parseFloat(calibrateVal.replace(',', '.'))
+    const m = saisi / { m: 1, cm: 100, mm: 1000 }[calibrateUnite]
     const px = dist(calibrateSeg[0], calibrateSeg[1])
     setCalibrateSeg(null); setCalibrateVal('')
     if (!(m > 0 && px > 0)) return
@@ -769,6 +778,22 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const echelleCourante = echelleDansTable(echelles, scale, pageNum)
   /** Tant qu'on ne sait pas combien vaut un mètre, on ne peut rien relever ici. */
   const etalonne = echelleCourante != null
+
+  /**
+   * Une page sans échelle ouvre sur l'étalonnage, pas sur la main.
+   *
+   * Griser les autres outils ne suffisait pas : on arrivait sur « Déplacer », on
+   * promenait le plan, et on découvrait l'avertissement après coup. L'outil qui
+   * sert se présente donc de lui-même, à l'ouverture comme au changement de page.
+   */
+  useEffect(() => {
+    if (loading || etalonne) return
+    setTool('calibrate')
+    setPending(null)
+    setSelectedAnn(null)
+    setDraft([])
+  }, [loading, etalonne, pageNum])
+
 
   /** Mesure lisible d'une annotation, ou null si elle ne mesure rien. */
   const quantiteDe = (a: PlanAnnotation): string | null => {
@@ -1127,14 +1152,30 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       {/* Modale étalonnage */}
       {calibrateSeg && (
         <Modal title="Étalonner l'échelle" onCancel={() => setCalibrateSeg(null)} onConfirm={confirmCalibrate} confirmLabel="Définir l'échelle">
-          <p className="text-sm text-muted-foreground mb-3">Longueur réelle du trait tracé, en mètres :</p>
-          <input
-            autoFocus type="number" inputMode="decimal" step="0.01" value={calibrateVal}
-            onChange={(e) => setCalibrateVal(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') confirmCalibrate() }}
-            placeholder="ex. 5.20"
-            className="w-full h-11 px-3 rounded-lg border text-base outline-none focus:ring-2 focus:ring-primary"
-          />
+          <p className="mb-3 text-sm text-muted-foreground">Longueur réelle du trait tracé :</p>
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus type="number" inputMode="decimal" step="0.01" value={calibrateVal}
+              onChange={(e) => setCalibrateVal(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') confirmCalibrate() }}
+              placeholder={{ m: 'ex. 5.20', cm: 'ex. 520', mm: 'ex. 5200' }[calibrateUnite]}
+              // `min-w-0` sans quoi le champ refuse de se réduire sous sa largeur
+              // naturelle, et le sélecteur d'unité sort de la fenêtre.
+              className="h-11 min-w-0 flex-1 rounded-lg border px-3 text-base outline-none focus:ring-2 focus:ring-primary"
+            />
+            <div className="flex shrink-0 rounded-lg bg-muted p-0.5">
+              {(['m', 'cm', 'mm'] as const).map((u) => (
+                <button
+                  key={u}
+                  onClick={() => setCalibrateUnite(u)}
+                  className={cn('rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors',
+                    calibrateUnite === u ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+                >
+                  {u}
+                </button>
+              ))}
+            </div>
+          </div>
         </Modal>
       )}
 
@@ -1152,6 +1193,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       {/* À quelles pages l'étalonnage s'applique-t-il ? */}
       {echelleEnAttente != null && (
         <Modal
+          large
           title="Appliquer l’échelle"
           onCancel={() => setEchelleEnAttente(null)}
           onConfirm={() => { appliquerEchelle(echelleEnAttente, pagesRetenues); setEchelleEnAttente(null) }}
@@ -1171,7 +1213,9 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
               className="rounded-lg border px-2.5 py-1.5 hover:bg-muted"
             >Cette page seule</button>
           </div>
-          <div className="grid max-h-64 grid-cols-4 gap-2 overflow-y-auto">
+          {/* Des vignettes qu'on puisse regarder : on choisit les pages d'après ce
+              qu'elles montrent, et une coupe de 90 pixels de large ne montre rien. */}
+          <div className="grid max-h-[55vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-4">
             {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
               const vignette = apercus.pages.find((x) => x.numero === n)
               const coche = pagesRetenues.includes(n)
@@ -1183,10 +1227,10 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                     coche ? 'border-foreground ring-1 ring-foreground' : 'opacity-60 hover:opacity-100')}
                 >
                   {vignette
-                    ? <img src={vignette.url} alt="" className="h-20 w-full object-contain" />
-                    : <span className="flex h-20 items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></span>}
-                  <span className="flex items-center justify-center gap-1 border-t py-1 text-[11px] tabular-nums">
-                    {coche && <Check className="h-3 w-3" />}Page {n}
+                    ? <img src={vignette.url} alt="" className="h-40 w-full bg-white object-contain" />
+                    : <span className="flex h-40 items-center justify-center"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></span>}
+                  <span className="flex items-center justify-center gap-1 border-t py-1.5 text-xs tabular-nums">
+                    {coche && <Check className="h-3.5 w-3.5" />}Page {n}
                   </span>
                 </button>
               )
@@ -1449,10 +1493,21 @@ function PanneauSelection({ annotation, lie, etalonne, quantite, onLier, onEdite
   )
 }
 
-function Modal({ title, children, onCancel, onConfirm, confirmLabel }: { title: string; children: React.ReactNode; onCancel: () => void; onConfirm: () => void; confirmLabel: string }) {
+function Modal({ title, children, onCancel, onConfirm, confirmLabel, large }: {
+  title: string
+  children: React.ReactNode
+  onCancel: () => void
+  onConfirm: () => void
+  confirmLabel: string
+  /** Pour ce qui se regarde avant de se décider : des vignettes de pages, par exemple. */
+  large?: boolean
+}) {
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-2xl border bg-background p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={cn('w-full rounded-2xl border bg-background p-5 shadow-xl', large ? 'max-w-3xl' : 'max-w-sm')}
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3 className="mb-3 text-lg font-semibold">{title}</h3>
         {children}
         <div className="flex gap-2 mt-4">
