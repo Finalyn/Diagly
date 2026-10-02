@@ -15,8 +15,16 @@ import { cn } from '@/lib/utils'
 export type Pose = 'salue' | 'montre' | 'explique' | 'bravo' | 'reflechit'
 export type Vers = 'gauche' | 'droite' | 'haut' | 'bas'
 
-const CASQUE = '#2563eb'
-const CASQUE_OMBRE = '#1d4ed8'
+/*
+ * Le casque est jaune, et non bleu comme le reste.
+ *
+ * Un casque bleu sur une boule bleue n'était plus qu'un chapeau : la couleur
+ * est le premier signe d'un casque de chantier, avant même la forme. Ce jaune
+ * est celui que l'app emploie déjà pour ses avertissements, il ne sort donc pas
+ * de la palette.
+ */
+const CASQUE = '#fbbf24'
+const CASQUE_OMBRE = '#f59e0b'
 const BOULE = '#93c5fd'
 const BOULE_OMBRE = '#60a5fa'
 const TRAIT = '#1e3a8a'
@@ -66,13 +74,21 @@ export function Mascotte({ pose = 'explique', vers, taille = 96, anime = true, c
           {/* Une ombre posée en bas : sans elle, la boule n'est qu'un disque. */}
           <ellipse cx="60" cy="100" rx="18" ry="5" fill={BOULE_OMBRE} opacity="0.4" />
 
-          {/* Le casque, porté et non posé : la visière coupe la boule au quart
-              de sa hauteur, et la calotte épouse sa courbe. Plus haut, il avait
-              l'air d'un chapeau melon en équilibre. */}
-          <path d="M30 55a30 29 0 0 1 60 0z" fill={CASQUE} />
-          <path d="M56 26.3a30 29 0 0 1 8 0V55h-8z" fill={CASQUE_OMBRE} opacity="0.5" />
-          <ellipse cx="60" cy="56" rx="44" ry="6.5" fill={CASQUE} />
-          <path d="M16 55a44 6.5 0 0 1 88 0 44 6.5 0 0 0-88 0z" fill="#ffffff" opacity="0.18" />
+          {/*
+            Le casque.
+
+            Une calotte basse posée sur une visière plate faisait un chapeau
+            melon. Trois choses distinguent un casque de chantier, et elles y
+            sont toutes : une calotte haute qui couvre toute la tête, les
+            nervures du dessus, et une visière qui avance, plus épaisse au
+            milieu qu'aux tempes. La couleur fait le reste : le jaune de
+            chantier se reconnaît avant même la forme.
+          */}
+          <path d="M23 57a37 36 0 0 1 74 0z" fill={CASQUE} />
+          <path d="M55.5 21.3a37 36 0 0 1 9 0V57h-9z" fill={CASQUE_OMBRE} />
+          <path d="M38 57q-3-21 7-31M82 57q3-21-7-31" stroke={CASQUE_OMBRE} strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.6" />
+          <path d="M15 55Q60 79 105 55Q60 63 15 55Z" fill={CASQUE} />
+          <path d="M15 55Q60 79 105 55Q60 71 15 55Z" fill={CASQUE_OMBRE} opacity="0.5" />
 
           {content ? (
             <>
