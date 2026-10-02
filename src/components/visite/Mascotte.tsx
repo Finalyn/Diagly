@@ -70,15 +70,17 @@ export function Mascotte({ pose = 'explique', vers, taille = 96, anime = true, c
             Le casque : trois formes, pas une de plus.
 
             Une calotte haute, qui couvre toute la tête au lieu d'être posée
-            dessus. Sa nervure. Et la visière, qui avance et s'épaissit au
-            milieu : c'est elle qui fait le casque de chantier plutôt que le
-            chapeau. Les tentatives précédentes superposaient deux visières et
-            des nervures latérales en arcs, et cet empilement se lisait comme
-            un trait ondulé en travers du casque.
+            dessus. Sa nervure. Et la visière.
+
+            Celle-ci est un trait épais à bouts ronds, et non une forme
+            remplie : dessinée comme un croissant entre deux courbes, elle
+            s'affinait jusqu'à zéro à ses extrémités et les faisait dépasser du
+            casque en deux pointes. Un trait garde son épaisseur d'un bout à
+            l'autre, et ses bouts ronds restent dans la largeur de la calotte.
           */}
           <path d="M24 56a36 34 0 0 1 72 0z" fill={CASQUE} />
           <rect x="55.5" y="25" width="9" height="31" rx="4.5" fill={CASQUE_OMBRE} opacity="0.55" />
-          <path d="M16 55Q60 80 104 55Q60 59 16 55Z" fill={CASQUE_OMBRE} />
+          <path d="M24 52Q60 69 96 52" stroke={CASQUE_OMBRE} strokeWidth="9" strokeLinecap="round" fill="none" />
 
           {content ? (
             <>
