@@ -15,15 +15,8 @@ import { cn } from '@/lib/utils'
 export type Pose = 'salue' | 'montre' | 'explique' | 'bravo' | 'reflechit'
 export type Vers = 'gauche' | 'droite' | 'haut' | 'bas'
 
-/*
- * Le casque est rouge, le seul écart à la palette bleue de l'app.
- *
- * Bleu sur une boule bleue, il se fondait dans la tête et redevenait un
- * chapeau : c'est le contraste qui le fait lire comme un casque de chantier.
- * Ce rouge est celui que l'app emploie déjà pour la priorité I.
- */
-const CASQUE = '#dc2626'
-const CASQUE_OMBRE = '#b91c1c'
+const CASQUE = '#2563eb'
+const CASQUE_OMBRE = '#1d4ed8'
 const BOULE = '#93c5fd'
 const TRAIT = '#1e3a8a'
 
@@ -73,20 +66,20 @@ export function Mascotte({ pose = 'explique', vers, taille = 96, anime = true, c
           <circle cx="60" cy="72" r="34" fill={BOULE} />
 
           {/*
-            Le casque : trois formes, pas une de plus.
+            Le casque, d'après le tracé du client.
 
-            Une calotte haute, qui couvre toute la tête au lieu d'être posée
-            dessus. Sa nervure. Et la visière.
+            La calotte n'est pas une demi-sphère mais une tente : des flancs
+            droits qui montent en se resserrant, et un sommet arrondi. Deux
+            nervures la partagent en trois pans, comme sur un casque moulé.
 
-            Celle-ci est un trait épais à bouts ronds, et non une forme
-            remplie : dessinée comme un croissant entre deux courbes, elle
-            s'affinait jusqu'à zéro à ses extrémités et les faisait dépasser du
-            casque en deux pointes. Un trait garde son épaisseur d'un bout à
-            l'autre, et ses bouts ronds restent dans la largeur de la calotte.
+            La visière a le bord supérieur droit et le dessous qui descend vers
+            l'avant : elle est donc plus épaisse au milieu qu'aux tempes, sans
+            jamais s'y affiner jusqu'à la pointe. Elle s'arrête à l'aplomb de la
+            calotte : débordante, elle rendait au casque son air de chapeau.
           */}
-          <path d="M24 56a36 34 0 0 1 72 0z" fill={CASQUE} />
-          <rect x="55.5" y="25" width="9" height="31" rx="4.5" fill={CASQUE_OMBRE} opacity="0.55" />
-          <path d="M24 52Q60 69 96 52" stroke={CASQUE_OMBRE} strokeWidth="9" strokeLinecap="round" fill="none" />
+          <path d="M24 56C24 31 40 22 60 22 80 22 96 31 96 56Z" fill={CASQUE} />
+          <path d="M50 27 46 55M70 27 74 55" stroke={CASQUE_OMBRE} strokeWidth="3.6" strokeLinecap="round" opacity="0.5" fill="none" />
+          <path d="M24 56H96V61Q60 78 24 61Z" fill={CASQUE_OMBRE} />
 
           {content ? (
             <>
