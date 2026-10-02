@@ -1,4 +1,5 @@
-// Contenu du centre d'aide : FAQ (par catégorie) + guides. Français, vocabulaire suisse.
+// Les questions fréquentes du centre d'aide, par catégorie.
+// La documentation et les tutoriels vivent dans `documentation.ts`.
 
 export interface FaqItem { q: string; a: string }
 export interface FaqCategory { id: string; label: string; items: FaqItem[] }
@@ -93,55 +94,6 @@ export const FAQ: FaqCategory[] = [
       { q: 'Où sont hébergées mes données ?', a: "Vos données sont hébergées en Suisse (Infomaniak), chiffrées en transit et au repos. Diagly répond aux exigences de résidence des données des appels d'offres publics suisses." },
       { q: 'Puis-je me connecter avec Google ?', a: "Oui, la connexion Google est disponible sur la page de connexion. Le SSO d'entreprise (OIDC : Microsoft Entra ID, Google Workspace) est prévu pour les clients institutionnels." },
       { q: 'Comment changer mon mot de passe ?', a: "Dans Paramètres → Sécurité → Changer le mot de passe. Toutes vos sessions actives sont révoquées après le changement, par sécurité." },
-    ],
-  },
-]
-
-export interface Guide { id: string; title: string; summary: string; steps: string[] }
-
-export const GUIDES: Guide[] = [
-  {
-    id: 'premier-diagnostic',
-    title: 'Réaliser son premier diagnostic',
-    summary: 'De la création du bâtiment au rapport, en 5 étapes.',
-    steps: [
-      "Créez le diagnostic : Diagnostics → Nouveau diagnostic, renseignez l'adresse et les caractéristiques.",
-      "Laissez Diagly enrichir les données géo (EGID, affectation, contraintes) automatiquement.",
-      "Ouvrez l'onglet Diagnostic et évaluez chaque élément (état + photo). Coûts et priorités se calculent seuls.",
-      "Vérifiez le chiffrage et les variantes dans les onglets Coûts et Variantes.",
-      "Générez le rapport (Variantes → Détaillé/Documenté) et partagez-le à votre client.",
-    ],
-  },
-  {
-    id: 'chiffrer-parc',
-    title: 'Chiffrer et planifier plusieurs diagnostics',
-    summary: 'Consolider les coûts et le plan de travaux à l\'échelle de l\'ensemble des diagnostics.',
-    steps: [
-      "Renseignez l'année d'intervention et les enveloppes (réparation / amélioration / normes) par élément.",
-      "Comparez les 3 scénarios de rénovation dans l'onglet Variantes.",
-      "Exportez en Excel (bouton Exporter) pour intégrer le budget d'entretien à votre suivi.",
-      "Pour interroger tous vos diagnostics en langage naturel, branchez votre assistant IA via le serveur MCP.",
-    ],
-  },
-  {
-    id: 'brancher-erp',
-    title: 'Connecter un ERP ou un partenaire',
-    summary: 'Exposer vos données via l\'API REST et les webhooks.',
-    steps: [
-      "Créez une clé d'API dans Intégrations → Clés API (copiez-la, elle n'est affichée qu'une fois).",
-      "Consultez la documentation OpenAPI interactive pour tester les endpoints (EGID sur chaque ressource).",
-      "Ajoutez un webhook (Intégrations → Webhooks) pour recevoir les événements en temps réel.",
-      "Vérifiez la signature HMAC des webhooks côté récepteur, et rejouez au besoin depuis le journal.",
-    ],
-  },
-  {
-    id: 'inviter-equipe',
-    title: 'Mettre en place son équipe',
-    summary: 'Créer l\'organisation, inviter des membres, gérer les rôles.',
-    steps: [
-      "Créez votre organisation dans Gestion d'équipe : vos diagnostics deviennent partagés.",
-      "Invitez vos collaborateurs par email en choisissant leur rôle (Administrateur / Membre / Lecture seule).",
-      "Ajustez les rôles à tout moment ; un mandant externe peut recevoir un accès en lecture seule.",
     ],
   },
 ]

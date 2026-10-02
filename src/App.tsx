@@ -59,6 +59,8 @@ const JoinOrg = lazy(() => named(import('@/pages/app/JoinOrg'), 'JoinOrg'))
 const Support = lazy(() => named(import('@/pages/app/Support'), 'Support'))
 const SupportTicket = lazy(() => named(import('@/pages/app/SupportTicket'), 'SupportTicket'))
 const NewSupportRequest = lazy(() => named(import('@/pages/app/NewSupportRequest'), 'NewSupportRequest'))
+const SupportArticle = lazy(() => named(import('@/pages/app/SupportArticle'), 'SupportArticle'))
+const SupportTutoriel = lazy(() => named(import('@/pages/app/SupportTutoriel'), 'SupportTutoriel'))
 const PublicReport = lazy(() => named(import('@/pages/PublicReport'), 'PublicReport'))
 const DashboardPreview = lazy(() => named(import('@/pages/DashboardPreview'), 'DashboardPreview'))
 
@@ -168,6 +170,8 @@ function App() {
             <Route path="join/:token" element={<JoinOrg />} />
             <Route path="support" element={<Support />} />
             <Route path="support/new" element={<NewSupportRequest />} />
+            <Route path="support/doc/:slug" element={<SupportArticle />} />
+            <Route path="support/tuto/:slug" element={<SupportTutoriel />} />
             <Route path="support/:id" element={<SupportTicket />} />
           </Route>
         </Routes>
