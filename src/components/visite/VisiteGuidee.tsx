@@ -135,35 +135,44 @@ export function VisiteGuidee() {
   if (!visite || !pas || isMobile) return null
 
   const bulle = { w: Math.min(LARGEUR_BULLE, fenetre.w - 32), h: hauteurBulle }
-  const place = placerBulle(cible, bulle, fenetre, pas.cote ?? 'auto')
   const trou = cible ? trouDuProjecteur(cible, 8, fenetre) : null
-  const pointe = cible && place.cote
-    ? pointeDeLaBulle(cible, { x: place.x, y: place.y, w: bulle.w, h: bulle.h }, place.cote)
+  // La bulle s'écarte du trou, et non de la cible : mesurée sur la cible, elle
+  // laissait sa pointe se planter dans l'anneau, qui passe huit pixels plus loin.
+  const place = placerBulle(trou, bulle, fenetre, pas.cote ?? 'auto')
+  const pointe = trou && place.cote
+    ? pointeDeLaBulle(trou, { x: place.x, y: place.y, w: bulle.w, h: bulle.h }, place.cote)
     : null
 
   return (
     <div className="js-print-hide pointer-events-none fixed inset-0 z-[70]" role="dialog" aria-label={`Visite guidée : ${visite.titre}`}>
-      {/* Le voile, en quatre bandes : le trou reste cliquable, donc le geste
-          montré reste faisable pendant qu'on l'explique. */}
+      {/*
+        Le voile et l'anneau tiennent dans une seule ombre, portée par le trou
+        lui-même.
+
+        Le voile était fait de quatre bandes autour du trou. Un rectangle n'a
+        pas de coins arrondis : il restait aux quatre angles un triangle clair
+        à l'extérieur de l'anneau, et pendant un défilement les bandes se
+        désynchronisaient et laissaient des brèches. Une ombre de neuf mille
+        pixels d'étalement épouse l'arrondi de son élément et ne peut pas se
+        fendre.
+
+        L'anneau est la première ombre, parce que l'anneau de Tailwind est lui
+        aussi une `box-shadow` : sur le même élément, la seconde aurait
+        remplacé la première et l'anneau aurait disparu. L'onde qui bat garde
+        donc son propre élément.
+
+        Le trou n'est plus bloqué au clic, le voile n'étant plus un élément :
+        c'est sans conséquence, les étapes qui attendent un geste écoutent
+        l'élément désigné, et les autres se suivent au bouton.
+      */}
       {trou ? (
         <>
-          <Voile style={{ left: 0, top: 0, width: fenetre.w, height: Math.max(0, trou.y) }} />
-          <Voile style={{ left: 0, top: trou.y + trou.h, width: fenetre.w, height: Math.max(0, fenetre.h - trou.y - trou.h) }} />
-          <Voile style={{ left: 0, top: trou.y, width: Math.max(0, trou.x), height: trou.h }} />
-          <Voile style={{ left: trou.x + trou.w, top: trou.y, width: Math.max(0, fenetre.w - trou.x - trou.w), height: trou.h }} />
-          {/*
-            Deux éléments superposés, et non un seul.
-
-            L'anneau de Tailwind est une `box-shadow`, et l'onde qui bat en est
-            une autre : posées sur le même élément, la seconde remplaçait la
-            première et l'anneau disparaissait. Il ne restait qu'un rectangle
-            clair au milieu de l'écran assombri, sans rien pour dire ce qui
-            était désigné. L'anneau est donc fixe sur son élément, et l'onde
-            bat sur le sien.
-          */}
           <div
-            className="pointer-events-none absolute rounded-xl ring-2 ring-blue-500"
-            style={{ left: trou.x, top: trou.y, width: trou.w, height: trou.h }}
+            className="pointer-events-none absolute rounded-xl"
+            style={{
+              left: trou.x, top: trou.y, width: trou.w, height: trou.h,
+              boxShadow: '0 0 0 2px #3b82f6, 0 0 0 9999px rgb(23 23 23 / 0.5)',
+            }}
           />
           <div
             className="visite-halo pointer-events-none absolute rounded-xl"
@@ -171,7 +180,7 @@ export function VisiteGuidee() {
           />
         </>
       ) : (
-        <Voile style={{ inset: 0 }} />
+        <div className="pointer-events-none absolute inset-0 bg-neutral-900/50" />
       )}
 
       <div
@@ -250,17 +259,4 @@ export function VisiteGuidee() {
       </div>
     </div>
   )
-}
-
-/**
- * Une bande du voile.
- *
- * Sans transition CSS, et c'est important : les quatre bandes se déduisent du
- * même rectangle, donc elles pavent l'écran exactement. Animées, chacune
- * rejoignait sa nouvelle valeur à son propre rythme, et il s'ouvrait entre
- * elles des brèches larges comme un tiers de l'écran à chaque défilement. Le
- * mouvement, lui, ne manque pas : les bandes sont recalculées à chaque image.
- */
-function Voile({ style }: { style: React.CSSProperties }) {
-  return <div className="pointer-events-auto absolute bg-neutral-900/50" style={style} />
 }
