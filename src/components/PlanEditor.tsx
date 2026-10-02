@@ -3,7 +3,7 @@ import { spring, projeterElan, suiviVitesse, mouvementReduit, RESSORTS, type Spr
 import { useQueryClient } from '@tanstack/react-query'
 import {
   X, Hand, MousePointer2, Crosshair, Ruler, ArrowUpRight, StickyNote, Hash, Pencil,
-  ZoomIn, ZoomOut, Undo2, Check, Trash2, Loader2, ChevronLeft, ChevronRight, Maximize, Download, Link2, Layers,
+  ZoomIn, ZoomOut, Undo2, Redo2, Check, Trash2, Loader2, ChevronLeft, ChevronRight, Maximize, Download, Link2, Layers,
   AlertTriangle,
 } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -198,6 +198,16 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const [echelleEnAttente, setEchelleEnAttente] = useState<number | null>(null)
   const [pagesRetenues, setPagesRetenues] = useState<number[]>([])
   const [arrondi, setArrondi] = useState<PasArrondi>(0)
+  /**
+   * Les deux piles de l'historique : ce que Ctrl+Z ramène, ce que Ctrl+Maj+Z rejoue.
+   *
+   * On retient l'état entier des annotations avant chaque modification, plutôt
+   * que de simplement retirer le dernier tracé : recolorer une zone, la
+   * déplacer ou la rattacher à un ouvrage sont des gestes qu'on veut pouvoir
+   * reprendre, pas seulement la création.
+   */
+  const [passe, setPasse] = useState<PlanAnnotation[][]>([])
+  const [futur, setFutur] = useState<PlanAnnotation[][]>([])
 
   /**
    * Calque de référence : un autre plan du dossier, posé par-dessus celui-ci.
@@ -221,6 +231,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const apercus = useApercusPages(plan, isPdf && numPages > 1)
 
   const poserReference = (planId: string) => {
+    retenir()
     setAnnotations((l) => {
       const sansAncien = l.filter((a) => a.type !== 'reference')
       return [...sansAncien, {
@@ -232,10 +243,12 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   }
   const majReference = (patch: Partial<PlanAnnotation>) => {
     if (!reference) return
+    retenir()
     setAnnotations((l) => l.map((a) => (a.id === reference.id ? { ...a, ...patch } : a)))
     setDirty(true)
   }
   const retirerReference = () => {
+    retenir()
     setAnnotations((l) => l.filter((a) => a.type !== 'reference'))
     setDirty(true)
   }
@@ -321,8 +334,20 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     { mode: 'none', startX: 0, startY: 0, moved: false, lastDist: 0, lastMidX: 0, lastMidY: 0 },
   )
   const dragRef = useRef<{ id: string; lastX: number; lastY: number; pointIndex?: number } | null>(null)
+  /**
+   * L'état d'avant le déplacement en cours : un glissement n'entre dans
+   * l'historique qu'au relâchement, et pas à chaque pixel parcouru.
+   */
+  const avantGeste = useRef<PlanAnnotation[] | null>(null)
+
+  /** À appeler juste avant de toucher aux annotations. */
+  const retenir = useCallback((etat: PlanAnnotation[] = annotations) => {
+    setPasse((l) => [...l.slice(-49), etat])
+    setFutur([])
+  }, [annotations])
 
   const addAnn = (a: Omit<PlanAnnotation, 'id'>) => {
+    retenir()
     const id = uid()
     setAnnotations((l) => [...l, { id, page: isPdf ? pageNum : undefined, ...a }])
     setDirty(true)
@@ -386,7 +411,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       if (selectedAnn) {
         const a = annotations.find((x) => x.id === selectedAnn)
         const idx = a ? a.points.findIndex((p) => dist(sp, p) < tol) : -1
-        if (a && idx >= 0) { dragRef.current = { id: a.id, lastX: sp.x, lastY: sp.y, pointIndex: idx }; gesture.current.mode = 'dragPoint'; return }
+        if (a && idx >= 0) { avantGeste.current = annotations; dragRef.current = { id: a.id, lastX: sp.x, lastY: sp.y, pointIndex: idx }; gesture.current.mode = 'dragPoint'; return }
       }
       // 2. Sinon, sélectionne l'annotation touchée -> déplace l'ensemble ; si rien, on déplace le plan.
       let hitId: string | null = null
@@ -397,12 +422,12 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
         else if (a.type === 'draw') { for (let j = 0; j < a.points.length - 1 && !hitId; j++) if (pointSegDist(sp, a.points[j], a.points[j + 1]) < tol) hitId = a.id }
         else if (a.type === 'hatch') { if (pointInPoly(sp, a.points)) hitId = a.id; else for (let j = 0; j < a.points.length && !hitId; j++) if (pointSegDist(sp, a.points[j], a.points[(j + 1) % a.points.length]) < tol) hitId = a.id }
       }
-      if (hitId) { setSelectedAnn(hitId); dragRef.current = { id: hitId, lastX: sp.x, lastY: sp.y }; gesture.current.mode = 'dragAnn' }
+      if (hitId) { setSelectedAnn(hitId); avantGeste.current = annotations; dragRef.current = { id: hitId, lastX: sp.x, lastY: sp.y }; gesture.current.mode = 'dragAnn' }
       else { setSelectedAnn(null); gesture.current.mode = 'pan' }
     }
     else if (tool === 'reference') {
       // Le calque se déplace comme une annotation : il n'a qu'un point, son coin.
-      if (reference) { dragRef.current = { id: reference.id, lastX: sp.x, lastY: sp.y }; gesture.current.mode = 'dragAnn' }
+      if (reference) { avantGeste.current = annotations; dragRef.current = { id: reference.id, lastX: sp.x, lastY: sp.y }; gesture.current.mode = 'dragAnn' }
       else gesture.current.mode = 'pan'
     }
     else if (tool === 'draw') { gesture.current.mode = 'draw'; setDraft([sp]) }
@@ -509,6 +534,9 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       }
       setPending(null)
     } else if (g.mode === 'dragAnn' || g.mode === 'dragPoint') {
+      // Un clic qui sélectionne sans rien bouger n'a rien à inscrire.
+      if (g.moved && avantGeste.current) retenir(avantGeste.current)
+      avantGeste.current = null
       dragRef.current = null
     } else if (wasTap && ptrs.current.size === 0) {
       if (tool === 'note') { setNotePoint(sp); setNoteVal('') }
@@ -523,17 +551,23 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   }
 
   const closeHatch = () => { if (draft.length >= 3) { poserZone(draft); setDraft([]) } }
-  const undo = () => {
-    // Le calque de référence n'est pas un tracé : annuler défait le dernier
-    // dessin, pas le document qu'on a posé dessous pour comparer.
-    setAnnotations((a) => {
-      for (let i = a.length - 1; i >= 0; i--) {
-        if (a[i].type !== 'reference' && surLaPage(a[i])) return [...a.slice(0, i), ...a.slice(i + 1)]
-      }
-      return a
-    })
+  const annuler = useCallback(() => {
+    if (passe.length === 0) return
+    setFutur((l) => [...l, annotations])
+    setAnnotations(passe[passe.length - 1])
+    setPasse((l) => l.slice(0, -1))
+    setSelectedAnn(null)
     setDirty(true)
-  }
+  }, [annotations, passe])
+
+  const refaire = useCallback(() => {
+    if (futur.length === 0) return
+    setPasse((l) => [...l, annotations])
+    setAnnotations(futur[futur.length - 1])
+    setFutur((l) => l.slice(0, -1))
+    setSelectedAnn(null)
+    setDirty(true)
+  }, [annotations, futur])
 
   /**
    * Applique une échelle mesurée sur la page courante aux pages choisies.
@@ -585,7 +619,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const confirmNote = () => {
     const text = noteVal.trim()
     if (editingNoteId) {
-      if (text) { setAnnotations((l) => l.map((a) => (a.id === editingNoteId ? { ...a, text } : a))); setDirty(true) }
+      if (text) { retenir(); setAnnotations((l) => l.map((a) => (a.id === editingNoteId ? { ...a, text } : a))); setDirty(true) }
     } else if (notePoint && text) {
       addAnn({ type: 'note', points: [notePoint], text, color })
     }
@@ -595,6 +629,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   // Modifier l'annotation sélectionnée : couleur, texte (note).
   const recolorSelected = (c: string) => {
     if (!selectedAnn) return
+    retenir()
     setAnnotations((l) => l.map((a) => (a.id === selectedAnn ? { ...a, color: c } : a))); setDirty(true)
   }
   const editSelectedNote = () => {
@@ -633,6 +668,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
   const lierSelection = (itemId: string | null) => {
     if (!selectedAnn) return
+    retenir()
     setAnnotations((l) => l.map((a) => (a.id === selectedAnn ? { ...a, itemId } : a)))
     setDirty(true)
     setChoixOuvrage(false)
@@ -751,19 +787,6 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     return () => el.removeEventListener('wheel', onWheel)
   }, [zoomAt])
 
-  // Suppr / Retour arrière : supprime l'annotation sélectionnée. Échap : désélectionne.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedAnn) {
-        setAnnotations((a) => a.filter((x) => x.id !== selectedAnn)); setSelectedAnn(null); setDirty(true)
-      } else if (e.key === 'Escape') setSelectedAnn(null)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [selectedAnn])
-
   const UNIT_F = { m: 1, cm: 100, mm: 1000 } as const
   const LEN_DEC = { m: 2, cm: 1, mm: 0 } as const
   const fmtLen = (px: number) => {
@@ -822,6 +845,44 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     setDraft([])
   }, [loading, etalonne, pageNum])
 
+  // Ctrl+Z / Ctrl+Maj+Z : l'historique. Suppr : l'annotation sélectionnée.
+  // Échap : abandonne le geste en cours et rend la main à la sélection.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) refaire()
+        else annuler()
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault()
+        refaire()
+        return
+      }
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedAnn) {
+        retenir(); setAnnotations((a) => a.filter((x) => x.id !== selectedAnn)); setSelectedAnn(null); setDirty(true)
+        return
+      }
+
+      if (e.key === 'Escape') {
+        // Échap abandonne le geste en cours : il ne défait rien de ce qui est
+        // posé, c'est le travail de Ctrl+Z. Il repose l'outil sur la
+        // sélection, pour qu'un tracé interrompu ne reparte pas au clic suivant.
+        setPending(null)
+        setDraft([])
+        setSelectedAnn(null)
+        if (etalonne) setTool('select')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedAnn, etalonne, retenir, annuler, refaire])
+
 
   /** Mesure lisible d'une annotation, ou null si elle ne mesure rien. */
   const quantiteDe = (a: PlanAnnotation): string | null => {
@@ -866,13 +927,15 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
        actif, posé en `bg-primary` sur un fond déjà sombre, ne se voyait pas. Seule
        la scène garde un fond neutre réglable : c'est lui qui détache la feuille. */
     <div className="fixed inset-0 z-50 flex select-none flex-col bg-background">
-      {/* Le chrome est teinté : un plan d'architecte est blanc, et une barre
-          blanche par-dessus se confond avec lui. Le bleu est celui que l'app
-          emploie déjà pour ses états actifs. */}
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-blue-200 bg-blue-50 px-2 sm:px-3">
-        <button onClick={onClose} className="rounded-lg p-2 transition-colors hover:bg-blue-100" title="Fermer">
+      {/* Un plan d'architecte est blanc, et un cadre blanc par-dessus se
+          confond avec lui : ce sont les contours de l'outil qui se teintent,
+          du bleu que l'app emploie déjà pour ses états actifs. */}
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b bord-outil px-2 sm:px-3">
+        <button onClick={onClose} className="rounded-lg p-2 transition-colors hover:bg-blue-50" title="Fermer">
           <X className="h-5 w-5" />
         </button>
+        <img src="/diagly-logo.svg" alt="Diagly" className="hidden h-4 shrink-0 opacity-70 sm:block" />
+        <div className="hidden h-6 w-px shrink-0 bg-blue-200 sm:block" aria-hidden />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{plan.name}</p>
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -887,13 +950,14 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5">
-          <button onClick={() => zoomButton(1 / 1.25)} className="rounded-lg p-2 transition-colors hover:bg-blue-100" title="Dézoomer"><ZoomOut className="h-4 w-4" /></button>
+          <button onClick={() => zoomButton(1 / 1.25)} className="rounded-lg p-2 transition-colors hover:bg-blue-50" title="Dézoomer"><ZoomOut className="h-4 w-4" /></button>
           <span className="hidden w-12 text-center text-xs tabular-nums text-muted-foreground sm:block">{Math.round(view.zoom * 100)}%</span>
-          <button onClick={() => zoomButton(1.25)} className="rounded-lg p-2 transition-colors hover:bg-blue-100" title="Zoomer"><ZoomIn className="h-4 w-4" /></button>
-          <button onClick={fitView} className="rounded-lg p-2 transition-colors hover:bg-blue-100" title="Ajuster"><Maximize className="h-4 w-4" /></button>
-          <button onClick={undo} disabled={annotations.length === 0} className="rounded-lg p-2 transition-colors hover:bg-blue-100 disabled:opacity-40" title="Annuler"><Undo2 className="h-4 w-4" /></button>
+          <button onClick={() => zoomButton(1.25)} className="rounded-lg p-2 transition-colors hover:bg-blue-50" title="Zoomer"><ZoomIn className="h-4 w-4" /></button>
+          <button onClick={fitView} className="rounded-lg p-2 transition-colors hover:bg-blue-50" title="Ajuster"><Maximize className="h-4 w-4" /></button>
+          <button onClick={annuler} disabled={passe.length === 0} className="rounded-lg p-2 transition-colors hover:bg-blue-50 disabled:opacity-40" title="Annuler (Ctrl+Z)"><Undo2 className="h-4 w-4" /></button>
+          <button onClick={refaire} disabled={futur.length === 0} className="rounded-lg p-2 transition-colors hover:bg-blue-50 disabled:opacity-40" title="Rétablir (Ctrl+Maj+Z)"><Redo2 className="h-4 w-4" /></button>
           <div className="relative">
-            <button onClick={() => setExportOpen((o) => !o)} className="rounded-lg p-2 transition-colors hover:bg-blue-100" title="Exporter"><Download className="h-4 w-4" /></button>
+            <button onClick={() => setExportOpen((o) => !o)} className="rounded-lg p-2 transition-colors hover:bg-blue-50" title="Exporter"><Download className="h-4 w-4" /></button>
             {exportOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
@@ -910,11 +974,11 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       <div className="flex min-h-0 flex-1">
         {/* Rail d'outils : vertical sur grand écran, il repasse en bande sous la
             scène sur mobile, à portée de pouce. */}
-        <nav ref={railRef} className="hidden w-20 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-blue-200 bg-blue-50 p-2 sm:flex" aria-label="Outils">
+        <nav ref={railRef} className="hidden w-20 shrink-0 flex-col gap-0.5 overflow-y-auto border-r bord-outil p-2 sm:flex" aria-label="Outils">
           {TOOLS.map((t) => (
             <BoutonOutil key={t.key} outil={t} actif={tool === t.key} bloque={!outilAutorise(t.key)} onChoisir={choisirOutil} />
           ))}
-          <div className="mt-3 border-t border-blue-200 pt-3">
+          <div className="mt-3 border-t bord-outil-pale pt-3">
             <p className="mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Couleur</p>
             <div className="flex flex-col items-center gap-2">
               {COLORS.map((c) => (
@@ -1021,7 +1085,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                 choisi sans prendre une barre entière à l'écran. */}
             {!loading && (
               <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center px-3">
-                <p className="max-w-full truncate rounded-full border border-blue-200 bg-blue-50/90 px-3 py-1.5 text-xs text-blue-900/70 shadow-sm backdrop-blur">
+                <p className="max-w-full truncate rounded-full border bord-outil-pale bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur">
                   {HINTS[tool]}
                 </p>
               </div>
@@ -1096,13 +1160,13 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                 quantite={quantiteDe(selAnn)}
                 onLier={() => setChoixOuvrage(true)}
                 onEditerNote={editSelectedNote}
-                onSupprimer={() => { setAnnotations((a) => a.filter((x) => x.id !== selectedAnn)); setSelectedAnn(null); setDirty(true) }}
+                onSupprimer={() => { retenir(); setAnnotations((a) => a.filter((x) => x.id !== selectedAnn)); setSelectedAnn(null); setDirty(true) }}
               />
             )}
           </div>
 
           {/* Bande du bas : les outils sur mobile, puis les réglages de la scène. */}
-          <div className="shrink-0 border-t border-blue-200 bg-blue-50">
+          <div className="shrink-0 border-t bord-outil">
             <div className="flex gap-1 overflow-x-auto p-2 sm:hidden">
               {TOOLS.map((t) => (
                 <BoutonOutil key={t.key} outil={t} actif={tool === t.key} bloque={!outilAutorise(t.key)} onChoisir={choisirOutil} compact />
@@ -1122,7 +1186,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
               <div className="flex shrink-0 items-center gap-1.5">
                 <span className="hidden sm:inline">Unité</span>
-                <div className="flex rounded-lg bg-blue-100 p-0.5">
+                <div className="flex rounded-lg bg-muted p-0.5">
                   {(['m', 'cm', 'mm'] as const).map((u) => (
                     <button key={u} onClick={() => setUnit(u)}
                       className={cn('rounded-md px-2 py-1 font-medium transition-colors', unit === u ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground')}>
@@ -1134,7 +1198,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
               <div className="flex shrink-0 items-center gap-1.5">
                 <span className="hidden sm:inline">Arrondi des cotes</span>
-                <div className="flex rounded-lg bg-blue-100 p-0.5">
+                <div className="flex rounded-lg bg-muted p-0.5">
                   {ARRONDIS.map((a) => (
                     <button key={a.label} onClick={() => setArrondi(a.pas)}
                       className={cn('rounded-md px-2 py-1 font-medium transition-colors', arrondi === a.pas ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground')}>
@@ -1159,9 +1223,9 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
               {isPdf && numPages > 1 && (
                 <div className="ml-auto flex shrink-0 items-center gap-1">
-                  <button onClick={() => setPageNum((n) => Math.max(1, n - 1))} disabled={pageNum <= 1} className="rounded-lg p-1.5 hover:bg-blue-100 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+                  <button onClick={() => setPageNum((n) => Math.max(1, n - 1))} disabled={pageNum <= 1} className="rounded-lg p-1.5 hover:bg-blue-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
                   <span className="tabular-nums">Page {pageNum} / {numPages}</span>
-                  <button onClick={() => setPageNum((n) => Math.min(numPages, n + 1))} disabled={pageNum >= numPages} className="rounded-lg p-1.5 hover:bg-blue-100 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+                  <button onClick={() => setPageNum((n) => Math.min(numPages, n + 1))} disabled={pageNum >= numPages} className="rounded-lg p-1.5 hover:bg-blue-50 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
                 </div>
               )}
             </div>
@@ -1169,7 +1233,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
             {/* Bande de pages : un document de coupes se parcourt à vue, pas en
                 avançant d'une feuille à l'aveugle. L'étalonnage de chacune s'y lit. */}
             {isPdf && numPages > 1 && (
-              <div className="flex gap-2 overflow-x-auto border-t border-blue-100 px-3 py-2">
+              <div className="flex gap-2 overflow-x-auto border-t bord-outil-pale px-3 py-2">
                 {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
                   const vignette = apercus.pages.find((x) => x.numero === n)
                   const sansEchelle = echelleDansTable(echelles, scale, n) == null
@@ -1332,8 +1396,8 @@ function BoutonOutil({ outil, actif, bloque, onChoisir, compact }: {
       aria-pressed={actif}
       className={cn('flex shrink-0 items-center rounded-lg transition-colors',
         compact ? 'gap-1.5 px-3 py-2' : 'flex-col gap-1 px-1 py-2',
-        bloque ? 'cursor-not-allowed text-blue-900/30'
-          : actif ? 'bg-blue-600 text-white' : 'text-blue-900/70 hover:bg-blue-100 hover:text-blue-900')}
+        bloque ? 'cursor-not-allowed text-muted-foreground/40'
+          : actif ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-blue-50 hover:text-blue-700')}
     >
       <Icon className="h-4 w-4 shrink-0" />
       <span className={cn('font-medium', compact ? 'text-xs' : 'text-[10px] leading-tight')}>{outil.label}</span>
@@ -1368,7 +1432,7 @@ function PanneauReference({ haut, reference, plans, nomReference, pagesReference
       /* Collé au rail, en face de l'outil qui l'ouvre : un réglage qui apparaît
          loin du bouton qu'on vient de presser se cherche. */
       style={{ ['--haut' as string]: `${haut}px` }}
-      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border border-blue-200 bg-blue-50/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-[var(--haut)] sm:w-80"
+      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bord-outil-pale bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-[var(--haut)] sm:w-80"
     >
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Calque de référence</p>
 
@@ -1513,7 +1577,7 @@ function ListeDesZones({ zones, selection, mesure, lie, onChoisir }: {
   return (
     <div
       data-habillage
-      className="absolute right-3 top-3 z-10 hidden w-64 overflow-hidden rounded-xl border border-blue-200 bg-blue-50/95 shadow-lg backdrop-blur sm:block"
+      className="absolute right-3 top-3 z-10 hidden w-64 overflow-hidden rounded-xl border bord-outil-pale bg-background/95 shadow-lg backdrop-blur sm:block"
     >
       <div className="border-b px-3 py-2">
         <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -1580,7 +1644,7 @@ function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, o
     <div
       data-habillage
       style={{ ['--haut' as string]: `${haut}px` }}
-      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border border-blue-200 bg-blue-50/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-[var(--haut)] sm:w-80"
+      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bord-outil-pale bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-[var(--haut)] sm:w-80"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
