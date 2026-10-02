@@ -16,7 +16,7 @@ export type Pose = 'salue' | 'montre' | 'explique' | 'bravo' | 'reflechit'
 export type Vers = 'gauche' | 'droite' | 'haut' | 'bas'
 
 const CASQUE = '#2563eb'
-const CASQUE_OMBRE = '#1d4ed8'
+const CASQUE_OMBRE = '#1e40af'
 const BOULE = '#93c5fd'
 const TRAIT = '#1e3a8a'
 
@@ -68,20 +68,24 @@ export function Mascotte({ pose = 'explique', vers, taille = 96, anime = true, c
           {/*
             Le casque, repris du casque de chantier donné en référence.
 
-            Une arche aux flancs droits, dont le pan central monte un peu plus
-            haut que les deux autres : c'est ce décroché, et non une coupole
-            lisse, qui fait reconnaître un casque moulé.
+            Trois choses l'y distinguent d'une coupole, et les trois y sont :
 
-            Les deux nervures descendent jusqu'au bandeau, et le bandeau lui-
-            même est une ligne, pas un aplat : visière et calotte sont de la
-            même couleur, comme sur la référence, et seuls ces traits les
-            séparent. La visière est un bandeau arrondi qui dépasse à peine la
-            calotte, de quoi la lire comme une visière sans retomber dans le
-            bord de chapeau.
+            Un sommet pointu. Les flancs montent en se rapprochant et se
+            rejoignent en pointe à peine arrondie, là où une calotte lisse
+            s'arrondissait en bonnet.
+
+            Des nervures franches. Elles descendent de la pointe jusqu'au
+            bandeau, dans un bleu assez sombre pour se voir : à peine teintées,
+            elles disparaissaient et les trois pans avec elles.
+
+            Une visière large et fine. C'est une ellipse très aplatie, donc
+            épaisse au milieu, effilée mais arrondie aux bouts, et nettement
+            plus large que la calotte. Courte et épaisse, elle faisait bandeau
+            de casquette.
           */}
-          <path d="M27 56C27 37 36 23 47 21 51 19 69 19 73 21 84 23 93 37 93 56Z" fill={CASQUE} />
-          <rect x="22" y="56" width="76" height="9" rx="4.5" fill={CASQUE} />
-          <path d="M48 22V55.5M72 22V55.5M29 54.6H91" stroke={CASQUE_OMBRE} strokeWidth="2" strokeLinecap="round" opacity="0.45" fill="none" />
+          <path d="M27 56C29 40 42 26 57 20 59 18.8 61 18.8 63 20 78 26 91 40 93 56Z" fill={CASQUE} />
+          <ellipse cx="60" cy="59" rx="40" ry="5" fill={CASQUE} />
+          <path d="M49 23V56M71 23V56M28 55H92" stroke={CASQUE_OMBRE} strokeWidth="2" strokeLinecap="round" fill="none" />
 
           {content ? (
             <>
