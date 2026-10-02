@@ -339,34 +339,40 @@ function VisitesGuidees() {
 
 // --------------------------------------------------------- questions fréquentes
 
+/**
+ * Les questions fréquentes, rangées comme la documentation.
+ *
+ * Elles avaient leur propre mise en page, un menu de catégories à gauche et
+ * une seule carte à droite : deux manières de ranger la même matière dans le
+ * même écran. Elles prennent donc les cartes par catégorie de la
+ * documentation, à ceci près qu'une question s'ouvre sur place au lieu de
+ * mener à une page : la réponse tient en un paragraphe.
+ */
 function QuestionsFrequentes() {
-  const [cat, setCat] = useState(FAQ[0].id)
-  const courante = FAQ.find((c) => c.id === cat) ?? FAQ[0]
-
   return (
-    <div className="grid items-start gap-5 md:grid-cols-[220px_1fr]">
-      <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
-        {FAQ.map((c) => {
-          const on = c.id === cat
-          return (
-            <button
-              key={c.id}
-              onClick={() => setCat(c.id)}
-              className={cn('flex shrink-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors md:w-full',
-                on ? 'bg-blue-50 text-blue-700' : 'text-neutral-600 hover:bg-black/[0.03] hover:text-neutral-900')}
-            >
-              <span className="truncate">{c.label}</span>
-              <span className={cn('shrink-0 text-[11px]', on ? 'text-blue-700/70' : 'text-muted-foreground/60')}>{c.items.length}</span>
-            </button>
-          )
-        })}
-      </nav>
-
-      <Card className="min-w-0">
-        <div className="divide-y">
-          {courante.items.map((it, i) => <Question key={i} q={it.q} a={it.a} />)}
-        </div>
-      </Card>
+    <div className="space-y-4">
+      {FAQ.map((c) => {
+        const Icon = ICONES[c.icone]
+        return (
+          <Card key={c.id}>
+            <div className="flex items-center gap-3 border-b px-5 py-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Icon className="h-5 w-5" strokeWidth={1.9} />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold leading-tight">{c.label}</p>
+                <p className="truncate text-xs text-muted-foreground">{c.description}</p>
+              </div>
+              <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                {c.items.length} question{c.items.length > 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="divide-y">
+              {c.items.map((it, i) => <Question key={i} q={it.q} a={it.a} />)}
+            </div>
+          </Card>
+        )
+      })}
     </div>
   )
 }
@@ -375,9 +381,12 @@ function Question({ q, a }: { q: string; a: string }) {
   const [ouvert, setOuvert] = useState(false)
   return (
     <div>
-      <button onClick={() => setOuvert((o) => !o)} className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-muted/40">
-        <p className="min-w-0 flex-1 text-sm font-medium">{q}</p>
-        <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', ouvert && 'rotate-180')} />
+      <button onClick={() => setOuvert((o) => !o)} className="flex w-full items-start gap-3 px-5 py-3.5 text-left transition-colors hover:bg-muted/40">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">{q}</p>
+          {!ouvert && <p className="mt-0.5 truncate text-xs text-muted-foreground">{a}</p>}
+        </div>
+        <ChevronDown className={cn('mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform', ouvert && 'rotate-180')} />
       </button>
       {ouvert && <p className="px-5 pb-4 text-sm leading-relaxed text-muted-foreground">{a}</p>}
     </div>

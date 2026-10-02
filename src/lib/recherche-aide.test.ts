@@ -17,7 +17,7 @@ const tutoriel = (slug: string, titre: string, objectif: string): Tutoriel => ({
 })
 
 const faq = (label: string, q: string, a: string): FaqCategory => ({
-  id: 'cat', label, items: [{ q, a }],
+  id: 'cat', label, description: 'Essai', icone: 'depart', items: [{ q, a }],
 })
 
 const sources = (s: Partial<SourcesAide>): SourcesAide => ({ articles: [], tutoriels: [], faq: [], ...s })
