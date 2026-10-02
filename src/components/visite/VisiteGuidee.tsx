@@ -8,6 +8,8 @@ import { useIsMobile } from '@/lib/use-mobile'
 import { cn } from '@/lib/utils'
 
 const LARGEUR_BULLE = 372
+/** La même bordure que la bulle, pour que la pointe en soit le prolongement. */
+const BORDURE = '1px solid rgb(0 0 0 / 0.06)'
 
 /**
  * La visite guidée : le projecteur et la bulle qui explique.
@@ -188,17 +190,27 @@ export function VisiteGuidee() {
         className="pointer-events-auto absolute rounded-2xl border border-black/[0.06] bg-white shadow-[0_8px_40px_-12px_rgba(0,0,0,0.35)]"
         style={{ left: place.x, top: place.y, width: bulle.w }}
       >
-        {/* La pointe : elle dit de quoi on parle, quand la bulle est posée à côté. */}
+        {/*
+          La pointe : elle dit de quoi on parle, quand la bulle est posée à côté.
+
+          C'est un carré tourné d'un huitième de tour, posé à cheval sur le bord
+          de la bulle, et non un triangle découpé dans ce carré. Découpé, il ne
+          restait que la moitié extérieure : elle ne recouvrait pas la bordure
+          de la bulle, qui continuait donc tout droit derrière la pointe comme
+          une couture, et son sommet partait de biais au lieu de viser la cible.
+          À cheval, la moitié intérieure masque la bordure et seules les deux
+          faces extérieures en portent une.
+        */}
         {pointe && place.cote && (
           <span
-            className="absolute h-3.5 w-3.5 rotate-45 border border-black/[0.06] bg-white"
+            className="absolute h-3 w-3 rotate-45 bg-white"
             style={{
-              left: place.cote === 'droite' ? -7 : place.cote === 'gauche' ? bulle.w - 7 : pointe.x - 7,
-              top: place.cote === 'bas' ? -7 : place.cote === 'haut' ? hauteurBulle - 7 : pointe.y - 7,
-              clipPath: place.cote === 'droite' ? 'polygon(0 0, 100% 0, 0 100%)'
-                : place.cote === 'gauche' ? 'polygon(100% 0, 100% 100%, 0 100%)'
-                  : place.cote === 'bas' ? 'polygon(0 0, 100% 0, 100% 100%)'
-                    : 'polygon(0 0, 100% 100%, 0 100%)',
+              left: place.cote === 'droite' ? -6 : place.cote === 'gauche' ? bulle.w - 6 : pointe.x - 6,
+              top: place.cote === 'bas' ? -6 : place.cote === 'haut' ? hauteurBulle - 6 : pointe.y - 6,
+              borderLeft: place.cote === 'droite' || place.cote === 'bas' ? BORDURE : undefined,
+              borderBottom: place.cote === 'droite' || place.cote === 'haut' ? BORDURE : undefined,
+              borderRight: place.cote === 'gauche' || place.cote === 'haut' ? BORDURE : undefined,
+              borderTop: place.cote === 'gauche' || place.cote === 'bas' ? BORDURE : undefined,
             }}
           />
         )}
