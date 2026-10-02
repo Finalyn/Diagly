@@ -43,6 +43,9 @@ const ARRONDIS = [
 ] as const
 type PasArrondi = (typeof ARRONDIS)[number]['pas']
 
+/** Pas d'arrondi des surfaces, en mètres carrés. Imposé, voir `fmtArea`. */
+const PAS_SURFACE = 0.5
+
 /** Arrondit au pas demande. Un pas nul laisse la valeur intacte. */
 function auPas(v: number, pas: number): number {
   return pas > 0 ? Math.round(v / pas) * pas : v
@@ -319,8 +322,23 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const dragRef = useRef<{ id: string; lastX: number; lastY: number; pointIndex?: number } | null>(null)
 
   const addAnn = (a: Omit<PlanAnnotation, 'id'>) => {
-    setAnnotations((l) => [...l, { id: uid(), page: isPdf ? pageNum : undefined, ...a }])
+    const id = uid()
+    setAnnotations((l) => [...l, { id, page: isPdf ? pageNum : undefined, ...a }])
     setDirty(true)
+    return id
+  }
+
+  /**
+   * Une zone tout juste fermée demande aussitôt à quel ouvrage elle se rapporte.
+   *
+   * Une zone qui ne se rapporte à rien ne fait que décorer le plan. La question
+   * se pose quand on vient de la tracer, pas plus tard, quand on ne sait plus
+   * laquelle mesurait quoi.
+   */
+  const poserZone = (points: PlanPoint[]) => {
+    const id = addAnn({ type: 'hatch', points, color })
+    setSelectedAnn(id)
+    setChoixOuvrage(true)
   }
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -482,7 +500,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     } else if (g.mode === 'hatch' && pending) {
       if (g.moved && dist(pending, sp) > 4) {
         // glisser = zone rectangulaire
-        addAnn({ type: 'hatch', points: [pending, { x: sp.x, y: pending.y }, sp, { x: pending.x, y: sp.y }], color })
+        poserZone([pending, { x: sp.x, y: pending.y }, sp, { x: pending.x, y: sp.y }])
         setDraft([])
       } else {
         // tap = sommet (zone point par point)
@@ -503,7 +521,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     }
   }
 
-  const closeHatch = () => { if (draft.length >= 3) { addAnn({ type: 'hatch', points: draft, color }); setDraft([]) } }
+  const closeHatch = () => { if (draft.length >= 3) { poserZone(draft); setDraft([]) } }
   const undo = () => {
     // Le calque de référence n'est pas un tracé : annuler défait le dernier
     // dessin, pas le document qu'on a posé dessous pour comparer.
@@ -747,7 +765,6 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
   const UNIT_F = { m: 1, cm: 100, mm: 1000 } as const
   const LEN_DEC = { m: 2, cm: 1, mm: 0 } as const
-  const AREA_DEC = { m: 2, cm: 0, mm: 0 } as const
   const fmtLen = (px: number) => {
     if (!echelleCourante) return `${Math.round(px)} px`
     // L'arrondi se fait en mètres, puis la valeur est convertie : arrondir après
@@ -756,10 +773,20 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     const m = auPas(px / echelleCourante, arrondi)
     return `${(m * UNIT_F[unit]).toFixed(LEN_DEC[unit])} ${unit}`
   }
+  /**
+   * Surface d'une zone, toujours arrondie au demi-mètre carré.
+   *
+   * Une zone est tracée au doigt sur un plan : annoncer « 24.75 m² » donne une
+   * précision que le tracé n'a pas, et personne ne commande une façade au
+   * centième de mètre carré. Le pas n'est pas réglable, contrairement aux cotes :
+   * une surface lue dans un rapport doit être ronde.
+   */
   const fmtArea = (px2: number) => {
     if (!echelleCourante) return `${Math.round(px2)} px²`
-    const m2 = auPas(px2 / (echelleCourante * echelleCourante), arrondi)
-    return `${(m2 * UNIT_F[unit] ** 2).toFixed(AREA_DEC[unit])} ${unit}²`
+    const m2 = auPas(px2 / (echelleCourante * echelleCourante), PAS_SURFACE)
+    const v = m2 * UNIT_F[unit] ** 2
+    // Pas de « 25.0 » : la décimale ne paraît que lorsqu'elle dit quelque chose.
+    return `${v.toFixed(Number.isInteger(v) ? 0 : 1)} ${unit}²`
   }
   /**
    * Ce qui est posé sur la page affichée.
@@ -802,11 +829,13 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     if (nature === 'longueur') return fmtLen(dist(a.points[0], a.points[1]))
     return null
   }
+  /** Ce qui, sur cette page, porte une mesure : les zones et les cotes. */
+  const zonesDeLaPage = annotationsPage.filter((a) => natureDe(a) !== 'aucune')
+
   // Les pastilles de couleur agissent sur la selection quand il y en a une,
   // sinon sur le prochain trace : elles doivent montrer celle qui s'applique.
   const couleurActive = selAnn ? (selAnn.color ?? COLORS[0]) : color
 
-  const hatchColors = Array.from(new Set(annotationsPage.filter((a) => a.type === 'hatch').map((a) => a.color ?? '#ef4444')))
   const font = 13 / view.zoom // labels lisibles quel que soit le zoom
   const strokeW = 2 / view.zoom
 
@@ -931,14 +960,6 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                 </div>
               )}
             <svg ref={svgRef} viewBox={`0 0 ${stage.w} ${stage.h}`} width={stage.w} height={stage.h} className="absolute inset-0 pointer-events-none">
-              <defs>
-                {hatchColors.map((c) => (
-                  <pattern key={c} id={`hatch-${c.replace('#', '')}`} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                    <line x1="0" y1="0" x2="0" y2="8" stroke={c} strokeWidth="1.5" />
-                  </pattern>
-                ))}
-              </defs>
-
               {annotationsPage.map((a) => (
                 <Shape key={a.id} a={a} fmtLen={fmtLen} fmtArea={fmtArea} font={font} strokeW={strokeW} lie={libelleLie(a)} />
               ))}
@@ -1030,6 +1051,18 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
               />
             )}
 
+            {/* Les zones de la page, à droite : on y relit ce qui a été mesuré
+                et ce qui attend encore un ouvrage, sans ouvrir chaque forme. */}
+            {zonesDeLaPage.length > 0 && (
+              <ListeDesZones
+                zones={zonesDeLaPage}
+                selection={selectedAnn}
+                mesure={quantiteDe}
+                lie={libelleLie}
+                onChoisir={(id) => { setTool('select'); setSelectedAnn(id) }}
+              />
+            )}
+
             {selAnn && (
               <PanneauSelection
                 annotation={selAnn}
@@ -1075,7 +1108,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
               </div>
 
               <div className="flex shrink-0 items-center gap-1.5">
-                <span className="hidden sm:inline">Arrondi</span>
+                <span className="hidden sm:inline">Arrondi des cotes</span>
                 <div className="flex rounded-lg bg-muted p-0.5">
                   {ARRONDIS.map((a) => (
                     <button key={a.label} onClick={() => setArrondi(a.pas)}
@@ -1304,7 +1337,9 @@ function PanneauReference({ reference, plans, nomReference, pagesReference, char
   return (
     <div
       data-habillage
-      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:right-3 sm:w-80"
+      /* Collé au rail, sous l'outil qui l'ouvre : un réglage qui apparaît à
+         l'opposé du bouton qu'on vient de presser se cherche. */
+      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:left-3 sm:top-3 sm:bottom-auto sm:w-80"
     >
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Calque de référence</p>
 
@@ -1355,7 +1390,9 @@ function PanneauReference({ reference, plans, nomReference, pagesReference, char
           {pagesReference.length > 1 && (
             <div className="mt-2">
               <p className="mb-1 text-xs text-muted-foreground">Page comparée</p>
-              <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {/* De la marge dans la bande qui défile, sinon la première et la
+                  dernière vignette sont coupées au bord du cadre. */}
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 py-1">
                 {pagesReference.map((pg) => (
                   <button
                     key={pg.numero}
@@ -1426,6 +1463,65 @@ function Reglage({ libelle, valeur, min, max, pas, courant, onChange }: {
         className="mt-1 w-full accent-foreground"
       />
     </label>
+  )
+}
+
+/**
+ * Ce qui est mesuré sur la page, en liste.
+ *
+ * Un plan porte vite quinze zones, et retrouver celle qui n'a pas d'ouvrage
+ * demandait de cliquer sur chacune. La liste les donne d'un coup, avec leur
+ * mesure et leur rattachement, et mène à la forme d'un clic.
+ */
+function ListeDesZones({ zones, selection, mesure, lie, onChoisir }: {
+  zones: PlanAnnotation[]
+  selection: string | null
+  mesure: (a: PlanAnnotation) => string | null
+  lie: (a: PlanAnnotation) => string | null
+  onChoisir: (id: string) => void
+}) {
+  const orphelines = zones.filter((z) => !z.itemId).length
+  return (
+    <div
+      data-habillage
+      className="absolute right-3 top-3 z-10 hidden w-64 overflow-hidden rounded-xl border bg-background/95 shadow-lg backdrop-blur sm:block"
+    >
+      <div className="border-b px-3 py-2">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          Mesures de la page
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {zones.length} au total
+          {orphelines > 0 && <span className="text-amber-600"> · {orphelines} sans ouvrage</span>}
+        </p>
+      </div>
+      <ul className="max-h-[45vh] overflow-y-auto">
+        {zones.map((z) => {
+          const nom = lie(z)
+          return (
+            <li key={z.id}>
+              <button
+                onClick={() => onChoisir(z.id)}
+                className={cn('flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-muted',
+                  z.id === selection && 'bg-muted')}
+              >
+                <span
+                  className="mt-1 h-2.5 w-2.5 shrink-0 rounded-sm"
+                  style={{ backgroundColor: z.color ?? '#ef4444' }}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium tabular-nums">{mesure(z) ?? '—'}</span>
+                  <span className={cn('block truncate text-xs', nom ? 'text-muted-foreground' : 'text-amber-600')}>
+                    {nom ?? 'Pas d’ouvrage'}
+                  </span>
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 
@@ -1570,7 +1666,9 @@ function Shape({ a, fmtLen, fmtArea, font, strokeW, lie }: {
   const c = centroid(a.points)
   return (
     <g>
-      <polygon points={a.points.map((p) => `${p.x},${p.y}`).join(' ')} fill={`url(#hatch-${color.replace('#', '')})`} stroke={color} strokeWidth={strokeW} fillOpacity={0.9} />
+      {/* Un aplat clair plutôt que des hachures : les diagonales se superposaient
+          aux traits du plan et on ne lisait plus ni l'un ni l'autre. */}
+      <polygon points={a.points.map((p) => `${p.x},${p.y}`).join(' ')} fill={color} fillOpacity={0.18} stroke={color} strokeWidth={strokeW} />
       <text x={c.x} y={c.y} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{fmtArea(airePolygone(a.points))}</text>
       {lie && (
         <text x={c.x} y={c.y + font * 1.05} fontSize={font * 0.8} textAnchor="middle" fill="#111827" stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{lie}</text>
