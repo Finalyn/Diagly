@@ -77,7 +77,7 @@ export function Mascotte({ pose = 'explique', vers, taille = 96, anime = true, c
             jamais s'y affiner jusqu'à la pointe. Elle s'arrête à l'aplomb de la
             calotte : débordante, elle rendait au casque son air de chapeau.
           */}
-          <path d="M24 56C24 31 40 22 60 22 80 22 96 31 96 56Z" fill={CASQUE} />
+          <path d="M24 56C24 38 30 26 46 23 51 18 69 18 74 23 90 26 96 38 96 56Z" fill={CASQUE} />
           <path d="M50 27 46 55M70 27 74 55" stroke={CASQUE_OMBRE} strokeWidth="3.6" strokeLinecap="round" opacity="0.5" fill="none" />
           <path d="M24 56H96V61Q60 78 24 61Z" fill={CASQUE_OMBRE} />
 
