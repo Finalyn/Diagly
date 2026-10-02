@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Check, ChevronRight, Clock, GraduationCap, ListChecks, MapPin, Play, RotateCcw } from 'lucide-react'
+import { Check, ChevronRight, Clock, Compass, GraduationCap, ListChecks, MapPin, Play, RotateCcw } from 'lucide-react'
 import { Card, CardContent, Button, Badge } from '@/components/ui'
 import { ARTICLES, TUTORIELS, type Article, type Tutoriel } from '@/data/documentation'
 import { visitesDuTutoriel } from '@/data/visites'
 import { useVisite } from '@/stores/visite'
-import { Mascotte } from '@/components/visite/Mascotte'
 import { cn } from '@/lib/utils'
 
 const NIVEAUX: Record<Tutoriel['niveau'], string> = {
@@ -89,11 +88,13 @@ export function SupportTutoriel() {
       {/* Lire, ou se faire montrer : les deux mènent au même endroit. */}
       {visites.length > 0 && (
         <div className="flex flex-col items-center gap-4 rounded-2xl border border-blue-100 bg-blue-50/50 p-5 sm:flex-row">
-          <Mascotte pose="montre" vers="droite" taille={86} className="shrink-0" />
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm">
+            <Compass className="h-5 w-5" strokeWidth={1.9} />
+          </span>
           <div className="min-w-0 flex-1 text-center sm:text-left">
-            <p className="font-semibold">Je peux vous le montrer dans l’application</p>
+            <p className="font-semibold">Se le faire montrer dans l’application</p>
             <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-              Plutôt que de lire puis de chercher, laissez-moi entourer les boutons au fur et à mesure. Vous cliquez, je suis.
+              Plutôt que de lire puis de chercher, la visite guidée entoure les boutons au fur et à mesure. Vous cliquez, elle suit.
             </p>
           </div>
           <div className="flex shrink-0 flex-col gap-2">

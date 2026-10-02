@@ -7,7 +7,7 @@
  * changement de route.
  *
  * Ce qui est retenu d'une session à l'autre tient en deux choses : les visites
- * déjà faites, et le fait qu'on veuille ou non entendre Diago.
+ * déjà faites, et le fait qu'on veuille ou non entendre les étapes.
  */
 
 import { create } from 'zustand'
@@ -17,7 +17,7 @@ interface VisiteState {
   /** Identifiant de la visite en cours, ou null. */
   visite: string | null
   etape: number
-  /** Diago lit son texte à voix haute. Éteint par défaut : on ne surprend personne. */
+  /** L'étape est lue à voix haute. Éteint par défaut : on ne surprend personne. */
   parole: boolean
   /** Visites menées jusqu'au bout. */
   terminees: string[]

@@ -1,17 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Volume2, VolumeX, X } from 'lucide-react'
-import { Mascotte } from './Mascotte'
 import { useVisite } from '@/stores/visite'
 import { visiteParId } from '@/data/visites'
-import { placerBulle, trouDuProjecteur, pointeDeLaBulle, direction, type Rect } from '@/lib/visite'
+import { placerBulle, trouDuProjecteur, pointeDeLaBulle, type Rect } from '@/lib/visite'
 import { useIsMobile } from '@/lib/use-mobile'
 import { cn } from '@/lib/utils'
 
 const LARGEUR_BULLE = 372
 
 /**
- * La visite guidée : le projecteur, la bulle, et Diago qui désigne.
+ * La visite guidée : le projecteur et la bulle qui explique.
  *
  * Elle est montée une fois pour toute l'application, parce qu'une visite
  * traverse les écrans : elle commence dans le centre d'aide et finit dans un
@@ -105,7 +104,7 @@ export function VisiteGuidee() {
     return () => el.removeEventListener('click', auClic)
   }, [pas, cible])
 
-  // Diago lit son texte, si on le lui a demandé.
+  // La lecture à voix haute, si elle a été demandée.
   useEffect(() => {
     if (!pas || !parole || typeof window === 'undefined' || !('speechSynthesis' in window)) return
     const mot = new SpeechSynthesisUtterance(`${pas.titre}. ${pas.texte}`)
@@ -141,13 +140,11 @@ export function VisiteGuidee() {
   const pointe = cible && place.cote
     ? pointeDeLaBulle(cible, { x: place.x, y: place.y, w: bulle.w, h: bulle.h }, place.cote)
     : null
-  const vers = direction(place.cote)
-  const pose = pas.pose ?? (cible && place.cote ? 'montre' : 'explique')
 
   return (
     <div className="js-print-hide pointer-events-none fixed inset-0 z-[70]" role="dialog" aria-label={`Visite guidée : ${visite.titre}`}>
       {/* Le voile, en quatre bandes : le trou reste cliquable, donc le geste
-          montré reste faisable pendant que Diago l'explique. */}
+          montré reste faisable pendant qu'on l'explique. */}
       {trou ? (
         <>
           <Voile style={{ left: 0, top: 0, width: fenetre.w, height: Math.max(0, trou.y) }} />
@@ -190,7 +187,7 @@ export function VisiteGuidee() {
           </div>
           <button
             onClick={() => (typeof window !== 'undefined' && 'speechSynthesis' in window ? basculerParole() : undefined)}
-            title={parole ? 'Couper la voix de Diago' : 'Entendre Diago'}
+            title={parole ? 'Couper la lecture à voix haute' : 'Lire l’étape à voix haute'}
             aria-pressed={parole}
             className={cn('shrink-0 rounded-lg p-1.5 transition-colors', parole ? 'bg-blue-50 text-blue-700' : 'text-muted-foreground hover:bg-muted')}
           >
@@ -201,10 +198,7 @@ export function VisiteGuidee() {
           </button>
         </div>
 
-        <div className="flex gap-3 px-4 pt-2">
-          <Mascotte pose={pose} vers={vers} taille={92} className="-mb-1 -ml-1 self-end" />
-          <p className="flex-1 pb-1 text-[13.5px] leading-relaxed text-neutral-700">{pas.texte}</p>
-        </div>
+        <p className="px-4 pt-2 text-[13.5px] leading-relaxed text-neutral-700">{pas.texte}</p>
 
         {pas.avanceAuClic && (
           <p className="mx-4 mt-2 rounded-lg bg-blue-50 px-3 py-2 text-[12px] font-medium text-blue-700">

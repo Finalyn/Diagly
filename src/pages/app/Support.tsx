@@ -14,7 +14,6 @@ import { ARTICLES, CATEGORIES, TUTORIELS, type Article, type CategorieDoc, type 
 import { chercherDansLAide, minutesDeLecture, type ResultatAide } from '@/lib/recherche-aide'
 import { VISITES, type Visite } from '@/data/visites'
 import { useVisite } from '@/stores/visite'
-import { Mascotte } from '@/components/visite/Mascotte'
 import type { SupportStatus } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
 
@@ -119,10 +118,10 @@ export function Support() {
 // ------------------------------------------------------------------ recherche
 
 /**
- * Diago, en haut du centre d'aide.
+ * L'offre de visite, en haut du centre d'aide.
  *
- * Un personnage qui attend qu'on le trouve ne sert à rien : il se présente, et
- * propose le tour de l'application avant même qu'on ait cherché quoi que ce soit.
+ * Elle se présente avant qu'on ait cherché quoi que ce soit : une visite sert
+ * surtout à qui ne sait pas encore quoi chercher.
  */
 function Presentation() {
   const demarrer = useVisite((s) => s.demarrer)
@@ -131,11 +130,13 @@ function Presentation() {
   return (
     <Card className="overflow-hidden bg-gradient-to-br from-blue-50/80 to-white">
       <CardContent className="flex flex-col items-center gap-4 p-5 sm:flex-row sm:items-center sm:gap-5">
-        <Mascotte pose="salue" taille={104} className="shrink-0" />
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm">
+          <Compass className="h-6 w-6" strokeWidth={1.9} />
+        </span>
         <div className="min-w-0 flex-1 text-center sm:text-left">
-          <p className="font-semibold">Bonjour, moi c’est Diago</p>
+          <p className="font-semibold">Faire le tour de l’application</p>
           <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-            Je vous montre l’application écran par écran : j’entoure le bouton dont je parle, et vous pouvez cliquer dessus pendant que je vous explique. Les visites se lancent depuis l’onglet Tutoriels.
+            Une visite guidée ouvre chaque écran, entoure le bouton dont elle parle, et vous laisse cliquer dessus en chemin. Les autres visites se lancent depuis l’onglet Tutoriels.
           </p>
         </div>
         <Button className="shrink-0" onClick={() => demarrer('decouverte')}>
@@ -291,21 +292,18 @@ function Tutoriels() {
   )
 }
 
-/** Les visites que Diago mène dans l'application même. */
+/** Les visites menées dans l'application même. */
 function VisitesGuidees() {
   const demarrer = useVisite((s) => s.demarrer)
   const terminees = useVisite((s) => s.terminees)
 
   return (
     <div className="space-y-3" data-visite="aide-visites">
-      <div className="flex items-start gap-3">
-        <Mascotte pose="montre" vers="droite" taille={64} className="-mt-1 hidden sm:block" />
-        <div>
-          <h2 className="font-semibold">Visites guidées</h2>
-          <p className="text-sm text-muted-foreground">
-            Je vous emmène dans l’application et je désigne les écrans au fur et à mesure. Vous gardez la main : l’élément entouré reste cliquable.
-          </p>
-        </div>
+      <div>
+        <h2 className="font-semibold">Visites guidées</h2>
+        <p className="text-sm text-muted-foreground">
+          Elles vous emmènent dans l’application et désignent les écrans au fur et à mesure. Vous gardez la main : l’élément entouré reste cliquable.
+        </p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
