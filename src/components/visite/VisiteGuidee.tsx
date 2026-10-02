@@ -152,7 +152,7 @@ export function VisiteGuidee() {
           <Voile style={{ left: 0, top: trou.y, width: Math.max(0, trou.x), height: trou.h }} />
           <Voile style={{ left: trou.x + trou.w, top: trou.y, width: Math.max(0, fenetre.w - trou.x - trou.w), height: trou.h }} />
           <div
-            className="visite-halo pointer-events-none absolute rounded-xl ring-2 ring-blue-500 transition-all duration-300"
+            className="visite-halo pointer-events-none absolute rounded-xl ring-2 ring-blue-500"
             style={{ left: trou.x, top: trou.y, width: trou.w, height: trou.h }}
           />
         </>
@@ -162,7 +162,7 @@ export function VisiteGuidee() {
 
       <div
         ref={bulleRef}
-        className="pointer-events-auto absolute rounded-2xl border border-black/[0.06] bg-white shadow-[0_8px_40px_-12px_rgba(0,0,0,0.35)] transition-[left,top] duration-300"
+        className="pointer-events-auto absolute rounded-2xl border border-black/[0.06] bg-white shadow-[0_8px_40px_-12px_rgba(0,0,0,0.35)]"
         style={{ left: place.x, top: place.y, width: bulle.w }}
       >
         {/* La pointe : elle dit de quoi on parle, quand la bulle est posée à côté. */}
@@ -238,6 +238,15 @@ export function VisiteGuidee() {
   )
 }
 
+/**
+ * Une bande du voile.
+ *
+ * Sans transition CSS, et c'est important : les quatre bandes se déduisent du
+ * même rectangle, donc elles pavent l'écran exactement. Animées, chacune
+ * rejoignait sa nouvelle valeur à son propre rythme, et il s'ouvrait entre
+ * elles des brèches larges comme un tiers de l'écran à chaque défilement. Le
+ * mouvement, lui, ne manque pas : les bandes sont recalculées à chaque image.
+ */
 function Voile({ style }: { style: React.CSSProperties }) {
-  return <div className="pointer-events-auto absolute bg-neutral-900/50 transition-all duration-300" style={style} />
+  return <div className="pointer-events-auto absolute bg-neutral-900/50" style={style} />
 }
