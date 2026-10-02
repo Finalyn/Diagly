@@ -66,20 +66,22 @@ export function Mascotte({ pose = 'explique', vers, taille = 96, anime = true, c
           <circle cx="60" cy="72" r="34" fill={BOULE} />
 
           {/*
-            Le casque, d'après le tracé du client.
+            Le casque, repris du casque de chantier donné en référence.
 
-            La calotte n'est pas une demi-sphère mais une tente : des flancs
-            droits qui montent en se resserrant, et un sommet arrondi. Deux
-            nervures la partagent en trois pans, comme sur un casque moulé.
+            Une arche aux flancs droits, dont le pan central monte un peu plus
+            haut que les deux autres : c'est ce décroché, et non une coupole
+            lisse, qui fait reconnaître un casque moulé.
 
-            La visière a le bord supérieur droit et le dessous qui descend vers
-            l'avant : elle est donc plus épaisse au milieu qu'aux tempes, sans
-            jamais s'y affiner jusqu'à la pointe. Elle s'arrête à l'aplomb de la
-            calotte : débordante, elle rendait au casque son air de chapeau.
+            Les deux nervures descendent jusqu'au bandeau, et le bandeau lui-
+            même est une ligne, pas un aplat : visière et calotte sont de la
+            même couleur, comme sur la référence, et seuls ces traits les
+            séparent. La visière est un bandeau arrondi qui dépasse à peine la
+            calotte, de quoi la lire comme une visière sans retomber dans le
+            bord de chapeau.
           */}
-          <path d="M24 56C24 38 30 26 46 23 51 18 69 18 74 23 90 26 96 38 96 56Z" fill={CASQUE} />
-          <path d="M50 27 46 55M70 27 74 55" stroke={CASQUE_OMBRE} strokeWidth="3.6" strokeLinecap="round" opacity="0.5" fill="none" />
-          <path d="M24 56H96V61Q60 78 24 61Z" fill={CASQUE_OMBRE} />
+          <path d="M27 56C27 37 36 23 47 21 51 19 69 19 73 21 84 23 93 37 93 56Z" fill={CASQUE} />
+          <rect x="22" y="56" width="76" height="9" rx="4.5" fill={CASQUE} />
+          <path d="M48 22V55.5M72 22V55.5M29 54.6H91" stroke={CASQUE_OMBRE} strokeWidth="2" strokeLinecap="round" opacity="0.45" fill="none" />
 
           {content ? (
             <>
