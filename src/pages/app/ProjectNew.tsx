@@ -328,11 +328,11 @@ export function ProjectNew() {
           <CardHeader><CardTitle>Informations du diagnostic</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 items-end gap-4">
-              <div className="col-span-2">
+              <div className="col-span-2" data-visite="nom">
                 <label className="text-sm font-medium mb-1 block">Nom du diagnostic</label>
                 <Input value={form.name} onChange={e => update('name', e.target.value)} placeholder="Ex: Rénovation Résidence du Lac" className={errCls('name')} />
               </div>
-              <div className="col-span-2">
+              <div className="col-span-2" data-visite="adresse">
                 <label className="text-sm font-medium mb-1 block">Adresse</label>
                 <AddressAutocomplete
                   value={form.address}
@@ -371,7 +371,7 @@ export function ProjectNew() {
                   portent souvent le même numéro. La carte répond à cette question au
                   moment où elle se pose, avant que le diagnostiqueur ne se déplace. */}
               {form.address.trim() && form.city.trim() && (
-                <div className="col-span-2">
+                <div className="col-span-2" data-visite="carte">
                   <label className="text-sm font-medium mb-1 block">Emplacement</label>
                   <div className="relative h-56 overflow-hidden rounded-xl border sm:h-64">
                     <Suspense fallback={

@@ -27,6 +27,14 @@ export interface EtapeVisite {
    * « Suivant » : c'est ainsi qu'on apprend un geste, en le faisant.
    */
   avanceAuClic?: boolean
+  /**
+   * Sélecteur dont la présence rend l'étape inutile : elle est alors sautée.
+   *
+   * Une même visite se lance de deux endroits, et certaines étapes ne servent
+   * qu'à l'un d'eux : demander d'ouvrir un dossier n'a pas de sens quand on y
+   * est déjà.
+   */
+  sauterSi?: string
 }
 
 export interface Visite {
@@ -139,72 +147,43 @@ export const VISITES: Visite[] = [
   },
 
   {
-    id: 'diagnostic',
-    titre: 'Créer un diagnostic',
-    objectif: 'Ouvrir un dossier et comprendre ce que Diagly remplit tout seul.',
-    duree: '2 min',
-    icone: 'dossier',
-    tutoriel: 'premier-diagnostic',
-    etapes: [
-      {
-        route: '/app/projects',
-        cible: '[data-visite="liste"]',
-        cote: 'haut',
-        titre: 'La liste de vos dossiers',
-        texte: 'Chaque ligne est un bâtiment. Le statut dit où en est le dossier, et les filtres au-dessus retrouvent le bon quand la liste s’allonge.',
-      },
-      {
-        cible: '[data-visite="nouveau-liste"]',
-        cote: 'gauche',
-        titre: 'À vous de jouer',
-        texte: 'Cliquez sur « Nouveau diagnostic » : la visite continue sur l’écran de création.',
-        avanceAuClic: true,
-      },
-      {
-        route: '/app/projects/new',
-        cible: '[data-visite="formulaire"]',
-        cote: 'droite',
-        titre: 'L’adresse, d’abord',
-        texte: 'C’est la seule chose vraiment nécessaire. À partir d’elle, Diagly identifie le bâtiment au registre fédéral et récupère son EGID, son emprise, son volume et son affectation.',
-      },
-      {
-        titre: 'Ce que vous n’avez pas à saisir',
-        texte: 'Les contraintes aussi arrivent seules : zone radon, sensibilité au bruit, patrimoine protégé. Elles apparaîtront dans le rapport, parce que ce sont des surcoûts à anticiper.',
-      },
-      {
-        titre: 'Puis le relevé',
-        texte: 'Une fois le dossier créé, l’onglet Diagnostic vous fait parcourir les ouvrages un par un. Vous donnez un état, Diagly en déduit la priorité, l’année et le coût.',
-      },
-    ],
-  },
-
-  {
-    id: 'onglets',
-    titre: 'Les onglets d’un dossier',
-    objectif: 'Savoir ce que contient chacun des huit onglets d’un diagnostic.',
-    duree: '2 min',
+    id: 'dossier',
+    titre: 'Tout ce que contient un dossier',
+    objectif: 'Faire le tour des huit onglets d’un diagnostic, outil Plans compris.',
+    duree: '5 min',
     icone: 'onglets',
     tutoriel: 'premier-diagnostic',
     etapes: [
       {
+        titre: 'Le dossier est créé',
+        texte: 'Il est maintenant fait de huit onglets, et tout part du relevé. Je vous les montre un par un, puis nous descendrons dans l’outil Plans, qui est le plus riche.',
+      },
+      {
         route: '/app/projects',
         cible: '[data-visite="liste"]',
         cote: 'haut',
+        sauterSi: '[data-visite="onglet-diagnostic"]',
         titre: 'Ouvrez un dossier',
-        texte: 'Cliquez sur une ligne de la liste. La visite reprend à l’intérieur, où les huit onglets attendent.',
+        texte: 'Cliquez sur une ligne de la liste : les huit onglets nous attendent à l’intérieur. Si vous venez d’en créer un, vous y êtes déjà et je passe cette étape.',
         avanceAuClic: true,
       },
       {
         cible: '[data-visite="onglet-diagnostic"]',
         cote: 'bas',
-        titre: 'Diagnostic',
-        texte: 'C’est ici que le travail se fait : chaque ouvrage, son état, ses photos, sa quantité. Tout le reste de l’application se nourrit de cet onglet.',
+        titre: 'Diagnostic, le cœur',
+        texte: 'C’est ici que le travail se fait : chaque ouvrage, son état parmi quatre, ses photos, sa quantité. Tout le reste de l’application se nourrit de cet onglet.',
+      },
+      {
+        cible: '[data-visite="onglet-photos"]',
+        cote: 'bas',
+        titre: 'Photos',
+        texte: 'Toutes les photos du dossier rassemblées, ouvrage par ouvrage. C’est la matière du reportage photo et du rapport documenté.',
       },
       {
         cible: '[data-visite="onglet-couts"]',
         cote: 'bas',
         titre: 'Coûts',
-        texte: 'Le chiffrage, avec le détail du calcul : prix unitaire, quantité, indexation, honoraires, réserve, TVA. Rien n’y est saisi, tout s’y ajuste.',
+        texte: 'Le chiffrage avec le détail du calcul : prix unitaire, quantité, indexation sur l’indice suisse, honoraires, réserve, TVA. Rien n’y est saisi, tout s’y ajuste.',
       },
       {
         cible: '[data-visite="onglet-variantes"]',
@@ -213,16 +192,129 @@ export const VISITES: Visite[] = [
         texte: 'Les trois scénarios comparés : maintenance, rénovation, rénovation énergétique. C’est la vue qui sert à la discussion avec le propriétaire.',
       },
       {
-        cible: '[data-visite="onglet-plans"]',
-        cote: 'bas',
-        titre: 'Plans',
-        texte: 'Vos plans, leur échelle et vos mesures. Une zone tracée ici se rattache à un ouvrage et lui donne sa quantité exacte.',
-      },
-      {
         cible: '[data-visite="onglet-rapports"]',
         cote: 'bas',
         titre: 'Rapports',
-        texte: 'Huit documents, de l’état des lieux au rapport complet, et le lien de partage pour votre client. Et voilà le tour du dossier.',
+        texte: 'Huit documents, de l’état des lieux au rapport complet, tous paginés en A4 avec votre logo. Et le lien de partage pour votre client.',
+      },
+      {
+        cible: '[data-visite="onglet-cecb"]',
+        cote: 'bas',
+        titre: 'Étiquette énergétique',
+        texte: 'La performance du bâtiment, et l’import d’un certificat énergétique en PDF : Diagly en extrait les données que vous validez avant application.',
+      },
+      {
+        cible: '[data-visite="onglet-plans"]',
+        cote: 'bas',
+        titre: 'Plans, et c’est là que ça devient intéressant',
+        texte: 'Cliquez sur l’onglet Plans. C’est lui qui transforme un dessin d’architecte en quantités justes dans le diagnostic.',
+        avanceAuClic: true,
+      },
+      {
+        cible: '[data-visite="plans-ajouter"], [data-visite="plans-vide"]',
+        cote: 'gauche',
+        titre: 'Importer un plan',
+        texte: 'Déposez un PDF ou une image, jusqu’à trente mégaoctets. Un PDF de plusieurs pages est géré tel quel : chaque page garde ses propres mesures et sa propre échelle.',
+      },
+      {
+        cible: '[data-visite="plans-liste"]',
+        cote: 'haut',
+        titre: 'Vos plans',
+        texte: 'Chaque vignette montre le plan, son nombre de pages et le nombre de mesures déjà rattachées à un ouvrage. Un clic l’ouvre dans l’éditeur.',
+      },
+      {
+        cible: '[data-visite="plan-vignette"]',
+        cote: 'bas',
+        titre: 'Ouvrez un plan',
+        texte: 'Cliquez sur une vignette : l’éditeur s’ouvre en plein écran et je vous montre ses outils. Si vous n’avez pas encore de plan, passez à la suite, je vous les décris quand même.',
+        avanceAuClic: true,
+      },
+      {
+        titre: 'L’éditeur s’ouvre sur l’étalonnage',
+        texte: 'Tant qu’une page n’a pas d’échelle, les outils de mesure restent inaccessibles : une surface relevée sur un plan non étalonné serait fausse sans que rien ne le signale.',
+      },
+      {
+        cible: '[data-outil="calibrate"]',
+        cote: 'droite',
+        titre: 'Étalonner',
+        texte: 'Tracez un trait sur la cote connue la plus longue du plan, puis saisissez sa longueur réelle en mètres, centimètres ou millimètres. Sur un document de plusieurs pages, Diagly propose d’appliquer l’échelle aux autres pages, avec un aperçu de chacune.',
+      },
+      {
+        cible: '[data-outil="measure"]',
+        cote: 'droite',
+        titre: 'Mesurer',
+        texte: 'Une cote entre deux points, affichée en direct. De quoi vérifier une dimension sans sortir le mètre.',
+      },
+      {
+        cible: '[data-outil="hatch"]',
+        cote: 'droite',
+        titre: 'Tracer une zone',
+        texte: 'Au glisser pour un rectangle, point par point pour une forme libre. La surface s’affiche en direct, arrondie au demi mètre carré.',
+      },
+      {
+        titre: 'Rattacher la zone à un ouvrage',
+        texte: 'Dès la zone tracée, Diagly propose de la rattacher à un ouvrage du diagnostic. La liste des mesures, à droite de l’éditeur, signale en orange celles qui ne le sont pas : un clic sur la ligne ouvre le choix. Le rattachement est possible avant même que l’ouvrage soit relevé.',
+      },
+      {
+        cible: '[data-outil="reference"]',
+        cote: 'droite',
+        titre: 'Comparer deux états',
+        texte: 'Le calque de référence superpose un second plan en transparence, le projet par-dessus l’existant par exemple. Vous choisissez la page à superposer et vous la faites glisser pour l’aligner.',
+      },
+      {
+        titre: 'Annoter, et revenir en arrière',
+        texte: 'Dessiner, flèche et note servent à commenter le plan. Ctrl+Z défait le dernier geste et Ctrl+Maj+Z le rejoue, y compris un déplacement ou un changement de couleur. Échap abandonne le tracé en cours sans rien effacer.',
+      },
+      {
+        cible: '[data-visite="plans-quantites"]',
+        cote: 'haut',
+        titre: 'Reporter dans le diagnostic',
+        texte: 'Les zones et les cotes rattachées à un même ouvrage s’additionnent, à travers tous vos plans et toutes leurs pages. Diagly vous montre ce qu’il a mesuré et ce que cela changerait au coût, et vous validez : une quantité ne change jamais toute seule.',
+      },
+      {
+        titre: 'Voilà le dossier',
+        texte: 'Relevez, vérifiez les quantités, contrôlez le chiffrage, comparez les variantes, éditez le rapport. Toutes ces visites restent disponibles dans Aide et support, et la documentation écrite va plus loin sur chaque point.',
+      },
+    ],
+  },
+
+  {
+    id: 'creation',
+    titre: 'Créer un diagnostic',
+    objectif: 'Comprendre l’écran de création, et ce que Diagly remplit tout seul.',
+    duree: '2 min',
+    icone: 'dossier',
+    tutoriel: 'premier-diagnostic',
+    etapes: [
+      {
+        titre: 'Un dossier commence ici',
+        texte: 'Trois écrans à remplir, mais presque rien à saisir : l’adresse suffit à Diagly pour aller chercher ce que les registres publics savent déjà du bâtiment.',
+      },
+      {
+        cible: '[data-visite="nom"]',
+        cote: 'droite',
+        titre: 'Le nom du dossier',
+        texte: 'Celui sous lequel vous le retrouverez dans la liste. Le nom de l’immeuble, ou celui du mandat.',
+      },
+      {
+        cible: '[data-visite="adresse"]',
+        cote: 'droite',
+        titre: 'L’adresse, la seule chose vraiment nécessaire',
+        texte: 'Commencez à taper puis choisissez dans la liste : code postal, ville, canton, parcelle, année et surface se remplissent seuls. Diagly identifie le bâtiment au registre fédéral et récupère son EGID.',
+      },
+      {
+        cible: '[data-visite="carte"]',
+        cote: 'droite',
+        titre: 'Vérifiez le bon bâtiment',
+        texte: 'Deux entrées voisines portent souvent le même numéro. La carte répond à la question avant que vous ne vous déplaciez : vérifiez que le repère tombe sur le bâtiment à diagnostiquer.',
+      },
+      {
+        titre: 'Ce que vous n’avez pas à saisir',
+        texte: 'Emprise, volume, affectation, sensibilité au bruit, zone radon, classe de sol sismique, patrimoine protégé : tout cela arrive seul des services publics. Les contraintes apparaîtront dans le rapport, ce sont des surcoûts à anticiper.',
+      },
+      {
+        titre: 'Puis les deux écrans suivants',
+        texte: 'Les surfaces et la géométrie, qui serviront à estimer les quantités, puis les options du dossier. Validez, et le diagnostic s’ouvre sur son relevé.',
       },
     ],
   },

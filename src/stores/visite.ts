@@ -21,7 +21,10 @@ interface VisiteState {
   parole: boolean
   /** Visites menées jusqu'au bout. */
   terminees: string[]
+  /** Visites déjà proposées d'elles-mêmes : on ne les repropose pas. */
+  proposees: string[]
   demarrer: (id: string) => void
+  proposer: (id: string) => void
   aller: (n: number) => void
   quitter: () => void
   terminer: () => void
@@ -35,7 +38,18 @@ export const useVisite = create<VisiteState>()(
       etape: 0,
       parole: false,
       terminees: [],
+      proposees: [],
       demarrer: (id) => set({ visite: id, etape: 0 }),
+      /**
+       * Démarre une visite d'elle-même, une fois et une seule.
+       *
+       * Une visite qu'on a déjà vue, terminée ou abandonnée, ne doit pas
+       * reparaître à chaque passage : on retient qu'elle a été proposée, et
+       * c'est tout. Elle reste lançable à la main depuis le centre d'aide.
+       */
+      proposer: (id) => set((s) => (s.visite || s.terminees.includes(id) || s.proposees.includes(id)
+        ? s
+        : { visite: id, etape: 0, proposees: [...s.proposees, id] })),
       aller: (n) => set({ etape: Math.max(0, n) }),
       quitter: () => set({ visite: null, etape: 0 }),
       terminer: () => set((s) => ({
@@ -49,7 +63,7 @@ export const useVisite = create<VisiteState>()(
       name: 'diagly.visites',
       // La visite en cours ne se garde pas : revenir le lendemain au milieu
       // d'une étape, sans savoir pourquoi, n'aiderait personne.
-      partialize: (s) => ({ parole: s.parole, terminees: s.terminees }) as VisiteState,
+      partialize: (s) => ({ parole: s.parole, terminees: s.terminees, proposees: s.proposees }) as VisiteState,
     },
   ),
 )

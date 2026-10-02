@@ -41,12 +41,28 @@ export function VisiteGuidee() {
   const [hauteurBulle, setHauteurBulle] = useState(220)
   const [fenetre, setFenetre] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
 
-  // La route d'abord : inutile de chercher un bouton sur un écran qu'on n'a pas
-  // encore ouvert.
+  /**
+   * L'étape déjà faite se saute, puis la route s'ouvre.
+   *
+   * Une même visite se lance de deux endroits : depuis le centre d'aide, où il
+   * faut d'abord ouvrir un dossier, et depuis le dossier lui-même, où c'est
+   * déjà fait. L'étape qui le demande porte donc la marque de ce qu'elle
+   * apporte : si elle est déjà là, on passe.
+   *
+   * Seulement en avançant : sinon le bouton « précédent » buterait sur elle et
+   * la visite rebondirait sans fin.
+   */
+  const etapePrecedente = useRef(0)
   useEffect(() => {
-    if (!pas?.route) return
-    if (location.pathname !== pas.route) navigate(pas.route)
-  }, [pas, location.pathname, navigate])
+    const enAvant = etape >= etapePrecedente.current
+    etapePrecedente.current = etape
+    if (!pas) return
+    if (enAvant && pas.sauterSi && document.querySelector(pas.sauterSi)) {
+      aller(etape + 1)
+      return
+    }
+    if (pas.route && location.pathname !== pas.route) navigate(pas.route)
+  }, [pas, etape, location.pathname, navigate, aller])
 
   /*
    * La cible est relue à chaque image.
@@ -252,6 +268,13 @@ export function VisiteGuidee() {
               />
             ))}
           </div>
+          {/* « Passer » en toutes lettres : une visite qui s'invite doit
+              pouvoir se congédier sans chercher la croix. */}
+          {!dernier && (
+            <button onClick={quitter} className="rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
+              Passer
+            </button>
+          )}
           <button
             onClick={() => aller(etape - 1)}
             disabled={etape === 0}

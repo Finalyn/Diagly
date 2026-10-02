@@ -87,7 +87,7 @@ export function ProjectPlans() {
             {plans.length} plan{plans.length !== 1 ? 's' : ''} · PDF ou image, 30 Mo max
           </p>
         </div>
-        <Button onClick={() => champFichier.current?.click()} disabled={envoyer.isPending} className="w-full sm:w-auto">
+        <Button onClick={() => champFichier.current?.click()} disabled={envoyer.isPending} data-visite="plans-ajouter" className="w-full sm:w-auto">
           {envoyer.isPending
             ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Envoi…</>
             : <><Upload className="mr-2 h-4 w-4" />Ajouter un plan</>}
@@ -112,17 +112,20 @@ export function ProjectPlans() {
               Ajoutez les plans du bâtiment. Une fois le plan étalonné, les zones que vous tracez
               se rattachent aux ouvrages du diagnostic et leur donnent une quantité relevée.
             </p>
-            <Button size="lg" className="px-8" onClick={() => champFichier.current?.click()}>
+            <Button size="lg" className="px-8" data-visite="plans-vide" onClick={() => champFichier.current?.click()}>
               <Upload className="mr-2 h-5 w-5" />Ajouter un plan
             </Button>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {plans.map((p) => (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" data-visite="plans-liste">
+            {plans.map((p, i) => (
               <VignettePlan
                 key={p.id}
+                // La première vignette sert de repère à la visite guidée, qui
+                // fait ouvrir l'éditeur pour y montrer les outils.
+                repere={i === 0 ? 'plan-vignette' : undefined}
                 plan={p}
                 zonesLiees={zonesLiees}
                 onOuvrir={() => setEdite(p)}
@@ -130,7 +133,7 @@ export function ProjectPlans() {
               />
             ))}
           </div>
-          <Quantites projectId={id!} apports={apports} />
+          <div data-visite="plans-quantites"><Quantites projectId={id!} apports={apports} /></div>
         </div>
       )}
 
@@ -147,7 +150,9 @@ export function ProjectPlans() {
  * regarder. La vignette dit l'essentiel, et le clic mène directement à
  * l'éditeur.
  */
-function VignettePlan({ plan, zonesLiees, onOuvrir, onSupprimer }: {
+function VignettePlan({ plan, zonesLiees, onOuvrir, onSupprimer, repere }: {
+  /** Nom du repère `data-visite`, s'il y en a un. */
+  repere?: string
   plan: ApiPlan
   zonesLiees: Set<string>
   onOuvrir: () => void
@@ -161,7 +166,7 @@ function VignettePlan({ plan, zonesLiees, onOuvrir, onSupprimer }: {
        dans un bouton n'est pas du HTML valide, et le navigateur défait alors
        l'imbrication en déplaçant les nœuds. */
     <div className="group relative overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-md">
-      <button onClick={onOuvrir} className="block w-full text-left" title={`Ouvrir ${plan.name}`}>
+      <button onClick={onOuvrir} data-visite={repere} className="block w-full text-left" title={`Ouvrir ${plan.name}`}>
         <div className="relative">
           <ApercuPlan plan={plan} largeurCible={480} zonesLiees={zonesLiees} className="aspect-[4/3] w-full border-b" />
           <span className="absolute inset-0 flex items-center justify-center bg-foreground/0 transition-colors group-hover:bg-foreground/10">

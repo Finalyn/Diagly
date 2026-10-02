@@ -6,6 +6,7 @@ import { MobileNav } from './MobileNav'
 import { OfflineIndicator } from '@/components/OfflineIndicator'
 import { AssistantWidget } from '@/components/AssistantWidget'
 import { VisiteGuidee } from '@/components/visite/VisiteGuidee'
+import { useVisiteAuto } from '@/components/visite/useVisiteAuto'
 import { useIsMobile } from '@/lib/use-mobile'
 import { useEffect, useRef, useState } from 'react'
 
@@ -50,6 +51,9 @@ export function AppLayout() {
   useEffect(() => {
     mainRef.current?.scrollTo(0, 0)
   }, [location.pathname])
+
+  // Les visites qui se proposent d'elles-mêmes, une fois chacune.
+  useVisiteAuto(location.pathname, !isMobile)
 
   // Garde mobile : toute route hors du parcours mobile redirige vers la liste des diagnostics.
   if (isMobile && !isMobileAllowed(location.pathname)) {
