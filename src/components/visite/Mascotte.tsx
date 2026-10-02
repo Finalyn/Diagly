@@ -15,16 +15,8 @@ import { cn } from '@/lib/utils'
 export type Pose = 'salue' | 'montre' | 'explique' | 'bravo' | 'reflechit'
 export type Vers = 'gauche' | 'droite' | 'haut' | 'bas'
 
-/*
- * Le casque est jaune, et non bleu comme le reste.
- *
- * Un casque bleu sur une boule bleue n'était plus qu'un chapeau : la couleur
- * est le premier signe d'un casque de chantier, avant même la forme. Ce jaune
- * est celui que l'app emploie déjà pour ses avertissements, il ne sort donc pas
- * de la palette.
- */
-const CASQUE = '#fbbf24'
-const CASQUE_OMBRE = '#f59e0b'
+const CASQUE = '#2563eb'
+const CASQUE_OMBRE = '#1d4ed8'
 const BOULE = '#93c5fd'
 const BOULE_OMBRE = '#60a5fa'
 const TRAIT = '#1e3a8a'
@@ -75,20 +67,18 @@ export function Mascotte({ pose = 'explique', vers, taille = 96, anime = true, c
           <ellipse cx="60" cy="100" rx="18" ry="5" fill={BOULE_OMBRE} opacity="0.4" />
 
           {/*
-            Le casque.
+            Le casque : trois formes, pas une de plus.
 
-            Une calotte basse posée sur une visière plate faisait un chapeau
-            melon. Trois choses distinguent un casque de chantier, et elles y
-            sont toutes : une calotte haute qui couvre toute la tête, les
-            nervures du dessus, et une visière qui avance, plus épaisse au
-            milieu qu'aux tempes. La couleur fait le reste : le jaune de
-            chantier se reconnaît avant même la forme.
+            Une calotte haute, qui couvre toute la tête au lieu d'être posée
+            dessus. Sa nervure. Et la visière, qui avance et s'épaissit au
+            milieu : c'est elle qui fait le casque de chantier plutôt que le
+            chapeau. Les tentatives précédentes superposaient deux visières et
+            des nervures latérales en arcs, et cet empilement se lisait comme
+            un trait ondulé en travers du casque.
           */}
-          <path d="M23 57a37 36 0 0 1 74 0z" fill={CASQUE} />
-          <path d="M55.5 21.3a37 36 0 0 1 9 0V57h-9z" fill={CASQUE_OMBRE} />
-          <path d="M38 57q-3-21 7-31M82 57q3-21-7-31" stroke={CASQUE_OMBRE} strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.6" />
-          <path d="M15 55Q60 79 105 55Q60 63 15 55Z" fill={CASQUE} />
-          <path d="M15 55Q60 79 105 55Q60 71 15 55Z" fill={CASQUE_OMBRE} opacity="0.5" />
+          <path d="M24 56a36 34 0 0 1 72 0z" fill={CASQUE} />
+          <rect x="55.5" y="25" width="9" height="31" rx="4.5" fill={CASQUE_OMBRE} opacity="0.55" />
+          <path d="M16 55Q60 80 104 55Q60 59 16 55Z" fill={CASQUE_OMBRE} />
 
           {content ? (
             <>
