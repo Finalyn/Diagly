@@ -5,6 +5,7 @@ import { DiagnosticTabs } from './DiagnosticTabs'
 import { MobileNav } from './MobileNav'
 import { OfflineIndicator } from '@/components/OfflineIndicator'
 import { AssistantWidget } from '@/components/AssistantWidget'
+import { VisiteGuidee } from '@/components/visite/VisiteGuidee'
 import { useIsMobile } from '@/lib/use-mobile'
 import { useEffect, useRef, useState } from 'react'
 
@@ -104,6 +105,9 @@ export function AppLayout() {
           <MobileNav />
         </div>
       )}
+
+      {/* La visite guidée traverse les écrans : elle est montée ici, une fois. */}
+      <VisiteGuidee />
 
       {/* Le panneau flottant est un objet de bureau : sur mobile, l'assistant a sa page. */}
       {!isMobile && (

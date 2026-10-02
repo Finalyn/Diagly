@@ -11,7 +11,7 @@ export function TopBar() {
         <span className="text-xl font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
       </Link>
       {/* Recherche : desktop uniquement (inutile sur mobile) */}
-      <div className="hidden md:block">
+      <div className="hidden md:block" data-visite="recherche">
         <SearchBar />
       </div>
       <NotificationsBell />

@@ -4,13 +4,17 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Search, ChevronDown, ChevronRight, Loader2, Sparkles, Plus, MessageSquare, ArrowRight,
   Rocket, ClipboardCheck, Banknote, Ruler, FileText, Database, Users, Clock, BookOpen,
-  GraduationCap, HelpCircle, LifeBuoy, CornerDownRight,
+  GraduationCap, HelpCircle, LifeBuoy, CornerDownRight, Compass, FolderPlus, LayoutGrid,
+  Check, Play,
 } from 'lucide-react'
 import { Card, CardContent, Input, Button, Badge } from '@/components/ui'
 import { api } from '@/lib/api'
 import { FAQ } from '@/data/support'
 import { ARTICLES, CATEGORIES, TUTORIELS, type Article, type CategorieDoc, type Tutoriel } from '@/data/documentation'
 import { chercherDansLAide, minutesDeLecture, type ResultatAide } from '@/lib/recherche-aide'
+import { VISITES, type Visite } from '@/data/visites'
+import { useVisite } from '@/stores/visite'
+import { Mascotte } from '@/components/visite/Mascotte'
 import type { SupportStatus } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +28,10 @@ const STATUS: Record<SupportStatus, { label: string; cls: string }> = {
 const ICONES: Record<CategorieDoc['icone'], typeof Rocket> = {
   depart: Rocket, releve: ClipboardCheck, argent: Banknote, plan: Ruler,
   rapport: FileText, donnees: Database, compte: Users,
+}
+
+const ICONES_VISITE: Record<Visite['icone'], typeof Compass> = {
+  boussole: Compass, dossier: FolderPlus, onglets: LayoutGrid, aide: LifeBuoy,
 }
 
 const NIVEAUX: Record<Tutoriel['niveau'], string> = {
@@ -61,7 +69,7 @@ export function Support() {
 
       {/* La barre de recherche passe avant les catégories : personne ne parcourt
           un sommaire quand il a une question précise. */}
-      <div className="relative">
+      <div className="relative" data-visite="aide-recherche">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={recherche}
@@ -76,7 +84,7 @@ export function Support() {
         <Resultats requete={recherche} resultats={resultats} onEffacer={() => setRecherche('')} />
       ) : (
         <>
-          <nav className="flex gap-1 overflow-x-auto rounded-[20px] border border-black/[0.05] bg-neutral-100/70 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Sections de l’aide">
+          <nav data-visite="aide-onglets" className="flex gap-1 overflow-x-auto rounded-[20px] border border-black/[0.05] bg-neutral-100/70 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Sections de l’aide">
             {ONGLETS.map((o) => {
               const on = o.id === onglet
               return (
@@ -96,7 +104,7 @@ export function Support() {
             })}
           </nav>
 
-          {onglet === 'doc' && <Documentation />}
+          {onglet === 'doc' && <><Presentation /><Documentation /></>}
           {onglet === 'tuto' && <Tutoriels />}
           {onglet === 'faq' && <QuestionsFrequentes />}
           {onglet === 'demandes' && <MesDemandes />}
@@ -109,6 +117,35 @@ export function Support() {
 }
 
 // ------------------------------------------------------------------ recherche
+
+/**
+ * Diago, en haut du centre d'aide.
+ *
+ * Un personnage qui attend qu'on le trouve ne sert à rien : il se présente, et
+ * propose le tour de l'application avant même qu'on ait cherché quoi que ce soit.
+ */
+function Presentation() {
+  const demarrer = useVisite((s) => s.demarrer)
+  const terminees = useVisite((s) => s.terminees)
+
+  return (
+    <Card className="overflow-hidden bg-gradient-to-br from-blue-50/80 to-white">
+      <CardContent className="flex flex-col items-center gap-4 p-5 sm:flex-row sm:items-center sm:gap-5">
+        <Mascotte pose="salue" taille={104} className="shrink-0" />
+        <div className="min-w-0 flex-1 text-center sm:text-left">
+          <p className="font-semibold">Bonjour, moi c’est Diago</p>
+          <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
+            Je vous montre l’application écran par écran : j’entoure le bouton dont je parle, et vous pouvez cliquer dessus pendant que je vous explique. Les visites se lancent depuis l’onglet Tutoriels.
+          </p>
+        </div>
+        <Button className="shrink-0" onClick={() => demarrer('decouverte')}>
+          <Play className="mr-2 h-4 w-4" />
+          {terminees.includes('decouverte') ? 'Refaire le tour' : 'Faire le tour'}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
 
 function Resultats({ requete, resultats, onEffacer }: { requete: string; resultats: ResultatAide[]; onEffacer: () => void }) {
   if (resultats.length === 0) {
@@ -219,10 +256,16 @@ function LigneArticle({ article }: { article: Article }) {
 
 function Tutoriels() {
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Des parcours guidés, à suivre écran par écran. Chaque étape se coche : vous pouvez interrompre et reprendre plus tard.
-      </p>
+    <div className="space-y-7">
+      <VisitesGuidees />
+
+      <div className="space-y-3">
+        <div>
+          <h2 className="font-semibold">Tutoriels à lire</h2>
+          <p className="text-sm text-muted-foreground">
+            Les mêmes parcours, écrits. Chaque étape se coche : vous pouvez interrompre et reprendre plus tard.
+          </p>
+        </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {TUTORIELS.map((t) => (
           <Link
@@ -238,10 +281,59 @@ function Tutoriels() {
             <p className="font-semibold leading-tight">{t.titre}</p>
             <p className="mt-1 flex-1 text-xs leading-relaxed text-muted-foreground">{t.objectif}</p>
             <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-blue-700">
-              Commencer<ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+              Lire<ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
             </span>
           </Link>
         ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Les visites que Diago mène dans l'application même. */
+function VisitesGuidees() {
+  const demarrer = useVisite((s) => s.demarrer)
+  const terminees = useVisite((s) => s.terminees)
+
+  return (
+    <div className="space-y-3" data-visite="aide-visites">
+      <div className="flex items-start gap-3">
+        <Mascotte pose="montre" vers="droite" taille={64} className="-mt-1 hidden sm:block" />
+        <div>
+          <h2 className="font-semibold">Visites guidées</h2>
+          <p className="text-sm text-muted-foreground">
+            Je vous emmène dans l’application et je désigne les écrans au fur et à mesure. Vous gardez la main : l’élément entouré reste cliquable.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {VISITES.map((v) => {
+          const Icon = ICONES_VISITE[v.icone]
+          const faite = terminees.includes(v.id)
+          return (
+            <div key={v.id} className="flex flex-col rounded-2xl border border-blue-100 bg-blue-50/40 p-5">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600 shadow-sm">
+                  <Icon className="h-4 w-4" strokeWidth={2} />
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-muted-foreground"><Clock className="h-3 w-3" />{v.duree}</span>
+                <span className="text-[11px] text-muted-foreground">· {v.etapes.length} étapes</span>
+                {faite && (
+                  <span className="ml-auto flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                    <Check className="h-3 w-3" strokeWidth={3} />Faite
+                  </span>
+                )}
+              </div>
+              <p className="font-semibold leading-tight">{v.titre}</p>
+              <p className="mt-1 flex-1 text-xs leading-relaxed text-muted-foreground">{v.objectif}</p>
+              <Button size="sm" className="mt-3 self-start" onClick={() => demarrer(v.id)}>
+                <Play className="mr-2 h-3.5 w-3.5" />{faite ? 'Refaire' : 'Me guider'}
+              </Button>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -341,7 +433,7 @@ function MesDemandes() {
 function BesoinDAide() {
   const navigate = useNavigate()
   return (
-    <Card>
+    <Card data-visite="aide-contact">
       <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
           <LifeBuoy className="h-5 w-5" strokeWidth={1.9} />

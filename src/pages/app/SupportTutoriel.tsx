@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Check, ChevronRight, Clock, GraduationCap, ListChecks, MapPin, RotateCcw } from 'lucide-react'
+import { Check, ChevronRight, Clock, GraduationCap, ListChecks, MapPin, Play, RotateCcw } from 'lucide-react'
 import { Card, CardContent, Button, Badge } from '@/components/ui'
 import { ARTICLES, TUTORIELS, type Article, type Tutoriel } from '@/data/documentation'
+import { visitesDuTutoriel } from '@/data/visites'
+import { useVisite } from '@/stores/visite'
+import { Mascotte } from '@/components/visite/Mascotte'
 import { cn } from '@/lib/utils'
 
 const NIVEAUX: Record<Tutoriel['niveau'], string> = {
@@ -35,6 +38,7 @@ export function SupportTutoriel() {
   const { slug } = useParams()
   const tuto = TUTORIELS.find((t) => t.slug === slug)
   const [faites, setFaites] = useState<number[]>(() => (slug ? lireAvancement(slug) : []))
+  const demarrer = useVisite((s) => s.demarrer)
 
   if (!tuto) {
     return (
@@ -60,6 +64,7 @@ export function SupportTutoriel() {
   const suites = (tuto.pourAllerPlusLoin ?? [])
     .map((s) => ARTICLES.find((a) => a.slug === s))
     .filter((a): a is Article => Boolean(a))
+  const visites = visitesDuTutoriel(tuto.slug)
   const total = tuto.etapes.length
   const fini = faites.length >= total
 
@@ -80,6 +85,26 @@ export function SupportTutoriel() {
         <h1 className="text-2xl font-bold leading-tight">{tuto.titre}</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">{tuto.objectif}</p>
       </header>
+
+      {/* Lire, ou se faire montrer : les deux mènent au même endroit. */}
+      {visites.length > 0 && (
+        <div className="flex flex-col items-center gap-4 rounded-2xl border border-blue-100 bg-blue-50/50 p-5 sm:flex-row">
+          <Mascotte pose="montre" vers="droite" taille={86} className="shrink-0" />
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            <p className="font-semibold">Je peux vous le montrer dans l’application</p>
+            <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
+              Plutôt que de lire puis de chercher, laissez-moi entourer les boutons au fur et à mesure. Vous cliquez, je suis.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col gap-2">
+            {visites.map((v) => (
+              <Button key={v.id} size="sm" onClick={() => demarrer(v.id)}>
+                <Play className="mr-2 h-3.5 w-3.5" />{v.titre}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {tuto.prerequis && tuto.prerequis.length > 0 && (
         <div className="rounded-xl bg-neutral-100/70 p-4">

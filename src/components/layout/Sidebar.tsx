@@ -9,17 +9,19 @@ type NavEntry = {
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
   end?: boolean
   soon?: boolean
+  /** Repère désigné par les visites guidées. */
+  visite?: string
 }
 
 const NAV: NavEntry[] = [
-  { to: '/app/dashboard', label: 'Accueil', icon: Home, end: true },
-  { to: '/app/projects', label: 'Diagnostics', icon: ClipboardCheck },
-  { to: '/app/cfc', label: 'Base de données', icon: Database },
-  { to: '/app/team', label: 'Gestion équipe', icon: Users },
-  { to: '/app/integrations', label: 'Intégrations', icon: Plug },
-  { to: '/app/buildings', label: 'Parc immobilier', icon: Building2 },
-  { to: '/app/settings', label: 'Paramètres', icon: Settings },
-  { to: '/app/support', label: 'Aide & support', icon: LifeBuoy },
+  { to: '/app/dashboard', label: 'Accueil', icon: Home, end: true, visite: 'nav-accueil' },
+  { to: '/app/projects', label: 'Diagnostics', icon: ClipboardCheck, visite: 'nav-projects' },
+  { to: '/app/cfc', label: 'Base de données', icon: Database, visite: 'nav-cfc' },
+  { to: '/app/team', label: 'Gestion équipe', icon: Users, visite: 'nav-team' },
+  { to: '/app/integrations', label: 'Intégrations', icon: Plug, visite: 'nav-integrations' },
+  { to: '/app/buildings', label: 'Parc immobilier', icon: Building2, visite: 'nav-buildings' },
+  { to: '/app/settings', label: 'Paramètres', icon: Settings, visite: 'nav-settings' },
+  { to: '/app/support', label: 'Aide & support', icon: LifeBuoy, visite: 'nav-support' },
 ]
 
 /** Panneau de navigation (carte unique) : nav + profil + assistant intégrés. */
@@ -39,6 +41,7 @@ export function Sidebar({ onOpenAssistant }: { onOpenAssistant: () => void }) {
       {/* Nouveau diagnostic */}
       <NavLink
         to="/app/projects/new"
+        data-visite="nouveau"
         className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-black/[0.10] bg-white px-3 py-2.5 text-sm font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-colors hover:bg-muted/60"
       >
         <Plus className="h-4 w-4" />Nouveau diagnostic
@@ -70,6 +73,7 @@ export function Sidebar({ onOpenAssistant }: { onOpenAssistant: () => void }) {
               key={n.label}
               to={n.to}
               end={n.end}
+              data-visite={n.visite}
               className={({ isActive }) => cn(
                 'flex items-center gap-3 rounded-2xl px-3.5 py-3 text-[14px] transition-colors',
                 isActive
@@ -97,6 +101,7 @@ export function Sidebar({ onOpenAssistant }: { onOpenAssistant: () => void }) {
 
         <button
           onClick={onOpenAssistant}
+          data-visite="assistant"
           className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-black/[0.03]"
         >
           <div className="min-w-0 flex-1">

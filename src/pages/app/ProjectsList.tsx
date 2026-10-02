@@ -138,7 +138,7 @@ export function ProjectsList() {
             {isLoading ? 'Chargement…' : `${rows.length} diagnostic${rows.length > 1 ? 's' : ''} au total`}
           </p>
         </div>
-        <Link to="/app/projects/new">
+        <Link to="/app/projects/new" data-visite="nouveau-liste">
           <Button className="w-full sm:w-auto"><Plus className="mr-2 h-4 w-4" />Nouveau diagnostic</Button>
         </Link>
       </div>
@@ -183,7 +183,7 @@ export function ProjectsList() {
       )}
 
       {!isLoading && !isError && total > 0 && (
-        <Card>
+        <Card data-visite="liste">
           <CardContent className="p-0">
             {/* Mobile : liste en cartes (tap → éditeur) */}
             <div className="md:hidden divide-y">

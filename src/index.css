@@ -209,6 +209,37 @@ body {
   }
 }
 
+/* ============ Diago, le guide de la visite ============ */
+/* Un personnage figé est un autocollant. Trois mouvements suffisent à le rendre
+   vivant : il respire, il salue, il penche la tête quand il réfléchit. Le bloc
+   « mouvement réduit » ci-dessus les neutralise tous, sans rien à ajouter ici. */
+@keyframes visite-flotte {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes visite-salue {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-20deg); }
+  60% { transform: rotate(12deg); }
+}
+@keyframes visite-respire {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.5px); }
+}
+@keyframes visite-penche {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-6deg); }
+}
+@keyframes visite-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 0.2; transform: scale(1.035); }
+}
+.visite-flotte { animation: visite-flotte 4.5s ease-in-out infinite; }
+.visite-salue { animation: visite-salue 1.8s ease-in-out infinite; }
+.visite-respire { animation: visite-respire 3s ease-in-out infinite; }
+.visite-penche { animation: visite-penche 3.5s ease-in-out infinite; }
+.visite-halo { animation: visite-pulse 2.4s ease-in-out infinite; }
+
 /* ============ Transparence réduite ============ */
 /* En plein soleil sur un chantier, un texte sur un flou translucide devient illisible.
    Quand le système demande moins de transparence, la matière devient opaque et le

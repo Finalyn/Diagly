@@ -324,7 +324,7 @@ export function ProjectNew() {
 
       {step === 1 && (
         <>
-        <Card>
+        <Card data-visite="formulaire">
           <CardHeader><CardTitle>Informations du diagnostic</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 items-end gap-4">

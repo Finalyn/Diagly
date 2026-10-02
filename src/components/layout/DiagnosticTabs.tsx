@@ -28,7 +28,7 @@ export function DiagnosticTabs({ projectId }: { projectId: string }) {
       <div className="max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <nav className="inline-flex gap-1 rounded-[20px] border border-black/[0.05] bg-neutral-100/70 p-1.5">
           {tabs(projectId).map((t) => (
-            <NavLink key={t.to} to={t.to} end={t.end}>
+            <NavLink key={t.to} to={t.to} end={t.end} data-visite={`onglet-${t.to.split('/').pop()}`}>
               {({ isActive }) => (
                 <span
                   className={cn(
