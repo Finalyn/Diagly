@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, Check, Loader2, AlertCircle, Plus, X } from 'lucide-react'
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Badge } from '@/components/ui'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AddressAutocomplete, type AddressSelection } from '@/components/AddressAutocomplete'
 import { fetchRegistryInfo } from '@/lib/geoadmin'
 
@@ -91,6 +92,24 @@ const REQUIRED: Record<number, { key: keyof FormState; label: string }[]> = {
   ],
 }
 
+/**
+ * Champs facultatifs dont l'absence se confirme avant de passer à la suite.
+ *
+ * Ils ne bloquent pas : ils changent ce que Diagly peut calculer. Sans année
+ * de rénovation, l'âge des ouvrages est celui du bâtiment d'origine ; sans
+ * type de toiture, la surface de toiture n'est pas présumée. Mieux vaut
+ * demander une fois que livrer un diagnostic bâti sur un oubli.
+ */
+const FACULTATIFS: Record<number, { key: keyof FormState; label: string; pourquoi: string }[]> = {
+  1: [
+    { key: 'renovationYear', label: 'Année de rénovation', pourquoi: 'sans elle, les ouvrages sont vieillis depuis la construction' },
+    { key: 'roofType', label: 'Type de toiture', pourquoi: 'sans lui, la surface de toiture n’est pas présumée' },
+  ],
+  2: [
+    { key: 'terrainArea', label: 'Surface du terrain', pourquoi: 'elle sert aux aménagements extérieurs' },
+  ],
+}
+
 const isEmpty = (v: unknown) => v === '' || v === null || v === undefined
 
 export function ProjectNew() {
@@ -104,6 +123,9 @@ export function ProjectNew() {
   const [extras, setExtras] = useState<ExtraBuilding[]>([])
   const [aggregationMode, setAggregationMode] = useState<AggregationMode>('PER_BUILDING')
   const [stepError, setStepError] = useState<string | null>(null)
+  /** Étape dont on demande confirmation des oublis, et étapes déjà confirmées. */
+  const [demandeOubli, setDemandeOubli] = useState<number | null>(null)
+  const [confirmees, setConfirmees] = useState<Set<number>>(new Set())
   const [errors, setErrors] = useState<Set<string>>(new Set())
 
   const [enriching, setEnriching] = useState(false)
@@ -274,25 +296,48 @@ export function ProjectNew() {
     setExtras(p => p.map((b, idx) => (idx === i ? { ...b, ...patch } : b)))
   const removeExtra = (i: number) => setExtras(p => p.filter((_, idx) => idx !== i))
 
+  /**
+   * Remonte au champ et y pose le curseur.
+   *
+   * Un message en bas de page qui nomme un champ resté en haut oblige à le
+   * chercher : sur cet écran, il y en a vingt. On va le chercher pour lui.
+   */
+  const allerAuChamp = (key: string) => {
+    const el = document.getElementById(`champ-${key}`)
+      ?? document.querySelector<HTMLElement>(`[data-champ="${key}"]`)
+    if (!el) return
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    // Le temps que le défilement s'achève : donner le focus avant le ramènerait.
+    window.setTimeout(() => el.querySelector('input')?.focus() ?? el.focus?.(), 400)
+  }
+
   const validateStep = (s: number): boolean => {
     const required = (REQUIRED[s] ?? []).filter(f => f.key !== 'nbApartments' || isResidential(form.buildingType))
     const missing = required.filter(f => isEmpty(form[f.key]))
     if (missing.length > 0) {
       setErrors(new Set(missing.map(m => m.key as string)))
       setStepError(`Merci de compléter : ${missing.map(m => m.label).join(', ')}.`)
+      allerAuChamp(missing[0].key as string)
       return false
     }
     setStepError(null)
     return true
   }
 
+  /** Les facultatifs restés vides sur cette étape, s'il en reste. */
+  const facultatifsVides = (s: number) =>
+    (FACULTATIFS[s] ?? []).filter(f => isEmpty(form[f.key]))
+
+  const avancer = () => {
+    if (step < 3) setStep(step + 1)
+    else { setError(null); create.mutate() }
+  }
+
   const goNext = () => {
-    if (step < 3) {
-      if (validateStep(step)) setStep(step + 1)
-    } else {
-      setError(null)
-      create.mutate()
-    }
+    if (!validateStep(step)) return
+    // Les oublis ne bloquent pas, ils se confirment, et une seule fois.
+    if (!confirmees.has(step) && facultatifsVides(step).length > 0) { setDemandeOubli(step); return }
+    avancer()
   }
 
   const errCls = (key: keyof FormState) =>
@@ -330,9 +375,9 @@ export function ProjectNew() {
             <div className="grid grid-cols-2 items-end gap-4">
               <div className="col-span-2" data-visite="nom">
                 <label className="text-sm font-medium mb-1 block">Nom du diagnostic</label>
-                <Input value={form.name} onChange={e => update('name', e.target.value)} placeholder="Ex: Rénovation Résidence du Lac" className={errCls('name')} />
+                <Input id="champ-name" value={form.name} onChange={e => update('name', e.target.value)} placeholder="Ex: Rénovation Résidence du Lac" className={errCls('name')} />
               </div>
-              <div className="col-span-2" data-visite="adresse">
+              <div className="col-span-2" data-visite="adresse" data-champ="address">
                 <label className="text-sm font-medium mb-1 block">Adresse</label>
                 <AddressAutocomplete
                   value={form.address}
@@ -352,15 +397,15 @@ export function ProjectNew() {
               </div>
               <div>
                 <label className="text-sm font-medium mb-1 block">Code postal</label>
-                <Input value={form.postalCode} onChange={e => update('postalCode', e.target.value)} placeholder="1006" maxLength={4} className={errCls('postalCode')} />
+                <Input id="champ-postalCode" value={form.postalCode} onChange={e => update('postalCode', e.target.value)} placeholder="1006" maxLength={4} className={errCls('postalCode')} />
               </div>
               <div>
                 <label className="text-sm font-medium mb-1 block">Ville</label>
-                <Input value={form.city} onChange={e => update('city', e.target.value)} placeholder="Lausanne" className={errCls('city')} />
+                <Input id="champ-city" value={form.city} onChange={e => update('city', e.target.value)} placeholder="Lausanne" className={errCls('city')} />
               </div>
               <div>
                 <label className="text-sm font-medium mb-1 block">Canton</label>
-                <Select value={form.canton} onChange={e => update('canton', e.target.value)} className={errCls('canton')}>
+                <Select id="champ-canton" value={form.canton} onChange={e => update('canton', e.target.value)} className={errCls('canton')}>
                   {CANTONS.map(c => <option key={c}>{c}</option>)}
                 </Select>
               </div>
@@ -394,11 +439,11 @@ export function ProjectNew() {
               )}
               <div>
                 <label className="text-sm font-medium mb-1 block">Année de construction</label>
-                <Input type="number" value={form.yearBuilt} onChange={e => updateNum('yearBuilt', e.target.value)} placeholder="Ex: 1980" className={errCls('yearBuilt')} />
+                <Input id="champ-yearBuilt" type="number" value={form.yearBuilt} onChange={e => updateNum('yearBuilt', e.target.value)} placeholder="Ex: 1980" className={errCls('yearBuilt')} />
               </div>
               <div>
                 <label className="text-sm font-medium mb-1 block">Année de rénovation</label>
-                <Input type="number" value={form.renovationYear} onChange={e => updateNum('renovationYear', e.target.value)} placeholder="Si déjà rénové" />
+                <Input id="champ-renovationYear" type="number" value={form.renovationYear} onChange={e => updateNum('renovationYear', e.target.value)} placeholder="Si déjà rénové" />
               </div>
               <div className="col-span-2">
                 <label className="text-sm font-medium mb-1 block">Type de bâtiment</label>
@@ -415,7 +460,7 @@ export function ProjectNew() {
               </div>
               <div className="col-span-2">
                 <label className="text-sm font-medium mb-1 block">Type de toiture</label>
-                <Select value={form.roofType} onChange={e => update('roofType', e.target.value)}>
+                <Select id="champ-roofType" value={form.roofType} onChange={e => update('roofType', e.target.value)}>
                   <option value="">Non précisé</option>
                   <option value="PLATE">Plate</option>
                   <option value="PENTE">En pente</option>
@@ -426,12 +471,12 @@ export function ProjectNew() {
               {isResidential(form.buildingType) && (
                 <div>
                   <label className="text-sm font-medium mb-1 block">Nombre d'appartements</label>
-                  <Input type="number" value={form.nbApartments} onChange={e => updateNum('nbApartments', e.target.value)} placeholder="Ex: 12" className={errCls('nbApartments')} />
+                  <Input id="champ-nbApartments" type="number" value={form.nbApartments} onChange={e => updateNum('nbApartments', e.target.value)} placeholder="Ex: 12" className={errCls('nbApartments')} />
                 </div>
               )}
               <div>
                 <label className="text-sm font-medium mb-1 block">Nombre d'etages</label>
-                <Input type="number" value={form.nbFloors} onChange={e => updateNum('nbFloors', e.target.value)} placeholder="Ex: 4" className={errCls('nbFloors')} />
+                <Input id="champ-nbFloors" type="number" value={form.nbFloors} onChange={e => updateNum('nbFloors', e.target.value)} placeholder="Ex: 4" className={errCls('nbFloors')} />
                 <p className="text-[11px] text-muted-foreground mt-1">Valeur du registre fédéral — combles/sous-sol parfois comptés, ajustez si besoin.</p>
               </div>
               <div>
@@ -498,19 +543,19 @@ export function ProjectNew() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium mb-1 block">Surface de plancher (m2)</label>
-                  <Input type="number" value={form.floorArea} onChange={e => updateNum('floorArea', e.target.value)} placeholder="Ex: 1800" className={errCls('floorArea')} />
+                  <Input id="champ-floorArea" type="number" value={form.floorArea} onChange={e => updateNum('floorArea', e.target.value)} placeholder="Ex: 1800" className={errCls('floorArea')} />
                 </div>
                 <div>
                   <label className="text-sm font-medium mb-1 block">Surface batie (m2)</label>
-                  <Input type="number" value={form.builtArea} onChange={e => updateNum('builtArea', e.target.value)} placeholder="Ex: 450" className={errCls('builtArea')} />
+                  <Input id="champ-builtArea" type="number" value={form.builtArea} onChange={e => updateNum('builtArea', e.target.value)} placeholder="Ex: 450" className={errCls('builtArea')} />
                 </div>
                 <div>
                   <label className="text-sm font-medium mb-1 block">Perimetre (ml)</label>
-                  <Input type="number" value={form.perimeter} onChange={e => updateNum('perimeter', e.target.value)} placeholder="Ex: 90" className={errCls('perimeter')} />
+                  <Input id="champ-perimeter" type="number" value={form.perimeter} onChange={e => updateNum('perimeter', e.target.value)} placeholder="Ex: 90" className={errCls('perimeter')} />
                 </div>
                 <div>
                   <label className="text-sm font-medium mb-1 block">Surface terrain (m2)</label>
-                  <Input type="number" value={form.terrainArea} onChange={e => updateNum('terrainArea', e.target.value)} placeholder="Ex: 800" />
+                  <Input id="champ-terrainArea" type="number" value={form.terrainArea} onChange={e => updateNum('terrainArea', e.target.value)} placeholder="Ex: 800" />
                 </div>
                 <div className="col-span-2">
                   <label className="text-sm font-medium mb-1 block">Pourcentage fenetres : {Math.round(form.windowPct * 100)}%</label>
@@ -616,6 +661,59 @@ export function ProjectNew() {
               : <><Check className="mr-2 h-4 w-4" />Créer le diagnostic</>}
         </Button>
       </div>
+
+      {/*
+        Les oublis se confirment, ils ne bloquent pas.
+
+        Ces champs-là ne sont pas obligatoires, mais leur absence change ce que
+        Diagly peut calculer, et on ne s'en aperçoit qu'au chiffrage. Demander
+        une fois, en disant ce qu'on y perd, coûte moins cher que de refaire un
+        diagnostic bâti sur un oubli.
+      */}
+      <Dialog open={demandeOubli !== null} onOpenChange={(o) => { if (!o) setDemandeOubli(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              {facultatifsVides(demandeOubli ?? 1).length > 1 ? 'Deux champs sont restés vides' : 'Un champ est resté vide'}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Rien ne vous oblige à les remplir. Voici seulement ce que Diagly ne pourra pas en déduire.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {facultatifsVides(demandeOubli ?? 1).map((f) => (
+              <li key={String(f.key)} className="rounded-lg bg-muted/60 px-3 py-2">
+                <p className="text-sm font-medium">{f.label}</p>
+                <p className="text-xs text-muted-foreground">{f.pourquoi}</p>
+              </li>
+            ))}
+          </ul>
+          <DialogFooter className="mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                const premier = facultatifsVides(demandeOubli ?? 1)[0]
+                setDemandeOubli(null)
+                // Après la fermeture : la boîte verrouille le défilement tant
+                // qu'elle est là, et le champ ne viendrait pas.
+                if (premier) window.setTimeout(() => allerAuChamp(premier.key as string), 80)
+              }}
+            >
+              Compléter
+            </Button>
+            <Button
+              onClick={() => {
+                setConfirmees((c) => new Set(c).add(demandeOubli ?? 1))
+                setDemandeOubli(null)
+                avancer()
+              }}
+            >
+              Continuer sans
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
