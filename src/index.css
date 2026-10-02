@@ -210,13 +210,17 @@ body {
 }
 
 /* ============ Visite guidée ============ */
-/* Le halo qui entoure l'élément désigné. Le bloc « mouvement réduit » ci-dessus
-   le neutralise, sans rien à ajouter ici. */
+/* L'onde qui bat autour de l'élément désigné.
+   Elle est portée par une ombre, et non par l'opacité de l'élément : c'est ce
+   dernier qui porte aussi l'anneau, et le faire battre entre 20 et 55 %
+   d'opacité l'effaçait. Il ne restait alors qu'un rectangle clair au milieu de
+   l'écran assombri, sans rien pour dire ce qui était désigné.
+   Le bloc « mouvement réduit » ci-dessus neutralise l'animation. */
 @keyframes visite-pulse {
-  0%, 100% { opacity: 0.55; transform: scale(1); }
-  50% { opacity: 0.2; transform: scale(1.035); }
+  0% { box-shadow: 0 0 0 0 rgb(37 99 235 / 0.4); }
+  70%, 100% { box-shadow: 0 0 0 9px rgb(37 99 235 / 0); }
 }
-.visite-halo { animation: visite-pulse 2.4s ease-in-out infinite; }
+.visite-halo { animation: visite-pulse 2.2s ease-out infinite; }
 
 /* ============ Transparence réduite ============ */
 /* En plein soleil sur un chantier, un texte sur un flou translucide devient illisible.

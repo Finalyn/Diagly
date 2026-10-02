@@ -151,8 +151,22 @@ export function VisiteGuidee() {
           <Voile style={{ left: 0, top: trou.y + trou.h, width: fenetre.w, height: Math.max(0, fenetre.h - trou.y - trou.h) }} />
           <Voile style={{ left: 0, top: trou.y, width: Math.max(0, trou.x), height: trou.h }} />
           <Voile style={{ left: trou.x + trou.w, top: trou.y, width: Math.max(0, fenetre.w - trou.x - trou.w), height: trou.h }} />
+          {/*
+            Deux éléments superposés, et non un seul.
+
+            L'anneau de Tailwind est une `box-shadow`, et l'onde qui bat en est
+            une autre : posées sur le même élément, la seconde remplaçait la
+            première et l'anneau disparaissait. Il ne restait qu'un rectangle
+            clair au milieu de l'écran assombri, sans rien pour dire ce qui
+            était désigné. L'anneau est donc fixe sur son élément, et l'onde
+            bat sur le sien.
+          */}
           <div
-            className="visite-halo pointer-events-none absolute rounded-xl ring-2 ring-blue-500"
+            className="pointer-events-none absolute rounded-xl ring-2 ring-blue-500"
+            style={{ left: trou.x, top: trou.y, width: trou.w, height: trou.h }}
+          />
+          <div
+            className="visite-halo pointer-events-none absolute rounded-xl"
             style={{ left: trou.x, top: trou.y, width: trou.w, height: trou.h }}
           />
         </>
