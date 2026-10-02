@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
 import { spring, projeterElan, suiviVitesse, mouvementReduit, RESSORTS, type SpringHandle } from '@/lib/motion'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -141,6 +141,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const railRef = useRef<HTMLElement>(null)
 
   const [stage, setStage] = useState({ w: 0, h: 0 })
   const [loading, setLoading] = useState(true)
@@ -829,6 +830,25 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     if (nature === 'longueur') return fmtLen(dist(a.points[0], a.points[1]))
     return null
   }
+  /**
+   * Hauteur, dans la scène, à laquelle ouvrir le panneau d'un outil.
+   *
+   * Un réglage qui apparaît loin du bouton qu'on vient de presser se cherche :
+   * on le pose donc en face de lui. La mesure est prise sur le rail, qui ne
+   * bouge pas, et retombe en haut si elle n'est pas encore possible.
+   */
+  const [hautDuPanneau, setHautDuPanneau] = useState(12)
+  useLayoutEffect(() => {
+    const placer = () => {
+      const bouton = railRef.current?.querySelector(`[data-outil="${tool}"]`)
+      const scene = containerRef.current
+      if (!bouton || !scene) return
+      setHautDuPanneau(Math.max(8, bouton.getBoundingClientRect().top - scene.getBoundingClientRect().top))
+    }
+    const t = requestAnimationFrame(placer)
+    return () => cancelAnimationFrame(t)
+  }, [tool])
+
   /** Ce qui, sur cette page, porte une mesure : les zones et les cotes. */
   const zonesDeLaPage = annotationsPage.filter((a) => natureDe(a) !== 'aucune')
 
@@ -887,7 +907,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       <div className="flex min-h-0 flex-1">
         {/* Rail d'outils : vertical sur grand écran, il repasse en bande sous la
             scène sur mobile, à portée de pouce. */}
-        <nav className="hidden w-20 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2 sm:flex" aria-label="Outils">
+        <nav ref={railRef} className="hidden w-20 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2 sm:flex" aria-label="Outils">
           {TOOLS.map((t) => (
             <BoutonOutil key={t.key} outil={t} actif={tool === t.key} bloque={!outilAutorise(t.key)} onChoisir={choisirOutil} />
           ))}
@@ -1039,6 +1059,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
             {tool === 'reference' && (
               <PanneauReference
+                haut={hautDuPanneau}
                 reference={reference}
                 plans={autresPlans}
                 nomReference={planReference?.name ?? null}
@@ -1059,12 +1080,13 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                 selection={selectedAnn}
                 mesure={quantiteDe}
                 lie={libelleLie}
-                onChoisir={(id) => { setTool('select'); setSelectedAnn(id) }}
+                onChoisir={(id) => { setTool('select'); setSelectedAnn(id); setChoixOuvrage(true) }}
               />
             )}
 
             {selAnn && (
               <PanneauSelection
+                haut={hautDuPanneau}
                 annotation={selAnn}
                 lie={libelleLie(selAnn)}
                 etalonne={!!scale}
@@ -1301,6 +1323,7 @@ function BoutonOutil({ outil, actif, bloque, onChoisir, compact }: {
   return (
     <button
       onClick={() => onChoisir(outil.key)}
+      data-outil={outil.key}
       disabled={bloque}
       title={bloque ? `${outil.label} — étalonnez d’abord la page` : outil.label}
       aria-pressed={actif}
@@ -1322,7 +1345,9 @@ function BoutonOutil({ outil, actif, bloque, onChoisir, compact }: {
  * l'échelle 1:50, l'autre recadré. Le calque se déplace au doigt et se
  * redimensionne ici, sans quoi la superposition ne vaut rien.
  */
-function PanneauReference({ reference, plans, nomReference, pagesReference, chargement, erreur, onPoser, onMaj, onRetirer }: {
+function PanneauReference({ haut, reference, plans, nomReference, pagesReference, chargement, erreur, onPoser, onMaj, onRetirer }: {
+  /** Hauteur dans la scène : le panneau s'ouvre en face de son outil. */
+  haut: number
   reference: PlanAnnotation | null
   plans: ApiPlan[]
   nomReference: string | null
@@ -1337,9 +1362,10 @@ function PanneauReference({ reference, plans, nomReference, pagesReference, char
   return (
     <div
       data-habillage
-      /* Collé au rail, sous l'outil qui l'ouvre : un réglage qui apparaît à
-         l'opposé du bouton qu'on vient de presser se cherche. */
-      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:left-3 sm:top-3 sm:bottom-auto sm:w-80"
+      /* Collé au rail, en face de l'outil qui l'ouvre : un réglage qui apparaît
+         loin du bouton qu'on vient de presser se cherche. */
+      style={{ ['--haut' as string]: `${haut}px` }}
+      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-[var(--haut)] sm:w-80"
     >
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Calque de référence</p>
 
@@ -1494,6 +1520,7 @@ function ListeDesZones({ zones, selection, mesure, lie, onChoisir }: {
           {zones.length} au total
           {orphelines > 0 && <span className="text-amber-600"> · {orphelines} sans ouvrage</span>}
         </p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">Touchez une ligne pour la rattacher.</p>
       </div>
       <ul className="max-h-[45vh] overflow-y-auto">
         {zones.map((z) => {
@@ -1502,6 +1529,7 @@ function ListeDesZones({ zones, selection, mesure, lie, onChoisir }: {
             <li key={z.id}>
               <button
                 onClick={() => onChoisir(z.id)}
+                title={nom ? `Changer l’ouvrage de cette mesure` : 'Rattacher cette mesure à un ouvrage'}
                 className={cn('flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-muted',
                   z.id === selection && 'bg-muted')}
               >
@@ -1513,9 +1541,10 @@ function ListeDesZones({ zones, selection, mesure, lie, onChoisir }: {
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium tabular-nums">{mesure(z) ?? '—'}</span>
                   <span className={cn('block truncate text-xs', nom ? 'text-muted-foreground' : 'text-amber-600')}>
-                    {nom ?? 'Pas d’ouvrage'}
+                    {nom ?? 'Rattacher à un ouvrage'}
                   </span>
                 </span>
+                <Link2 className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
               </button>
             </li>
           )
@@ -1533,7 +1562,9 @@ function ListeDesZones({ zones, selection, mesure, lie, onChoisir }: {
  * rapporte. Les couleurs ont rejoint le rail d'outils, où elles valent aussi
  * bien pour le prochain tracé.
  */
-function PanneauSelection({ annotation, lie, etalonne, quantite, onLier, onEditerNote, onSupprimer }: {
+function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, onEditerNote, onSupprimer }: {
+  /** Hauteur dans la scène : le panneau s'ouvre en face de son outil. */
+  haut: number
   annotation: PlanAnnotation
   lie: string | null
   etalonne: boolean
@@ -1545,7 +1576,8 @@ function PanneauSelection({ annotation, lie, etalonne, quantite, onLier, onEdite
   return (
     <div
       data-habillage
-      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:left-3 sm:w-80"
+      style={{ ['--haut' as string]: `${haut}px` }}
+      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-[var(--haut)] sm:w-80"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
