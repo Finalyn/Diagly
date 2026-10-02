@@ -1215,7 +1215,10 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
           </div>
           {/* Des vignettes qu'on puisse regarder : on choisit les pages d'après ce
               qu'elles montrent, et une coupe de 90 pixels de large ne montre rien. */}
-          <div className="grid max-h-[55vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-4">
+          {/* De la marge dans la zone qui défile : sans elle, la bordure des cartes
+              est rognée au bord du cadre, et la colonne de droite passe sous la
+              barre de défilement. */}
+          <div className="grid max-h-[55vh] grid-cols-2 gap-3 overflow-y-auto py-1 pl-2 pr-3 sm:grid-cols-4">
             {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
               const vignette = apercus.pages.find((x) => x.numero === n)
               const coche = pagesRetenues.includes(n)
