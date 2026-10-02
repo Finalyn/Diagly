@@ -25,7 +25,7 @@ const NAV: NavEntry[] = [
 ]
 
 /** Panneau de navigation (carte unique) : nav + profil + assistant intégrés. */
-export function Sidebar({ onOpenAssistant }: { onOpenAssistant: () => void }) {
+export function Sidebar() {
   const user = useAuth((s) => s.user)
   const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'Mon compte'
   const initials = ((user?.firstName?.[0] ?? '') + (user?.lastName?.[0] ?? '')).toUpperCase() || (user?.email?.[0] ?? 'U').toUpperCase()
@@ -99,17 +99,26 @@ export function Sidebar({ onOpenAssistant }: { onOpenAssistant: () => void }) {
           </div>
         </Link>
 
-        <button
-          onClick={onOpenAssistant}
+        {/* L'assistant a sa page : le panneau flottant cachait l'application
+            derrière lui et ne gardait rien d'une question à l'autre. */}
+        <NavLink
+          to="/app/assistant"
           data-visite="assistant"
-          className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-black/[0.03]"
+          className={({ isActive }) => cn(
+            'flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors',
+            isActive ? 'bg-blue-50' : 'hover:bg-black/[0.03]',
+          )}
         >
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold leading-tight text-neutral-900">Diagly Assistant</p>
-            <p className="truncate text-xs text-muted-foreground">Poser une question</p>
-          </div>
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </button>
+          {({ isActive }) => (
+            <>
+              <div className="min-w-0 flex-1">
+                <p className={cn('truncate text-sm font-semibold leading-tight', isActive ? 'text-blue-700' : 'text-neutral-900')}>Diagly Assistant</p>
+                <p className="truncate text-xs text-muted-foreground">Poser une question</p>
+              </div>
+              <ChevronRight className={cn('h-4 w-4 shrink-0', isActive ? 'text-blue-700' : 'text-muted-foreground')} />
+            </>
+          )}
+        </NavLink>
       </div>
     </aside>
   )

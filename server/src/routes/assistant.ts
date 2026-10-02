@@ -17,11 +17,29 @@ router.use(aiLimiter); // quota par utilisateur : protege la facture Anthropic
 
 const chatSchema = z.object({
   messages: z
-    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(8000) }))
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().min(1).max(8000),
+        // Photos jointes au message, en data URL base64. Bornees: chaque image
+        // coute cher en jetons, et la facture est au prorata.
+        images: z.array(z.string().max(8_000_000)).max(4).optional(),
+      }),
+    )
     .min(1)
     .max(30),
   projectId: z.string().optional(),
+  // Diagnostics rattaches a la conversation. Le premier porte le contexte
+  // detaille, les suivants un resume: trois dossiers complets depasseraient
+  // la fenetre du modele.
+  projectIds: z.array(z.string()).max(5).optional(),
 });
+
+/** Transforme une data URL en bloc image pour l'API Anthropic. */
+function blocImage(dataUrl: string) {
+  const m = dataUrl.match(/^data:(image[/][a-zA-Z0-9.+-]+);base64,(.+)$/s);
+  return m ? { type: "image" as const, source: { type: "base64" as const, media_type: m[1], data: m[2] } } : null;
+}
 
 const SYSTEM = `Tu es l'assistant de Diagly, logiciel suisse de diagnostic de batiment et de planification de renovation (directions de travaux, regies, architectes).
 Reponds COURT, clair et direct: droit au but, 1 a 3 phrases en general. Pas d'introduction ni de conclusion superflue, pas de blabla. Une liste seulement si c'est vraiment plus clair. Si la question est vague, pose une question breve plutot que de deviner.
@@ -37,16 +55,24 @@ router.post("/chat", validateBody(chatSchema), async (req, res) => {
     return;
   }
 
-  const { messages, projectId } = req.body as z.infer<typeof chatSchema>;
+  const { messages, projectId, projectIds } = req.body as z.infer<typeof chatSchema>;
 
   const scope = await ownerScopeFor(req.auth!.sub);
   let system = SYSTEM;
-  // Contexte DETAILLE du diagnostic ouvert (toutes les infos) + apercu du parc (pour repondre sur n'importe lequel).
-  if (projectId) {
-    const detail = await buildProjectContext(projectId, scope);
+
+  // Les dossiers rattaches a la conversation: le premier en detail, les
+  // autres en resume. Trois contextes complets depasseraient la fenetre.
+  const rattaches = [...new Set([...(projectIds ?? []), ...(projectId ? [projectId] : [])])];
+  const [principal, ...autres] = rattaches;
+  if (principal) {
+    const detail = await buildProjectContext(principal, scope);
     if (detail) system += `\n\n${detail}`;
   }
-  const portfolio = await buildPortfolioBrief(scope, projectId);
+  for (const id of autres.slice(0, 4)) {
+    const brief = await buildProjectBrief(id, scope);
+    if (brief) system += `\n\n${brief}`;
+  }
+  const portfolio = await buildPortfolioBrief(scope, principal);
   if (portfolio) system += `\n\n${portfolio}`;
 
   let r: Awaited<ReturnType<typeof fetch>>;
@@ -60,9 +86,16 @@ router.post("/chat", validateBody(chatSchema), async (req, res) => {
       },
       body: JSON.stringify({
         model: env.ANTHROPIC_MODEL,
-        max_tokens: 700,
+        max_tokens: 1000,
         system,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        // Une photo jointe devient un bloc image place avant le texte: le
+        // modele lit mieux l'image quand la question la suit.
+        messages: messages.map((m) => {
+          const blocs = (m.images ?? []).map(blocImage).filter((b): b is NonNullable<typeof b> => b !== null);
+          return blocs.length > 0
+            ? { role: m.role, content: [...blocs, { type: "text" as const, text: m.content }] }
+            : { role: m.role, content: m.content };
+        }),
       }),
     });
   } catch {

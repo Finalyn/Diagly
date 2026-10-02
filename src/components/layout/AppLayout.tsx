@@ -4,11 +4,10 @@ import { TopBar } from './TopBar'
 import { DiagnosticTabs } from './DiagnosticTabs'
 import { MobileNav } from './MobileNav'
 import { OfflineIndicator } from '@/components/OfflineIndicator'
-import { AssistantWidget } from '@/components/AssistantWidget'
 import { VisiteGuidee } from '@/components/visite/VisiteGuidee'
 import { useVisiteAuto } from '@/components/visite/useVisiteAuto'
 import { useIsMobile } from '@/lib/use-mobile'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
 // Fond villa (dashboard uniquement) — fondu sur les bords gauche + bas, aucune ligne de coupure
 const DASH_MASK = 'linear-gradient(to right, transparent 40%, #000 66%), linear-gradient(to bottom, #000 36%, transparent 52%)'
@@ -45,7 +44,6 @@ export function AppLayout() {
   // colonnes : la page, elle, ne bouge pas.
   const editeurEncastre = /^\/app\/projects\/[^/]+\/diagnostic$/.test(location.pathname)
   const mainRef = useRef<HTMLDivElement>(null)
-  const [assistantOpen, setAssistantOpen] = useState(false)
   const isMobile = useIsMobile()
 
   useEffect(() => {
@@ -64,7 +62,7 @@ export function AppLayout() {
     <div className="js-print-shell safe-top safe-sides flex h-dvh overflow-hidden bg-muted">
       {/* Colonne gauche : panneau unique (desktop) */}
       <div className="js-print-hide hidden md:flex md:flex-col gap-3 pl-3 py-3 w-[15rem] lg:w-[17.5rem] shrink-0">
-        <Sidebar onOpenAssistant={() => setAssistantOpen(true)} />
+        <Sidebar />
       </div>
 
       {/* Zone principale */}
@@ -113,12 +111,6 @@ export function AppLayout() {
       {/* La visite guidée traverse les écrans : elle est montée ici, une fois. */}
       <VisiteGuidee />
 
-      {/* Le panneau flottant est un objet de bureau : sur mobile, l'assistant a sa page. */}
-      {!isMobile && (
-        <div className="js-print-hide">
-          <AssistantWidget open={assistantOpen} onOpenChange={setAssistantOpen} />
-        </div>
-      )}
     </div>
   )
 }

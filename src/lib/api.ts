@@ -276,7 +276,12 @@ export const api = {
   },
 
   assistant: {
-    chat: (body: { messages: { role: 'user' | 'assistant'; content: string }[]; projectId?: string }) =>
+    chat: (body: {
+      messages: { role: 'user' | 'assistant'; content: string; images?: string[] }[]
+      projectId?: string
+      /** Diagnostics rattachés : le premier est lu en détail, les suivants en résumé. */
+      projectIds?: string[]
+    }) =>
       request<{ reply: string; configured: boolean }>('/api/assistant/chat', { method: 'POST', body }),
     vision: (body: { images: string[]; cfcCode?: string; cfcLabel?: string; projectId?: string }) =>
       request<{ configured: boolean; analysis: import('./api-types').GuideAnalysis | null }>('/api/assistant/vision', { method: 'POST', body }),
