@@ -15,10 +15,16 @@ import { cn } from '@/lib/utils'
 export type Pose = 'salue' | 'montre' | 'explique' | 'bravo' | 'reflechit'
 export type Vers = 'gauche' | 'droite' | 'haut' | 'bas'
 
-const CASQUE = '#2563eb'
-const CASQUE_OMBRE = '#1d4ed8'
+/*
+ * Le casque est rouge, le seul écart à la palette bleue de l'app.
+ *
+ * Bleu sur une boule bleue, il se fondait dans la tête et redevenait un
+ * chapeau : c'est le contraste qui le fait lire comme un casque de chantier.
+ * Ce rouge est celui que l'app emploie déjà pour la priorité I.
+ */
+const CASQUE = '#dc2626'
+const CASQUE_OMBRE = '#b91c1c'
 const BOULE = '#93c5fd'
-const BOULE_OMBRE = '#60a5fa'
 const TRAIT = '#1e3a8a'
 
 /** Décalage des pupilles et inclinaison de la boule, selon ce qu'on désigne. */
@@ -62,9 +68,9 @@ export function Mascotte({ pose = 'explique', vers, taille = 96, anime = true, c
 
       <g className={mouvement} style={{ transformOrigin: '60px 76px' }}>
         <g transform={`rotate(${regard.penche} 60 76)`}>
+          {/* La boule, sans ombre interne : celle qui y était, posée sous la
+              bouche pour arrondir le volume, se lisait comme une tache. */}
           <circle cx="60" cy="72" r="34" fill={BOULE} />
-          {/* Une ombre posée en bas : sans elle, la boule n'est qu'un disque. */}
-          <ellipse cx="60" cy="100" rx="18" ry="5" fill={BOULE_OMBRE} opacity="0.4" />
 
           {/*
             Le casque : trois formes, pas une de plus.
