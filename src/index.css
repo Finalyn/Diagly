@@ -46,21 +46,6 @@
   border-color: var(--color-border);
 }
 
-/*
- * Les contours de l'éditeur de plans.
- *
- * La règle `*` ci-dessus n'appartient à aucune couche, et en CSS le non-couché
- * l'emporte sur le couché : elle écrasait donc toutes les classes
- * `border-blue-*` de Tailwind, et la teinte ne se voyait nulle part. L'éditeur,
- * qui doit se distinguer d'un plan blanc, pose la sienne ici, hors couche aussi.
- */
-.bord-outil {
-  border-color: #93c5fd;
-}
-.bord-outil-pale {
-  border-color: #bfdbfe;
-}
-
 /* `min-height: 100vh` rendait le document plus haut que la fenêtre sur iOS (100vh
    ignore la barre d'adresse) : le geste de défilement faisait alors remonter toute
    l'app, en-tête compris, sous la barre d'état du téléphone. On cale donc la hauteur
