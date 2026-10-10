@@ -1,0 +1,67 @@
+{
+  "lisezMoi": [
+    "Decisions prises a la main, appliquees par-dessus le rapprochement automatique.",
+    "La cle est `ancienOrdre` (display_order du catalogue), stable d'un environnement a l'autre car issue du meme seed.",
+    "`nouveauId` null = l'ancien article n'a pas de repreneur : il passe en actif=false et ses releves continuent de pointer dessus.",
+    "`aDecider` true = cas que le script n'a pas tranche et que personne n'a encore relu. L'import s'arrete dessus si le releve existe."
+  ],
+  "corrections": [
+    {
+      "ancienOrdre": 76,
+      "ancienNom": "Production d'eau chaude solaire / speciale",
+      "nouveauId": "A069",
+      "raison": "Fusion demandee au brief : la ligne 76 de l'ancienne Feuil2 est reprise par A069 Installation solaire thermique (ECS)."
+    },
+    {
+      "ancienOrdre": 95,
+      "ancienNom": "Revetements de paroi sans joints",
+      "nouveauId": null,
+      "raison": "Suppression demandee au brief. Le rapprochement automatique proposait A112 (revetements de SOLS sans joints), qui est un autre ouvrage."
+    },
+    {
+      "ancienOrdre": 71,
+      "ancienNom": "Peinture interieure plafond",
+      "nouveauId": "A104",
+      "raison": "Le score mettait A100 (murs) en tete parce que les deux noms partagent « peinture interieure ». C'est le plafond."
+    },
+    {
+      "ancienOrdre": 7002,
+      "ancienNom": "Toit a pans (Couverture)",
+      "nouveauId": "A044",
+      "raison": "Couverture de toiture inclinee. Les noms ne se ressemblent pas, le rapprochement ne pouvait pas le trouver."
+    },
+    {
+      "ancienOrdre": 7014,
+      "ancienNom": "Paratonnerre",
+      "nouveauId": "A049",
+      "raison": "Protection contre la foudre, meme ouvrage sous un autre nom."
+    },
+    {
+      "ancienOrdre": 10010,
+      "ancienNom": "Protections solaires interieures",
+      "nouveauId": null,
+      "raison": "La base v3 ne couvre que les protections solaires exterieures (groupe A037 a A040)."
+    },
+    {
+      "ancienOrdre": 2005,
+      "ancienNom": "Portes exterieures - Generique",
+      "nouveauId": null,
+      "aDecider": true,
+      "raison": "Le groupe « Portes exterieures (en nombre) » compte huit types precis : il faut dire lequel, ou laisser le releve sur l'article retire."
+    },
+    {
+      "ancienOrdre": 10005,
+      "ancienNom": "Volets bois/metal",
+      "nouveauId": null,
+      "aDecider": true,
+      "raison": "A037 Volets en bois ou A038 Volets roulants : le nom ancien couvre les deux."
+    },
+    {
+      "ancienOrdre": 10001,
+      "ancienNom": "Fenetres alu ou PVC",
+      "nouveauId": null,
+      "aDecider": true,
+      "raison": "A023 Fenetres en aluminium ou A021 Fenetres en matiere synthetique."
+    }
+  ]
+}
