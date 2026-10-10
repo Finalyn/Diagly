@@ -4,7 +4,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { validateQuery, validateBody } from "../middlewares/validate.js";
-import { notFound } from "../lib/http-error.js";
+import { forbidden, notFound } from "../lib/http-error.js";
+import { getOrgContext } from "../lib/org-context.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -248,4 +249,220 @@ router.get("/base/nomenclature", async (_req, res) => {
   res.json({ noeuds, count: noeuds.length });
 });
 
+// ---------- Ecriture de la base CFC v3 ----------
+//
+// La base est commune a tous les diagnostiqueurs : une correction de prix
+// change le devis de tout le monde, y compris des dossiers deja commences.
+// L'ecriture est donc reservee aux responsables de l'organisation, et chaque
+// modification laisse une trace nominative dans article_historique.
+//
+// Il n'y a aujourd'hui qu'un bureau. Le jour ou un second arrive, cette base
+// devra lui appartenir en propre, et ce verrou ne suffira plus.
+
+async function exigerResponsable(req: { auth?: { sub: string; role: string } }) {
+  if (req.auth?.role === "ADMIN") return;
+  const ctx = await getOrgContext(req.auth!.sub);
+  if (ctx.orgRole === "OWNER" || ctx.orgRole === "ADMIN") return;
+  throw forbidden("La base du bureau se modifie depuis un compte responsable.");
+}
+
+const uniteSchema = z.enum(["m2", "ml", "pce", "forfait"]);
+const etatSchema = z.enum(["tres_bon", "bon", "moyen", "mauvais", "amelioration", "normes"]);
+const baseQuantiteSchema = z.enum([
+  "surface_plancher", "surface_batie", "surface_terrain", "surface_facade", "surface_fenetres",
+  "facade_moins_fenetres", "nombre_logements", "nombre_pieces_eau", "nombre_etages",
+  "nombre_cages", "nombre_portes_entree", "forfait", "saisie_manuelle",
+  "regle_stores", "regle_eaux_pluviales", "regle_sprinklers",
+]);
+
+const articleSchema = z.object({
+  cfcCode: z.string().min(1).max(12),
+  nom: z.string().min(1).max(255),
+  domaineRapport: z.string().min(1).max(80),
+  groupeAlternatives: z.string().max(80).nullable().optional(),
+  echafaudage: z.boolean().optional(),
+  uniteEntretien: uniteSchema,
+  uniteRemplacement: uniteSchema,
+  baseQuantite: baseQuantiteSchema,
+  indicationQuantite: z.string().max(160).nullable().optional(),
+  coefficient: z.number().min(0).max(1000).optional(),
+  noteDiagnostiqueur: z.string().max(5000).nullable().optional(),
+  articleLieId: z.string().max(8).nullable().optional(),
+  actif: z.boolean().optional(),
+  /// Les six etats, tels que la fiche les montre.
+  etats: z.array(z.object({
+    etat: etatSchema,
+    travaux: z.string().max(5000).nullable(),
+    prix: z.number().min(0).max(10_000_000).nullable(),
+    partPrixMauvais: z.number().min(0).max(10).nullable(),
+    unite: uniteSchema,
+  })).max(6).optional(),
+  /// Etapes de visite, en cases a cocher.
+  etapes: z.array(z.number().int().min(1).max(20)).max(20).optional(),
+});
+
+/** Les champs simples d'un article, pour comparer avant et apres. */
+const CHAMPS_SUIVIS = [
+  "cfcCode", "nom", "domaineRapport", "groupeAlternatives", "echafaudage", "uniteEntretien",
+  "uniteRemplacement", "baseQuantite", "indicationQuantite", "coefficient", "noteDiagnostiqueur",
+  "articleLieId", "actif",
+] as const;
+
+const enTexte = (v: unknown) => (v === null || v === undefined ? null : String(v));
+
+/**
+ * Ce qui a change, champ par champ.
+ *
+ * On ecrit une ligne d'historique par champ modifie plutot qu'un instantane de
+ * l'article : ce qu'on vient relire six mois plus tard, c'est « qui a change ce
+ * prix, et quand », pas l'etat complet de la fiche ce jour-la.
+ */
+function differences(avant: Record<string, unknown>, apres: Record<string, unknown>) {
+  const sorties: { champ: string; ancienneValeur: string | null; nouvelleValeur: string | null }[] = [];
+  for (const champ of CHAMPS_SUIVIS) {
+    if (!(champ in apres)) continue;
+    const a = enTexte(avant[champ]);
+    const b = enTexte(apres[champ]);
+    if (a !== b) sorties.push({ champ, ancienneValeur: a, nouvelleValeur: b });
+  }
+  return sorties;
+}
+
+router.get("/base/articles/:id/historique", async (req, res) => {
+  const lignes = await prisma.articleHistorique.findMany({
+    where: { articleId: req.params.id },
+    orderBy: { date: "desc" },
+    take: 200,
+  });
+  const auteurs = await prisma.user.findMany({
+    where: { id: { in: [...new Set(lignes.map((l) => l.auteurId).filter((v): v is string => !!v))] } },
+    select: { id: true, firstName: true, lastName: true, email: true },
+  });
+  const nom = new Map(auteurs.map((u) => [u.id, [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email]));
+  res.json({
+    lignes: lignes.map((l) => ({ ...l, auteur: l.auteurId ? nom.get(l.auteurId) ?? null : null })),
+    count: lignes.length,
+  });
+});
+
+router.put("/base/articles/:id", validateBody(articleSchema.partial()), async (req, res) => {
+  await exigerResponsable(req);
+  const id = req.params.id;
+  const avant = await prisma.article.findUnique({ where: { id }, include: { etats: true, etapes: true } });
+  if (!avant) throw notFound(`Article ${id} introuvable`);
+  const data = req.body as z.infer<typeof articleSchema>;
+
+  const { etats, etapes, ...champs } = data;
+  const traces = differences(avant as unknown as Record<string, unknown>, champs as Record<string, unknown>);
+
+  if (etats) {
+    for (const e of etats) {
+      const ancien = avant.etats.find((x) => x.etat === e.etat);
+      const avantTexte = ancien ? `${ancien.travaux ?? ""} | ${ancien.prix ?? ""} | ${ancien.unite}` : null;
+      const apresTexte = `${e.travaux ?? ""} | ${e.prix ?? ""} | ${e.unite}`;
+      if (avantTexte !== apresTexte) {
+        traces.push({ champ: `etat.${e.etat}`, ancienneValeur: avantTexte, nouvelleValeur: apresTexte });
+      }
+    }
+  }
+  if (etapes) {
+    const avantEtapes = avant.etapes.map((e) => e.etapeNumero).sort((a, b) => a - b).join(", ");
+    const apresEtapes = [...new Set(etapes)].sort((a, b) => a - b).join(", ");
+    if (avantEtapes !== apresEtapes) {
+      traces.push({ champ: "etapes", ancienneValeur: avantEtapes || null, nouvelleValeur: apresEtapes || null });
+    }
+  }
+
+  const article = await prisma.$transaction(async (tx) => {
+    await tx.article.update({ where: { id }, data: champs });
+
+    if (etats) {
+      for (const e of etats) {
+        await tx.articleEtat.upsert({
+          where: { articleId_etat: { articleId: id, etat: e.etat } },
+          create: { articleId: id, ...e },
+          update: { travaux: e.travaux, prix: e.prix, partPrixMauvais: e.partPrixMauvais, unite: e.unite },
+        });
+      }
+    }
+
+    if (etapes) {
+      const voulues = [...new Set(etapes)];
+      await tx.articleEtape.deleteMany({ where: { articleId: id, etapeNumero: { notIn: voulues } } });
+      for (const numero of voulues) {
+        const existant = avant.etapes.find((x) => x.etapeNumero === numero);
+        if (existant) continue;
+        // Range en fin d'etape : l'ordre du classeur suit le code CFC, et le
+        // reordonner entierement a chaque ajout deplacerait des lignes que
+        // personne n'a touchees.
+        const dernier = await tx.articleEtape.aggregate({
+          where: { etapeNumero: numero },
+          _max: { ordreDansEtape: true },
+        });
+        await tx.articleEtape.create({
+          data: { articleId: id, etapeNumero: numero, ordreDansEtape: (dernier._max.ordreDansEtape ?? 0) + 1 },
+        });
+      }
+    }
+
+    if (traces.length > 0) {
+      await tx.articleHistorique.createMany({
+        data: traces.map((t) => ({ ...t, articleId: id, auteurId: req.auth!.sub })),
+      });
+    }
+
+    return tx.article.findUnique({ where: { id }, include: { etats: true, etapes: true } });
+  });
+
+  res.json({ article: serialiserArticle(article as never), modifications: traces.length });
+});
+
+router.post("/base/articles", validateBody(articleSchema.extend({ id: z.string().min(1).max(8) })), async (req, res) => {
+  await exigerResponsable(req);
+  const data = req.body as z.infer<typeof articleSchema> & { id: string };
+  const { etats, etapes, id, ...champs } = data;
+
+  const article = await prisma.$transaction(async (tx) => {
+    await tx.article.create({ data: { id, ...champs } });
+    if (etats?.length) await tx.articleEtat.createMany({ data: etats.map((e) => ({ ...e, articleId: id })) });
+    if (etapes?.length) {
+      for (const numero of [...new Set(etapes)]) {
+        const dernier = await tx.articleEtape.aggregate({
+          where: { etapeNumero: numero },
+          _max: { ordreDansEtape: true },
+        });
+        await tx.articleEtape.create({
+          data: { articleId: id, etapeNumero: numero, ordreDansEtape: (dernier._max.ordreDansEtape ?? 0) + 1 },
+        });
+      }
+    }
+    await tx.articleHistorique.create({
+      data: { articleId: id, champ: "creation", ancienneValeur: null, nouvelleValeur: champs.nom, auteurId: req.auth!.sub },
+    });
+    return tx.article.findUnique({ where: { id }, include: { etats: true, etapes: true } });
+  });
+
+  res.status(201).json({ article: serialiserArticle(article as never) });
+});
+
+const posteSchema = z.object({
+  libelle: z.string().min(1).max(255).optional(),
+  prix: z.number().min(0).max(10_000_000).optional(),
+  unite: uniteSchema.optional(),
+  remarque: z.string().max(5000).nullable().optional(),
+});
+
+router.put("/base/postes/:code", validateBody(posteSchema), async (req, res) => {
+  await exigerResponsable(req);
+  const code = req.params.code;
+  const existant = await prisma.posteAutomatique.findUnique({ where: { cfcCode: code } });
+  if (!existant) throw notFound(`Poste ${code} introuvable`);
+  const poste = await prisma.posteAutomatique.update({
+    where: { cfcCode: code },
+    data: req.body as z.infer<typeof posteSchema>,
+  });
+  res.json({ poste: { ...poste, prix: Number(poste.prix) } });
+});
+
 export default router;
+

@@ -619,3 +619,35 @@ export interface ApiNoeudCfc {
   niveau: number
   parentCode: string | null
 }
+
+/** Un article tel qu'on l'écrit : les états et les étapes en entier. */
+export interface ApiArticleEcrit {
+  cfcCode: string
+  nom: string
+  domaineRapport: string
+  groupeAlternatives: string | null
+  echafaudage: boolean
+  uniteEntretien: Unite
+  uniteRemplacement: Unite
+  baseQuantite: BaseQuantite
+  indicationQuantite: string | null
+  coefficient: number
+  noteDiagnostiqueur: string | null
+  articleLieId?: string | null
+  actif: boolean
+  etats: ApiArticleEtat[]
+  /** Numéros des étapes de visite, en cases à cochées. */
+  etapes: number[]
+}
+
+/** Une modification d'article, telle que l'historique la rend. */
+export interface ApiModificationArticle {
+  id: string
+  articleId: string
+  champ: string
+  ancienneValeur: string | null
+  nouvelleValeur: string | null
+  /** null = écrit par un import, pas par une personne. */
+  auteur: string | null
+  date: string
+}

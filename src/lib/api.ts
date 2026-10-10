@@ -3,7 +3,7 @@ import type {
   ApiCatalogItem, ApiCfcEntry, ApiDiagnostic, ApiDiagnosticItem,
   ApiProject, ApiOperation, ApiPlan, ApiEvent, AuthResponse,
   ApiVariant, ApiVariantLine, ElementState,
-  ApiBaseCfc, ApiNoeudCfc,
+  ApiArticle, ApiArticleEcrit, ApiBaseCfc, ApiModificationArticle, ApiNoeudCfc, ApiPosteAutomatique,
 } from './api-types'
 
 // En prod, l'app est servie par le même domaine que l'API -> requêtes same-origin
@@ -209,6 +209,21 @@ export const api = {
     /** La nomenclature CFC, servie à part car le diagnostic n'en a pas besoin. */
     baseNomenclature: () =>
       request<{ noeuds: ApiNoeudCfc[]; count: number }>('/api/cfc/base/nomenclature'),
+    /** Les modifications d'un article, la plus récente d'abord. */
+    historique: (id: string) =>
+      request<{ lignes: ApiModificationArticle[]; count: number }>(
+        `/api/cfc/base/articles/${encodeURIComponent(id)}/historique`),
+    /** Modifie un article de la base commune. Réservé aux responsables. */
+    updateArticle: (id: string, body: Partial<ApiArticleEcrit>) =>
+      request<{ article: ApiArticle; modifications: number }>(
+        `/api/cfc/base/articles/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+    /** Crée un article dans la base commune. */
+    createArticle: (body: ApiArticleEcrit & { id: string }) =>
+      request<{ article: ApiArticle }>('/api/cfc/base/articles', { method: 'POST', body }),
+    /** Modifie un poste automatique : son prix vaut pour tous les devis suivants. */
+    updatePoste: (code: string, body: { libelle?: string; prix?: number; remarque?: string | null }) =>
+      request<{ poste: ApiPosteAutomatique }>(
+        `/api/cfc/base/postes/${encodeURIComponent(code)}`, { method: 'PUT', body }),
   },
 
   projects: {
