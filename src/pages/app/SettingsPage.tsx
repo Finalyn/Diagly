@@ -25,7 +25,7 @@ import {
   AlertTriangle, Bell, BellRing, Building2, Check, ChevronLeft, ChevronRight, CircleUser,
   Loader2, LogOut, ShieldCheck, ShieldOff, SlidersHorizontal, User as UserIcon, Users,
 } from 'lucide-react'
-import { Badge, Button, Input, Select } from '@/components/ui'
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import { useIsMobile } from '@/lib/use-mobile'
@@ -78,15 +78,20 @@ export function SettingsPage() {
     profil: etatDuProfil(user ?? undefined),
     securite: etatDeLaSecurite(doubleAuth),
     notifications: { etat: 'complet', mention: null },
-    bureau: etatDuBureau(user?.preferences?.company),
+    // Même repli que le formulaire : la raison sociale peut encore venir du
+    // profil, et la pastille doit dire la même chose que la section.
+    bureau: etatDuBureau({
+      ...user?.preferences?.company,
+      name: user?.preferences?.company?.name || user?.companyName || '',
+    }),
     valeurs: { etat: 'complet', mention: null },
     compte: { etat: 'complet', mention: null },
   }
   const aRegler = SECTIONS.filter((s) => pastilles[s.id].etat !== 'complet')
 
   return (
-    <div className="mx-auto w-full max-w-5xl pb-10">
-      <div className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+    <div className="mx-auto max-w-5xl space-y-6 pb-10">
+      <div>
         <h1 className="text-xl font-bold">Réglages</h1>
         <p className="text-sm text-muted-foreground">
           {aRegler.length === 0
@@ -95,7 +100,7 @@ export function SettingsPage() {
         </p>
       </div>
 
-      <div className="gap-6 lg:grid lg:grid-cols-[232px_1fr]">
+      <div className="gap-6 lg:grid lg:grid-cols-[220px_1fr]">
         {(!isMobile || choisie === null) && (
           <Rail
             choisie={choisie}
@@ -106,7 +111,7 @@ export function SettingsPage() {
         )}
 
         {choisie !== null && (
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-5">
             {isMobile && (
               <button
                 onClick={() => choisir(null)}
@@ -139,25 +144,29 @@ function Rail({ choisie, pastilles, onChoisir, mobile }: {
   const bureau = user?.preferences?.company
   return (
     <nav className="lg:sticky lg:top-2 lg:self-start">
-      <div className="mb-3 flex items-center gap-3 rounded-2xl border border-black/[0.06] bg-card p-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-sm font-semibold text-white">
-          {initiales(user ?? {})}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold leading-tight">{nomAffiche(user ?? {})}</p>
-          <p className="truncate text-xs text-muted-foreground">{bureau?.name || user?.companyName || user?.email}</p>
-        </div>
-      </div>
+      {/* Sur grand écran, la barre latérale porte déjà l'identité juste en
+          dessous : la répéter ici ferait deux fois la même carte. */}
+      {mobile && (
+        <Card className="mb-3 flex items-center gap-3 p-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-sm font-semibold text-foreground">
+            {initiales(user ?? {})}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold leading-tight">{nomAffiche(user ?? {})}</p>
+            <p className="truncate text-xs text-muted-foreground">{bureau?.name || user?.companyName || user?.email}</p>
+          </div>
+        </Card>
+      )}
 
       <div className="space-y-4">
         {FAMILLES.map((famille) => (
           <div key={famille}>
             <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{famille}</p>
             <div className={cn(
-              'space-y-0.5',
+              'space-y-1',
               // Sur téléphone, la famille devient une carte : des rangées posées
               // sur le fond gris ne se lisent pas comme une liste à toucher.
-              mobile && 'space-y-0 divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.06] bg-card',
+              mobile && 'space-y-0 divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.06] bg-card shadow-[0_1px_2px_rgba(0,0,0,0.03),0_12px_32px_-16px_rgba(0,0,0,0.10)]',
             )}>
               {SECTIONS.filter((s) => s.famille === famille).map((s) => {
                 const p = pastilles[s.id]
@@ -168,13 +177,15 @@ function Rail({ choisie, pastilles, onChoisir, mobile }: {
                     onClick={() => onChoisir(s.id)}
                     className={cn(
                       'flex w-full items-center gap-2.5 text-left transition-colors',
-                      mobile ? 'px-3 py-3' : 'rounded-xl px-2.5 py-2',
-                      on && !mobile ? 'bg-blue-50 text-blue-700' : 'hover:bg-black/[0.03]',
+                      mobile ? 'px-3 py-3' : 'rounded-2xl px-3 py-2.5',
+                      on && !mobile
+                        ? 'border border-blue-100 bg-blue-50 text-blue-700'
+                        : 'text-neutral-600 hover:bg-black/[0.03] hover:text-neutral-900',
                     )}
                   >
-                    <s.icone className={cn('h-4 w-4 shrink-0', on ? 'text-blue-700' : 'text-muted-foreground')} />
+                    <s.icone className="h-4 w-4 shrink-0" />
                     <span className="min-w-0 flex-1">
-                      <span className={cn('block truncate text-sm', on ? 'font-semibold' : 'font-medium')}>{s.label}</span>
+                      <span className={cn('block truncate text-sm', on && !mobile ? 'font-semibold' : 'font-medium')}>{s.label}</span>
                       {(p.mention || mobile) && (
                         <span className={cn('block truncate text-[11px]',
                           p.etat === 'incomplet' ? 'text-red-600'
@@ -210,16 +221,16 @@ function Bloc({ titre, aide, children, action }: {
   action?: React.ReactNode
 }) {
   return (
-    <section className="mb-5 overflow-hidden rounded-2xl border border-black/[0.06] bg-card">
-      <header className="flex items-start justify-between gap-3 border-b border-black/[0.06] px-4 py-3">
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0 p-5 pb-3">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold">{titre}</h2>
-          {aide && <p className="mt-0.5 text-xs text-muted-foreground">{aide}</p>}
+          <CardTitle className="text-base">{titre}</CardTitle>
+          {aide && <p className="mt-1 text-sm text-muted-foreground">{aide}</p>}
         </div>
         {action}
-      </header>
-      <div className="p-4">{children}</div>
-    </section>
+      </CardHeader>
+      <CardContent className="p-5 pt-0">{children}</CardContent>
+    </Card>
   )
 }
 
@@ -257,7 +268,7 @@ function BarreEnregistrement({ modifie, enCours, erreur, onAnnuler, onEnregistre
 }) {
   if (!modifie && !erreur) return null
   return (
-    <div className="sticky bottom-2 z-10 mb-5 rounded-2xl border border-black/[0.08] bg-card/95 p-3 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)] backdrop-blur">
+    <div className="sticky bottom-2 z-10 rounded-2xl border border-black/[0.08] bg-card/95 p-3 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)] backdrop-blur">
       {erreur && <div className="mb-2"><Erreur message={erreur} /></div>}
       {modifie && (
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -294,7 +305,7 @@ function Bascule({ actif, onChange, titre, aide, occupe, indisponible }: {
         disabled={occupe || indisponible}
         aria-pressed={actif}
         className={cn('relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-40',
-          actif ? 'bg-primary' : 'bg-neutral-200')}
+          actif ? 'bg-blue-600' : 'bg-neutral-200')}
       >
         <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all',
           actif ? 'left-[22px]' : 'left-0.5')} />
@@ -351,7 +362,7 @@ function SectionProfil() {
     <>
       <Bloc titre="Profil" aide="Votre nom signe les rapports que vous éditez.">
         <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-base font-semibold text-white">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-base font-semibold text-foreground">
             {initiales({ firstName: f.firstName, lastName: f.lastName, email: user?.email })}
           </div>
           <div className="min-w-0">
@@ -672,13 +683,13 @@ function NotificationsPoussees() {
         occupe={occupe || etat === 'chargement'}
         indisponible={indisponible}
         onChange={basculer}
-        titre={<span className="flex items-center gap-1.5"><BellRing className="h-4 w-4 text-primary" />Notifications poussées</span>}
+        titre={<span className="flex items-center gap-1.5"><BellRing className="h-4 w-4 text-blue-600" />Notifications poussées</span>}
         aide={aide}
       />
       {(etat === 'subscribed' || message) && (
         <div className="flex items-center gap-3 pb-1">
           {etat === 'subscribed' && (
-            <button onClick={essai} disabled={occupe} className="text-xs font-medium text-primary hover:underline">
+            <button onClick={essai} disabled={occupe} className="text-xs font-medium text-blue-700 hover:underline">
               Envoyer un essai
             </button>
           )}
@@ -777,7 +788,7 @@ function SectionBureau() {
             <p className="text-sm font-medium">Logo</p>
             <p className="text-xs text-muted-foreground">PNG ou JPG. Réduit automatiquement à 320 pixels.</p>
             <div className="mt-1 flex flex-wrap items-center gap-3">
-              <label className="cursor-pointer text-sm font-medium text-primary hover:underline">
+              <label className="cursor-pointer text-sm font-medium text-blue-700 hover:underline">
                 <input type="file" accept="image/*" onChange={choisirLogo} className="hidden" />
                 {f.logo ? 'Changer' : 'Importer'}
               </label>
@@ -995,7 +1006,7 @@ function SectionCompte() {
         <dl className="divide-y divide-black/[0.06] text-sm">
           <Ligne terme="Adresse de connexion">{user?.email}</Ligne>
           <Ligne terme="Rôle">{ROLES[user?.role ?? ''] ?? user?.role ?? 'Non précisé'}</Ligne>
-          <Ligne terme="Plan"><Badge className="bg-neutral-900 text-white">Diagly Pro</Badge></Ligne>
+          <Ligne terme="Plan"><Badge className="border border-blue-100 bg-blue-50 text-blue-700">Diagly Pro</Badge></Ligne>
           <Ligne terme="Compte ouvert le">
             {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('fr-CH', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Inconnu'}
           </Ligne>
@@ -1031,23 +1042,23 @@ function SectionCompte() {
         </Button>
       </Bloc>
 
-      <section className="mb-5 overflow-hidden rounded-2xl border border-red-200 bg-red-50/50">
-        <header className="border-b border-red-200 px-4 py-3">
-          <h2 className="text-sm font-semibold text-red-800">Fermer le compte</h2>
-          <p className="mt-0.5 text-xs text-red-700">
+      <Card className="border-red-200 bg-red-50/40">
+        <CardHeader className="p-5 pb-3">
+          <CardTitle className="text-base text-red-800">Fermer le compte</CardTitle>
+          <p className="text-sm text-red-700">
             La fermeture supprime vos diagnostics, vos photos et vos rapports, sans retour possible.
           </p>
-        </header>
-        <div className="p-4">
-          <p className="mb-3 text-xs text-muted-foreground">
+        </CardHeader>
+        <CardContent className="p-5 pt-0">
+          <p className="mb-3 text-sm text-muted-foreground">
             Elle passe par le support, qui vérifie d'abord qu'aucun dossier partagé n'en dépend et vous
             laisse exporter ce que vous voulez garder.
           </p>
           <Button variant="outline" size="sm" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => navigate('/app/support/new')}>
             Demander la fermeture
           </Button>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
     </>
   )
 }
