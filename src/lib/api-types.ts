@@ -1,3 +1,5 @@
+import type { BaseQuantite, EtatArticle, Unite } from './base-cfc/normaliser'
+
 // Types partagés entre frontend et API. Doivent rester en phase avec server/prisma/schema.prisma.
 
 import type { Localisation } from './localisation'
@@ -222,6 +224,16 @@ export interface ApiDiagnosticItem {
   cfcCode: string
   cfcLabel: string
   catalogItemId: number | null
+  /**
+   * Article de la base CFC v3, et étape de visite où il a été relevé.
+   *
+   * Les deux ensemble identifient le relevé : la peinture des murs relevée dans
+   * la cage d'escalier et dans les appartements fait deux relevés indépendants.
+   * null sur les relevés d'avant la bascule, et sur ceux dont l'article n'a pas
+   * de repreneur dans la base v3 : ils restent visibles par leur catalogItemId.
+   */
+  articleId?: string | null
+  etapeNumero?: number | null
   /** Communs / logements pour les ouvrages intérieurs ; null pour tous les autres. */
   localisation?: Localisation | null
   state: ElementState | null
@@ -533,4 +545,77 @@ export interface ApiVariant {
   lines: ApiVariantLine[]
   createdAt: string
   updatedAt: string
+}
+
+// ---------- Base CFC v3 ----------
+//
+// Le catalogue du bureau, commun a tous les diagnostiqueurs. Les prix arrivent
+// en nombres, contrairement a l'ancien catalogue qui les envoyait en chaines.
+
+export interface ApiArticleEtat {
+  etat: EtatArticle
+  travaux: string | null
+  /** CHF HT par unite. Pour l'etat moyen, la part fixe du prix. */
+  prix: number | null
+  partPrixMauvais: number | null
+  unite: Unite
+}
+
+export interface ApiArticleEtape {
+  articleId: string
+  etapeNumero: number
+  /** Rang dans l'etape, qui suit le code CFC. */
+  ordreDansEtape: number
+}
+
+export interface ApiArticle {
+  id: string
+  cfcCode: string
+  nom: string
+  /** Chapitre du rapport client. */
+  domaineRapport: string
+  groupeAlternatives: string | null
+  echafaudage: boolean
+  uniteEntretien: Unite
+  uniteRemplacement: Unite
+  baseQuantite: BaseQuantite
+  indicationQuantite: string | null
+  coefficient: number
+  /** Consigne interne, jamais imprimee dans le rapport. */
+  noteDiagnostiqueur: string | null
+  articleLieId: string | null
+  actif: boolean
+  ligneOrigine: string | null
+  etats: ApiArticleEtat[]
+  etapes: ApiArticleEtape[]
+}
+
+export interface ApiEtapeVisite {
+  numero: number
+  nom: string
+  zone: string
+}
+
+export interface ApiPosteAutomatique {
+  cfcCode: string
+  libelle: string
+  declencheur: "toujours" | "echafaudage_facade" | "communs_mauvais"
+  unite: Unite
+  prix: number
+  regleQuantite: "surface_echafaudee" | "par_cage_escalier" | "surface_plancher" | "forfait"
+  remarque: string | null
+}
+
+export interface ApiBaseCfc {
+  articles: ApiArticle[]
+  etapes: ApiEtapeVisite[]
+  postes: ApiPosteAutomatique[]
+  count: number
+}
+
+export interface ApiNoeudCfc {
+  code: string
+  libelle: string
+  niveau: number
+  parentCode: string | null
 }

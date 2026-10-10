@@ -91,6 +91,11 @@ const itemBaseSchema = z.object({
   cfcCode: z.string().min(1).max(10),
   cfcLabel: z.string().min(1).max(255),
   catalogItemId: z.number().int().positive().optional(),
+  /// Article de la base v3 et etape de visite. Ensemble, ils identifient le
+  /// releve : le meme article releve dans deux etapes fait deux releves
+  /// independants, avec deux etats et deux series de photos.
+  articleId: z.string().min(1).max(8).nullable().optional(),
+  etapeNumero: z.number().int().min(1).max(20).nullable().optional(),
   /// Communs / logements : la note generale du classeur veut que les articles du
   /// chapitre interieur se relevent des deux cotes, avec des choix differents.
   localisation: z.nativeEnum(Localisation).nullable().optional(),

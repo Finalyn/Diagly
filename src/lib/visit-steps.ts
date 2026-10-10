@@ -14,6 +14,10 @@
 import type { ApiCatalogItem, BuildingType } from './api-types'
 import { groupItemsByCategory, type CategoryGroup } from './cfc'
 import { estArticleInterieur, rangCategorieInterieure, type Localisation } from './localisation'
+// Les intitules des surfaces principales vivent desormais avec la base v3, qui
+// tient les etapes de visite. Deux tables qui disent la meme chose finissent par
+// se contredire.
+import { SURFACES_PRINCIPALES } from './base-cfc/catalogue'
 
 export const VISIT_STEPS = [
   'Façade',
@@ -24,27 +28,6 @@ export const VISIT_STEPS = [
   'Abords et extérieurs',
 ] as const
 
-/**
- * Nom de l'étape des surfaces principales, selon l'affectation du bâtiment.
- *
- * Un diagnostic ne porte pas que sur du logement. Devant une école, « Appartements »
- * n'a aucun sens : on relève des salles de classe. Le contenu de l'étape ne change
- * pas — ce sont les mêmes revêtements, les mêmes portes, les mêmes sanitaires — mais
- * son intitulé doit désigner ce qu'on a devant soi, sinon le diagnostiqueur hésite
- * à l'ouvrir.
- */
-const SURFACES_PRINCIPALES: Record<BuildingType, string> = {
-  LOGEMENT: 'Appartements',
-  VILLA: 'Pièces du logement',
-  CHALET: 'Pièces du logement',
-  SCOLAIRE: 'Salles de classe',
-  BUREAU: 'Bureaux',
-  ADMINISTRATIF: 'Bureaux',
-  INDUSTRIEL: 'Halles et ateliers',
-  HOTEL: 'Chambres',
-  COMMERCIAL: 'Surfaces de vente',
-  AUTRE: 'Surfaces principales',
-}
 
 /** Rang, dans VISIT_STEPS, de l'étape dont l'intitulé suit l'affectation. */
 const RANG_SURFACES = VISIT_STEPS.indexOf('Appartements') + 1

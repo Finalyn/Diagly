@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { validateQuery, validateBody } from "../middlewares/validate.js";
@@ -185,6 +186,66 @@ router.get("/categories", async (req, res) => {
     orderBy: { displayOrder: "asc" },
   });
   res.json({ categories: rows.map((r) => r.category).filter(Boolean) });
+});
+
+// ---------- Base CFC v3 (catalogue commun, lu par le diagnostic et /app/cfc) ----------
+//
+// Le catalogue d'origine se personnalisait par utilisateur. Celui-ci est commun :
+// c'est la base du bureau, tenue par Chloe, et deux diagnostiqueurs doivent
+// chiffrer le meme ouvrage au meme prix. Les prix partent donc en nombres et non
+// en chaines, parce que les modules de calcul du front travaillent sur des
+// nombres et qu'une conversion oubliee donne une concatenation silencieuse.
+
+const nombre = (v: Prisma.Decimal | null) => (v === null ? null : Number(v));
+
+/** Un article avec ses six etats et ses etapes de visite. */
+function serialiserArticle(a: {
+  etats: { etat: string; travaux: string | null; prix: Prisma.Decimal | null; partPrixMauvais: number | null; unite: string }[];
+  etapes: { etapeNumero: number; ordreDansEtape: number }[];
+} & Record<string, unknown>) {
+  const { etats, etapes, creeLe, modifieLe, ...reste } = a;
+  void creeLe;
+  void modifieLe;
+  return {
+    ...reste,
+    etats: etats.map((e) => ({ ...e, prix: nombre(e.prix) })),
+    etapes: [...etapes].sort((x, y) => x.etapeNumero - y.etapeNumero),
+  };
+}
+
+/**
+ * Tout ce dont un diagnostic a besoin, en un appel.
+ *
+ * Les articles desactives sont servis aussi : un releve existant peut pointer
+ * sur l'un d'eux et doit continuer de s'afficher. C'est le front qui ne les
+ * propose plus a la visite, pas le serveur qui les cache.
+ */
+router.get("/base", async (_req, res) => {
+  const [articles, etapes, postes] = await Promise.all([
+    prisma.article.findMany({
+      include: { etats: true, etapes: true },
+      orderBy: { cfcCode: "asc" },
+    }),
+    prisma.etapeVisite.findMany({ orderBy: { numero: "asc" } }),
+    prisma.posteAutomatique.findMany({ orderBy: { cfcCode: "asc" } }),
+  ]);
+  res.json({
+    articles: articles.map(serialiserArticle),
+    etapes,
+    postes: postes.map((p) => ({ ...p, prix: Number(p.prix) })),
+    count: articles.length,
+  });
+});
+
+/**
+ * La nomenclature CFC complete, servie a part.
+ *
+ * Six cent quarante-sept lignes dont le diagnostic n'a pas besoin : seule
+ * l'arborescence de /app/cfc et les libelles du devis les demandent.
+ */
+router.get("/base/nomenclature", async (_req, res) => {
+  const noeuds = await prisma.cfcNomenclature.findMany({ orderBy: { code: "asc" } });
+  res.json({ noeuds, count: noeuds.length });
 });
 
 export default router;

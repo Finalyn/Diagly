@@ -3,6 +3,7 @@ import type {
   ApiCatalogItem, ApiCfcEntry, ApiDiagnostic, ApiDiagnosticItem,
   ApiProject, ApiOperation, ApiPlan, ApiEvent, AuthResponse,
   ApiVariant, ApiVariantLine, ElementState,
+  ApiBaseCfc, ApiNoeudCfc,
 } from './api-types'
 
 // En prod, l'app est servie par le même domaine que l'API -> requêtes same-origin
@@ -203,6 +204,11 @@ export const api = {
     // Reinitialise tout le catalogue de l'utilisateur au defaut (supprime ses personnalisations).
     resetToDefault: () =>
       request<{ reset: number }>('/api/cfc/items/reset', { method: 'POST' }),
+    /** La base v3 entière : articles, états, étapes de visite, postes automatiques. */
+    base: () => request<ApiBaseCfc>('/api/cfc/base'),
+    /** La nomenclature CFC, servie à part car le diagnostic n'en a pas besoin. */
+    baseNomenclature: () =>
+      request<{ noeuds: ApiNoeudCfc[]; count: number }>('/api/cfc/base/nomenclature'),
   },
 
   projects: {
