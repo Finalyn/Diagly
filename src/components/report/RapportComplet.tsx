@@ -132,21 +132,42 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, base,
   /** Le nom de l'étape de chaque relevé, qui distingue deux relevés du même ouvrage. */
   const nomDEtape = useMemo(() => new Map(base.etapes.map((e) => [e.numero, e.nom])), [base.etapes])
 
-  // Chapitres de l'état : mêmes regroupements que le rapport de l'existant, pour que
-  // les deux documents se lisent dans le même ordre.
+  /**
+   * Les chapitres de l'état de l'existant, dans l'ordre de la visite.
+   *
+   * Le rapport raconte le tour du bâtiment : on commence dehors par la façade,
+   * on entre, on monte, on ressort. Le devis, lui, suivra le code CFC, parce
+   * que c'est ainsi qu'une régie compare deux offres. Confondre les deux ordres
+   * donne un rapport qui ne ressemble ni à la visite ni au chiffrage.
+   *
+   * Les relevés d'avant la bascule n'ont pas d'étape : ils se rangent par les
+   * anciens chapitres CFC, à la suite, plutôt que de disparaître.
+   */
   const chapitres = useMemo(() => {
     const reste = new Set(items.map((i) => i.id))
-    const sortis = CHAPITRES.map((ch) => {
+    const parEtape = [...base.etapes]
+      .sort((a, b) => a.numero - b.numero)
+      .map((etape) => {
+        const dedans = items
+          .filter((i) => i.etapeNumero === etape.numero)
+          .sort((a, b) => (a.cfcCode ?? '').localeCompare(b.cfcCode ?? '', undefined, { numeric: true }))
+        for (const i of dedans) reste.delete(i.id)
+        return { titre: etape.nom, items: dedans }
+      })
+
+    const anciens = CHAPITRES.map((ch) => {
       const dedans = items
-        .filter((i) => ch.groupes.includes(cfcGroupCode(i.cfcCode) ?? ''))
+        .filter((i) => reste.has(i.id) && ch.groupes.includes(cfcGroupCode(i.cfcCode) ?? ''))
         .sort((a, b) => (a.cfcCode ?? '').localeCompare(b.cfcCode ?? '', undefined, { numeric: true }))
       for (const i of dedans) reste.delete(i.id)
       return { titre: ch.titre, items: dedans }
     })
+
     const orphelins = items.filter((i) => reste.has(i.id))
-    if (orphelins.length) sortis.push({ titre: 'Divers', items: orphelins })
-    return sortis.filter((c) => c.items.length > 0)
-  }, [items])
+    const tous = [...parEtape, ...anciens]
+    if (orphelins.length) tous.push({ titre: 'Divers', items: orphelins })
+    return tous.filter((c) => c.items.length > 0)
+  }, [items, base.etapes])
 
   const devis = useMemo(
     () => buildDevis(items, labels, base, {
@@ -983,11 +1004,13 @@ function FicheOuvrage({ it, constat, article, etape, yearBuilt }: {
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <p className="font-semibold">
           {it.cfcLabel}
-          {/* Le même revêtement se relève dans la cage et dans les logements :
-              le rapport doit dire lequel des deux il décrit. */}
-          {(etape || it.localisation) && (
+          {/* Le même revêtement se relève dans la cage et dans les logements.
+              Quand le chapitre porte déjà le nom de l'étape, le redire à chaque
+              ligne alourdit sans rien apprendre ; pour un relevé d'avant la
+              bascule, qui se range par code CFC, la mention reste nécessaire. */}
+          {!etape && it.localisation && (
             <span className="ml-1.5 font-normal text-muted-foreground">
-              ({etape ?? LIBELLE_LOCALISATION[it.localisation!].toLowerCase()})
+              ({LIBELLE_LOCALISATION[it.localisation].toLowerCase()})
             </span>
           )}
           <span className="ml-2 font-mono font-normal text-muted-foreground">{it.cfcCode}</span>
