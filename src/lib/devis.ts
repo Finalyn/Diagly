@@ -325,7 +325,7 @@ export function buildDevis(
   }
 
   const ht = blocs.reduce((s, b) => s + b.ht, 0)
-  const reglesAppliquees = auto.map((l) => `CFC ${l.cfcCode} — ${l.libelle} : ${l.remarque}`)
+  const reglesAppliquees = auto.map((l) => `CFC ${l.cfcCode}, ${l.libelle} : ${l.remarque}`)
 
   return { blocs, ht, cascade: cascadeDe(ht, honoraryPct, reservePct), reglesAppliquees }
 }
