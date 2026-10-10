@@ -147,6 +147,9 @@ router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
       cfcCode: data.cfcCode,
       cfcLabel: data.cfcLabel,
       catalogItemId: data.catalogItemId,
+      // L'article de la base v3 et l'etape : ensemble, ils identifient le releve.
+      articleId: data.articleId,
+      etapeNumero: data.etapeNumero,
       localisation: data.localisation,
       state: data.state,
       priority: data.priority,

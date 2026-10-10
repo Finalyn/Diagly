@@ -1,7 +1,7 @@
 // Calculs automatiques d'un élément de diagnostic : le diagnostiqueur ne saisit
 // que l'état (+ photo) ; travaux, priorité, quantité et coût sont dérivés.
 
-import type { ApiCatalogItem, ElementState, Priority } from './api-types'
+import type { ElementState, Priority } from './api-types'
 import { computeProjectMetrics, type ProjectGeometry } from './formulas'
 
 /** Priorité déduite de l'état (Mauvais = urgent). Modifiable à la main. */
@@ -40,15 +40,30 @@ export const HYPOTHESES = {
   ],
 } as const
 
-/** Convertit un prix catalogue ("45", "1'234.50", "12,5") en nombre. null si c'est une formule/texte. */
-export function priceToNumber(s: string | null | undefined): number | undefined {
-  if (!s) return undefined
+/**
+ * Prix catalogue en nombre. undefined si c'est une formule ou un texte.
+ *
+ * L'ancien catalogue stockait ses prix en chaines ("45", "1'234.50", "12,5"),
+ * la base v3 les envoie en nombres. Les deux passent ici, de sorte que la
+ * couche de calcul serve les deux catalogues pendant la bascule.
+ */
+export type PrixCatalogue = string | number | null | undefined
+
+export function priceToNumber(s: PrixCatalogue): number | undefined {
+  if (s === null || s === undefined || s === '') return undefined
+  if (typeof s === 'number') return Number.isFinite(s) ? s : undefined
   const c = String(s).replace(/['’\s]/g, '').replace(',', '.')
   return /^[0-9]+(\.[0-9]+)?$/.test(c) ? parseFloat(c) : undefined
 }
 
+/** Les quatre textes de travaux, seule chose dont workForState a besoin. */
+export type TravauxParEtat = Record<'workTbe' | 'workBon' | 'workMoyen' | 'workMauvais', string | null>
+
+/** Les quatre prix, seule chose dont priceForState et computeCost ont besoin. */
+export type PrixParEtat = Record<'priceTbe' | 'priceBon' | 'priceMoyen' | 'priceMauvais', PrixCatalogue>
+
 /** Travaux suggérés pour un état donné. */
-export function workForState(item: ApiCatalogItem, state: ElementState): string | null {
+export function workForState(item: TravauxParEtat, state: ElementState): string | null {
   switch (state) {
     case 'TRES_BON': return item.workTbe
     case 'BON':      return item.workBon
@@ -58,7 +73,7 @@ export function workForState(item: ApiCatalogItem, state: ElementState): string 
 }
 
 /** Prix unitaire (string catalogue) pour un état. */
-export function priceForState(item: ApiCatalogItem, state: ElementState): string | null {
+export function priceForState(item: PrixParEtat, state: ElementState): PrixCatalogue {
   switch (state) {
     case 'TRES_BON': return item.priceTbe
     case 'BON':      return item.priceBon
@@ -503,14 +518,14 @@ export function priceBasisShort(): string {
 }
 
 /** Prix unitaire réellement appliqué = prix catalogue × coefficient marché. */
-export function appliedUnitPrice(price: string | null | undefined): number | undefined {
+export function appliedUnitPrice(price: PrixCatalogue): number | undefined {
   const unit = priceToNumber(price)
   return unit == null ? undefined : Math.round(unit * market.coeff * 100) / 100
 }
 
 /** Coût estimé = prix unitaire de l'état × quantité × coefficient marché (si le prix est numérique). */
 export function computeCost(
-  catalog: ApiCatalogItem | null | undefined,
+  catalog: PrixParEtat | null | undefined,
   state: ElementState,
   quantity: number | null | undefined,
 ): number | undefined {
@@ -522,7 +537,7 @@ export function computeCost(
 
 /** Coût générique = prix unitaire catalogue (string) × quantité × coefficient marché. Sert à l'amélioration / remise aux normes. */
 export function computeCostFromPrice(
-  price: string | null | undefined,
+  price: PrixCatalogue,
   quantity: number | null | undefined,
 ): number | undefined {
   if (!quantity) return undefined

@@ -133,3 +133,42 @@ describe('ce que l’alerte dit', () => {
     expect(dit([releve('a', 1, 60), releve('b', 2, 40)])).toContain('réparti sur 2 types')
   })
 })
+
+describe('les parts se comptent par étape', () => {
+  const articles = [
+    { id: 'A116@2', surfaceGroup: 'Revêtement de sol' },
+    { id: 'A117@2', surfaceGroup: 'Revêtement de sol' },
+    { id: 'A116@5', surfaceGroup: 'Revêtement de sol' },
+  ]
+  const releves = [
+    { id: 'r1', cfcLabel: 'Carrelage', cleArticle: 'A116@2', etapeNumero: 2, sharePct: 60 },
+    { id: 'r2', cfcLabel: 'Parquet', cleArticle: 'A117@2', etapeNumero: 2, sharePct: 40 },
+    { id: 'r3', cfcLabel: 'Carrelage', cleArticle: 'A116@5', etapeNumero: 5, sharePct: 100 },
+  ]
+
+  it('sépare le même groupe relevé dans deux étapes', () => {
+    const groupes = groupesDuReleve(releves, articles)
+    expect(groupes.map((g) => g.cle)).toEqual(['Revêtement de sol@2', 'Revêtement de sol@5'])
+    expect(groupes.map((g) => g.nom)).toEqual(['Revêtement de sol', 'Revêtement de sol'])
+  })
+
+  it('fait ses cent pour cent dans chaque étape, sans les mélanger', () => {
+    const groupes = groupesDuReleve(releves, articles)
+    expect(groupes.map((g) => g.total)).toEqual([100, 100])
+    expect(groupes.every((g) => g.complet)).toBe(true)
+  })
+
+  it('signale l’étape où la répartition ne tient pas', () => {
+    const faux = releves.map((r) => (r.id === 'r2' ? { ...r, sharePct: 10 } : r))
+    const incomplets = groupesIncomplets(groupesDuReleve(faux, articles))
+    expect(incomplets.map((g) => [g.etapeNumero, g.total])).toEqual([[2, 70]])
+  })
+
+  it('rapproche encore les relevés de l’ancien catalogue par leur identifiant', () => {
+    const anciens = [{ id: 'r9', cfcLabel: 'Crépi', catalogItemId: 42, sharePct: 100 }]
+    const groupes = groupesDuReleve(anciens, [{ id: 42, surfaceGroup: 'Revêtement de façade' }])
+    expect(groupes).toHaveLength(1)
+    expect(groupes[0].etapeNumero).toBeNull()
+    expect(groupes[0].cle).toBe('Revêtement de façade')
+  })
+})

@@ -20,7 +20,7 @@
 import type {
   ApiArticle, ApiArticleEtat, ApiBaseCfc, ApiDiagnosticItem, ApiEtapeVisite, BuildingType,
 } from '../api-types'
-import type { EtatArticle } from './normaliser'
+import { cle, type EtatArticle } from './normaliser'
 import { cleDuReleve } from './etapes'
 
 /**
@@ -58,6 +58,8 @@ export interface LigneDeVisite {
   cle: string
   article: ApiArticle
   etapeNumero: number
+  /** Zone de l'étape : Extérieur, Communs, Logements, Bâtiment entier. */
+  zone: string
   ordreDansEtape: number
   /** Le relevé existant, ou null s'il reste à faire. */
   releve: ApiDiagnosticItem | null
@@ -126,7 +128,10 @@ export function parcoursDuDiagnostic(
         const cle = cleDuReleve(article.id, etape.numero)
         const releve = parCle.get(cle) ?? null
         if (releve) places.add(releve.id)
-        lignes.push({ cle, article, etapeNumero: etape.numero, ordreDansEtape: lien.ordreDansEtape, releve })
+        lignes.push({
+          cle, article, etapeNumero: etape.numero, zone: etape.zone,
+          ordreDansEtape: lien.ordreDansEtape, releve,
+        })
       }
       lignes.sort((a, b) => a.ordreDansEtape - b.ordreDansEtape || a.article.id.localeCompare(b.article.id))
 
@@ -191,4 +196,54 @@ export function etatsRenseignes(article: ApiArticle): ApiArticleEtat[] {
 /** Index par identifiant, pour retrouver l'article d'un relevé. */
 export function indexDesArticles(articles: ApiArticle[]): Map<string, ApiArticle> {
   return new Map(articles.map((a) => [a.id, a]))
+}
+
+/**
+ * Localisation au sens de l'ancien relevé, déduite de la zone de l'étape.
+ *
+ * Le rapport et le devis distinguent encore les communs des logements par ce
+ * champ, pour écrire « peinture des murs, communs ». La zone de l'étape dit la
+ * même chose, en mieux : on la traduit tant que les deux coexistent, de sorte
+ * qu'un relevé fait dans la nouvelle base garde son suffixe au devis.
+ */
+export function localisationDeLaZone(zone: string): 'COMMUNS' | 'LOGEMENTS' | null {
+  if (zone === 'Communs') return 'COMMUNS'
+  if (zone === 'Logements') return 'LOGEMENTS'
+  return null
+}
+
+/**
+ * Le parcours réduit à ce qui répond à une recherche.
+ *
+ * Insensible aux accents et à la casse, sur le code CFC, le nom de l'article et
+ * le chapitre du rapport : on tape « facade » sans cédille et « crepi » sans
+ * accent, parce qu'on cherche d'une main en tenant une tablette.
+ *
+ * Les étapes et les chapitres vides disparaissent : une recherche qui laisse
+ * sept titres d'étape vides ne montre pas ses résultats, elle les cache.
+ */
+export function filtrerLeParcours(etapes: EtapeDuDiagnostic[], recherche: string): EtapeDuDiagnostic[] {
+  const q = cle(recherche.trim())
+  if (!q) return etapes
+  const correspond = (l: LigneDeVisite) =>
+    cle(l.article.cfcCode).includes(q)
+    || cle(l.article.nom).includes(q)
+    || cle(l.article.domaineRapport).includes(q)
+
+  return etapes
+    .map((e) => {
+      const domaines = e.domaines
+        .map((d) => {
+          const lignes = d.lignes.filter(correspond)
+          return { ...d, lignes, attendus: lignes.length, faits: lignes.filter((l) => releveFait(l.releve)).length }
+        })
+        .filter((d) => d.lignes.length > 0)
+      const lignes = domaines.flatMap((d) => d.lignes)
+      return {
+        ...e, domaines,
+        attendus: lignes.length,
+        faits: lignes.filter((l) => releveFait(l.releve)).length,
+      }
+    })
+    .filter((e) => e.domaines.length > 0)
 }

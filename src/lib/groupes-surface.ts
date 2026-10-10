@@ -20,14 +20,29 @@
 export interface ReleveDuGroupe {
   id: string
   cfcLabel: string
-  catalogItemId: number | null
+  catalogItemId?: number | null
+  /**
+   * L'article de la base v3 dans son étape (« A015@1 »), quand le relevé en
+   * vient. C'est la clé de rapprochement avec le catalogue, à la place de
+   * l'identifiant numérique de l'ancien.
+   */
+  cleArticle?: string | null
+  /**
+   * Étape où le relevé a été fait.
+   *
+   * Les parts se comptent par étape : les revêtements de sol de la cage
+   * d'escalier totalisent cent pour cent, ceux des appartements aussi, et les
+   * deux ne se mélangent pas puisque ce sont deux surfaces différentes.
+   */
+  etapeNumero?: number | null
   /** Part de la surface du groupe, en pourcent. null = pas encore répartie. */
   sharePct?: number | null
 }
 
 /** Ce qu'il faut savoir d'un article du catalogue. */
 export interface ArticleDuGroupe {
-  id: number
+  /** Numérique dans l'ancien catalogue, « A015@1 » dans la base v3. */
+  id: number | string
   /** Nom du groupe de surface, ou null si l'article n'est pas alternatif. */
   surfaceGroup?: string | null
 }
@@ -35,7 +50,11 @@ export interface ArticleDuGroupe {
 export type RaisonIncomplet = 'parts-manquantes' | 'somme'
 
 export interface GroupeSurface {
+  /** Clé unique : le nom du groupe, et l'étape quand il y en a une. */
+  cle: string
+  /** Nom affiché. Deux étapes peuvent le porter, chacune avec ses parts. */
   nom: string
+  etapeNumero: number | null
   membres: ReleveDuGroupe[]
   /** Somme des parts renseignées, en pourcent. */
   total: number
@@ -70,19 +89,22 @@ export function groupesDuReleve(
   releves: ReleveDuGroupe[],
   articles: ArticleDuGroupe[],
 ): GroupeSurface[] {
-  const parId = new Map(articles.map((a) => [a.id, a]))
-  const parNom = new Map<string, ReleveDuGroupe[]>()
+  const parId = new Map<number | string, ArticleDuGroupe>(articles.map((a) => [a.id, a]))
+  const paquets = new Map<string, { nom: string; etapeNumero: number | null; membres: ReleveDuGroupe[] }>()
   for (const r of releves) {
-    if (r.catalogItemId == null) continue
-    const nom = parId.get(r.catalogItemId)?.surfaceGroup
+    const identite = r.cleArticle ?? r.catalogItemId
+    if (identite == null) continue
+    const nom = parId.get(identite)?.surfaceGroup
     if (!nom) continue
-    if (!parNom.has(nom)) parNom.set(nom, [])
-    parNom.get(nom)!.push(r)
+    const etapeNumero = r.etapeNumero ?? null
+    const cle = etapeNumero === null ? nom : `${nom}@${etapeNumero}`
+    if (!paquets.has(cle)) paquets.set(cle, { nom, etapeNumero, membres: [] })
+    paquets.get(cle)!.membres.push(r)
   }
 
-  return Array.from(parNom.entries())
-    .sort((a, b) => a[0].localeCompare(b[0], 'fr'))
-    .map(([nom, membres]) => {
+  return Array.from(paquets.entries())
+    .sort((a, b) => a[1].nom.localeCompare(b[1].nom, 'fr') || (a[1].etapeNumero ?? 0) - (b[1].etapeNumero ?? 0))
+    .map(([cle, { nom, etapeNumero, membres }]) => {
       const parts = membres.map((m) => partEffective(m, membres.length))
       const sansPart = parts.filter((p) => p == null).length
       const total = parts.reduce((s: number, p) => s + (p ?? 0), 0)
@@ -90,7 +112,9 @@ export function groupesDuReleve(
       // erreur de saisie : on ne bloque pas un rapport là-dessus.
       const somme = Math.abs(total - 100) < 0.01
       return {
+        cle,
         nom,
+        etapeNumero,
         membres,
         total: Math.round(total * 100) / 100,
         sansPart,

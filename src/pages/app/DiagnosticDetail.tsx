@@ -16,26 +16,35 @@ import {
 } from '@/lib/groupes-surface'
 import { formatCHF, cn } from '@/lib/utils'
 import { dureeVieDeReference, dureeVieResiduelle } from '@/lib/duree-vie'
-import { groupItemsByVisitStep, type VisitStepGroup } from '@/lib/visit-steps'
 import { aUnOubliImportant, bilanDesOublis, oublisDUnReleve, phraseDAlerte, relevesIncomplets } from '@/lib/oublis'
 import { circonference, decalageAnneau, partRemplie } from '@/lib/anneau'
 import { RecapOublis, type ModeRecap } from '@/components/diagnostic/RecapOublis'
 import {
-  cleReleve, estArticleInterieur, LIBELLE_LOCALISATION, type Localisation,
-} from '@/lib/localisation'
-import {
-  STATE_PRIORITY, workForState, priceForState, computeQuantity, resolveQuantity, computeCost, computeCostFromPrice,
-  buildQuantityContext, appliedUnitPrice, getMarketCoeff, priceBasisNote, priceToNumber, type QuantityContext,
+  STATE_PRIORITY, workForState, priceForState, computeCost, computeCostFromPrice,
+  appliedUnitPrice, getMarketCoeff, priceBasisNote, priceToNumber, type PrixCatalogue,
 } from '@/lib/diagnostic-auto'
+// La base CFC du bureau remplace l'ancien catalogue : les étapes de visite, les
+// états et les prix viennent d'elle, et le relevé est le couple article et étape.
+import { useBaseCfc } from '@/lib/base-cfc/requete'
+import {
+  filtrerLeParcours, localisationDeLaZone, parcoursDuDiagnostic,
+  type EtapeDuDiagnostic, type LigneDeVisite,
+} from '@/lib/base-cfc/catalogue'
+import {
+  ouvrageDeLArticle, ouvrageDuReleve, resolutionDeQuantite, type OuvrageSaisi,
+} from '@/lib/base-cfc/pont'
+import { donneesDuBatiment } from '@/lib/base-cfc/batiment'
+import { cleDuReleve } from '@/lib/base-cfc/etapes'
+import type { DonneesBatiment } from '@/lib/base-cfc/quantites'
+// Les relevés d'avant la bascule portent encore une localisation au lieu d'une étape.
+import { LIBELLE_LOCALISATION } from '@/lib/localisation'
 import { api, ApiError } from '@/lib/api'
 import { ProjectSectionsMenu } from '@/components/ProjectSectionsMenu'
 import { CameraCapture } from '@/components/CameraCapture'
 import { PanneauGlissant } from '@/components/PanneauGlissant'
 import { vibrer } from '@/lib/motion'
 import { useIsMobile } from '@/lib/use-mobile'
-import type {
-  ApiCatalogItem, ApiDiagnosticItem, ElementState, Priority,
-} from '@/lib/api-types'
+import type { ApiDiagnosticItem, ElementState, Priority } from '@/lib/api-types'
 
 /**
  * Réindexation des coûts au marché du jour.
@@ -165,11 +174,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     enabled: !!id,
   })
 
-  const catalogQuery = useQuery({
-    queryKey: ['cfc-items'],
-    queryFn: () => api.cfc.items(),
-    staleTime: 60 * 60 * 1000, // 1h — catalogue stable
-  })
+  const baseQuery = useBaseCfc()
 
   // Projet (pour les surfaces qui servent au calcul auto des quantités).
   const projectId = diagQuery.data?.diagnostic.projectId
@@ -179,8 +184,10 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     enabled: !!projectId,
   })
 
-  // Contexte de quantités : construit une seule fois, par la couche de calcul partagée.
-  const qtyCtx = useMemo(() => buildQuantityContext(projectQuery.data?.project ?? {}), [projectQuery.data])
+  // Données du bâtiment, d'où les quantités découlent. Un champ vide y vaut null
+  // et non zéro : un ouvrage dont on ignore la surface n'est pas un ouvrage de
+  // surface nulle, et le devis ne doit pas les confondre.
+  const batiment = useMemo(() => donneesDuBatiment(projectQuery.data?.project ?? {}), [projectQuery.data])
 
   // ----- local UI state -----
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
@@ -207,24 +214,33 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
    * Calculée ici et passée à la mutation : lue depuis `mutationFn`, elle faisait
    * renoncer le compilateur React à mémoriser le relevé entier.
    */
-  const partPourUnAjout = (c: ApiCatalogItem) => {
-    if (!c.surfaceGroup) return null
-    const dejaLa = groupesSurface.find((g) => g.nom === c.surfaceGroup)?.membres.length ?? 0
+  const partPourUnAjout = (ligne: LigneDeVisite) => {
+    const groupe = ligne.article.groupeAlternatives
+    if (!groupe) return null
+    // Par étape : les sols de la cage d'escalier et ceux des appartements font
+    // chacun leurs cent pour cent, et le premier type relevé de chaque côté
+    // prend toute sa surface.
+    const cle = `${groupe}@${ligne.etapeNumero}`
+    const dejaLa = groupesSurface.find((g) => g.cle === cle)?.membres.length ?? 0
     return partALAjout(dejaLa)
   }
 
   const addItem = useMutation({
-    mutationFn: (input: { catalog: ApiCatalogItem; state?: ElementState | null; localisation?: Localisation | null; sharePct?: number | null }) => {
-      const { catalog, state, localisation } = input
-      const quantity = computeQuantity(catalog, qtyCtx)
+    mutationFn: (input: { ligne: LigneDeVisite; state?: ElementState | null; sharePct?: number | null }) => {
+      const { ligne, state } = input
+      const catalog = ouvrageDeLArticle(ligne.article, ligne.etapeNumero)
+      const quantity = resolutionDeQuantite(catalog, batiment).quantity
       // Ajout « non évalué » par défaut : ni état, ni coût tant que le diagnostiqueur n'a pas choisi.
       const cost = state ? computeCost(catalog, state, quantity) : undefined
       const work = state ? workForState(catalog, state) : null
       return api.diagnostics.createItem(id!, {
-        cfcCode: catalog.cfcCode ?? 'N/A',
+        cfcCode: catalog.cfcCode,
         cfcLabel: catalog.description,
-        catalogItemId: catalog.id,
-        localisation: localisation ?? null,
+        // L'article et l'étape identifient le relevé : la peinture de la cage
+        // d'escalier et celle des appartements ne se confondent plus.
+        articleId: catalog.articleId,
+        etapeNumero: ligne.etapeNumero,
+        localisation: localisationDeLaZone(ligne.zone),
         state: state ?? null,
         priority: state ? STATE_PRIORITY[state] : null,
         works: work && work !== 'Néant' ? [work] : [],
@@ -234,32 +250,35 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
         // observation de terrain, pas une valeur à inventer.
         sharePct: input.sharePct ?? null,
         area: quantity,                              // quantité auto (surfaces) conservée
-        unit: catalog.unit ?? undefined,
+        unit: catalog.unit,
         estimatedCost: (cost ?? undefined) as unknown as string | undefined,
       })
     },
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: itemsKey })
       const prev = snapshotItems()
-      const { catalog, state, localisation } = input
-      const quantity = computeQuantity(catalog, qtyCtx)
+      const { ligne, state } = input
+      const catalog = ouvrageDeLArticle(ligne.article, ligne.etapeNumero)
+      const quantity = resolutionDeQuantite(catalog, batiment).quantity
       const cost = state ? computeCost(catalog, state, quantity) : undefined
       const work = state ? workForState(catalog, state) : null
       const now = new Date().toISOString()
       const temp: ApiDiagnosticItem = {
         id: `temp-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
         diagnosticId: id!,
-        cfcCode: catalog.cfcCode ?? 'N/A',
+        cfcCode: catalog.cfcCode,
         cfcLabel: catalog.description,
-        catalogItemId: catalog.id,
-        localisation: localisation ?? null,
+        catalogItemId: null,
+        articleId: catalog.articleId,
+        etapeNumero: ligne.etapeNumero,
+        localisation: localisationDeLaZone(ligne.zone),
         state: state ?? null,
         priority: state ? STATE_PRIORITY[state] : null,
         notes: null,
         works: work && work !== 'Néant' ? [work] : [],
         photos: [],
         area: quantity ?? null,
-        unit: catalog.unit ?? null,
+        unit: catalog.unit,
         yearInstalled: null,
         interventionYear: null,
         estimatedCost: cost != null ? String(cost) : null,
@@ -330,48 +349,50 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   // ----- derived data -----
   // Référence stable : `?? []` produirait un tableau neuf à chaque rendu et casserait les mémorisations en aval.
   const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data])
-  const catalogItems = useMemo(() => catalogQuery.data?.items ?? [], [catalogQuery.data])
+  const articles = useMemo(() => baseQuery.data?.articles ?? [], [baseQuery.data])
+  const etapesDeLaBase = useMemo(() => baseQuery.data?.etapes ?? [], [baseQuery.data])
 
   /**
-   * Les groupes de surface du relevé.
+   * Le parcours de visite : les étapes du tour du bâtiment, leurs ouvrages, et
+   * le relevé déjà fait de chacun.
+   *
+   * Sans mémorisation manuelle : le compilateur React s'en charge, et un
+   * `useMemo` qu'il ne sait pas reprendre lui fait abandonner tout le composant.
+   * L'intitulé des surfaces principales suit l'affectation : « Salles de classe »
+   * devant une école, « Bureaux » devant un immeuble administratif.
+   */
+  const parcours = parcoursDuDiagnostic(
+    { articles, etapes: etapesDeLaBase },
+    items,
+    projectQuery.data?.project?.buildingType,
+  )
+
+  /**
+   * Les groupes d'alternatives du relevé.
    *
    * Plusieurs types de façade décrivent une seule façade : chacun ne prend
-   * qu'une part de sa surface. Les groupes sont calculés ici, où l'on voit tout
-   * le relevé, et l'éditeur reçoit celui de l'ouvrage ouvert.
+   * qu'une part de sa surface. Les parts se comptent par étape, et les groupes
+   * sont calculés ici, où l'on voit tout le relevé ; l'éditeur reçoit celui de
+   * l'ouvrage ouvert.
    */
-  // Sans mémorisation manuelle : le compilateur React s'en charge, et un
-  // `useMemo` qu'il ne sait pas reprendre lui fait abandonner tout le composant.
-  const groupesSurface = groupesDuReleve(items, catalogItems)
+  const groupesSurface = groupesDuReleve(
+    items.map((it) => ({
+      id: it.id,
+      cfcLabel: it.cfcLabel,
+      sharePct: it.sharePct,
+      etapeNumero: it.etapeNumero ?? null,
+      cleArticle: it.articleId && it.etapeNumero != null ? cleDuReleve(it.articleId, it.etapeNumero) : null,
+      catalogItemId: it.catalogItemId,
+    })),
+    parcours.etapes.flatMap((e) => e.domaines.flatMap((d) => d.lignes))
+      .map((l) => ({ id: l.cle, surfaceGroup: l.article.groupeAlternatives })),
+  )
   const groupeDeLOuvrage = (itemId: string) =>
     groupesSurface.find((g) => g.membres.some((m) => m.id === itemId)) ?? null
 
-  // Index des relevés, par article *et* localisation.
-  //
-  // La clé était l'article seul, ce qui n'autorisait qu'un relevé par article :
-  // peindre les murs de la cage d'escalier interdisait alors de relever ceux des
-  // appartements, alors que la note générale du classeur demande exactement
-  // l'inverse — la même grille, remplie séparément des deux côtés.
-  const itemsParReleve = useMemo(() => {
-    const m = new Map<string, ApiDiagnosticItem>()
-    for (const it of items) {
-      if (it.catalogItemId != null) m.set(cleReleve(it.catalogItemId, it.localisation), it)
-    }
-    return m
-  }, [items])
-
-  // groupe le catalogue par catégorie (ordre de visite Feuil2), avec recherche
-  const grouped = useMemo(() => {
-    const q = search.toLowerCase().trim()
-    const filtered = q
-      ? catalogItems.filter(c =>
-          c.description.toLowerCase().includes(q)
-          || (c.cfcCode?.toLowerCase().includes(q) ?? false)
-          || (c.category?.toLowerCase().includes(q) ?? false))
-      : catalogItems
-    // L'intitulé des surfaces principales suit l'affectation : « Salles de classe »
-    // devant une école, « Bureaux » devant un immeuble administratif.
-    return groupItemsByVisitStep(filtered, projectQuery.data?.project?.buildingType)
-  }, [catalogItems, search, projectQuery.data])
+  // Une recherche en cours réduit le parcours aux ouvrages qui y répondent,
+  // accents et casse ignorés.
+  const grouped = filtrerLeParcours(parcours.etapes, search)
 
   // Parcours de visite : une étape à la fois, comme sur le terrain. null = tout voir.
   // Le récapitulatif de ce qui reste à faire, ouvert soit depuis l'alerte, soit
@@ -391,13 +412,24 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   // Ouvrage choisi dans l'étape (façade, fenêtres…) : le niveau intermédiaire du
   // parcours guidé, entre l'étape et les types.
   const [categorie, setCategorie] = useState<string | null>(null)
-  const etapesVisibles = etape == null ? grouped : grouped.filter((g) => cleEtape(g) === etape)
+  const etapesVisibles = etape == null ? grouped : grouped.filter((g) => g.numero === etape)
 
   // selected
   const selectedDiagItem = items.find(i => i.id === selectedItemId) ?? null
-  const selectedCatalog = selectedDiagItem?.catalogItemId
-    ? catalogItems.find(c => c.id === selectedDiagItem.catalogItemId) ?? null
-    : null
+  // null pour un relevé dont l'article n'est pas dans la base : il garde son état
+  // et ses montants, et se corrige à la main.
+  const selectedCatalog = ouvrageDuReleve(selectedDiagItem, articles)
+
+  /**
+   * Ce qui distingue deux relevés du même ouvrage : l'étape où il a été vu.
+   *
+   * Les relevés d'avant la bascule n'ont pas d'étape mais une localisation :
+   * « communs » ou « logements ». On la garde pour eux, plutôt que de laisser
+   * deux lignes identiques sans savoir laquelle on regarde.
+   */
+  const sousTitreDuReleve = (it: ApiDiagnosticItem): string | null =>
+    parcours.etapes.find((e) => e.numero === it.etapeNumero)?.nom
+    ?? (it.localisation ? LIBELLE_LOCALISATION[it.localisation].toLowerCase() : null)
 
   // Pas d'auto-sélection : au chargement, l'éditeur reste vide tant qu'on ne
   // choisit pas un élément (évite de retomber toujours sur le premier).
@@ -405,26 +437,13 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   // Les totaux par priorité ne sont plus calculés ici : ils ont rejoint le résumé
   // du projet, avec le reste des statistiques. L'éditeur ne porte que l'avancement.
 
-  // Avancement de la visite, calculé sur le catalogue entier et non sur `grouped` :
+  // Avancement de la visite, calculé sur le parcours entier et non sur `grouped` :
   // une recherche en cours filtre l'affichage, elle ne doit pas faire reculer la barre.
   // Un ouvrage compte dès qu'il porte un état, même règle que dans le parcours guidé.
-  const avancementVisite = useMemo(() => {
-    const etapes = groupItemsByVisitStep(catalogItems, projectQuery.data?.project?.buildingType)
-    let faits = 0
-    let total = 0
-    for (const g of etapes) {
-      for (const cat of g.categories) {
-        for (const c of cat.items) {
-          total += 1
-          if (itemsParReleve.get(cleReleve(c.id, g.localisation))?.state) faits += 1
-        }
-      }
-    }
-    return { faits, total, etapes }
-  }, [catalogItems, projectQuery.data, itemsParReleve])
+  const avancementVisite = { faits: parcours.faits, total: parcours.attendus, etapes: parcours.etapes }
 
   // ----- loading / error states -----
-  if (diagQuery.isLoading || itemsQuery.isLoading || catalogQuery.isLoading) {
+  if (diagQuery.isLoading || itemsQuery.isLoading || baseQuery.isLoading) {
     return (
       <div className="flex items-center justify-center py-32 text-muted-foreground">
         <Loader2 className="h-6 w-6 animate-spin mr-2" />Chargement…
@@ -522,9 +541,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 onEtape={(n) => { setEtape(n); setCategorie(null) }}
                 categorie={categorie}
                 onCategorie={setCategorie}
-                itemsParReleve={itemsParReleve}
                 onOuvrir={setSelectedItemId}
-                onAjouter={(c, loc) => addItem.mutate({ catalog: c, localisation: loc, sharePct: partPourUnAjout(c) })}
+                onAjouter={(ligne) => addItem.mutate({ ligne, sharePct: partPourUnAjout(ligne) })}
                 ajoutEnCours={addItem.isPending}
               />
             ) : (
@@ -540,45 +558,47 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 >Tout</button>
                 {grouped.map(g => (
                   <button
-                    key={g.label}
-                    onClick={() => setEtape(cleEtape(g))}
+                    key={g.numero}
+                    onClick={() => setEtape(g.numero)}
                     className={cn('shrink-0 rounded-full border px-2.5 py-1 text-[11px]',
-                      etape === cleEtape(g) ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
-                  >{g.label}</button>
+                      etape === g.numero ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
+                  >{g.numero}. {g.nom}</button>
                 ))}
               </div>
             )}
 
             {etapesVisibles.map((etapeGroup) => (
-              <div key={etapeGroup.label}>
+              <div key={etapeGroup.numero}>
                 {etape == null && (
                   <div className="px-2 pt-2 pb-1 text-[11px] font-semibold text-foreground">
-                    {etapeGroup.label} <span className="font-normal text-muted-foreground">({etapeGroup.count})</span>
+                    {etapeGroup.numero}. {etapeGroup.nom}{' '}
+                    <span className="font-normal text-muted-foreground">({etapeGroup.attendus})</span>
                   </div>
                 )}
-                {etapeGroup.categories.map((group) => (
-              <div key={`${etapeGroup.label}-${group.category}`} className="mb-3">
+                {etapeGroup.domaines.map((group) => (
+              <div key={`${etapeGroup.numero}-${group.nom}`} className="mb-3">
                 <div className="sticky top-0 z-10 bg-card px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-foreground/75">
-                  {group.category}
-                  {/* La même grille se remplit dans les communs et dans les logements :
-                      sans ce repère, deux lignes identiques se suivraient sans qu'on
-                      sache laquelle on relève. */}
-                  {etapeGroup.localisation && estArticleInterieur(group.category) && (
+                  {group.nom}
+                  {/* La même grille se remplit dans la cage d'escalier et dans les
+                      logements : sans ce repère, deux lignes identiques se suivraient
+                      sans qu'on sache laquelle on relève. */}
+                  {etape == null && (
                     <span className="ml-1.5 font-normal normal-case tracking-normal text-muted-foreground">
-                      · {LIBELLE_LOCALISATION[etapeGroup.localisation].toLowerCase()}
+                      · {etapeGroup.nom.toLowerCase()}
                     </span>
                   )}
                 </div>
-                {group.items.map(c => {
-                  const existing = itemsParReleve.get(cleReleve(c.id, etapeGroup.localisation))
+                {group.lignes.map(ligne => {
+                  const c = ligne.article
+                  const existing = ligne.releve
                   const isAdded = !!existing
                   const isSelected = existing?.id === selectedItemId
                   return (
                     <button
-                      key={c.id}
+                      key={ligne.cle}
                       onClick={() => {
                         if (existing) setSelectedItemId(existing.id)
-                        else addItem.mutate({ catalog: c, localisation: etapeGroup.localisation, sharePct: partPourUnAjout(c) })
+                        else addItem.mutate({ ligne, sharePct: partPourUnAjout(ligne) })
                       }}
                       disabled={addItem.isPending}
                       className={cn(
@@ -593,8 +613,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                       )} />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium leading-snug">
-                          {c.cfcCode && <span className="mr-1.5 font-mono font-normal text-muted-foreground">{c.cfcCode}</span>}
-                          {c.description}
+                          <span className="mr-1.5 font-mono font-normal text-muted-foreground">{c.cfcCode}</span>
+                          {c.nom}
                         </p>
                         {existing && (
                           <div className="flex gap-1 mt-0.5">
@@ -642,7 +662,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
               <ItemEditor
                 item={selectedDiagItem}
                 catalog={selectedCatalog}
-                qtyCtx={qtyCtx}
+                batiment={batiment}
+                sousTitre={sousTitreDuReleve(selectedDiagItem)}
                 groupe={groupeDeLOuvrage(selectedDiagItem.id)}
                 mobile
                 guideMode={guideMode}
@@ -679,7 +700,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
               cadreExterne
               item={selectedDiagItem}
               catalog={selectedCatalog}
-              qtyCtx={qtyCtx}
+              batiment={batiment}
+              sousTitre={sousTitreDuReleve(selectedDiagItem)}
               groupe={groupeDeLOuvrage(selectedDiagItem.id)}
               mobile={isMobile}
               guideMode={guideMode}
@@ -927,16 +949,10 @@ function Retour({ vers, libelle }: { vers: () => void; libelle: string }) {
 /**
  * L'étape choisie dans le parcours.
  *
- * `null` = aucune, on montre la liste des étapes. Le groupe « Autres » porte
- * `step: null` au catalogue : il lui faut donc sa propre clé, sinon le choisir
- * revient à ne rien choisir.
+ * `null` = aucune, on montre la liste des étapes. La base numérote ses sept
+ * étapes, « Autres » comprise : il n'y a plus de cas particulier à distinguer.
  */
-type EtapeChoisie = number | 'autres' | null
-
-/** Clé de sélection d'un groupe, distincte de « aucune étape ». */
-function cleEtape(g: VisitStepGroup): Exclude<EtapeChoisie, null> {
-  return g.step ?? 'autres'
-}
+type EtapeChoisie = number | null
 
 /**
  * Parcours guidé de la visite, sur téléphone et tablette.
@@ -968,7 +984,7 @@ function cleEtape(g: VisitStepGroup): Exclude<EtapeChoisie, null> {
 function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte, onTerminer, termine }: {
   faits: number
   total: number
-  etapes: VisitStepGroup[]
+  etapes: EtapeDuDiagnostic[]
   etape: EtapeChoisie
   /** Ce qui manque et qui engage, en une phrase. null quand il n'y a rien à dire. */
   alerte?: string | null
@@ -977,10 +993,10 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte, onTer
   onTerminer?: () => void
   termine?: boolean
 }) {
-  const rang = etapes.findIndex((g) => cleEtape(g) === etape)
+  const rang = etapes.findIndex((g) => g.numero === etape)
   const courante = rang >= 0 ? etapes[rang] : null
   const titre = courante
-    ? `${courante.label.replace(/^\d+\.\s*/, '')} · étape ${rang + 1} sur ${etapes.length}`
+    ? `${courante.nom} · étape ${rang + 1} sur ${etapes.length}`
     : `Tour du bâtiment · ${etapes.length} étape${etapes.length > 1 ? 's' : ''}`
   const part = total > 0 ? Math.round((faits / total) * 100) : 0
 
@@ -1037,28 +1053,23 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte, onTer
   )
 }
 
-function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsParReleve, onOuvrir, onAjouter, ajoutEnCours }: {
-  etapes: VisitStepGroup[]
+function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvrir, onAjouter, ajoutEnCours }: {
+  etapes: EtapeDuDiagnostic[]
   etape: EtapeChoisie
   onEtape: (n: EtapeChoisie) => void
   categorie: string | null
   onCategorie: (c: string | null) => void
-  /** Relevés du diagnostic, indexés par article *et* localisation (voir cleReleve). */
-  itemsParReleve: Map<string, ApiDiagnosticItem>
   onOuvrir: (itemId: string) => void
-  onAjouter: (c: ApiCatalogItem, localisation: Localisation | null) => void
+  onAjouter: (ligne: LigneDeVisite) => void
   ajoutEnCours: boolean
 }) {
-  /**
-   * Le relevé d'un article dans une localisation donnée.
-   * Les mêmes revêtements se relèvent dans les communs et dans les logements :
-   * chercher par le seul article renverrait celui de l'autre côté du bâtiment.
-   */
-  const releve = (c: ApiCatalogItem, loc: Localisation | null) => itemsParReleve.get(cleReleve(c.id, loc))
-  /** Relevés / total d'une liste d'ouvrages : un ouvrage compte dès qu'il porte un état. */
-  const avancement = (liste: ApiCatalogItem[], loc: Localisation | null) => ({
-    faits: liste.filter((c) => releve(c, loc)?.state).length,
-    total: liste.length,
+  // Le relevé voyage avec sa ligne, puisque le couple article et étape
+  // l'identifie : chercher par le seul article renvoyait celui de l'autre côté
+  // du bâtiment.
+  /** Relevés / total d'une liste de lignes : une ligne compte dès qu'elle porte un état. */
+  const avancement = (lignes: LigneDeVisite[]) => ({
+    faits: lignes.filter((l) => l.releve?.state).length,
+    total: lignes.length,
   })
   /**
    * Un relevé de cette liste porte-t-il un oubli qui engage.
@@ -1067,16 +1078,10 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
    * parce qu'un ouvrage en très bon état n'a pas de photo apprendrait à ignorer
    * le signal, et c'est alors la vraie alerte qui passerait inaperçue.
    */
-  const alerte = (liste: ApiCatalogItem[], loc: Localisation | null) =>
-    liste.some((c) => {
-      const r = releve(c, loc)
-      return r ? aUnOubliImportant(r) : false
-    })
-  // `null` veut dire « aucune etape choisie », jamais « l'etape Autres » : sans
-  // cette distinction, revenir aux etapes retombait sur Autres, qui porte
-  // justement `step: null`, et le bouton Retour paraissait sans effet.
-  const courante = etape == null ? undefined : etapes.find((g) => cleEtape(g) === etape)
-  const titreEtape = (g: VisitStepGroup) => g.label.replace(/^\d+\.\s*/, '')
+  const alerte = (lignes: LigneDeVisite[]) =>
+    lignes.some((l) => (l.releve ? aUnOubliImportant(l.releve) : false))
+  const courante = etape == null ? undefined : etapes.find((g) => g.numero === etape)
+  const titreEtape = (g: EtapeDuDiagnostic) => g.nom
 
   // --- Niveau 1 : les grandes étapes du tour du bâtiment ---
   if (!courante) {
@@ -1087,16 +1092,16 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
           redescend. Touchez une étape pour relever ce qu'elle contient.
         </p>
         {etapes.map((g) => {
-          const ouvrages = g.categories.flatMap((c) => c.items)
-          const { faits, total } = avancement(ouvrages, g.localisation)
-          const incomplet = alerte(ouvrages, g.localisation)
+          const lignes = g.domaines.flatMap((d) => d.lignes)
+          const { faits, total } = avancement(lignes)
+          const incomplet = alerte(lignes)
           return (
             <button
-              key={g.label}
-              onClick={() => { onEtape(cleEtape(g)); onCategorie(null) }}
+              key={g.numero}
+              onClick={() => { onEtape(g.numero); onCategorie(null) }}
               className="flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left hover:bg-muted/50"
             >
-              <Pastille faits={faits} total={total} rang={g.step ?? "·"} alerte={incomplet} />
+              <Pastille faits={faits} total={total} rang={g.numero} alerte={incomplet} />
               <span className="min-w-0 flex-1">
                 <span className="block font-medium">{titreEtape(g)}</span>
                 <span className="block text-xs text-muted-foreground">
@@ -1111,19 +1116,18 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
     )
   }
 
-  const rang = etapes.findIndex((g) => cleEtape(g) === etape)
+  const rang = etapes.findIndex((g) => g.numero === etape)
   const suivante = etapes[rang + 1] ?? null
   // Une étape qui ne contient qu'un seul ouvrage n'a pas de choix à proposer : on
   // passe directement à ses types plutôt que d'afficher une liste d'un élément.
-  const choisie = courante.categories.length === 1
-    ? courante.categories[0]
-    : courante.categories.find((c) => c.category === categorie)
+  const choisie = courante.domaines.length === 1
+    ? courante.domaines[0]
+    : courante.domaines.find((d) => d.nom === categorie)
 
   // --- Niveau 2 : les ouvrages de l'étape ---
-  const localisation = courante.localisation
 
   if (!choisie) {
-    const { faits, total } = avancement(courante.categories.flatMap((c) => c.items), localisation)
+    const { faits, total } = avancement(courante.domaines.flatMap((d) => d.lignes))
     return (
       <div className="px-2 py-2">
         <Retour vers={() => onEtape(null)} libelle="Étapes" />
@@ -1134,18 +1138,18 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
           </p>
         </div>
         <div className="space-y-2">
-          {courante.categories.map((cat) => {
-            const a = avancement(cat.items, localisation)
-            const incompletCat = alerte(cat.items, localisation)
+          {courante.domaines.map((cat) => {
+            const a = avancement(cat.lignes)
+            const incompletCat = alerte(cat.lignes)
             return (
               <button
-                key={cat.category}
-                onClick={() => onCategorie(cat.category)}
+                key={cat.nom}
+                onClick={() => onCategorie(cat.nom)}
                 className="flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left hover:bg-muted/50"
               >
                 <Pastille faits={a.faits} total={a.total} rang={a.total} alerte={incompletCat} />
                 <span className="min-w-0 flex-1">
-                  <span className="block font-medium">{nomCategorie(cat.category)}</span>
+                  <span className="block font-medium">{nomCategorie(cat.nom)}</span>
                   <span className="block text-xs text-muted-foreground">
                     {a.faits} relevé{a.faits > 1 ? 's' : ''} sur {a.total} type{a.total > 1 ? 's' : ''}
                   </span>
@@ -1157,7 +1161,7 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
         </div>
         {suivante && (
           <button
-            onClick={() => { vibrer('succes'); onEtape(cleEtape(suivante)); onCategorie(null) }}
+            onClick={() => { vibrer('succes'); onEtape(suivante.numero); onCategorie(null) }}
             className="mt-3 flex w-full items-center justify-between rounded-lg border px-3 py-3 text-sm hover:bg-muted/50"
           >
             <span className="text-muted-foreground">Étape suivante</span>
@@ -1171,8 +1175,8 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
   }
 
   // --- Niveau 3 : les types de l'ouvrage choisi ---
-  const a = avancement(choisie.items, localisation)
-  const seulOuvrage = courante.categories.length === 1
+  const a = avancement(choisie.lignes)
+  const seulOuvrage = courante.domaines.length === 1
   return (
     <div className="px-2 py-2">
       <Retour
@@ -1180,18 +1184,19 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
         libelle={seulOuvrage ? 'Étapes' : titreEtape(courante)}
       />
       <div className="mb-3 px-1">
-        <p className="font-semibold">{nomCategorie(choisie.category)}</p>
+        <p className="font-semibold">{nomCategorie(choisie.nom)}</p>
         <p className="text-xs text-muted-foreground">
           {a.faits} relevé{a.faits > 1 ? 's' : ''} sur {a.total} · touchez le type rencontré
         </p>
       </div>
 
-      {choisie.items.map((c) => {
-        const existant = releve(c, localisation)
+      {choisie.lignes.map((ligne) => {
+        const c = ligne.article
+        const existant = ligne.releve
         return (
           <button
-            key={c.id}
-            onClick={() => (existant ? onOuvrir(existant.id) : onAjouter(c, localisation))}
+            key={ligne.cle}
+            onClick={() => (existant ? onOuvrir(existant.id) : onAjouter(ligne))}
             disabled={ajoutEnCours}
             className="flex w-full items-start gap-2.5 rounded-lg px-3 py-3 text-left text-sm hover:bg-muted/50"
           >
@@ -1199,8 +1204,8 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
               existant?.state ? stateColors[existant.state] : existant ? 'bg-amber-400' : 'bg-gray-300')} />
             <span className="min-w-0 flex-1">
               <span className="block font-medium leading-snug">
-                {c.cfcCode && <span className="mr-1.5 font-mono text-xs font-normal text-muted-foreground">{c.cfcCode}</span>}
-                {c.description}
+                <span className="mr-1.5 font-mono text-xs font-normal text-muted-foreground">{c.cfcCode}</span>
+                {c.nom}
               </span>
               {existant && (
                 <span className="mt-0.5 flex flex-wrap gap-1">
@@ -1245,8 +1250,11 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, itemsPa
 
 interface ItemEditorProps {
   item: ApiDiagnosticItem
-  catalog: ApiCatalogItem | null
-  qtyCtx: QuantityContext
+  /** L'article de la base, ou null quand elle ne le connaît pas. */
+  catalog: OuvrageSaisi | null
+  batiment: DonneesBatiment
+  /** Étape du relevé, affichée sous le nom de l'ouvrage. */
+  sousTitre?: string | null
   /** Groupe de surface de l'ouvrage, quand il en a un. */
   groupe?: GroupeSurface | null
   guideMode: GuideMode
@@ -1283,7 +1291,7 @@ interface ItemEditorProps {
  * Les textes viennent du catalogue du bureau, tels qu'il les a écrits.
  */
 function StateGuide({ item, catalog, onApply, isMutating }: {
-  item: ApiDiagnosticItem; catalog: ApiCatalogItem | null
+  item: ApiDiagnosticItem; catalog: OuvrageSaisi | null
   onApply: (s: ElementState) => void; isMutating: boolean
 }) {
   const constatOf = (s: ElementState) =>
@@ -1378,15 +1386,15 @@ function InsulationInputs({ value, quantity, onChange }: {
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Surface {surface > 0 ? `${surface} m²` : '— (à saisir sur l’élément)'}{preview != null ? ` → coût estimé ${preview.toLocaleString('fr-CH')} CHF` : ''}
+        Surface {surface > 0 ? `${surface} m²` : 'à saisir sur l’élément'}{preview != null ? ` → coût estimé ${preview.toLocaleString('fr-CH')} CHF` : ''}
       </p>
     </div>
   )
 }
 
 /** Un bloc d'enveloppe (Amélioration ou Mise aux normes) : retenable, éditable, chiffré. */
-function PerfBlock({ label, catalogWork, catalogPrice, value, cost, quantity, onChange, isMutating }: {
-  label: string; catalogWork: string | null; catalogPrice: string | null
+function PerfBlock({ label, catalogWork, catalogPrice, unite, value, cost, quantity, onChange, isMutating }: {
+  label: string; catalogWork: string | null; catalogPrice: PrixCatalogue; unite?: string
   value: string | null; cost: string | null; quantity: number | undefined
   onChange: (work: string | null, cost: number | null) => void; isMutating: boolean
 }) {
@@ -1409,7 +1417,14 @@ function PerfBlock({ label, catalogWork, catalogPrice, value, cost, quantity, on
           {retained ? 'Retenu · retirer' : 'Ajouter'}
         </button>
       </div>
-      {!retained && has && <p className="mt-1 text-xs text-muted-foreground">{catalogWork}{catalogPrice ? ` · ${catalogPrice}` : ''}</p>}
+      {!retained && has && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {catalogWork}
+          {/* Un prix nu se lit mal : « 310 » n'apprend rien, « 310 CHF/m² » dit
+              ce qu'il faudra multiplier. */}
+          {catalogPrice != null && catalogPrice !== '' && ` · ${catalogPrice} CHF${unite ? '/' + unite : ''}`}
+        </p>
+      )}
       {retained && (isInsulation
         ? <InsulationInputs value={value} quantity={quantity} onChange={onChange} />
         : (
@@ -1429,7 +1444,7 @@ function PerfBlock({ label, catalogWork, catalogPrice, value, cost, quantity, on
 
 /** Enveloppes distinctes Amélioration + Mise aux normes (dimension « performance » du diag). */
 function PerformanceEnvelopes({ item, catalog, quantity, onUpdate, isMutating }: {
-  item: ApiDiagnosticItem; catalog: ApiCatalogItem | null; quantity: number | undefined
+  item: ApiDiagnosticItem; catalog: OuvrageSaisi | null; quantity: number | undefined
   onUpdate: (data: Partial<ApiDiagnosticItem>) => void; isMutating: boolean
 }) {
   const anyImp = (!!catalog?.workImprovement && catalog.workImprovement !== 'Néant') || item.improvement != null
@@ -1438,10 +1453,10 @@ function PerformanceEnvelopes({ item, catalog, quantity, onUpdate, isMutating }:
   return (
     <div className="space-y-2.5">
       <p className="text-sm font-medium">Amélioration &amp; remise aux normes</p>
-      <PerfBlock key={`imp-${item.id}`} label="Amélioration" catalogWork={catalog?.workImprovement ?? null} catalogPrice={catalog?.priceImprovement ?? null}
+      <PerfBlock key={`imp-${item.id}`} label="Amélioration" catalogWork={catalog?.workImprovement ?? null} catalogPrice={catalog?.priceImprovement ?? null} unite={catalog?.uniteRemplacement}
         value={item.improvement} cost={item.improvementCost} quantity={quantity} isMutating={isMutating}
         onChange={(w, c) => onUpdate({ improvement: w, improvementCost: (c as unknown as string | null) })} />
-      <PerfBlock key={`norm-${item.id}`} label="Mise aux normes" catalogWork={catalog?.workNorms ?? null} catalogPrice={catalog?.priceNorms ?? null}
+      <PerfBlock key={`norm-${item.id}`} label="Mise aux normes" catalogWork={catalog?.workNorms ?? null} catalogPrice={catalog?.priceNorms ?? null} unite={catalog?.uniteRemplacement}
         value={item.norms} cost={item.normsCost} quantity={quantity} isMutating={isMutating}
         onChange={(w, c) => onUpdate({ norms: w, normsCost: (c as unknown as string | null) })} />
     </div>
@@ -1503,7 +1518,7 @@ function PartDeSurface({ groupe, item, quantiteDuGroupe, unite, onPart }: {
             return (
               <li key={m.id} className={cn('flex justify-between gap-3', m.id === item.id && 'font-medium text-foreground')}>
                 <span className="truncate">{m.cfcLabel}</span>
-                <span className="shrink-0 tabular-nums">{p == null ? '—' : `${p} %`}</span>
+                <span className="shrink-0 tabular-nums">{p == null ? '·' : `${p} %`}</span>
               </li>
             )
           })}
@@ -1513,7 +1528,7 @@ function PartDeSurface({ groupe, item, quantiteDuGroupe, unite, onPart }: {
   )
 }
 
-function ItemEditor({ item, catalog, qtyCtx, groupe, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, cadreExterne }: ItemEditorProps) {
+function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, cadreExterne }: ItemEditorProps) {
   const [notes, setNotes] = useState(item.notes ?? '')
   const [showManual, setShowManual] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false) // options expertes repliées (mobile)
@@ -1533,8 +1548,8 @@ function ItemEditor({ item, catalog, qtyCtx, groupe, guideMode, projectId, yearB
   const appliedPrice = appliedUnitPrice(suggestedPrice)
   // Quantité dérivée du dossier + d'où elle vient (pour l'expliquer et la justifier).
   const qtyResolution = useMemo(
-    () => (catalog ? resolveQuantity(catalog, qtyCtx) : { quantity: undefined, origin: 'manuelle' as const, basis: null }),
-    [catalog, qtyCtx],
+    () => (catalog ? resolutionDeQuantite(catalog, batiment) : { quantity: undefined, origin: 'manuelle' as const, basis: null }),
+    [catalog, batiment],
   )
   /**
    * Part de la surface du groupe qui revient à cet ouvrage.
@@ -1569,7 +1584,7 @@ function ItemEditor({ item, catalog, qtyCtx, groupe, guideMode, projectId, yearB
           ? `Prix au catalogue non numérique (${suggestedPrice})`
           : item.area == null
             ? 'Quantité à saisir'
-            : '—'
+            : ''
 
 
   /** Pose la part, et recalcule la quantité et le coût qui en découlent. */
@@ -1725,9 +1740,9 @@ function ItemEditor({ item, catalog, qtyCtx, groupe, guideMode, projectId, yearB
                 (2 vantaux) » et « ... vitrée (1 vantail) » ne different que par leur fin. */}
             <p className="text-sm font-semibold leading-tight text-balance">
               {item.cfcLabel}
-              {item.localisation && (
+              {sousTitre && (
                 <span className="ml-1.5 font-normal text-muted-foreground">
-                  · {LIBELLE_LOCALISATION[item.localisation].toLowerCase()}
+                  · {sousTitre}
                 </span>
               )}
             </p>
@@ -1816,7 +1831,7 @@ function ItemEditor({ item, catalog, qtyCtx, groupe, guideMode, projectId, yearB
                     : <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Non évalué</span>}
                 </div>
               </div>
-              <p className="text-lg font-bold text-primary shrink-0">{item.estimatedCost ? formatCHF(toNum(item.estimatedCost)) : '—'}</p>
+              <p className="text-lg font-bold text-primary shrink-0">{item.estimatedCost ? formatCHF(toNum(item.estimatedCost)) : '·'}</p>
             </div>
             {aFaire && (
               <p className="mt-2 text-xs leading-snug text-foreground/80">
@@ -1893,9 +1908,9 @@ function ItemEditor({ item, catalog, qtyCtx, groupe, guideMode, projectId, yearB
             <span className="font-mono text-lg text-muted-foreground">{item.cfcCode}</span>
             <CardTitle>
               {item.cfcLabel}
-              {item.localisation && (
+              {sousTitre && (
                 <span className="ml-2 text-sm font-normal text-muted-foreground">
-                  {LIBELLE_LOCALISATION[item.localisation].toLowerCase()}
+                  {sousTitre}
                 </span>
               )}
             </CardTitle>
@@ -2004,7 +2019,7 @@ function ItemEditor({ item, catalog, qtyCtx, groupe, guideMode, projectId, yearB
               <p className="text-xs text-muted-foreground">Priorité</p>
               {item.priority
                 ? <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold mt-0.5', priorityColors[item.priority])}>{item.priority}</span>
-                : <span className="mt-0.5 inline-block text-xs font-medium text-muted-foreground">—</span>}
+                : <span className="mt-0.5 inline-block text-xs font-medium text-muted-foreground">·</span>}
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Quantité</p>
@@ -2031,7 +2046,7 @@ function ItemEditor({ item, catalog, qtyCtx, groupe, guideMode, projectId, yearB
               {aFaire
                 ?? (silenceDesTravaux === 'neant' ? 'Aucun travail à prévoir pour cet état.'
                   : silenceDesTravaux === 'catalogue-muet' ? 'Le catalogue ne précise pas les travaux pour cet état.'
-                    : '—')}
+                    : '·')}
             </p>
           </div>
 
