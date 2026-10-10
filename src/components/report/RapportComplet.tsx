@@ -18,12 +18,17 @@
  * document, que `DocumentA4` répartit ensuite sur des feuilles A4 réelles. Chaque
  * chapitre ouvre une page, chaque feuille porte le logo et son numéro.
  */
-import { useMemo, type ReactNode } from 'react'
+import { Fragment, useMemo, type ReactNode } from 'react'
 import { buildingTypeLabels, priorityDescriptions, priorityTextColors, stateLabels } from '@/data/mock'
 import { cfcGroupCode, cfcLabelIndex } from '@/lib/cfc'
 import { LIBELLE_LOCALISATION } from '@/lib/localisation'
 import { getMarketInfo, inciseIndexation, phraseIndexation, priceBasisNote } from '@/lib/diagnostic-auto'
-import { buildDevis, HORIZON, PRIORITES, uniteCourte, type Devis, type DevisBloc } from '@/lib/devis'
+import {
+  buildDevis, HORIZON, PRIORITES, uniteCourte,
+  type BaseDuDevis, type Devis, type DevisBloc, type TableauDesOptions,
+} from '@/lib/devis'
+import { ouvrageDeLArticle } from '@/lib/base-cfc/pont'
+import { donneesDuBatiment } from '@/lib/base-cfc/batiment'
 import { dureeVieResiduelle, phraseDureeVie } from '@/lib/duree-vie'
 import { calculerVariantes, type Variante } from '@/lib/variantes'
 import { buildQuantityContext } from '@/lib/diagnostic-auto'
@@ -99,18 +104,33 @@ export interface RapportCompletProps {
   /** Description de l'état constaté, tirée du catalogue selon l'état coché. */
   etatExistant: (it: { catalogItemId: number | null; state: ElementState | null }) => string | null
   cfcEntries: ApiCfcEntry[]
-  /** Catalogue du bureau : unités, formules de métré, prix par état. */
+  /**
+   * La base du bureau : articles, postes automatiques, étapes de visite.
+   * Le devis en tire ses prix, ses postes et le nom des étapes.
+   */
+  base: BaseDuDevis
+  /**
+   * L'ancien catalogue, encore nécessaire aux variantes, dont les lignes le
+   * référencent par identifiant. Il part avec elles.
+   */
   catalogItems: ApiCatalogItem[]
   /** Variantes du projet, au plus trois. Absentes, le chapitre 5 ne paraît pas. */
   variants: ApiVariant[]
   auteur: string
 }
 
-export function RapportComplet({ project, items, etatExistant, cfcEntries, catalogItems, variants, auteur }: RapportCompletProps) {
+export function RapportComplet({ project, items, etatExistant, cfcEntries, base, catalogItems, variants, auteur }: RapportCompletProps) {
   const company = useAuth((s) => s.user?.preferences?.company) as Entreprise
   const metrics = computeProjectMetrics(project)
   const labels = useMemo(() => cfcLabelIndex(cfcEntries), [cfcEntries])
   const catalogue = useMemo(() => new Map(catalogItems.map((c) => [c.id, c])), [catalogItems])
+  /** Les articles de la base, prêts à être lus par la fiche d'ouvrage. */
+  const articles = useMemo(
+    () => new Map(base.articles.map((a) => [a.id, ouvrageDeLArticle(a)])),
+    [base.articles],
+  )
+  /** Le nom de l'étape de chaque relevé, qui distingue deux relevés du même ouvrage. */
+  const nomDEtape = useMemo(() => new Map(base.etapes.map((e) => [e.numero, e.nom])), [base.etapes])
 
   // Chapitres de l'état : mêmes regroupements que le rapport de l'existant, pour que
   // les deux documents se lisent dans le même ordre.
@@ -129,12 +149,12 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
   }, [items])
 
   const devis = useMemo(
-    () => buildDevis(items, labels, catalogItems, {
+    () => buildDevis(items, labels, base, {
       honoraryPct: project.honoraryPct,
       reservePct: project.reservePct,
-      floorArea: project.floorArea,
+      batiment: donneesDuBatiment(project),
     }),
-    [items, labels, catalogItems, project.honoraryPct, project.reservePct, project.floorArea],
+    [items, labels, base, project],
   )
 
   const variantes = useMemo(
@@ -252,7 +272,10 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
           <FicheOuvrage
             it={it}
             constat={etatExistant(it)}
-            article={it.catalogItemId != null ? catalogue.get(it.catalogItemId) : undefined}
+            article={it.articleId
+              ? articles.get(it.articleId)
+              : it.catalogItemId != null ? catalogue.get(it.catalogItemId) : undefined}
+            etape={it.etapeNumero != null ? nomDEtape.get(it.etapeNumero) ?? null : null}
             yearBuilt={project.yearBuilt ?? null}
           />
         ))
@@ -324,6 +347,31 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
       bloc('c4-total', <TotalOperation devis={devis} project={project} />)
     }
 
+    // Les ameliorations, hors total : ce sont des decisions, pas des travaux
+    // engages. Les melanger au devis ferait payer au proprietaire une facture
+    // qu'il n'a pas encore acceptee.
+    if (devis.options.lignes.length > 0) {
+      bloc('c4-options-titre', <SousTitre>Options : améliorations possibles</SousTitre>,
+        { nouvellePage: true, avecSuivant: true })
+      bloc('c4-options-intro', (
+        <p className="mb-3 text-muted-foreground">
+          Ces travaux ne sont pas nécessaires à la conservation du bâtiment : ils améliorent son
+          confort, sa performance ou sa valeur. Ils ne sont pas compris dans le devis ci-dessus, et
+          chacun se décide séparément. Quand une amélioration demande un échafaudage que le devis
+          principal ne porte pas, son coût est ajouté ici : sans lui, l'arbitrage se ferait sur un
+          montant incomplet.
+        </p>
+      ), { avecSuivant: true })
+      out.push({
+        type: 'lignes',
+        cle: 'c4-options-lignes',
+        tableauId: 'devis-options',
+        colonnes: COLONNES_DEVIS,
+        entete: ENTETE_DEVIS,
+        lignes: <LignesOptions options={devis.options} />,
+      })
+    }
+
     // -------------------------------------------- estimation énergétique
     // Elle ne demande aucune saisie supplémentaire : les états viennent des
     // ouvrages relevés, le reste du dossier. Sans surface de référence, en
@@ -376,7 +424,7 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, catal
     ))
 
     return out
-  }, [project, items, chapitres, chapitresDoc, avecEnergie, devis, variantes, catalogue, etatExistant, metrics, adresse, aujourdhui, auteur, company])
+  }, [project, items, chapitres, chapitresDoc, avecEnergie, devis, variantes, catalogue, articles, nomDEtape, etatExistant, metrics, adresse, aujourdhui, auteur, company])
 
   return (
     <DocumentA4
@@ -914,10 +962,13 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
  * Une observation : l'état coché, ce qui a été constaté, ce qu'il faut prévoir,
  * et les photos de la visite.
  */
-function FicheOuvrage({ it, constat, article, yearBuilt }: {
+function FicheOuvrage({ it, constat, article, etape, yearBuilt }: {
   it: ApiDiagnosticItem
   constat: string | null
-  article: ApiCatalogItem | undefined
+  /** L'article de la base, ou de l'ancien catalogue pour un relevé d'avant. */
+  article: { unit: string | null; scaffoldingNote: string | null } | undefined
+  /** Étape de visite du relevé, qui dit de quel côté du bâtiment il parle. */
+  etape: string | null
   /** Année de construction, seule base possible quand la pose n'a pas été relevée. */
   yearBuilt: number | null
 }) {
@@ -934,9 +985,9 @@ function FicheOuvrage({ it, constat, article, yearBuilt }: {
           {it.cfcLabel}
           {/* Le même revêtement se relève dans la cage et dans les logements :
               le rapport doit dire lequel des deux il décrit. */}
-          {it.localisation && (
+          {(etape || it.localisation) && (
             <span className="ml-1.5 font-normal text-muted-foreground">
-              ({LIBELLE_LOCALISATION[it.localisation].toLowerCase()})
+              ({etape ?? LIBELLE_LOCALISATION[it.localisation!].toLowerCase()})
             </span>
           )}
           <span className="ml-2 font-mono font-normal text-muted-foreground">{it.cfcCode}</span>
@@ -953,7 +1004,7 @@ function FicheOuvrage({ it, constat, article, yearBuilt }: {
       {it.norms && <Ligne titre="Mise aux normes" texte={it.norms} />}
       {article?.scaffoldingNote && (
         <p className="mt-1 text-amber-700">
-          {article.scaffoldingNote} — l'accès conditionne le coût et la date d'intervention.
+          {article.scaffoldingNote} : l'accès conditionne le coût et la date d'intervention.
         </p>
       )}
       {vide && (
@@ -1030,6 +1081,53 @@ const ENTETE_DEVIS = (
   </thead>
 )
 
+/**
+ * Le tableau des options, hors total principal.
+ *
+ * L'echafaudage d'une option figure sur sa propre ligne, en retrait : il doit
+ * se voir, parce qu'il peut peser plus que l'amelioration elle-meme, et se
+ * distinguer, parce qu'il disparait si le devis principal le porte deja.
+ */
+function LignesOptions({ options }: { options: TableauDesOptions }) {
+  return (
+    <>
+      {options.lignes.map((l) => (
+        <Fragment key={l.cle}>
+          <tr className="border-t align-top">
+            <td className="py-1 font-mono">{l.cfcCode}</td>
+            <td className="py-1">
+              {l.libelle}
+              {l.travaux && <div className="italic text-muted-foreground">{l.travaux}</div>}
+            </td>
+            <td className="py-1 text-right tabular-nums">
+              {l.quantite != null ? `${l.quantite}${l.unite ? ` ${l.unite}` : ''}` : ''}
+            </td>
+            <td className="py-1 text-right tabular-nums">
+              {l.prixUnitaire != null ? formatPrixUnitaire(l.prixUnitaire) : ''}
+            </td>
+            <td className="py-1 text-right tabular-nums">{formatCHF(l.montant)}</td>
+          </tr>
+          {l.echafaudage && (
+            <tr className="align-top text-muted-foreground">
+              <td className="py-0.5" />
+              <td className="py-0.5 pl-3 italic">{l.echafaudage.mention}</td>
+              <td className="py-0.5" />
+              <td className="py-0.5" />
+              <td className="py-0.5 text-right tabular-nums">
+                {l.echafaudage.montant != null ? formatCHF(l.echafaudage.montant) : ''}
+              </td>
+            </tr>
+          )}
+        </Fragment>
+      ))}
+      <tr className="border-t-2 font-semibold">
+        <td className="py-1" colSpan={4}>Total des options (HT), hors devis principal</td>
+        <td className="py-1 text-right tabular-nums">{formatCHF(options.total)}</td>
+      </tr>
+    </>
+  )
+}
+
 function TitreBlocDevis({ bloc }: { bloc: DevisBloc }) {
   return (
     <h3 className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 border-b-2 border-foreground pb-1">
@@ -1045,7 +1143,7 @@ function LignesPosition({ position }: { position: DevisBloc['positions'][number]
   return (
     <>
       <tr className="border-t bg-muted/40 font-semibold">
-        <td className="py-1 font-mono">{position.code || '—'}</td>
+        <td className="py-1 font-mono">{position.code || '·'}</td>
         <td className="py-1">{position.label}</td>
         <td className="py-1" />
         <td className="py-1" />
@@ -1062,10 +1160,10 @@ function LignesPosition({ position }: { position: DevisBloc['positions'][number]
             {l.remarque && <div className="italic">{l.remarque}</div>}
           </td>
           <td className="py-1 text-right tabular-nums">
-            {l.quantite != null ? `${l.quantite}${l.unite ? ` ${l.unite}` : ''}` : '—'}
+            {l.quantite != null ? `${l.quantite}${l.unite ? ` ${l.unite}` : ''}` : ''}
           </td>
           <td className="py-1 text-right tabular-nums">
-            {l.prixUnitaire != null ? formatPrixUnitaire(l.prixUnitaire) : '—'}
+            {l.prixUnitaire != null ? formatPrixUnitaire(l.prixUnitaire) : ''}
           </td>
           <td className="py-1 text-right tabular-nums">{formatCHF(l.montant)}</td>
         </tr>

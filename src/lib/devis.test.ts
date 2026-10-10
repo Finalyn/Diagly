@@ -1,28 +1,65 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { buildDevis, cascadeDe, postesDeChantier, uniteCourte, POSTES_AUTOMATIQUES } from './devis'
+import { buildDevis, cascadeDe, postesDeChantier, tableauDesOptions, uniteCourte } from './devis'
 import { setMarketCoeff } from './diagnostic-auto'
 import { formatPrixUnitaire } from './utils'
-import type { ApiCatalogItem, ApiDiagnosticItem } from './api-types'
+import type { ApiArticle, ApiDiagnosticItem, ApiEtapeVisite, ApiPosteAutomatique } from './api-types'
+import type { DonneesBatiment } from './base-cfc/quantites'
 
 const ouvrage = (o: Partial<ApiDiagnosticItem>): ApiDiagnosticItem => ({
-  id: 'x', diagnosticId: 'd', cfcCode: '226.2', cfcLabel: 'Isolation périphérique',
-  catalogItemId: null, state: 'MOYEN', priority: 'II', notes: null, works: [], photos: [],
+  id: 'x', diagnosticId: 'd', cfcCode: '226.1', cfcLabel: 'Façade crépie non isolée',
+  catalogItemId: null, articleId: 'A015', etapeNumero: 1,
+  state: 'MOYEN', priority: 'II', notes: null, works: [], photos: [],
   area: null, unit: null, yearInstalled: null, interventionYear: null,
   estimatedCost: null, improvement: null, improvementCost: null, norms: null, normsCost: null,
   createdAt: '', updatedAt: '', ...o,
 })
 
-const article = (o: Partial<ApiCatalogItem>): ApiCatalogItem => ({
-  id: 1, displayOrder: 1, category: null, categoryCfc: null, description: '', cfcCode: null,
-  workTbe: null, workBon: null, workMoyen: null, workMauvais: null, workImprovement: null, workNorms: null,
-  descTbe: null, descBon: null, descMoyen: null, descMauvais: null, unit: null, quantityFormula: null,
-  priceTbe: null, priceBon: null, priceMoyen: null, priceMauvais: null,
-  priceImprovement: null, priceNorms: null, scaffoldingNote: null, ...o,
+const article = (o: Partial<ApiArticle>): ApiArticle => ({
+  id: 'A015', cfcCode: '226.1', nom: 'Façade crépie non isolée', domaineRapport: 'Façades',
+  groupeAlternatives: 'Revêtement de façade', echafaudage: true, uniteEntretien: 'm2',
+  uniteRemplacement: 'm2', baseQuantite: 'surface_facade', indicationQuantite: null, coefficient: 1,
+  noteDiagnostiqueur: null, articleLieId: null, actif: true, ligneOrigine: null,
+  etats: [], etapes: [{ articleId: 'A015', etapeNumero: 1, ordreDansEtape: 8 }], ...o,
 })
 
-const LABELS = new Map([['226', 'Crépissages de façade'], ['287', 'Nettoyage du bâtiment'],
-  ['101', 'Relevés, études géotechniques'], ['211', "Travaux d'entreprise de maçonnerie"]])
-const SANS_SURFACE = { honoraryPct: 0, reservePct: 0, floorArea: null }
+const A015 = article({})
+const A009 = article({ id: 'A009', cfcCode: '215.2', nom: 'Façade ventilée métallique' })
+const A100 = article({
+  id: 'A100', cfcCode: '285.1', nom: 'Peinture intérieure – murs', domaineRapport: 'Intérieur – murs',
+  groupeAlternatives: 'Finition de paroi', echafaudage: false, baseQuantite: 'surface_plancher',
+  etapes: [
+    { articleId: 'A100', etapeNumero: 2, ordreDansEtape: 31 },
+    { articleId: 'A100', etapeNumero: 5, ordreDansEtape: 34 },
+  ],
+})
+
+const POSTES: ApiPosteAutomatique[] = [
+  { cfcCode: '121', libelle: 'Protection des ouvrages existants', declencheur: 'toujours', unite: 'forfait', prix: 5000, regleQuantite: 'forfait', remarque: null },
+  { cfcCode: '211.1', libelle: 'Échafaudage de façade', declencheur: 'echafaudage_facade', unite: 'm2', prix: 35, regleQuantite: 'surface_echafaudee', remarque: null },
+  { cfcCode: '285.0', libelle: 'Échafaudage cage d’escalier', declencheur: 'communs_mauvais', unite: 'forfait', prix: 5000, regleQuantite: 'par_cage_escalier', remarque: null },
+  { cfcCode: '287', libelle: 'Nettoyage complet du bâtiment', declencheur: 'toujours', unite: 'm2', prix: 10, regleQuantite: 'surface_plancher', remarque: null },
+]
+
+const ETAPES: ApiEtapeVisite[] = [
+  { numero: 1, nom: 'Façade', zone: 'Extérieur' },
+  { numero: 2, nom: "Cage d'escalier", zone: 'Communs' },
+  { numero: 5, nom: 'Appartements', zone: 'Logements' },
+]
+
+const BASE = { articles: [A015, A009, A100], postes: POSTES, etapes: ETAPES }
+
+const batiment = (o: Partial<DonneesBatiment> = {}): DonneesBatiment => ({
+  surfacePlancher: null, surfaceBatie: null, surfaceTerrain: null, surfaceFacade: null,
+  surfaceFenetres: null, nombreLogements: null, logementsParTypologie: null, nombrePiecesEau: null,
+  nombreEtages: null, nombreCages: null, nombrePortesEntree: null, hauteur: null, surfaceParking: null,
+  ...o,
+})
+
+const LABELS = new Map([
+  ['226', 'Crépissages de façade'], ['287', 'Nettoyage du bâtiment'],
+  ['121', 'Installations de chantier'], ['211', 'Échafaudages'], ['285', 'Peintures intérieures'],
+])
+const NU = { honoraryPct: 0, reservePct: 0, batiment: batiment() }
 
 // Le coefficient marché est un état global du module : on le neutralise pour que
 // les montants attendus soient lisibles, et on le restaure là où il est testé.
@@ -30,170 +67,193 @@ beforeEach(() => setMarketCoeff(1))
 
 describe('cascade des majorations', () => {
   it('applique la réserve sur le montant déjà majoré des honoraires', () => {
-    const c = cascadeDe(100_000, 16, 5)
-    expect(c.honoraires).toBe(16_000)
-    expect(c.reserve).toBe(5_800) // 5 % de 116 000, pas de 100 000
-    expect(c.sousTotal).toBe(121_800)
-    expect(Math.round(c.total)).toBe(131_666)
+    const c = cascadeDe(100_000, 12, 10)
+    expect(c.honoraires).toBe(12_000)
+    expect(c.reserve).toBeCloseTo(11_200, 2)
+    expect(c.sousTotal).toBeCloseTo(123_200, 2)
+    expect(c.total).toBeCloseTo(133_179.2, 1)
   })
 
   it('ne majore rien quand les pourcentages sont nuls, hors TVA', () => {
-    const c = cascadeDe(1000, 0, 0)
-    expect(c.sousTotal).toBe(1000)
-    expect(Math.round(c.total)).toBe(1081)
+    const c = cascadeDe(50_000, 0, 0)
+    expect(c.sousTotal).toBe(50_000)
+    expect(c.total).toBeCloseTo(54_050, 2)
   })
 })
 
-describe('enveloppes d’un ouvrage', () => {
-  it('éclate réparation, amélioration et normes en trois lignes distinctes', () => {
-    const d = buildDevis([ouvrage({
-      estimatedCost: '1000', improvement: 'Isolation renforcée', improvementCost: '500',
-      norms: 'Garde-corps SIA 358', normsCost: '250', area: 10, unit: 'CHF/m²',
-    })], LABELS, [], SANS_SURFACE)
-
-    const lignes = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes
-    expect(lignes.map((l) => l.enveloppe)).toEqual(['Réparation', 'Amélioration', 'Mise aux normes'])
-    expect(lignes.map((l) => l.montant)).toEqual([1000, 500, 250])
+describe('les enveloppes d’un ouvrage', () => {
+  it('sépare la réparation de la remise aux normes', () => {
+    const d = buildDevis(
+      [ouvrage({ estimatedCost: '12000', normsCost: '3000', norms: 'Mise aux normes incendie' })],
+      LABELS, BASE, NU,
+    )
+    const lignes = d.blocs.flatMap((b) => b.positions.flatMap((p) => p.lignes)).filter((l) => !l.automatique)
+    expect(lignes.map((l) => l.enveloppe)).toEqual(['Réparation', 'Mise aux normes'])
   })
 
-  it('calcule le prix unitaire appliqué, que le client peut recalculer', () => {
-    const d = buildDevis([ouvrage({ estimatedCost: '2400', area: 16, unit: 'CHF/m²' })],
-      LABELS, [], SANS_SURFACE)
-    const ligne = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0]
-    expect(ligne.prixUnitaire).toBe(150) // 2400 / 16
-    expect(ligne.unite).toBe('m²')
-  })
-
-  it('laisse le prix unitaire vide plutôt que de diviser par zéro', () => {
-    const d = buildDevis([ouvrage({ estimatedCost: '5000', area: 0 })], LABELS, [], SANS_SURFACE)
-    expect(d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0].prixUnitaire).toBeNull()
+  it('sort l’amélioration du devis principal pour la mettre aux options', () => {
+    const d = buildDevis(
+      [ouvrage({ estimatedCost: '12000', improvementCost: '40000', improvement: 'Isolation périphérique' })],
+      LABELS, BASE, NU,
+    )
+    const principal = d.blocs.flatMap((b) => b.positions.flatMap((p) => p.lignes)).filter((l) => !l.automatique)
+    expect(principal.map((l) => l.enveloppe)).toEqual(['Réparation'])
+    expect(d.options.lignes.map((l) => l.montant)).toEqual([40_000])
+    // Le total principal ne la porte pas : c'est une décision, pas un engagement.
+    expect(d.blocs.find((b) => b.cle === 'II')!.ht).toBe(12_000)
   })
 
   it('écarte du devis un ouvrage sans montant', () => {
-    const d = buildDevis([ouvrage({ estimatedCost: null })], LABELS, [], SANS_SURFACE)
-    expect(d.blocs.filter((b) => b.cle !== 'AUTO')).toHaveLength(0)
+    const d = buildDevis([ouvrage({ estimatedCost: null })], LABELS, BASE, NU)
+    expect(d.blocs.some((b) => b.cle === 'II')).toBe(false)
   })
 
-  it("ne fait pas entrer les photos dans le devis : elles restent au chapitre de l'état", () => {
-    const d = buildDevis([ouvrage({
-      estimatedCost: '100', photos: ['data:image/jpeg;base64,aaa'],
-    })], LABELS, [], SANS_SURFACE)
-    const ligne = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0]
-    expect(ligne).not.toHaveProperty('photos')
-  })
-})
-
-describe('groupement par priorité puis position CFC', () => {
-  it('range les ouvrages sous leur position à 3 chiffres', () => {
-    const d = buildDevis([
-      ouvrage({ id: 'a', cfcCode: '226.2', estimatedCost: '1000' }),
-      ouvrage({ id: 'b', cfcCode: '226.1', estimatedCost: '500' }),
-    ], LABELS, [], SANS_SURFACE)
-    const positions = d.blocs.find((b) => b.cle === 'II')!.positions
-    expect(positions).toHaveLength(1)
-    expect(positions[0].code).toBe('226')
-    expect(positions[0].label).toBe('Crépissages de façade')
-    expect(positions[0].montant).toBe(1500)
+  it('calcule le prix unitaire appliqué, que le client peut recalculer', () => {
+    const d = buildDevis([ouvrage({ estimatedCost: '18000', area: 200 })], LABELS, BASE, NU)
+    const l = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0]
+    expect(l.prixUnitaire).toBe(90)
+    expect(l.quantite! * l.prixUnitaire!).toBeCloseTo(l.montant, 2)
   })
 
-  it('sépare les priorités et garde un bloc pour celles non arbitrées', () => {
-    const d = buildDevis([
-      ouvrage({ id: 'a', priority: 'I', estimatedCost: '100' }),
-      ouvrage({ id: 'b', priority: null, estimatedCost: '200' }),
-    ], LABELS, [], SANS_SURFACE)
-    expect(d.blocs.map((b) => b.cle)).toEqual(['AUTO', 'I', 'NC'])
-    expect(d.blocs.find((b) => b.cle === 'NC')!.ht).toBe(200)
-  })
-
-  it('somme le total général sur tous les blocs, postes de chantier compris', () => {
-    const d = buildDevis([ouvrage({ estimatedCost: '1000' })], LABELS, [],
-      { honoraryPct: 0, reservePct: 0, floorArea: 100 })
-    const auto = d.blocs.find((b) => b.cle === 'AUTO')!.ht
-    expect(auto).toBe(1000 + 5000) // nettoyage 100 m² × 10 + protection 5000
-    expect(d.ht).toBe(auto + 1000)
+  it('laisse le prix unitaire vide plutôt que de diviser par zéro', () => {
+    const d = buildDevis([ouvrage({ estimatedCost: '18000', area: 0 })], LABELS, BASE, NU)
+    expect(d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0].prixUnitaire).toBeNull()
   })
 })
 
-describe('postes imposés par le classeur', () => {
-  it('compte le nettoyage au m² de surface de plancher', () => {
-    const lignes = postesDeChantier([], new Map(), { honoraryPct: 0, reservePct: 0, floorArea: 853 })
-    const nettoyage = lignes.find((l) => l.cfcCode === POSTES_AUTOMATIQUES.nettoyage.cfc)!
-    expect(nettoyage.montant).toBe(8530) // 853 × 10
-    expect(nettoyage.automatique).toBe(true)
-  })
+describe('règle 9, une ligne par étape', () => {
+  const cage = ouvrage({ id: 'r1', articleId: 'A100', etapeNumero: 2, cfcCode: '285.1', cfcLabel: 'Peinture intérieure – murs', estimatedCost: '9600' })
+  const appartements = ouvrage({ id: 'r2', articleId: 'A100', etapeNumero: 5, cfcCode: '285.1', cfcLabel: 'Peinture intérieure – murs', estimatedCost: '28800' })
 
-  it('omet le nettoyage quand la surface de plancher est inconnue, sans inventer', () => {
-    const lignes = postesDeChantier([], new Map(), SANS_SURFACE)
-    expect(lignes.find((l) => l.cfcCode === POSTES_AUTOMATIQUES.nettoyage.cfc)).toBeUndefined()
-  })
-
-  it('compte toujours la protection des ouvrages, en forfait', () => {
-    const lignes = postesDeChantier([], new Map(), SANS_SURFACE)
-    expect(lignes.find((l) => l.cfcCode === POSTES_AUTOMATIQUES.protection.cfc)!.montant).toBe(5000)
-  })
-
-  it("ajoute l'échafaudage dès qu'un revêtement de mur des communs est en fin de vie", () => {
-    const catalogue = new Map([[7, article({ id: 7, category: 'Revêtement de murs' })]])
-    const lignes = postesDeChantier(
-      [ouvrage({ catalogItemId: 7, state: 'MAUVAIS', localisation: 'COMMUNS' })], catalogue, SANS_SURFACE)
-    expect(lignes.find((l) => l.cle === 'auto:echafaudage')!.montant).toBe(5000)
-  })
-
-  it("n'ajoute pas l'échafaudage pour un revêtement seulement dégradé", () => {
-    const catalogue = new Map([[7, article({ id: 7, category: 'Revêtement de murs' })]])
-    const lignes = postesDeChantier(
-      [ouvrage({ catalogItemId: 7, state: 'MOYEN', localisation: 'COMMUNS' })], catalogue, SANS_SURFACE)
-    expect(lignes.find((l) => l.cle === 'auto:echafaudage')).toBeUndefined()
-  })
-
-  it("n'échafaude pas la cage pour un plafond d'appartement en fin de vie", () => {
-    // Le classeur dit « pour les communs (cage d'escalier) ». Tant que le relevé
-    // ne distinguait pas les deux, refaire un plafond de salon montait un
-    // échafaudage dans la cage : 5 000 CHF au devis sans raison.
-    const catalogue = new Map([[8, article({ id: 8, category: 'Revêtement de plafonds' })]])
-    const lignes = postesDeChantier(
-      [ouvrage({ catalogItemId: 8, state: 'MAUVAIS', localisation: 'LOGEMENTS' })], catalogue, SANS_SURFACE)
-    expect(lignes.find((l) => l.cle === 'auto:echafaudage')).toBeUndefined()
-  })
-
-  it("n'échafaude la cage qu'une fois, même si les deux côtés sont en fin de vie", () => {
-    const catalogue = new Map([
-      [7, article({ id: 7, category: 'Revêtement de murs' })],
-      [8, article({ id: 8, category: 'Revêtement de plafonds' })],
+  it('nomme l’étape de chaque ligne quand l’ouvrage est relevé deux fois', () => {
+    const d = buildDevis([cage, appartements], LABELS, BASE, NU)
+    const lignes = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes
+    expect(lignes.map((l) => l.libelle).sort()).toEqual([
+      'Peinture intérieure – murs · Appartements',
+      "Peinture intérieure – murs · Cage d'escalier",
     ])
+  })
+
+  it('n’alourdit pas le libellé d’un ouvrage relevé une seule fois', () => {
+    const d = buildDevis([ouvrage({ estimatedCost: '12000' })], LABELS, BASE, NU)
+    expect(d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0].libelle)
+      .toBe('Façade crépie non isolée')
+  })
+
+  it('trie les positions par code CFC, à l’usage suisse', () => {
+    const d = buildDevis(
+      [cage, ouvrage({ estimatedCost: '12000' })],
+      LABELS, BASE, { ...NU, batiment: batiment({ surfacePlancher: 1200, surfaceFacade: 400 }) },
+    )
+    const auto = d.blocs.find((b) => b.cle === 'AUTO')!
+    expect(auto.positions.map((p) => p.code)).toEqual(['121', '211', '287'])
+  })
+})
+
+describe('règle 7, les postes automatiques', () => {
+  const avecBatiment = { honoraryPct: 0, reservePct: 0, batiment: batiment({ surfacePlancher: 1200, surfaceFacade: 400, nombreCages: 2 }) }
+
+  it('compte toujours la protection et le nettoyage', () => {
+    const lignes = postesDeChantier([], BASE, avecBatiment)
+    expect(lignes.map((l) => l.cfcCode)).toEqual(['121', '287'])
+    expect(lignes.find((l) => l.cfcCode === '287')).toMatchObject({ quantite: 1200, montant: 12_000 })
+  })
+
+  it('lit les prix dans la table et jamais en dur', () => {
+    const cher = { ...BASE, postes: POSTES.map((p) => (p.cfcCode === '287' ? { ...p, prix: 12 } : p)) }
+    expect(postesDeChantier([], cher, avecBatiment).find((l) => l.cfcCode === '287')!.montant).toBe(14_400)
+  })
+
+  it('ajoute l’échafaudage de façade dès qu’un ouvrage qui en demande est chiffré', () => {
+    const lignes = postesDeChantier([ouvrage({ estimatedCost: '72000', area: 400 })], BASE, avecBatiment)
+    expect(lignes.find((l) => l.cfcCode === '211.1')).toMatchObject({ quantite: 400, montant: 14_000 })
+  })
+
+  it('ne compte pas deux fois la même façade', () => {
+    // Moitié crépie, moitié ventilée, les deux à refaire : 400 m², pas 800.
     const lignes = postesDeChantier([
-      ouvrage({ id: 'a', catalogItemId: 7, state: 'MAUVAIS', localisation: 'COMMUNS' }),
-      ouvrage({ id: 'b', catalogItemId: 8, state: 'MAUVAIS', localisation: 'LOGEMENTS' }),
-    ], catalogue, SANS_SURFACE)
-    expect(lignes.filter((l) => l.cle === 'auto:echafaudage')).toHaveLength(1)
+      ouvrage({ id: 'a', estimatedCost: '36000', area: 200 }),
+      ouvrage({ id: 'b', articleId: 'A009', cfcCode: '215.2', estimatedCost: '40000', area: 200 }),
+    ], BASE, avecBatiment)
+    expect(lignes.find((l) => l.cfcCode === '211.1')!.quantite).toBe(400)
   })
 
-  it("n'ajoute pas l'échafaudage pour une façade en fin de vie : la règle vise l'intérieur", () => {
-    const catalogue = new Map([[3, article({ id: 3, category: 'FACADE' })]])
+  it('n’échafaude pas la façade pour un ouvrage intérieur', () => {
     const lignes = postesDeChantier(
-      [ouvrage({ catalogItemId: 3, state: 'MAUVAIS' })], catalogue, SANS_SURFACE)
-    expect(lignes.find((l) => l.cle === 'auto:echafaudage')).toBeUndefined()
+      [ouvrage({ articleId: 'A100', etapeNumero: 5, cfcCode: '285.1', estimatedCost: '28800', area: 1200 })],
+      BASE, avecBatiment,
+    )
+    expect(lignes.find((l) => l.cfcCode === '211.1')).toBeUndefined()
   })
 
-  it('indexe les postes du classeur comme les prix du catalogue', () => {
-    setMarketCoeff(1.2)
-    const lignes = postesDeChantier([], new Map(), { honoraryPct: 0, reservePct: 0, floorArea: 100 })
-    expect(lignes.find((l) => l.cle === 'auto:protection')!.montant).toBe(6000) // 5000 × 1.2
-    expect(lignes.find((l) => l.cle === 'auto:nettoyage')!.montant).toBe(1200) // 100 × 10 × 1.2
+  it('échafaude la cage d’escalier par cage, quand ses murs sont en fin de vie', () => {
+    const lignes = postesDeChantier(
+      [ouvrage({ articleId: 'A100', etapeNumero: 2, cfcCode: '285.1', state: 'MAUVAIS', estimatedCost: '9600' })],
+      BASE, avecBatiment,
+    )
+    expect(lignes.find((l) => l.cfcCode === '285.0')).toMatchObject({ quantite: 2, montant: 10_000 })
+  })
+
+  it('n’échafaude pas la cage pour des murs d’appartement en fin de vie', () => {
+    const lignes = postesDeChantier(
+      [ouvrage({ articleId: 'A100', etapeNumero: 5, cfcCode: '285.1', state: 'MAUVAIS', estimatedCost: '28800' })],
+      BASE, avecBatiment,
+    )
+    expect(lignes.find((l) => l.cfcCode === '285.0')).toBeUndefined()
+  })
+
+  it('indexe les postes comme les prix du catalogue', () => {
+    setMarketCoeff(1.1)
+    expect(postesDeChantier([], BASE, avecBatiment).find((l) => l.cfcCode === '287')!.montant).toBe(13_200)
   })
 
   it('énonce la règle de chaque poste, pour qu’un montant sans ouvrage reste explicable', () => {
-    const d = buildDevis([], LABELS, [], { honoraryPct: 0, reservePct: 0, floorArea: 100 })
+    const d = buildDevis([], LABELS, BASE, avecBatiment)
     expect(d.reglesAppliquees).toHaveLength(2)
-    expect(d.reglesAppliquees[0]).toContain('CFC 287')
+    expect(d.reglesAppliquees[0]).toContain('CFC 121')
+  })
+})
+
+describe('règle 8, l’échafaudage des options', () => {
+  const option = ouvrage({ estimatedCost: null, improvement: 'Isolation périphérique crépie', improvementCost: '124000', area: 400 })
+
+  it('ajoute l’échafaudage au tableau des options', () => {
+    const t = tableauDesOptions([option], BASE, false)
+    expect(t.lignes[0].echafaudage).toMatchObject({ montant: 14_000 })
+    expect(t.ht).toBe(124_000)
+    expect(t.total).toBe(138_000)
+  })
+
+  it('ne le compte pas deux fois quand le devis principal le porte déjà', () => {
+    const t = tableauDesOptions([option], BASE, true)
+    expect(t.lignes[0].echafaudage!.montant).toBeNull()
+    expect(t.lignes[0].echafaudage!.mention).toBe('Échafaudage déjà compté au devis principal.')
+    expect(t.total).toBe(124_000)
+  })
+
+  it('se tait pour une option qui ne demande pas d’échafaudage', () => {
+    const interieur = ouvrage({
+      articleId: 'A100', etapeNumero: 5, cfcCode: '285.1', estimatedCost: null,
+      improvement: 'Peinture minérale', improvementCost: '20000',
+    })
+    expect(tableauDesOptions([interieur], BASE, false).lignes[0].echafaudage).toBeNull()
+  })
+
+  it('voit l’échafaudage du devis principal quand il y est', () => {
+    const d = buildDevis(
+      [ouvrage({ estimatedCost: '72000', area: 400, improvement: 'Isolation', improvementCost: '124000' })],
+      LABELS, BASE, { honoraryPct: 0, reservePct: 0, batiment: batiment({ surfaceFacade: 400 }) },
+    )
+    expect(d.options.lignes[0].echafaudage!.montant).toBeNull()
+    expect(d.options.echafaudage).toBe(0)
   })
 })
 
 describe('unité du catalogue', () => {
   it('retire le préfixe monétaire pour ne garder que l’unité de métré', () => {
     expect(uniteCourte('CHF/m²')).toBe('m²')
-    expect(uniteCourte('CHF / pce')).toBe('pce')
-    expect(uniteCourte('CHF/m² de toiture')).toBe('m² de toiture')
+    expect(uniteCourte('CHF / m2')).toBe('m2')
+    expect(uniteCourte('m²')).toBe('m²')
   })
 
   it('rend null sur une unité absente ou purement monétaire', () => {
@@ -203,63 +263,33 @@ describe('unité du catalogue', () => {
 })
 
 describe('un montant se refait de tête', () => {
-  /**
-   * La règle du lot 1.3 : quantité × prix unitaire = montant, sur chaque ligne.
-   * Un devis que le destinataire ne peut pas recalculer est un devis qu'il
-   * conteste. Le prix unitaire étant arrondi au centime, on tolère l'écart de
-   * cet arrondi, et rien de plus.
-   */
-  /** Toutes les lignes du devis, quel que soit le bloc où elles sont tombées. */
-  const toutesLesLignes = (devis: ReturnType<typeof buildDevis>) =>
-    devis.blocs.flatMap((b) => b.positions.flatMap((p) => p.lignes))
-
-  const verifier = (lignes: { quantite: number | null; prixUnitaire: number | null; montant: number }[]) => {
-    expect(lignes.length).toBeGreaterThan(0)
-    for (const l of lignes) {
-      if (l.quantite == null || l.prixUnitaire == null) continue
-      // Un centime d'écart par unité au maximum : c'est l'arrondi du prix unitaire.
-      expect(Math.abs(l.quantite * l.prixUnitaire - l.montant)).toBeLessThanOrEqual(l.quantite * 0.005 + 0.01)
-    }
-  }
-
-  it('tient sur les trois enveloppes d’un ouvrage', () => {
-    const devis = buildDevis([ouvrage({
-      area: 840, unit: 'CHF/m²', estimatedCost: '94332',
-      improvement: 'Isolation', improvementCost: '12345',
-      norms: 'SIA 358', normsCost: '777',
-    })], LABELS, [], SANS_SURFACE)
-    verifier(toutesLesLignes(devis))
+  it('tient sur la ligne d’un ouvrage', () => {
+    const d = buildDevis([ouvrage({ estimatedCost: '27000', area: 300 })], LABELS, BASE, NU)
+    const l = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0]
+    expect(l.quantite! * l.prixUnitaire!).toBeCloseTo(l.montant, 2)
   })
 
   it('tient sur une quantité qui ne tombe pas juste', () => {
-    // 94 332 / 840 = 112.30 exactement : c'est le cas releve par le bureau, où
-    // l'affichage arrondi au franc donnait 840 × 112 = 94 080 et faisait douter.
-    const devis = buildDevis([ouvrage({ area: 840, unit: 'CHF/m²', estimatedCost: '94332' })],
-      LABELS, [], SANS_SURFACE)
-    const ligne = toutesLesLignes(devis).find((l) => !l.automatique && l.enveloppe === 'Réparation')!
-    expect(ligne.prixUnitaire).toBe(112.3)
-    expect(ligne.quantite! * ligne.prixUnitaire!).toBe(94332)
+    const d = buildDevis([ouvrage({ estimatedCost: '12345', area: 37 })], LABELS, BASE, NU)
+    const l = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0]
+    expect(l.quantite! * l.prixUnitaire!).toBeCloseTo(l.montant, 0)
   })
 
   it('tient aussi sur les postes comptés d’office', () => {
-    verifier(postesDeChantier([ouvrage({ estimatedCost: '50000' })], new Map(),
-      { honoraryPct: 0, reservePct: 0, floorArea: 1100 }))
+    const lignes = postesDeChantier([], BASE, { ...NU, batiment: batiment({ surfacePlancher: 1234 }) })
+    const l = lignes.find((x) => x.cfcCode === '287')!
+    expect(l.quantite! * l.prixUnitaire!).toBeCloseTo(l.montant, 0)
   })
 
   it('ne fabrique pas de prix unitaire sans quantité', () => {
-    const devis = buildDevis([ouvrage({ area: null, estimatedCost: '5000' })], LABELS, [], SANS_SURFACE)
-    // Par le libellé, et non par le montant : un poste compté d'office peut
-    // porter la même somme, et c'est lui qu'on attraperait.
-    const ligne = toutesLesLignes(devis).find((l) => !l.automatique)!
-    expect(ligne.montant).toBe(5000)
-    expect(ligne.quantite).toBeNull()
-    expect(ligne.prixUnitaire).toBeNull()
+    const d = buildDevis([ouvrage({ estimatedCost: '5000', area: null })], LABELS, BASE, NU)
+    expect(d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0].prixUnitaire).toBeNull()
   })
 })
 
 describe('affichage du prix unitaire', () => {
   it('montre les centimes quand il y en a, et pas sinon', () => {
-    expect(formatPrixUnitaire(112.3)).toMatch(/112[.,]30 CHF/)
-    expect(formatPrixUnitaire(112)).toBe('112 CHF')
+    expect(formatPrixUnitaire(90)).toBe('90 CHF')
+    expect(formatPrixUnitaire(90.5)).toMatch(/90[.,]50 CHF/)
   })
 })

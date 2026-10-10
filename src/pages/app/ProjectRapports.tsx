@@ -9,6 +9,7 @@ import { computeProjectMetrics } from '@/lib/formulas'
 import { getMarketCoeff } from '@/lib/diagnostic-auto'
 import { cfcGroupCode, cfcGroupLabels } from '@/lib/cfc'
 import { api } from '@/lib/api'
+import { useBaseCfc } from '@/lib/base-cfc/requete'
 import type { ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
 import { RapportComplet } from '@/components/report/RapportComplet'
@@ -63,6 +64,10 @@ export function ProjectRapports() {
   // Catalogue des items : il porte la description de l'état constaté (« état existant »
   // du tableau de référence), qui doit figurer dans le rapport et pas seulement à la saisie.
   const catalogQuery = useQuery({ queryKey: ['cfc-items'], queryFn: () => api.cfc.items(), staleTime: 3.6e6 })
+  // La base v3 porte le devis, ses postes et le nom des étapes. L'ancien
+  // catalogue reste là pour les relevés d'avant la bascule, dont il décrit
+  // l'état constaté, et pour les variantes.
+  const baseQuery = useBaseCfc()
   const etatExistant = useMemo(() => {
     const parId = new Map((catalogQuery.data?.items ?? []).map((c) => [c.id, c]))
     return (it: { catalogItemId: number | null; state: ElementState | null }): string | null => {
@@ -225,6 +230,11 @@ export function ProjectRapports() {
           items={items}
           etatExistant={etatExistant}
           cfcEntries={cfcQuery.data?.entries ?? []}
+          base={{
+            articles: baseQuery.data?.articles ?? [],
+            postes: baseQuery.data?.postes ?? [],
+            etapes: baseQuery.data?.etapes ?? [],
+          }}
           catalogItems={catalogQuery.data?.items ?? []}
           variants={variantsQuery.data?.variants ?? []}
           auteur={auteur}

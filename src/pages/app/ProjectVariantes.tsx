@@ -21,6 +21,8 @@ import { api } from '@/lib/api'
 import { cn, formatCHF } from '@/lib/utils'
 import { baseDuProjet, calculerVariantes, montantDepuisCatalogue, montantOuvrage, type LigneArbitrage, type Variante } from '@/lib/variantes'
 import { buildDevis, uniteCourte } from '@/lib/devis'
+import { useBaseCfc } from '@/lib/base-cfc/requete'
+import { donneesDuBatiment } from '@/lib/base-cfc/batiment'
 import { buildQuantityContext, resolveQuantity, type QuantityContext } from '@/lib/diagnostic-auto'
 import { consequencesDe, type Consequence } from '@/lib/variantes-consequences'
 import { cfcLabelIndex } from '@/lib/cfc'
@@ -54,6 +56,9 @@ export function ProjectVariantes() {
 
   const cfcQuery = useQuery({ queryKey: ['cfc-catalog'], queryFn: () => api.cfc.catalog(), staleTime: 3.6e6 })
   const catalogQuery = useQuery({ queryKey: ['cfc-items'], queryFn: () => api.cfc.items(), staleTime: 3.6e6 })
+  // La base v3 sert au devis de référence ; les lignes de variante, elles,
+  // pointent encore l'ancien catalogue par identifiant.
+  const baseQuery = useBaseCfc()
 
   const variantsKey = ['variants', id] as const
   const variantsQuery = useQuery({
@@ -80,12 +85,16 @@ export function ProjectVariantes() {
   // compris — et non à la seule somme des ouvrages : sinon l'écart affiché ici ne
   // se recouperait pas avec celui du rapport.
   const devis = useMemo(
-    () => buildDevis(items, cfcLabelIndex(cfcQuery.data?.entries ?? []), catalogQuery.data?.items ?? [], {
+    () => buildDevis(items, cfcLabelIndex(cfcQuery.data?.entries ?? []), {
+      articles: baseQuery.data?.articles ?? [],
+      postes: baseQuery.data?.postes ?? [],
+      etapes: baseQuery.data?.etapes ?? [],
+    }, {
       honoraryPct: project?.honoraryPct ?? null,
       reservePct: project?.reservePct ?? null,
-      floorArea: project?.floorArea ?? null,
+      batiment: donneesDuBatiment(project ?? {}),
     }),
-    [items, cfcQuery.data, catalogQuery.data, project?.honoraryPct, project?.reservePct, project?.floorArea],
+    [items, cfcQuery.data, baseQuery.data, project],
   )
   const nomenclature = useMemo(() => cfcQuery.data?.entries ?? [], [cfcQuery.data])
   const catalogue = useMemo(() => catalogQuery.data?.items ?? [], [catalogQuery.data])

@@ -1,24 +1,34 @@
 /**
  * Construction du devis, à la maille CFC 3 chiffres, groupé par priorité.
  *
- * Ce module tient les règles de chiffrage qui viennent du classeur du bureau
- * (DIAGLY_FINAL, Feuil2) et non de la saisie du diagnostiqueur :
+ * Ce module tient les règles de chiffrage qui viennent de la base du bureau et
+ * non de la saisie du diagnostiqueur :
  *
- *  - un ouvrage peut porter jusqu'à trois enveloppes distinctes (réparation,
- *    amélioration, remise aux normes), chacune avec son prix dans le catalogue.
- *    Elles deviennent trois lignes de devis, pas une somme opaque ;
- *  - trois postes s'ajoutent d'office à tout devis, d'après la « note générale
- *    importante » du classeur : nettoyage, protection des ouvrages, et un
- *    échafaudage de cage d'escalier dès qu'un revêtement de mur ou de plafond
- *    est en fin de vie.
+ *  - un ouvrage relevé dans deux étapes donne deux lignes, distinguées par le
+ *    nom de leur étape : « Peinture intérieure, murs · Cage d'escalier » et
+ *    « ... · Appartements ». Sans ce sous-titre, deux lignes identiques à des
+ *    montants différents se lisent comme un doublon ;
+ *  - quatre postes s'ajoutent d'office, dont les prix sont lus dans la table
+ *    des postes automatiques et jamais écrits ici ;
+ *  - les améliorations sortent du total principal et vont au tableau des
+ *    options : ce sont des travaux qu'on peut décider de ne pas faire. Les
+ *    remises aux normes, elles, restent au devis, parce qu'on ne décide pas de
+ *    s'en passer.
  *
  * Le calcul est ici, hors des composants, pour être vérifiable par des tests :
  * un devis faux ne se voit pas à l'écran, il se voit chez le client.
  */
 import { appliedUnitPrice, getMarketCoeff } from './diagnostic-auto'
 import { cfcPositionCode } from './cfc'
-import { suffixeLocalisation } from './localisation'
-import type { ApiCatalogItem, ApiDiagnosticItem, Priority } from './api-types'
+import { comparerCodesCfc } from './base-cfc/devis-cfc'
+import {
+  echafaudageDeLOption, postesAutomatiques,
+  type Priorite, type ReleveDuDevis,
+} from './base-cfc/postes'
+import type { DonneesBatiment } from './base-cfc/quantites'
+import type {
+  ApiArticle, ApiDiagnosticItem, ApiEtapeVisite, ApiPosteAutomatique, Priority,
+} from './api-types'
 
 /** TVA suisse appliquée au sous-total travaux + honoraires + réserve. */
 export const TVA = 0.081
@@ -35,27 +45,6 @@ export const HORIZON: Record<Priority, string> = {
   II: '5 à 10 ans',
   III: 'au-delà de 10 ans',
 }
-
-/**
- * Postes que le classeur impose dans tout devis, quel que soit le diagnostic.
- * Les montants sont des prix catalogue : ils suivent l'indice comme les autres.
- */
-export const POSTES_AUTOMATIQUES = {
-  /** CFC 287 — nettoyage complet de l'immeuble, au m² de surface de plancher. */
-  nettoyage: { cfc: '287', prixParM2: 10 },
-  /** CFC 101 — protection des ouvrages existants, forfait global. */
-  protection: { cfc: '101', forfait: 5000 },
-  /**
-   * CFC 211 — échafaudage de cage d'escalier, forfait, déclenché par un
-   * revêtement de mur ou de plafond **des communs** en fin de vie (code 4 du
-   * classeur). Le classeur dit « pour les communs (cage d'escalier) » : un
-   * plafond d'appartement à refaire ne monte pas d'échafaudage dans la cage.
-   */
-  echafaudageCommuns: { cfc: '211', forfait: 5000 },
-} as const
-
-/** Catégories du classeur qui déclenchent l'échafaudage de cage d'escalier. */
-const CATEGORIES_MURS_PLAFONDS = ['Revêtement de murs', 'Revêtement de plafonds']
 
 export type Enveloppe = 'Réparation' | 'Amélioration' | 'Mise aux normes' | 'Poste de chantier'
 
@@ -74,6 +63,37 @@ export interface DevisLigne {
   remarque: string
   /** true pour les postes imposés par le classeur, absents du diagnostic. */
   automatique: boolean
+}
+
+/** Ce que le devis a besoin de connaître de la base. */
+export interface BaseDuDevis {
+  articles: ApiArticle[]
+  postes: ApiPosteAutomatique[]
+  etapes: ApiEtapeVisite[]
+}
+
+/** Une amélioration retenue, chiffrée hors du total principal. */
+export interface LigneOption {
+  cle: string
+  cfcCode: string
+  libelle: string
+  travaux: string
+  quantite: number | null
+  unite: string | null
+  prixUnitaire: number | null
+  montant: number
+  /** Échafaudage propre à cette option, ou la mention qui dit pourquoi il n'y en a pas. */
+  echafaudage: { montant: number | null; mention: string } | null
+}
+
+/** Le tableau des options, hors devis principal. */
+export interface TableauDesOptions {
+  lignes: LigneOption[]
+  /** Somme des options elles-mêmes. */
+  ht: number
+  /** Somme des échafaudages qu'elles ajoutent. */
+  echafaudage: number
+  total: number
 }
 
 export interface DevisPosition {
@@ -105,6 +125,8 @@ export interface DevisBloc {
 
 export interface Devis {
   blocs: DevisBloc[]
+  /** Les améliorations, chiffrées à part : on peut décider de ne pas les faire. */
+  options: TableauDesOptions
   ht: number
   cascade: Cascade
   /** Règles appliquées d'office, à énoncer sous le devis. */
@@ -114,8 +136,8 @@ export interface Devis {
 export interface DevisOptions {
   honoraryPct: number | null
   reservePct: number | null
-  /** Surface de plancher, pour le nettoyage au m². */
-  floorArea: number | null
+  /** Données du bâtiment, dont les postes automatiques tirent leurs quantités. */
+  batiment: DonneesBatiment
 }
 
 const num = (v: string | null | undefined) => (v ? Number(v) : 0)
@@ -142,15 +164,20 @@ export function uniteCourte(unit: string | null | undefined): string | null {
   return unit.replace(/^CHF\s*\/?\s*/i, '').trim() || null
 }
 
-/** Les trois enveloppes d'un ouvrage, chacune devenant sa propre ligne si elle est chiffrée. */
-function lignesDeLOuvrage(it: ApiDiagnosticItem): DevisLigne[] {
+/**
+ * Les enveloppes d'un ouvrage qui entrent au devis principal.
+ *
+ * La réparation et la remise aux normes. L'amélioration n'y est pas : elle va
+ * au tableau des options, hors total, parce qu'on peut décider de ne pas la
+ * faire. Une remise aux normes, non.
+ */
+function lignesDeLOuvrage(it: ApiDiagnosticItem, sousTitre: string | null): DevisLigne[] {
   const quantite = it.area ?? null
   const unite = uniteCourte(it.unit)
   const travaux = it.works.filter((w) => w && w !== 'Néant').join(' · ')
 
   const enveloppes: [Enveloppe, number, string][] = [
     ['Réparation', num(it.estimatedCost), travaux],
-    ['Amélioration', num(it.improvementCost), it.improvement ?? ''],
     ['Mise aux normes', num(it.normsCost), it.norms ?? ''],
   ]
 
@@ -159,10 +186,11 @@ function lignesDeLOuvrage(it: ApiDiagnosticItem): DevisLigne[] {
     .map(([enveloppe, montant, remarque]) => ({
       cle: `${it.id}:${enveloppe}`,
       cfcCode: it.cfcCode,
-      // Deux relevés du même article peuvent se suivre au devis — la peinture des
-      // communs et celle des logements. Sans le suffixe, le lecteur voit deux
-      // lignes identiques à des montants différents et croit à un doublon.
-      libelle: `${it.cfcLabel}${suffixeLocalisation(it.localisation)}`,
+      // Deux relevés du même article se suivent au devis, la peinture de la cage
+      // d'escalier et celle des appartements. Sans le nom de leur étape, le
+      // lecteur voit deux lignes identiques à des montants différents et croit
+      // à un doublon.
+      libelle: sousTitre ? `${it.cfcLabel} · ${sousTitre}` : it.cfcLabel,
       enveloppe,
       quantite,
       unite,
@@ -174,79 +202,160 @@ function lignesDeLOuvrage(it: ApiDiagnosticItem): DevisLigne[] {
 }
 
 /**
- * Postes imposés par la note générale du classeur.
+ * Le sous-titre de chaque relevé : le nom de son étape, et seulement quand il
+ * en faut un.
  *
- * Ils ne viennent d'aucune observation : ils accompagnent le chantier dès lors
- * qu'il y a des travaux. Chacun porte sa règle en clair, pour qu'un montant qui
- * n'a pas d'ouvrage en face reste explicable.
+ * Mettre « Façade » sous un crépi de façade n'apprend rien et alourdit la
+ * lecture. Le mettre sous une peinture relevée deux fois est indispensable.
+ */
+function sousTitresDesReleves(items: ApiDiagnosticItem[], etapes: ApiEtapeVisite[]): Map<string, string | null> {
+  const etapesParArticle = new Map<string, Set<number>>()
+  for (const it of items) {
+    if (!it.articleId || it.etapeNumero == null) continue
+    if (!etapesParArticle.has(it.articleId)) etapesParArticle.set(it.articleId, new Set())
+    etapesParArticle.get(it.articleId)!.add(it.etapeNumero)
+  }
+
+  const nomDeLEtape = new Map(etapes.map((e) => [e.numero, e.nom]))
+  const parReleve = new Map<string, string | null>()
+  for (const it of items) {
+    const plusieurs = it.articleId ? (etapesParArticle.get(it.articleId)?.size ?? 0) > 1 : false
+    parReleve.set(it.id, plusieurs && it.etapeNumero != null ? nomDeLEtape.get(it.etapeNumero) ?? null : null)
+  }
+  return parReleve
+}
+
+/**
+ * Les relevés, tels que les règles des postes automatiques les lisent.
+ *
+ * Un relevé dont l'article n'est pas dans la base n'y entre pas : on ne sait
+ * pas s'il demande un échafaudage, et deviner ferait apparaître ou disparaître
+ * un poste de plusieurs milliers de francs.
+ */
+function relevesPourLesPostes(items: ApiDiagnosticItem[], articles: ApiArticle[]): ReleveDuDevis[] {
+  const parId = new Map(articles.map((a) => [a.id, a]))
+  const etats: Record<string, string> = {
+    TRES_BON: 'tres_bon', BON: 'bon', MOYEN: 'moyen', MAUVAIS: 'mauvais',
+  }
+  const dedans: ReleveDuDevis[] = []
+  for (const it of items) {
+    const article = it.articleId ? parId.get(it.articleId) : undefined
+    if (!article) continue
+    dedans.push({
+      articleId: article.id,
+      nom: article.nom,
+      etapeNumero: it.etapeNumero ?? 0,
+      echafaudage: article.echafaudage,
+      baseQuantite: article.baseQuantite,
+      domaineRapport: article.domaineRapport,
+      etat: it.state ? etats[it.state] ?? null : null,
+      quantite: it.area ?? null,
+      montant: num(it.estimatedCost) + num(it.normsCost),
+      priorite: (it.priority as Priorite | null) ?? null,
+    })
+  }
+  return dedans
+}
+
+/**
+ * Les postes que la base impose dans tout devis.
+ *
+ * Quatre postes, et leurs prix sont lus dans la table : le bureau doit pouvoir
+ * changer le prix d'un échafaudage sans qu'on touche au code. Ils suivent
+ * ensuite l'indice de la construction comme les prix du catalogue, parce qu'un
+ * devis daté d'aujourd'hui se chiffre au marché d'aujourd'hui.
+ *
+ * Le calcul lui-même est dans base-cfc/postes.ts, avec ses tests. Ici, on
+ * l'habille pour le devis.
  */
 export function postesDeChantier(
   items: ApiDiagnosticItem[],
-  catalogue: Map<number, ApiCatalogItem>,
+  base: BaseDuDevis,
   options: DevisOptions,
 ): DevisLigne[] {
   const coeff = getMarketCoeff()
-  const lignes: DevisLigne[] = []
+  const indexes = base.postes.map((p) => ({ ...p, prix: Math.round(p.prix * coeff * 100) / 100 }))
+  const releves = relevesPourLesPostes(items, base.articles)
 
-  const surface = options.floorArea ?? 0
-  if (surface > 0) {
-    const pu = Math.round(POSTES_AUTOMATIQUES.nettoyage.prixParM2 * coeff * 100) / 100
-    lignes.push({
-      cle: 'auto:nettoyage',
-      cfcCode: POSTES_AUTOMATIQUES.nettoyage.cfc,
-      libelle: "Nettoyage complet de l'immeuble",
-      enveloppe: 'Poste de chantier',
-      quantite: surface,
-      unite: 'm² SP',
-      prixUnitaire: pu,
-      montant: Math.round(surface * pu),
-      remarque: `Compté d'office sur tout devis : ${POSTES_AUTOMATIQUES.nettoyage.prixParM2} CHF par m² de surface de plancher.`,
-      automatique: true,
-    })
-  }
-
-  const protection = Math.round(POSTES_AUTOMATIQUES.protection.forfait * coeff)
-  lignes.push({
-    cle: 'auto:protection',
-    cfcCode: POSTES_AUTOMATIQUES.protection.cfc,
-    libelle: 'Protection des ouvrages existants',
-    enveloppe: 'Poste de chantier',
-    quantite: 1,
-    unite: 'forfait',
-    prixUnitaire: protection,
-    montant: protection,
-    remarque: "Compté d'office sur tout devis, en forfait global.",
+  return postesAutomatiques(releves, indexes, {
+    surfacePlancher: options.batiment.surfacePlancher,
+    surfaceFacade: options.batiment.surfaceFacade,
+    nombreCages: options.batiment.nombreCages,
+  }).map((l) => ({
+    cle: `auto:${l.cfcCode}`,
+    cfcCode: l.cfcCode,
+    libelle: l.libelle,
+    enveloppe: 'Poste de chantier' as const,
+    quantite: l.quantite,
+    unite: uniteDuPoste(l.unite),
+    prixUnitaire: l.prixUnitaire,
+    montant: Math.round(l.montant ?? 0),
+    remarque: l.remarque,
     automatique: true,
-  })
+  }))
+}
 
-  // Échafaudage de cage d'escalier : déclenché par un revêtement de mur ou de
-  // plafond **des communs** en fin de vie. Tant que le relevé ne distinguait pas
-  // les communs des logements, la règle se déclenchait sur n'importe quel
-  // revêtement et montait un échafaudage de cage pour un plafond d'appartement.
-  // Le relevé porte maintenant sa localisation : la règle peut viser juste.
-  const declencheur = items.find((it) => {
-    if (it.state !== 'MAUVAIS' || it.catalogItemId == null) return false
-    if (it.localisation !== 'COMMUNS') return false
-    const c = catalogue.get(it.catalogItemId)
-    return !!c?.category && CATEGORIES_MURS_PLAFONDS.includes(c.category)
-  })
-  if (declencheur) {
-    const forfait = Math.round(POSTES_AUTOMATIQUES.echafaudageCommuns.forfait * coeff)
+/** Unité d'un poste, écrite pour le devis. */
+function uniteDuPoste(unite: string): string {
+  return unite === 'm2' ? 'm²' : unite
+}
+
+/**
+ * Le tableau des options : les améliorations retenues, hors total principal.
+ *
+ * Leurs prix sont donnés hors échafaudage. Une isolation périphérique à 310
+ * francs le mètre carré n'inclut pas les 35 francs de l'échafaudage, et
+ * l'arbitrage se ferait sur un montant faux. On l'ajoute donc, sauf si le devis
+ * principal échafaude déjà cette façade, où on le dit au lieu de le compter.
+ */
+export function tableauDesOptions(
+  items: ApiDiagnosticItem[],
+  base: BaseDuDevis,
+  echafaudageAuDevisPrincipal: boolean,
+): TableauDesOptions {
+  const coeff = getMarketCoeff()
+  const poste211 = base.postes.find((p) => p.cfcCode === '211.1')
+  const posteIndexe = poste211
+    ? { ...poste211, prix: Math.round(poste211.prix * coeff * 100) / 100 }
+    : undefined
+  const parId = new Map(base.articles.map((a) => [a.id, a]))
+  const sousTitres = sousTitresDesReleves(items, base.etapes)
+
+  const lignes: LigneOption[] = []
+  for (const it of items) {
+    const montant = num(it.improvementCost)
+    if (montant <= 0) continue
+    const article = it.articleId ? parId.get(it.articleId) : undefined
+    const sousTitre = sousTitres.get(it.id) ?? null
+    const quantite = it.area ?? null
+
+    const echafaudage = article
+      ? echafaudageDeLOption(
+        { articleId: article.id, nom: article.nom, echafaudage: article.echafaudage, quantite },
+        posteIndexe,
+        echafaudageAuDevisPrincipal,
+      )
+      : null
+
     lignes.push({
-      cle: 'auto:echafaudage',
-      cfcCode: POSTES_AUTOMATIQUES.echafaudageCommuns.cfc,
-      libelle: "Échafaudage de cage d'escalier",
-      enveloppe: 'Poste de chantier',
-      quantite: 1,
-      unite: 'forfait',
-      prixUnitaire: forfait,
-      montant: forfait,
-      remarque: `Déclenché par « ${declencheur.cfcLabel} » des communs en fin de vie : un revêtement de mur ou de plafond de cage d'escalier à remplacer impose un échafaudage intérieur.`,
-      automatique: true,
+      cle: `option:${it.id}`,
+      cfcCode: it.cfcCode,
+      libelle: sousTitre ? `${it.cfcLabel} · ${sousTitre}` : it.cfcLabel,
+      travaux: it.improvement ?? '',
+      quantite,
+      unite: uniteCourte(it.unit),
+      prixUnitaire: prixUnitaire(montant, quantite),
+      montant,
+      echafaudage: echafaudage
+        ? { montant: echafaudage.aCompter ? Math.round(echafaudage.montant ?? 0) : null, mention: echafaudage.mention }
+        : null,
     })
   }
 
-  return lignes
+  lignes.sort((a, b) => comparerCodesCfc(a.cfcCode, b.cfcCode) || a.libelle.localeCompare(b.libelle, 'fr'))
+  const ht = lignes.reduce((s, l) => s + l.montant, 0)
+  const echafaudage = lignes.reduce((s, l) => s + (l.echafaudage?.montant ?? 0), 0)
+  return { lignes, ht, echafaudage, total: ht + echafaudage }
 }
 
 /** Regroupe des lignes par position CFC à 3 chiffres, triées par code. */
@@ -264,7 +373,8 @@ function grouperParPosition(lignes: DevisLigne[], labels: Map<string, string>): 
       lignes: dedans.sort((a, b) => b.montant - a.montant),
       montant: dedans.reduce((s, l) => s + l.montant, 0),
     }))
-    .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))
+    // Tri par code CFC a l'usage suisse : 211.1 avant 221, et 281.9 avant 281.10.
+    .sort((a, b) => comparerCodesCfc(a.code, b.code))
 }
 
 /**
@@ -276,17 +386,17 @@ function grouperParPosition(lignes: DevisLigne[], labels: Map<string, string>): 
 export function buildDevis(
   items: ApiDiagnosticItem[],
   labels: Map<string, string>,
-  catalogItems: ApiCatalogItem[],
+  base: BaseDuDevis,
   options: DevisOptions,
 ): Devis {
   const honoraryPct = options.honoraryPct ?? 0
   const reservePct = options.reservePct ?? 0
-  const catalogue = new Map(catalogItems.map((c) => [c.id, c]))
+  const sousTitres = sousTitresDesReleves(items, base.etapes)
 
   const blocs: DevisBloc[] = []
 
   // 1. Les postes de chantier, en tête : ils conditionnent le reste.
-  const auto = postesDeChantier(items, catalogue, options)
+  const auto = postesDeChantier(items, base, options)
   if (auto.length > 0) {
     const ht = auto.reduce((s, l) => s + l.montant, 0)
     blocs.push({
@@ -303,7 +413,7 @@ export function buildDevis(
   //    devis : il reste décrit au chapitre de l'état.
   const parPriorite = new Map<Priority | 'NC', DevisLigne[]>()
   for (const it of items) {
-    const lignes = lignesDeLOuvrage(it)
+    const lignes = lignesDeLOuvrage(it, sousTitres.get(it.id) ?? null)
     if (lignes.length === 0) continue
     const cle = it.priority ?? 'NC'
     if (!parPriorite.has(cle)) parPriorite.set(cle, [])
@@ -324,19 +434,34 @@ export function buildDevis(
     })
   }
 
+  // 3. Les améliorations, hors total principal : ce sont des décisions, pas des
+  //    travaux engagés. Si l'échafaudage de façade est déjà au devis, elles ne
+  //    le repaient pas.
+  const echafaudageAuDevis = auto.some((l) => l.cfcCode === '211.1')
+  const optionsRetenues = tableauDesOptions(items, base, echafaudageAuDevis)
+
   const ht = blocs.reduce((s, b) => s + b.ht, 0)
   const reglesAppliquees = auto.map((l) => `CFC ${l.cfcCode}, ${l.libelle} : ${l.remarque}`)
 
-  return { blocs, ht, cascade: cascadeDe(ht, honoraryPct, reservePct), reglesAppliquees }
+  return {
+    blocs,
+    options: optionsRetenues,
+    ht,
+    cascade: cascadeDe(ht, honoraryPct, reservePct),
+    reglesAppliquees,
+  }
 }
 
 /**
- * Prix unitaire du catalogue pour l'état constaté, indexé.
+ * Prix unitaire de la base pour l'état constaté, indexé.
  *
  * Sert de contrôle à côté du prix appliqué : si les deux divergent, c'est que le
  * coût a été forcé à la main ou que la quantité a été reprise sur place.
  */
-export function prixCatalogue(c: ApiCatalogItem | undefined, state: string | null): number | undefined {
+export function prixCatalogue(
+  c: { priceTbe: number | null; priceBon: number | null; priceMoyen: number | null; priceMauvais: number | null } | undefined,
+  state: string | null,
+): number | undefined {
   if (!c || !state) return undefined
   const brut = state === 'TRES_BON' ? c.priceTbe
     : state === 'BON' ? c.priceBon
