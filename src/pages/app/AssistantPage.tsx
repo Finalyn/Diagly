@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft, ArrowUp, Building2, Check, ImagePlus, Loader2, MessageSquarePlus,
-  PanelLeftClose, PanelLeftOpen, Paperclip, Search, Trash2, X,
+  PanelLeftClose, PanelLeftOpen, Paperclip, PanelLeft, Search, Trash2, X,
 } from 'lucide-react'
 import { Button, Input } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
@@ -12,6 +12,7 @@ import {
   lireConversations, ecrireConversations, nouvelleConversation, titreDepuis,
   type Conversation, type MessageChat,
 } from '@/lib/conversations'
+import { analyser, type Bloc, type Segment } from '@/lib/texte-riche'
 import { cn } from '@/lib/utils'
 
 const SUGGESTIONS = [
@@ -49,6 +50,7 @@ export function AssistantPage() {
   const [enCours, setEnCours] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
   const [listeOuverte, setListeOuverte] = useState(true)
+  const [tiroir, setTiroir] = useState(false)
   const [choixDossier, setChoixDossier] = useState(false)
 
   const champFichier = useRef<HTMLInputElement>(null)
@@ -135,14 +137,33 @@ export function AssistantPage() {
 
   return (
     <div className="flex h-[calc(100dvh-7rem)] gap-3">
+      {/* Sur grand écran la liste est une colonne ; au doigt elle devient un
+          tiroir, parce que soixante-quatre pixels de large volés à la
+          conversation ne laisseraient ni l'une ni l'autre lisible. */}
       {listeOuverte && (
-        <ListeConversations
-          conversations={conversations}
-          courante={courante.id}
-          onOuvrir={ouvrir}
-          onSupprimer={supprimer}
-          onNouvelle={demarrer}
-        />
+        <div className="hidden w-64 shrink-0 lg:flex">
+          <ListeConversations
+            conversations={conversations}
+            courante={courante.id}
+            onOuvrir={ouvrir}
+            onSupprimer={supprimer}
+            onNouvelle={demarrer}
+          />
+        </div>
+      )}
+      {tiroir && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="absolute inset-0 bg-neutral-900/40" onClick={() => setTiroir(false)} />
+          <div className="absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] p-2">
+            <ListeConversations
+              conversations={conversations}
+              courante={courante.id}
+              onOuvrir={(c) => { ouvrir(c); setTiroir(false) }}
+              onSupprimer={supprimer}
+              onNouvelle={() => { demarrer(); setTiroir(false) }}
+            />
+          </div>
+        </div>
       )}
 
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
@@ -154,7 +175,14 @@ export function AssistantPage() {
             title="Revenir"
             className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted lg:hidden"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => setTiroir(true)}
+            title="Mes conversations"
+            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted lg:hidden"
+          >
+            <PanelLeft className="h-5 w-5" />
           </button>
           <button
             onClick={() => setListeOuverte((o) => !o)}
@@ -164,9 +192,14 @@ export function AssistantPage() {
             {listeOuverte ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
           </button>
           <p className="min-w-0 flex-1 truncate text-sm font-semibold">{courante.titre}</p>
-          <Button variant="outline" size="sm" onClick={() => setChoixDossier(true)}>
-            <Paperclip className="mr-2 h-3.5 w-3.5" />
-            {courante.diagnostics.length > 0 ? `${courante.diagnostics.length} diagnostic${courante.diagnostics.length > 1 ? 's' : ''}` : 'Rattacher un diagnostic'}
+          {/* Au doigt, l'étiquette tombe : le trombone et le compte suffisent,
+              et le titre garde la place dont il a besoin. */}
+          <Button variant="outline" size="sm" onClick={() => setChoixDossier(true)} className="shrink-0 px-2.5 sm:px-3">
+            <Paperclip className="h-3.5 w-3.5 sm:mr-2" />
+            <span className="hidden sm:inline">
+              {courante.diagnostics.length > 0 ? `${courante.diagnostics.length} diagnostic${courante.diagnostics.length > 1 ? 's' : ''}` : 'Rattacher un diagnostic'}
+            </span>
+            {courante.diagnostics.length > 0 && <span className="ml-1.5 sm:hidden">{courante.diagnostics.length}</span>}
           </Button>
         </header>
 
@@ -177,14 +210,17 @@ export function AssistantPage() {
           />
         )}
 
-        <div ref={filRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+        {/* Le fil est teinté et les réponses sont blanches : tout blanc, les
+            bulles de l'assistant se confondaient avec le fond et la
+            conversation n'avait plus de relief. */}
+        <div ref={filRef} className="min-h-0 flex-1 overflow-y-auto bg-neutral-50 px-3 py-5 sm:px-6">
           {vide ? (
             <Accueil prenom={prenom ?? undefined} onChoisir={(s) => { setSaisie(s); saisieRef.current?.focus() }} />
           ) : (
-            <div className="mx-auto max-w-3xl space-y-5">
+            <div className="mx-auto max-w-3xl space-y-4">
               {courante.messages.map((m, i) => <Bulle key={i} message={m} />)}
               {enCours && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 rounded-2xl border border-black/[0.06] bg-white px-4 py-3 text-sm text-muted-foreground shadow-sm">
                   <Loader2 className="h-4 w-4 animate-spin" />L’assistant réfléchit…
                 </div>
               )}
@@ -192,7 +228,7 @@ export function AssistantPage() {
           )}
         </div>
 
-        <div className="shrink-0 border-t px-4 py-3 sm:px-6">
+        <div className="shrink-0 border-t bg-white px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
           <div className="mx-auto max-w-3xl">
             {erreur && <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erreur}</p>}
 
@@ -233,7 +269,7 @@ export function AssistantPage() {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void envoyer(saisie) }
                 }}
                 rows={1}
-                placeholder="Posez votre question, ou déposez une photo…"
+                placeholder="Posez votre question…"
                 className="max-h-40 min-h-[2.5rem] flex-1 resize-none bg-transparent py-2 text-[15px] outline-none placeholder:text-muted-foreground"
               />
               <button
@@ -279,7 +315,7 @@ function ListeConversations({ conversations, courante, onOuvrir, onSupprimer, on
   onNouvelle: () => void
 }) {
   return (
-    <aside className="hidden w-64 shrink-0 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] lg:flex">
+    <aside className="flex w-full flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <div className="p-3">
         <Button variant="outline" className="w-full justify-start" onClick={onNouvelle}>
           <MessageSquarePlus className="mr-2 h-4 w-4" />Nouvelle conversation
@@ -352,16 +388,73 @@ function Bulle({ message }: { message: MessageChat }) {
   const deMoi = message.role === 'user'
   return (
     <div className={cn('flex', deMoi ? 'justify-end' : 'justify-start')}>
-      <div className={cn('max-w-[85%] rounded-2xl px-4 py-3', deMoi ? 'bg-blue-600 text-white' : 'bg-muted/60 text-neutral-800')}>
+      <div
+        className={cn('max-w-[90%] rounded-2xl px-4 py-3 sm:max-w-[85%]',
+          deMoi ? 'bg-blue-600 text-white' : 'border border-black/[0.06] bg-white text-neutral-800 shadow-sm')}
+      >
         {message.images && message.images.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
-            {message.images.map((src, i) => <img key={i} src={src} alt="" className="h-28 w-28 rounded-lg object-cover" />)}
+            {message.images.map((src, i) => <img key={i} src={src} alt="" className="h-24 w-24 rounded-lg object-cover sm:h-28 sm:w-28" />)}
           </div>
         )}
-        <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{message.content}</p>
+        {deMoi
+          ? <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{message.content}</p>
+          : <Reponse texte={message.content} />}
       </div>
     </div>
   )
+}
+
+/**
+ * La réponse de l'assistant, mise en forme.
+ *
+ * Le modèle répond en Markdown léger. Affiché brut, cela donnait des
+ * « **mot** » au milieu des phrases : la réponse avait l'air bâclée alors
+ * qu'elle était juste.
+ */
+function Reponse({ texte }: { texte: string }) {
+  const blocs = useMemo(() => analyser(texte), [texte])
+  return (
+    <div className="space-y-2.5 text-[15px] leading-relaxed">
+      {blocs.map((b, i) => <BlocRendu key={i} bloc={b} />)}
+    </div>
+  )
+}
+
+function BlocRendu({ bloc }: { bloc: Bloc }) {
+  if (bloc.type === 'titre') {
+    return <p className="font-semibold">{bloc.segments.map((s, i) => <SegmentRendu key={i} segment={s} />)}</p>
+  }
+  if (bloc.type === 'paragraphe') {
+    return (
+      <p>
+        {bloc.lignes.map((ligne, i) => (
+          <span key={i}>
+            {i > 0 && <br />}
+            {ligne.map((s, j) => <SegmentRendu key={j} segment={s} />)}
+          </span>
+        ))}
+      </p>
+    )
+  }
+  const Balise = bloc.type === 'numerotee' ? 'ol' : 'ul'
+  return (
+    <Balise className={cn('space-y-1 pl-1', bloc.type === 'numerotee' && 'list-inside list-decimal')}>
+      {bloc.items.map((item, i) => (
+        <li key={i} className={cn(bloc.type === 'liste' && 'flex gap-2')}>
+          {bloc.type === 'liste' && <span className="mt-[0.6rem] h-1 w-1 shrink-0 rounded-full bg-neutral-400" aria-hidden />}
+          <span>{item.map((s, j) => <SegmentRendu key={j} segment={s} />)}</span>
+        </li>
+      ))}
+    </Balise>
+  )
+}
+
+function SegmentRendu({ segment }: { segment: Segment }) {
+  if (segment.type === 'gras') return <strong className="font-semibold">{segment.texte}</strong>
+  if (segment.type === 'italique') return <em>{segment.texte}</em>
+  if (segment.type === 'code') return <code className="rounded bg-neutral-100 px-1 py-0.5 text-[13px]">{segment.texte}</code>
+  return <>{segment.texte}</>
 }
 
 // ---------------------------------------------------------- les diagnostics
