@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft, ArrowUp, Building2, Check, ImagePlus, Loader2, MessageSquarePlus,
-  PanelLeftClose, PanelLeftOpen, Paperclip, Search, Sparkles, Trash2, X,
+  PanelLeftClose, PanelLeftOpen, Paperclip, Search, Trash2, X,
 } from 'lucide-react'
 import { Button, Input } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
@@ -324,9 +324,9 @@ function ListeConversations({ conversations, courante, onOuvrir, onSupprimer, on
 function Accueil({ prenom, onChoisir }: { prenom?: string; onChoisir: (s: string) => void }) {
   return (
     <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-        <Sparkles className="h-7 w-7" strokeWidth={1.8} />
-      </span>
+      {/* La marque, et non une icône d'étoiles : l'assistant est Diagly, pas
+          un gadget d'IA posé à côté. */}
+      <img src="/diagly-mark.svg" alt="" className="h-14 w-auto" />
       <h1 className="mt-4 text-xl font-bold">
         {prenom ? `Bonjour ${prenom}` : 'Bonjour'}
       </h1>

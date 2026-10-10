@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Search, ChevronDown, ChevronRight, Loader2, Sparkles, Plus, MessageSquare, ArrowRight,
+  Search, ChevronDown, ChevronRight, Loader2, Plus, MessageSquare, ArrowRight,
   Rocket, ClipboardCheck, Banknote, Ruler, FileText, Database, Users, Clock, BookOpen,
   GraduationCap, HelpCircle, LifeBuoy, CornerDownRight, Compass, FolderPlus, LayoutGrid,
   Check, Play,
@@ -451,7 +451,7 @@ function BesoinDAide() {
             Écrivez à notre équipe, captures d’écran comprises, et suivez l’avancement depuis Mes demandes.
           </p>
           <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
-            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-600" />
+            <img src="/diagly-mark.svg" alt="" className="mt-0.5 h-3.5 w-auto shrink-0" />
             Pour une réponse immédiate, l’assistant Diagly, en bas du menu, répond en direct sur vos diagnostics.
           </p>
         </div>
