@@ -1,7 +1,13 @@
-import { NavLink, Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { Home, ClipboardCheck, Database, Users, Building2, Settings, Plus, ChevronRight, Plug, LifeBuoy } from 'lucide-react'
+import {
+  Home, ClipboardCheck, Database, Users, Building2, Settings, Plus, ChevronRight, Plug, LifeBuoy,
+  CircleUser, LogOut, ShieldCheck,
+} from 'lucide-react'
 import { useAuth } from '@/stores/auth'
+import { logout as endSession } from '@/lib/session'
+import { initiales, nomAffiche } from '@/lib/reglages'
 
 type NavEntry = {
   to?: string
@@ -26,9 +32,6 @@ const NAV: NavEntry[] = [
 
 /** Panneau de navigation (carte unique) : nav + profil + assistant intégrés. */
 export function Sidebar() {
-  const user = useAuth((s) => s.user)
-  const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'Mon compte'
-  const initials = ((user?.firstName?.[0] ?? '') + (user?.lastName?.[0] ?? '')).toUpperCase() || (user?.email?.[0] ?? 'U').toUpperCase()
 
   return (
     <aside className="flex h-full flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-3.5 text-sidebar-foreground shadow-[0_1px_2px_rgba(0,0,0,0.03),0_12px_32px_-16px_rgba(0,0,0,0.10)]">
@@ -89,15 +92,9 @@ export function Sidebar() {
 
       <div className="flex-1" />
 
-      {/* Bas de carte : profil + assistant intégrés (comme la maquette) */}
+      {/* Bas de carte : espace du compte + assistant intégrés */}
       <div className="space-y-1 border-t border-black/[0.06] pt-3">
-        <Link to="/app/settings" className="flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-black/[0.03]">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-sm font-semibold text-foreground">{initials}</div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold leading-tight text-neutral-900">{name}</p>
-            <p className="truncate text-xs text-muted-foreground">{user?.companyName || user?.email}</p>
-          </div>
-        </Link>
+        <EspaceCompte />
 
         {/* L'assistant a sa page : le panneau flottant cachait l'application
             derrière lui et ne gardait rien d'une question à l'autre. */}
@@ -121,5 +118,107 @@ export function Sidebar() {
         </NavLink>
       </div>
     </aside>
+  )
+}
+
+/**
+ * L'espace du compte, en bas de la barre.
+ *
+ * C'était un lien muet vers les réglages : on cliquait sans savoir ce qu'on
+ * allait trouver, et se déconnecter demandait de traverser une page de
+ * formulaires. C'est maintenant un menu, qui dit d'abord qui est connecté et
+ * propose les quatre gestes qu'on vient y chercher.
+ */
+function EspaceCompte() {
+  const user = useAuth((s) => s.user)
+  const navigate = useNavigate()
+  const [ouvert, setOuvert] = useState(false)
+  const boite = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!ouvert) return
+    const dehors = (e: MouseEvent) => {
+      if (boite.current && !boite.current.contains(e.target as Node)) setOuvert(false)
+    }
+    const touche = (e: KeyboardEvent) => { if (e.key === 'Escape') setOuvert(false) }
+    document.addEventListener('mousedown', dehors)
+    document.addEventListener('keydown', touche)
+    return () => {
+      document.removeEventListener('mousedown', dehors)
+      document.removeEventListener('keydown', touche)
+    }
+  }, [ouvert])
+
+  const aller = (chemin: string) => { setOuvert(false); navigate(chemin) }
+
+  // Révoque la session côté serveur ET efface ce qui est gardé sur l'appareil.
+  const seDeconnecter = async () => {
+    setOuvert(false)
+    await endSession()
+    navigate('/login', { replace: true })
+  }
+
+  const entrees: { libelle: string; aide: string; icone: typeof Settings; chemin: string }[] = [
+    { libelle: 'Mon compte', aide: 'Plan, organisation, session', icone: CircleUser, chemin: '/app/settings?s=compte' },
+    { libelle: 'Réglages', aide: 'Profil, entreprise, valeurs', icone: Settings, chemin: '/app/settings?s=profil' },
+    { libelle: 'Sécurité', aide: 'Mot de passe, double authentification', icone: ShieldCheck, chemin: '/app/settings?s=securite' },
+    { libelle: 'Aide & support', aide: 'Documentation et contact', icone: LifeBuoy, chemin: '/app/support' },
+  ]
+
+  return (
+    <div ref={boite} className="relative">
+      {ouvert && (
+        <div className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-2xl border border-black/[0.08] bg-white shadow-[0_12px_40px_-12px_rgba(0,0,0,0.30)]">
+          <div className="border-b border-black/[0.06] px-3 py-2.5">
+            <p className="truncate text-sm font-semibold leading-tight">{nomAffiche(user ?? {})}</p>
+            <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+          </div>
+          <div className="p-1">
+            {entrees.map((e) => (
+              <button
+                key={e.libelle}
+                onClick={() => aller(e.chemin)}
+                className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-black/[0.04]"
+              >
+                <e.icone className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{e.libelle}</span>
+                  <span className="block truncate text-[11px] text-muted-foreground">{e.aide}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="border-t border-black/[0.06] p-1">
+            <button
+              onClick={seDeconnecter}
+              className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+            >
+              <LogOut className="h-4 w-4 shrink-0" />Se déconnecter
+            </button>
+          </div>
+        </div>
+      )}
+
+      <button
+        onClick={() => setOuvert((v) => !v)}
+        aria-expanded={ouvert}
+        data-visite="compte"
+        className={cn(
+          'flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition-colors',
+          ouvert ? 'bg-black/[0.04]' : 'hover:bg-black/[0.03]',
+        )}
+      >
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-sm font-semibold text-foreground">
+          {initiales(user ?? {})}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold leading-tight text-neutral-900">{nomAffiche(user ?? {})}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {user?.preferences?.company?.name || user?.companyName || user?.email}
+          </p>
+        </div>
+        <ChevronRight className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', ouvert && '-rotate-90')} />
+      </button>
+    </div>
   )
 }
