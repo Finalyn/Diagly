@@ -13,24 +13,32 @@ import type { ElementState } from '@/lib/api-types'
 import { useMarque } from './use-marque'
 
 /**
- * Logo répété en haut de chaque feuille A4.
+ * En-tête répété en haut de chaque feuille A4 : le logo, et la raison sociale
+ * dessous.
  *
- * Celui de l'entreprise s'il est renseigné dans Paramètres → Entreprise, sinon
- * celui de Diagly : un rapport sans logo n'a l'air de rien, et c'est la première
- * chose que le destinataire voit. Il était auparavant posé une seule fois, en
- * tête du document ; depuis que tous les rapports sont paginés, il revient sur
- * chaque page, comme sur un papier à en-tête.
+ * Le logo est celui de l'entreprise s'il est renseigné dans Paramètres →
+ * Entreprise, sinon celui de Diagly : un rapport sans logo n'a l'air de rien,
+ * et c'est la première chose que le destinataire voit. Mais quand le dossier a
+ * demandé « aucun logo », il n'y a aucune image : c'est un choix, pas un oubli,
+ * et retomber sur le logo de Diagly le trahirait. La raison sociale reste, elle,
+ * dans tous les cas : elle est ce qui identifie l'émetteur.
+ *
+ * L'en-tête était auparavant posé une seule fois, en tête du document ; depuis
+ * que tous les rapports sont paginés, il revient sur chaque page, comme sur un
+ * papier à en-tête.
  */
 export function LogoEntete() {
   const marque = useMarque()
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-col items-end gap-1">
+      {!marque.sansLogo && (
+        <img
+          src={marque.logo || '/diagly-logo.svg'}
+          alt={marque.name || 'Diagly'}
+          className="max-h-[10mm] w-auto object-contain"
+        />
+      )}
       {marque.name && <span className="text-[9pt] font-semibold text-muted-foreground">{marque.name}</span>}
-      <img
-        src={marque.logo || '/diagly-logo.svg'}
-        alt={marque.name || 'Diagly'}
-        className="max-h-[10mm] w-auto object-contain"
-      />
     </div>
   )
 }

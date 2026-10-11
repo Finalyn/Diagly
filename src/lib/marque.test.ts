@@ -33,6 +33,13 @@ describe('la marque d’un rapport', () => {
     expect(marqueDuRapport(BUREAU, { sansLogo: true, logo: 'data:image/png;base64,x' }).logo).toBeNull()
   })
 
+  it('distingue « aucun logo » d’un logo absent', () => {
+    // Sans logo enregistré, le document porte celui de Diagly ; « aucun » est
+    // un choix, et le document ne doit alors porter aucune image.
+    expect(marqueDuRapport({}, null).sansLogo).toBe(false)
+    expect(marqueDuRapport(BUREAU, { sansLogo: true }).sansLogo).toBe(true)
+  })
+
   it('ne prend pas une chaîne vide pour un choix', () => {
     const m = marqueDuRapport(BUREAU, { name: '   ', accentColor: '' })
     expect(m.name).toBe('Berger & Fils SA')
@@ -51,7 +58,7 @@ describe('la marque d’un rapport', () => {
   it('survit à l’absence de tout', () => {
     expect(marqueDuRapport(null, null)).toEqual({
       name: null, address: null, postalCode: null, city: null,
-      logo: null, accentColor: ACCENT_PAR_DEFAUT, auteur: null,
+      logo: null, sansLogo: false, accentColor: ACCENT_PAR_DEFAUT, auteur: null,
     })
   })
 })

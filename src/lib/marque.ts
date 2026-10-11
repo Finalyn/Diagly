@@ -38,6 +38,14 @@ export interface Marque {
   postalCode: string | null
   city: string | null
   logo: string | null
+  /**
+   * Vrai quand le dossier a demandé de n'en mettre aucun.
+   *
+   * À distinguer d'un logo absent : sans logo enregistré, le document porte
+   * celui de Diagly, parce qu'un en-tête vide ressemble à une page oubliée.
+   * Ici, c'est un choix, et il doit être tenu.
+   */
+  sansLogo: boolean
   accentColor: string | null
   auteur: string | null
 }
@@ -65,6 +73,7 @@ export function marqueDuRapport(
     postalCode: valeur(b.postalCode),
     city: valeur(b.city),
     logo: d.sansLogo ? null : valeur(d.logo) ?? valeur(b.logo),
+    sansLogo: Boolean(d.sansLogo),
     accentColor: valeur(d.accentColor) ?? valeur(b.accentColor) ?? ACCENT_PAR_DEFAUT,
     auteur: valeur(d.auteur) ?? valeur(auteurParDefaut),
   }

@@ -130,14 +130,28 @@ export function PersonnaliserLeRapport({ projectId, dossier, auteurParDefaut, on
             choisissez pas vient de vos réglages.
           </p>
 
+          {/* L'en-tête tel qu'il sortira, logo et raison sociale ensemble : c'est
+              dans cet ordre qu'ils seront imprimés, et le premier bloc que le
+              destinataire lit. Le logo de Diagly y figure quand on n'en a pas
+              enregistré, comme sur le document, pour qu'aucune surprise ne
+              reste pour l'impression. */}
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              En-tête du rapport
+            </p>
+            <div className="flex h-20 flex-col items-center justify-center gap-1 rounded-lg border bg-white px-2">
+              {effective.sansLogo
+                ? <span className="text-[11px] italic text-muted-foreground">sans logo</span>
+                : <img src={effective.logo || '/diagly-logo.svg'} alt="" className="max-h-9 max-w-[60%] object-contain" />}
+              {effective.name
+                ? <span className="truncate text-[10px] font-semibold text-muted-foreground">{effective.name}</span>
+                : <span className="text-[10px] italic text-muted-foreground">sans raison sociale</span>}
+            </div>
+          </div>
+
           {/* ---------------- Logo ---------------- */}
           <div>
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Logo</p>
-            <div className="mb-2 flex h-16 items-center justify-center rounded-lg border bg-white">
-              {effective.logo
-                ? <img src={effective.logo} alt="" className="max-h-full max-w-full object-contain p-2" />
-                : <span className="text-[11px] text-muted-foreground">aucun logo sur ce rapport</span>}
-            </div>
             <div className="space-y-1">
               <ChoixRadio
                 nom="logo" actif={f.choixLogo === 'reglages'}
@@ -167,14 +181,17 @@ export function PersonnaliserLeRapport({ projectId, dossier, auteurParDefaut, on
             </div>
           </div>
 
-          {/* La raison sociale tient avec le logo : les deux forment l'en-tête
-              que le client lit en premier, et on les regarde ensemble. */}
+          {/* La raison sociale suit le logo : sur le document, elle est juste
+              dessous, et c'est dans cet ordre qu'on la règle. */}
           <label className="block">
             <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Raison sociale</span>
             <Input
               className="h-8 text-xs" value={f.name} placeholder={bureau?.name || 'Celle de vos réglages'}
               onChange={(e) => poser({ name: e.target.value })}
             />
+            <span className="mt-1 block text-[11px] text-muted-foreground">
+              S’imprime sous le logo, en haut de chaque page.
+            </span>
           </label>
 
           {/* ---------------- Couleur ---------------- */}

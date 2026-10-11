@@ -180,7 +180,7 @@ export function ProjectRapports() {
           apparence. Au milieu le document. À droite ce qui en sort : imprimer,
           exporter, partager. Chaque colonne défile d'elle-même quand elle
           dépasse, sans emporter le document avec elle. */}
-      <aside className="shrink-0 space-y-4 print:hidden lg:sticky lg:top-3 lg:max-h-[calc(100dvh-5.5rem)] lg:w-60 lg:overflow-y-auto lg:pb-2">
+      <aside className="shrink-0 space-y-4 print:hidden lg:sticky lg:top-3 lg:max-h-[calc(100dvh-12rem)] lg:w-60 lg:overflow-y-auto lg:pb-3">
         <nav className="space-y-1" aria-label="Type de rapport">
           {kinds.map(([k, label, Icon]) => (
             <button
@@ -242,7 +242,11 @@ export function ProjectRapports() {
       {/* La feuille a une largeur fixe : la colonne prend la sienne au lieu de
           s'étirer, sinon les boutons d'export partaient se coller au bord droit
           de l'écran, loin du document qu'ils éditent. */}
-      <div className="min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible lg:w-auto lg:flex-none">
+      {/* Le document ne dépasse jamais la largeur d'une feuille A4 : au-delà, il
+          ne gagnerait rien et éloignerait les boutons d'export. En dessous, il
+          se laisse rétrécir et défile en largeur, plutôt que de pousser la
+          colonne de droite hors de l'écran. */}
+      <div className="min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible lg:max-w-[210mm]">
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
       {/* Rapport complet : le livrable clé en main, garde + sommaire + méthode + état + devis */}

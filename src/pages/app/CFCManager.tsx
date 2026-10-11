@@ -15,7 +15,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertTriangle, ChevronRight, Database, Download, Loader2, Pencil, Plus, Search, Settings2, X,
+  AlertTriangle, ChevronRight, Download, Loader2, Pencil, Plus, Search, Settings2, X,
 } from 'lucide-react'
 import {
   Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Textarea,
@@ -84,15 +84,40 @@ export function CFCManager() {
     )
   }
 
+  /**
+   * Ce que contient chaque onglet, dit sous le titre.
+   *
+   * « Articles », « Postes automatiques », « Valeurs par défaut » ne disent
+   * rien à qui ouvre la page pour la première fois : ce sont trois objets
+   * différents, et l'on ne devine pas lequel règle quoi. La phrase change avec
+   * l'onglet, et nomme ce que la correction va changer.
+   */
+  const ONGLETS = [
+    {
+      id: 'articles' as const,
+      label: 'Articles et prix',
+      phrase: `Les ${base.data.articles.filter((a) => a.actif).length} ouvrages que le diagnostiqueur peut relever, avec leur prix par état et les étapes de visite où ils se présentent.`,
+    },
+    {
+      id: 'postes' as const,
+      label: 'Postes de chantier',
+      phrase: "Ce qui s'ajoute d'office au devis sans avoir été relevé : échafaudage, nettoyage, protection des ouvrages.",
+    },
+    {
+      id: 'valeurs' as const,
+      label: 'Honoraires et TVA',
+      phrase: 'Les pourcentages appliqués au chiffrage des nouveaux diagnostics, et leur effet sur un montant.',
+    },
+  ]
+  const courant = ONGLETS.find((o) => o.id === onglet) ?? ONGLETS[0]
+
   return (
     <div className="flex h-[calc(100dvh-7rem)] flex-col gap-4">
-      <div className="flex shrink-0 flex-wrap items-center gap-3">
-        <Database className="h-5 w-5 text-muted-foreground" />
+      <div className="flex shrink-0 flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-bold">Base CFC</h1>
+          <h1 className="text-xl font-bold">Base de données</h1>
           <p className="text-sm text-muted-foreground">
-            {base.data.articles.filter((a) => a.actif).length} articles actifs, {base.data.etapes.length} étapes
-            de visite. Cette base est commune : une correction change le devis de tout le monde.
+            {courant.phrase} Elle est commune au bureau : une correction change le devis de tout le monde.
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -103,21 +128,14 @@ export function CFCManager() {
           >
             <Download className="h-3.5 w-3.5" />Exporter
           </button>
-          <button
-            onClick={() => setOnglet('articles')}
-            className={cn('rounded-full border px-3 py-1.5 text-xs font-medium',
-              onglet === 'articles' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
-          >Articles</button>
-          <button
-            onClick={() => setOnglet('postes')}
-            className={cn('rounded-full border px-3 py-1.5 text-xs font-medium',
-              onglet === 'postes' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
-          >Postes automatiques</button>
-          <button
-            onClick={() => setOnglet('valeurs')}
-            className={cn('rounded-full border px-3 py-1.5 text-xs font-medium',
-              onglet === 'valeurs' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
-          >Valeurs par défaut</button>
+          {ONGLETS.map((o) => (
+            <button
+              key={o.id}
+              onClick={() => setOnglet(o.id)}
+              className={cn('rounded-full border px-3 py-1.5 text-xs font-medium',
+                onglet === o.id ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
+            >{o.label}</button>
+          ))}
         </div>
       </div>
 
