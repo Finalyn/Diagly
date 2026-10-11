@@ -164,11 +164,11 @@ export function ProjectRapports() {
        visible pendant qu'on fait défiler le document, et les actions se rangent
        dessous au lieu de flotter à l'opposé de ce qu'elles actionnent. */
     <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-      {/* Le document à gauche, les commandes à droite. Il commence ainsi au
-          bord de l'écran, là où l'on se met pour le lire, et la colonne garde
-          la place qu'il faut au panneau de personnalisation. Elle défile
-          d'elle-même quand elle dépasse, sans emporter le document. */}
-      <aside className="shrink-0 space-y-4 print:hidden lg:order-2 lg:sticky lg:top-3 lg:max-h-[calc(100dvh-5.5rem)] lg:w-64 lg:overflow-y-auto lg:pb-2">
+      {/* À gauche ce qui compose le document : le type de rapport et son
+          apparence. Au milieu le document. À droite ce qui en sort : imprimer,
+          exporter, partager. Chaque colonne défile d'elle-même quand elle
+          dépasse, sans emporter le document avec elle. */}
+      <aside className="shrink-0 space-y-4 print:hidden lg:sticky lg:top-3 lg:max-h-[calc(100dvh-5.5rem)] lg:w-60 lg:overflow-y-auto lg:pb-2">
         <nav className="space-y-1" aria-label="Type de rapport">
           {kinds.map(([k, label, Icon]) => (
             <button
@@ -218,15 +218,6 @@ export function ProjectRapports() {
           auteurParDefaut={auteur}
         />
 
-        <div className="space-y-2 border-t pt-4">
-          <Button onClick={() => window.print()} className="w-full justify-start">
-            <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
-          </Button>
-          <Button variant="outline" onClick={() => setExportOpen(true)} className="w-full justify-start">
-            <Download className="mr-2 h-4 w-4" />Exporter
-          </Button>
-          <ShareControl projectId={id!} initialToken={project.shareToken ?? null} />
-        </div>
       </aside>
 
       {/* Les feuilles A4 ont une largeur fixe : quand la fenêtre offre moins de
@@ -235,7 +226,7 @@ export function ProjectRapports() {
       {/* Tout le document porte la marque du dossier : les en-têtes de page
           sont trop loin d'ici pour qu'on la leur passe de main en main. */}
       <MarqueDuRapport dossier={project.reportBranding} auteur={auteur}>
-      <div className="min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible lg:order-1">
+      <div className="min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible">
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
       {/* Rapport complet : le livrable clé en main, garde + sommaire + méthode + état + devis */}
@@ -294,6 +285,18 @@ export function ProjectRapports() {
       )}
       </div>
       </MarqueDuRapport>
+
+      {/* Ce qui sort du document. À droite parce que c'est la fin du geste :
+          on choisit à gauche, on relit au milieu, on édite à droite. */}
+      <aside className="shrink-0 space-y-2 print:hidden lg:sticky lg:top-3 lg:w-52">
+        <Button onClick={() => window.print()} className="w-full justify-start">
+          <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
+        </Button>
+        <Button variant="outline" onClick={() => setExportOpen(true)} className="w-full justify-start">
+          <Download className="mr-2 h-4 w-4" />Exporter
+        </Button>
+        <ShareControl projectId={id!} initialToken={project.shareToken ?? null} />
+      </aside>
     </div>
   )
 }
