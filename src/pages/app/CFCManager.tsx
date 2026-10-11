@@ -275,8 +275,8 @@ function Articles({ articles, etapes, noeuds }: {
               savoir ce qu'on avait sous les yeux. */}
           <div className="mt-2 flex w-fit gap-1 rounded-full border bg-muted/50 p-1">
             {([
-              { parEtape: false, label: 'Par code CFC' },
               { parEtape: true, label: 'Par étape de visite' },
+              { parEtape: false, label: 'Par code CFC' },
             ] as const).map((v) => (
               <button
                 key={v.label}

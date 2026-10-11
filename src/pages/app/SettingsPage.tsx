@@ -233,8 +233,10 @@ function Champ({ label, aide, children }: { label: string; aide?: string; childr
  * désigne.
  */
 function Avertissement({ message }: { message: string }) {
+  // Le bandeau s'arrête à sa phrase : étiré sur toute la largeur du panneau,
+  // il barrait l'écran d'un trait jaune pour dire qu'un téléphone manque.
   return (
-    <p className="mb-4 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+    <p className="mb-4 flex w-fit max-w-2xl items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
       <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-amber-600" />{message}
     </p>
   )
@@ -242,7 +244,7 @@ function Avertissement({ message }: { message: string }) {
 
 function Erreur({ message }: { message: string }) {
   return (
-    <p className="flex items-start gap-1.5 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-800">
+    <p className="flex w-fit max-w-2xl items-start gap-1.5 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-800">
       <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />{message}
     </p>
   )
@@ -405,7 +407,7 @@ function SectionSecurite() {
   const doubleAuth = !!user?.twoFactorEnabled
   return (
     <>
-      <div className={cn('mb-5 flex items-start gap-3 rounded-2xl border p-4',
+      <div className={cn('mb-5 flex w-fit max-w-2xl items-start gap-3 rounded-2xl border p-4',
         doubleAuth ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50')}>
         {doubleAuth
           ? <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-green-700" />
@@ -1277,7 +1279,7 @@ function SectionCompte() {
         </Button>
       </Bloc>
 
-      <section className="rounded-2xl border border-red-200 bg-red-50/40 p-4">
+      <section className="max-w-2xl rounded-2xl border border-red-200 bg-red-50/40 p-4">
         <h3 className="text-sm font-semibold text-red-800">Fermer le compte</h3>
         <p className="mt-0.5 text-sm text-red-700">
           La fermeture supprime vos diagnostics, vos photos et vos rapports, sans retour possible.
