@@ -42,7 +42,11 @@ export function AppLayout() {
   // L'onglet Diagnostic d'un projet ne porte plus que l'éditeur. Celui-ci remplit
   // la hauteur restante sous la barre d'onglets et defile a l'interieur de ses
   // colonnes : la page, elle, ne bouge pas.
-  const editeurEncastre = /^\/app\/projects\/[^/]+\/diagnostic$/.test(location.pathname)
+  // Les rapports suivent la même règle : le document défile dans sa colonne,
+  // contre ses boutons d'export, et non la page entière sous les panneaux. La
+  // barre de défilement se tient ainsi au bord de la feuille, là où l'on
+  // regarde, et non au bord de la fenêtre.
+  const pageEncastree = /^\/app\/projects\/[^/]+\/(diagnostic|rapports)$/.test(location.pathname)
   const mainRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
 
@@ -91,7 +95,7 @@ export function AppLayout() {
           <main
             ref={mainRef}
             className={`js-print-main flex-1 overscroll-none ${onDashboard ? 'mt-6 lg:mt-8' : 'mt-3'} ${
-              editeurEncastre
+              pageEncastree
                 ? 'min-h-0 overflow-hidden pb-3'
                 : `overflow-y-auto md:pb-16 ${editeurPleinEcran ? 'pb-6' : 'pb-24'}`
             }`}

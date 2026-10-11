@@ -175,12 +175,12 @@ export function ProjectRapports() {
        descendait d'autant. En colonne, la liste porte des noms entiers, reste
        visible pendant qu'on fait défiler le document, et les actions se rangent
        dessous au lieu de flotter à l'opposé de ce qu'elles actionnent. */
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+    <div className="js-print-column flex h-full min-h-0 flex-col gap-4 overflow-y-auto lg:flex-row lg:overflow-hidden">
       {/* À gauche ce qui compose le document : le type de rapport et son
           apparence. Au milieu le document. À droite ce qui en sort : imprimer,
           exporter, partager. Chaque colonne défile d'elle-même quand elle
           dépasse, sans emporter le document avec elle. */}
-      <aside className="shrink-0 space-y-4 print:hidden lg:sticky lg:top-3 lg:max-h-[calc(100dvh-12rem)] lg:w-60 lg:overflow-y-auto lg:pb-3">
+      <aside className="shrink-0 space-y-4 print:hidden lg:h-full lg:w-60 lg:overflow-y-auto lg:pb-3">
         <nav className="space-y-1" aria-label="Type de rapport">
           {kinds.map(([k, label, Icon]) => (
             <button
@@ -239,14 +239,15 @@ export function ProjectRapports() {
       {/* Tout le document porte la marque du dossier : les en-têtes de page
           sont trop loin d'ici pour qu'on la leur passe de main en main. */}
       <MarqueDuRapport dossier={marqueDuDossier} auteur={auteur}>
-      {/* La feuille a une largeur fixe : la colonne prend la sienne au lieu de
-          s'étirer, sinon les boutons d'export partaient se coller au bord droit
-          de l'écran, loin du document qu'ils éditent. */}
       {/* Le document ne dépasse jamais la largeur d'une feuille A4 : au-delà, il
           ne gagnerait rien et éloignerait les boutons d'export. En dessous, il
           se laisse rétrécir et défile en largeur, plutôt que de pousser la
-          colonne de droite hors de l'écran. */}
-      <div className="min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible lg:max-w-[210mm]">
+          colonne de droite hors de l'écran.
+
+          C'est lui, et non la page, qui défile : la barre de défilement longe
+          alors la feuille, à portée du regard et de la main, au lieu d'aller
+          se ranger au bord de la fenêtre. */}
+      <div className="js-print-column min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible lg:h-full lg:max-w-[calc(210mm+1rem)] lg:overflow-auto lg:[scrollbar-width:thin]">
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
       {/* Rapport complet : le livrable clé en main, garde + sommaire + méthode + état + devis */}
@@ -308,7 +309,7 @@ export function ProjectRapports() {
 
       {/* Ce qui sort du document. À droite parce que c'est la fin du geste :
           on choisit à gauche, on relit au milieu, on édite à droite. */}
-      <aside className="shrink-0 space-y-2 print:hidden lg:sticky lg:top-3 lg:w-52">
+      <aside className="shrink-0 space-y-2 print:hidden lg:h-full lg:w-52 lg:overflow-y-auto">
         <Button onClick={() => window.print()} className="w-full justify-start">
           <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
         </Button>
