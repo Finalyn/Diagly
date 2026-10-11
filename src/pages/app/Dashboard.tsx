@@ -7,7 +7,6 @@ import {
 import { formatDate, formatCHF, cn } from '@/lib/utils'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
-import { RappelDuBureau } from '@/components/RappelDuBureau'
 import { useAuth } from '@/stores/auth'
 
 const toNum = (v: string | null | undefined) => (v ? Number(v) : 0)
@@ -95,8 +94,6 @@ export function Dashboard() {
         <h1 className="text-[40px] font-normal leading-none tracking-tight text-neutral-900">{greeting}</h1>
         <p className="mt-2.5 text-[15px] text-neutral-500">Prêt à piloter vos diagnostics du jour&nbsp;?</p>
       </div>
-
-      <RappelDuBureau />
 
       {/* Rangée : En cours + À traiter */}
       <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch">

@@ -273,7 +273,7 @@ function Articles({ articles, etapes, noeuds }: {
           {/* Les deux entrées sont montrées ensemble. Un bouton unique qui
               affichait « Voir par étape » laissait entière la question de
               savoir ce qu'on avait sous les yeux. */}
-          <div className="mt-2 inline-flex gap-0.5 rounded-full border bg-muted/50 p-0.5">
+          <div className="mt-2 flex w-fit gap-1 rounded-full border bg-muted/50 p-1">
             {([
               { parEtape: false, label: 'Par code CFC' },
               { parEtape: true, label: 'Par étape de visite' },
