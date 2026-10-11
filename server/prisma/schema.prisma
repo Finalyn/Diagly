@@ -364,6 +364,10 @@ model Project {
   geoData               Json?         @map("geo_data")
   /// Partage client en lecture seule : jeton public (null = non partagé).
   shareToken            String?       @unique @map("share_token") @db.VarChar(64)
+  /// Apparence propre a ce dossier : logo, couleur, raison sociale, auteur.
+  /// null = celle des preferences de l'utilisateur. Un rapport se personnalise
+  /// pour un client sans changer les reglages de tous les autres.
+  reportBranding        Json?         @map("report_branding")
   sharedAt              DateTime?     @map("shared_at")
   createdAt             DateTime      @default(now()) @map("created_at")
   updatedAt             DateTime      @updatedAt @map("updated_at")

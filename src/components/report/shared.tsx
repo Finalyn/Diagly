@@ -10,7 +10,7 @@ import type { ReactNode } from 'react'
 import { stateColors, stateLabels } from '@/data/mock'
 import { cn } from '@/lib/utils'
 import type { ElementState } from '@/lib/api-types'
-import { useAuth } from '@/stores/auth'
+import { useMarque } from './use-marque'
 
 /**
  * Logo répété en haut de chaque feuille A4.
@@ -22,14 +22,13 @@ import { useAuth } from '@/stores/auth'
  * chaque page, comme sur un papier à en-tête.
  */
 export function LogoEntete() {
-  const company = useAuth((s) => s.user?.preferences?.company)
-  const nom = company?.name?.trim()
+  const marque = useMarque()
   return (
     <div className="flex items-center gap-2">
-      {nom && <span className="text-[9pt] font-semibold text-muted-foreground">{nom}</span>}
+      {marque.name && <span className="text-[9pt] font-semibold text-muted-foreground">{marque.name}</span>}
       <img
-        src={company?.logo || '/diagly-logo.svg'}
-        alt={nom || 'Diagly'}
+        src={marque.logo || '/diagly-logo.svg'}
+        alt={marque.name || 'Diagly'}
         className="max-h-[10mm] w-auto object-contain"
       />
     </div>
@@ -42,11 +41,11 @@ export function TitreRapport({ titre, projet, mention }: {
   projet: string
   mention?: ReactNode
 }) {
-  // Le trait porte la couleur du bureau : c'est le seul endroit du document
+  // Le trait porte la couleur du rapport : c'est le seul endroit du document
   // imprimé où elle se voit, et elle n'aurait aucun effet sans cela.
-  const accent = useAuth((s) => s.user?.preferences?.company?.accentColor)
+  const marque = useMarque()
   return (
-    <div className="mb-4 border-b-2 pb-2" style={{ borderColor: accent || undefined }}>
+    <div className="mb-4 border-b-2 pb-2" style={{ borderColor: marque.accentColor ?? undefined }}>
       <h1 className="text-2xl font-bold">{titre}</h1>
       <p className="text-muted-foreground">{projet}</p>
       {mention && <p className="text-muted-foreground">{mention}</p>}

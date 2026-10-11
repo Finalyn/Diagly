@@ -1,3 +1,4 @@
+import type { MarqueDuDossier } from './marque'
 import type { BaseQuantite, EtatArticle, Unite } from './base-cfc/normaliser'
 
 // Types partagés entre frontend et API. Doivent rester en phase avec server/prisma/schema.prisma.
@@ -149,6 +150,12 @@ export interface ApiProject {
   geoData?: GeoData | null
   shareToken?: string | null
   sharedAt?: string | null
+  /**
+   * Apparence propre à ce dossier : logo, couleur, raison sociale, auteur.
+   * null = celle des réglages. Un rapport se personnalise pour un client sans
+   * changer les autres.
+   */
+  reportBranding?: MarqueDuDossier | null
   createdAt: string
   updatedAt: string
 }

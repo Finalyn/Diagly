@@ -24,6 +24,18 @@ function typologiesPourPrisma(v: Record<string, number> | null | undefined) {
   return { apartmentTypes: v === null ? Prisma.JsonNull : (v as Prisma.InputJsonValue) };
 }
 
+/**
+ * L'apparence du dossier, prête pour Prisma.
+ *
+ * Absente de la requête : on n'y touche pas. Explicitement null : le dossier
+ * repasse sur les réglages de l'utilisateur, et c'est JsonNull qu'il faut
+ * écrire, pas DbNull, pour que la colonne porte bien « rien » et non « vide ».
+ */
+function apparencePourPrisma(v: unknown) {
+  if (v === undefined) return {};
+  return { reportBranding: v === null ? Prisma.JsonNull : (v as Prisma.InputJsonValue) };
+}
+
 /** Vérifie que l'opération (si fournie) est accessible (parc de l'organisation ou compte solo). */
 async function assertOperationOwnership(operationId: string | null | undefined, ownerId: string) {
   if (!operationId) return;
@@ -59,6 +71,19 @@ const projectBaseSchema = z.object({
   windowPct: z.number().min(0).max(100).optional(),
   honoraryPct: z.number().min(0).max(100).optional(),
   reservePct: z.number().min(0).max(100).optional(),
+  /**
+   * Apparence propre a ce dossier. Memes regles que le logo des preferences :
+   * seulement une image en data URL, parce qu'une URL externe fuiterait vers un
+   * tiers depuis le rapport du client et serait bloquee par la CSP.
+   * null remet le dossier sur les reglages de l'utilisateur.
+   */
+  reportBranding: z.object({
+    name: z.string().max(150).nullish(),
+    auteur: z.string().max(150).nullish(),
+    accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Couleur invalide.").nullish(),
+    logo: z.string().max(400_000).regex(/^data:image\/(png|jpeg|webp|svg\+xml);base64,/, "Logo invalide.").nullish(),
+    sansLogo: z.boolean().nullish(),
+  }).strict().partial().nullable().optional(),
   status: z.nativeEnum(ProjectStatus).optional(),
   // Données énergétiques (import certificat)
   sre: z.number().nonnegative().nullable().optional(),
@@ -96,10 +121,15 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", validateBody(createSchema), async (req, res) => {
-  const { apartmentTypes, ...data } = req.body as z.infer<typeof createSchema>;
+  const { apartmentTypes, reportBranding, ...data } = req.body as z.infer<typeof createSchema>;
   await assertOperationOwnership(data.operationId, req.auth!.sub);
   const project = await prisma.project.create({
-    data: { ...data, ...typologiesPourPrisma(apartmentTypes), ownerId: req.auth!.sub },
+    data: {
+      ...data,
+      ...typologiesPourPrisma(apartmentTypes),
+      ...apparencePourPrisma(reportBranding),
+      ownerId: req.auth!.sub,
+    },
   });
   res.status(201).json({ project });
 });
@@ -122,11 +152,11 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", validateBody(updateSchema), async (req, res) => {
   const before = await loadOwnedProject(req.params.id, req.auth!.sub);
-  const { apartmentTypes, ...data } = req.body as z.infer<typeof updateSchema>;
+  const { apartmentTypes, reportBranding, ...data } = req.body as z.infer<typeof updateSchema>;
   await assertOperationOwnership(data.operationId, req.auth!.sub);
   const project = await prisma.project.update({
     where: { id: req.params.id },
-    data: { ...data, ...typologiesPourPrisma(apartmentTypes) },
+    data: { ...data, ...typologiesPourPrisma(apartmentTypes), ...apparencePourPrisma(reportBranding) },
   });
   // Finalisation (transition vers TERMINE uniquement).
   if (data.status === "TERMINE" && before.status !== "TERMINE") {

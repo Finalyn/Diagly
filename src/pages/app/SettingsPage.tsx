@@ -23,24 +23,23 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle, Bell, BellRing, Building2, Check, ChevronLeft, ChevronRight, CircleUser,
-  CreditCard, Loader2, LogOut, Mail, Palette, ShieldCheck, ShieldOff, SlidersHorizontal,
-  User as UserIcon, Users,
+  CreditCard, Loader2, LogOut, Mail, Palette, ShieldCheck, ShieldOff, User as UserIcon, Users,
 } from 'lucide-react'
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui'
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import { useIsMobile } from '@/lib/use-mobile'
-import { cn, formatCHF } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { getPushState, subscribePush, unsubscribePush, type PushState } from '@/lib/push-client'
 import { logout as endSession } from '@/lib/session'
 import {
-  aChange, apercuDesValeurs, champsManquantsDuBureau, etatDuProfil, initiales, nomAffiche,
+  aChange, champsManquantsDuBureau, etatDuProfil, initiales, nomAffiche,
 } from '@/lib/reglages'
 import type { UserPreferences } from '@/lib/api-types'
 
 type IdSection =
   | 'profil' | 'securite' | 'notifications' | 'compte'
-  | 'bureau' | 'personnalisation' | 'valeurs' | 'facturation'
+  | 'bureau' | 'personnalisation' | 'facturation'
 
 const SECTIONS: {
   id: IdSection
@@ -55,7 +54,6 @@ const SECTIONS: {
   { id: 'compte', label: 'Compte', aide: 'Plan, équipe, déconnexion', icone: CircleUser, famille: 'Mon compte' },
   { id: 'bureau', label: 'Entreprise', aide: 'Identité et coordonnées du bureau', icone: Building2, famille: 'Mon travail' },
   { id: 'personnalisation', label: 'Personnalisation', aide: 'Logo et couleur de vos rapports', icone: Palette, famille: 'Mon travail' },
-  { id: 'valeurs', label: 'Valeurs par défaut', aide: 'Honoraires, réserve, TVA', icone: SlidersHorizontal, famille: 'Mon travail' },
   { id: 'facturation', label: 'Facturation', aide: 'Plan et coordonnées de facturation', icone: CreditCard, famille: 'Mon travail' },
 ]
 
@@ -109,7 +107,6 @@ export function SettingsPage() {
             {choisie === 'notifications' && <SectionNotifications />}
             {choisie === 'bureau' && <SectionBureau />}
             {choisie === 'personnalisation' && <SectionPersonnalisation />}
-            {choisie === 'valeurs' && <SectionValeurs />}
             {choisie === 'facturation' && <SectionFacturation />}
             {choisie === 'compte' && <SectionCompte />}
           </CardContent>
@@ -1063,105 +1060,6 @@ function ApercuEnTete({ bureau, auteur }: {
       <p className="mt-3 text-[15px] font-bold" style={{ color: bureau.accentColor }}>Rapport de diagnostic</p>
       <p className="text-[11px] text-neutral-500">Avenue de la Gare 10, 1003 Lausanne · établi par {auteur}</p>
     </div>
-  )
-}
-
-// ----------------------------------------------------------- valeurs
-
-function SectionValeurs() {
-  const user = useAuth((s) => s.user)
-  const enregistrerPrefs = usePreferences()
-  const d = user?.preferences?.defaults ?? {}
-
-  const depart = useMemo(() => ({
-    honoraryPct: String(d.honoraryPct ?? 12),
-    reservePct: String(d.reservePct ?? 10),
-    vatPct: String(d.vatPct ?? 8.1),
-    unit: (d.unit ?? 'm') as 'm' | 'cm' | 'mm',
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [user])
-  const [f, setF] = useState(depart)
-  const [enCours, setEnCours] = useState(false)
-  const [erreur, setErreur] = useState<string | null>(null)
-  const modifie = aChange(f, depart)
-  const poser = (p: Partial<typeof f>) => setF((v) => ({ ...v, ...p }))
-
-  const nombre = (v: string, defaut: number) => {
-    const n = Number(v.replace(',', '.'))
-    return Number.isFinite(n) && n >= 0 ? n : defaut
-  }
-  const etapes = apercuDesValeurs({
-    honoraryPct: nombre(f.honoraryPct, 0),
-    reservePct: nombre(f.reservePct, 0),
-    vatPct: nombre(f.vatPct, 0),
-  })
-
-  const enregistrer = async () => {
-    setEnCours(true); setErreur(null)
-    try {
-      await enregistrerPrefs({
-        defaults: {
-          honoraryPct: nombre(f.honoraryPct, 12),
-          reservePct: nombre(f.reservePct, 10),
-          vatPct: nombre(f.vatPct, 8.1),
-          unit: f.unit,
-        },
-      })
-    } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : 'Enregistrement impossible.')
-    } finally { setEnCours(false) }
-  }
-
-  return (
-    <>
-      <Bloc titre="Chiffrage" aide="Appliqué aux nouveaux diagnostics. Un dossier déjà ouvert garde les siennes.">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Champ label="Honoraires (%)">
-            <Input type="number" min="0" step="0.5" value={f.honoraryPct} onChange={(e) => poser({ honoraryPct: e.target.value })} />
-          </Champ>
-          <Champ label="Réserve (%)">
-            <Input type="number" min="0" step="0.5" value={f.reservePct} onChange={(e) => poser({ reservePct: e.target.value })} />
-          </Champ>
-          <Champ label="TVA (%)">
-            <Input type="number" min="0" step="0.1" value={f.vatPct} onChange={(e) => poser({ vatPct: e.target.value })} />
-          </Champ>
-        </div>
-
-        <div className="mt-4 rounded-xl bg-muted/50 p-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Sur 100 000 francs de travaux
-          </p>
-          <dl className="space-y-1 text-sm">
-            {etapes.map((e, i) => (
-              <div
-                key={e.libelle}
-                className={cn('flex justify-between gap-4',
-                  i === etapes.length - 1 && 'border-t pt-1 font-semibold')}
-              >
-                <dt className={cn(i > 0 && i < etapes.length - 1 && 'text-muted-foreground')}>{e.libelle}</dt>
-                <dd className="tabular-nums">{formatCHF(e.montant)}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      </Bloc>
-
-      <Bloc titre="Plans" aide="L'unité dans laquelle les mesures se saisissent.">
-        <Champ label="Unité de mesure">
-          <Select value={f.unit} onChange={(e) => poser({ unit: e.target.value as 'm' | 'cm' | 'mm' })} className="sm:w-48">
-            <option value="m">Mètres</option>
-            <option value="cm">Centimètres</option>
-            <option value="mm">Millimètres</option>
-          </Select>
-        </Champ>
-      </Bloc>
-
-      <BarreEnregistrement
-        modifie={modifie} enCours={enCours} erreur={erreur}
-        onAnnuler={() => { setF(depart); setErreur(null) }}
-        onEnregistrer={enregistrer}
-      />
-    </>
   )
 }
 

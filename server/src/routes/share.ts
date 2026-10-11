@@ -29,7 +29,18 @@ router.get("/:token", async (req, res) => {
   // Branding : identite de l'entreprise depuis les preferences du proprietaire.
   const owner = await prisma.user.findUnique({ where: { id: project.ownerId } });
   const prefs = (owner?.preferences as Record<string, unknown>) ?? {};
-  const c = (prefs.company as Record<string, unknown> | undefined) ?? undefined;
+  // L'apparence du dossier passe devant celle du bureau : un rapport peut
+  // porter une autre couleur ou un autre logo sans que les autres changent.
+  const propre = (project.reportBranding as Record<string, unknown> | null) ?? {};
+  const base = (prefs.company as Record<string, unknown> | undefined) ?? undefined;
+  const c: Record<string, unknown> | undefined = base || Object.keys(propre).length > 0
+    ? {
+        ...(base ?? {}),
+        ...(propre.name ? { name: propre.name } : {}),
+        ...(propre.accentColor ? { accentColor: propre.accentColor } : {}),
+        ...(propre.sansLogo ? { logo: null } : propre.logo ? { logo: propre.logo } : {}),
+      }
+    : undefined;
   const company = c
     ? {
         name: c.name ?? null,

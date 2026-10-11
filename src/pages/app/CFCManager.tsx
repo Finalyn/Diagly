@@ -33,6 +33,7 @@ import {
   ligneArticle, ligneNomenclature, lignePoste, lignesDeVisite,
 } from '@/lib/base-cfc/exporter'
 import { classeurXlsx, telechargerClasseur } from '@/lib/xlsx'
+import { ValeursParDefaut } from '@/components/cfc/ValeursParDefaut'
 import { cn } from '@/lib/utils'
 import type { ApiArticle, ApiEtapeVisite, ApiPosteAutomatique } from '@/lib/api-types'
 import type { EtatArticle, Unite } from '@/lib/base-cfc/normaliser'
@@ -64,7 +65,7 @@ const LIBELLES_CONTROLES: Record<RaisonControle, string> = {
 export function CFCManager() {
   const base = useBaseCfc()
   const nomenclature = useNomenclatureCfc()
-  const [onglet, setOnglet] = useState<'articles' | 'postes'>('articles')
+  const [onglet, setOnglet] = useState<'articles' | 'postes' | 'valeurs'>('articles')
 
   if (base.isLoading) {
     return (
@@ -112,18 +113,25 @@ export function CFCManager() {
             className={cn('rounded-full border px-3 py-1.5 text-xs font-medium',
               onglet === 'postes' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
           >Postes automatiques</button>
+          <button
+            onClick={() => setOnglet('valeurs')}
+            className={cn('rounded-full border px-3 py-1.5 text-xs font-medium',
+              onglet === 'valeurs' ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
+          >Valeurs par défaut</button>
         </div>
       </div>
 
-      {onglet === 'articles' ? (
+      {onglet === 'articles' && (
         <Articles
           articles={base.data.articles}
           etapes={base.data.etapes}
           noeuds={nomenclature.data?.noeuds ?? []}
         />
-      ) : (
-        <PostesAutomatiques postes={base.data.postes} />
       )}
+      {onglet === 'postes' && <PostesAutomatiques postes={base.data.postes} />}
+      {/* Les honoraires, la réserve et la TVA sont des règles de chiffrage :
+          leur place est avec les prix, pas dans les réglages du compte. */}
+      {onglet === 'valeurs' && <ValeursParDefaut />}
     </div>
   )
 }

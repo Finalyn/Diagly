@@ -12,6 +12,8 @@ import { api } from '@/lib/api'
 import { useBaseCfc } from '@/lib/base-cfc/requete'
 import type { ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
+import { MarqueDuRapport } from '@/components/report/marque-contexte'
+import { PersonnaliserLeRapport } from '@/components/report/PersonnaliserLeRapport'
 import { RapportComplet } from '@/components/report/RapportComplet'
 import { RapportStandard } from '@/components/report/RapportStandard'
 import { RapportExistant } from '@/components/report/RapportExistant'
@@ -206,6 +208,12 @@ export function ProjectRapports() {
           </div>
         )}
 
+        <PersonnaliserLeRapport
+          projectId={id!}
+          dossier={project.reportBranding}
+          auteurParDefaut={auteur}
+        />
+
         <div className="space-y-2 border-t pt-4">
           <Button onClick={() => window.print()} className="w-full justify-start">
             <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
@@ -220,6 +228,9 @@ export function ProjectRapports() {
       {/* Les feuilles A4 ont une largeur fixe : quand la fenêtre offre moins de
           210 mm, on les fait défiler horizontalement plutôt que de laisser toute
           la page déborder. À l'impression, la contrainte disparaît. */}
+      {/* Tout le document porte la marque du dossier : les en-têtes de page
+          sont trop loin d'ici pour qu'on la leur passe de main en main. */}
+      <MarqueDuRapport dossier={project.reportBranding} auteur={auteur}>
       <div className="min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible">
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
@@ -278,6 +289,7 @@ export function ProjectRapports() {
         />
       )}
       </div>
+      </MarqueDuRapport>
     </div>
   )
 }

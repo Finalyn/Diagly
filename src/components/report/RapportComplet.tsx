@@ -36,6 +36,7 @@ import { computeProjectMetrics } from '@/lib/formulas'
 import { cn, formatCHF, formatDate, formatPrixUnitaire } from '@/lib/utils'
 import type { ApiCatalogItem, ApiCfcEntry, ApiDiagnosticItem, ApiProject, ApiVariant, ElementState } from '@/lib/api-types'
 import { useAuth } from '@/stores/auth'
+import { useMarque } from './use-marque'
 import { AvertissementEnergie, CorpsEnergie } from './ChapitreEnergie'
 import { CHAPITRES, ETATS, PAGE, TVA } from './constants'
 import { CaseEtat, Info, Ligne, LogoEntete, Row } from './shared'
@@ -120,7 +121,18 @@ export interface RapportCompletProps {
 }
 
 export function RapportComplet({ project, items, etatExistant, cfcEntries, base, catalogItems, variants, auteur }: RapportCompletProps) {
-  const company = useAuth((s) => s.user?.preferences?.company) as Entreprise
+  /**
+   * La marque du document passe avant celle du compte : un dossier peut porter
+   * une autre raison sociale, un autre logo, une autre couleur, sans que les
+   * autres rapports changent.
+   */
+  const marque = useMarque()
+  const reglages = useAuth((s) => s.user?.preferences?.company) as Entreprise
+  const company = useMemo(
+    () => ({ ...(reglages ?? {}), name: marque.name ?? undefined, logo: marque.logo ?? undefined }) as Entreprise,
+    [reglages, marque],
+  )
+  const signataire = marque.auteur || auteur
   const metrics = computeProjectMetrics(project)
   const labels = useMemo(() => cfcLabelIndex(cfcEntries), [cfcEntries])
   const catalogue = useMemo(() => new Map(catalogItems.map((c) => [c.id, c])), [catalogItems])
@@ -206,7 +218,7 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, base,
     bloc('garde', (
       <PageDeGarde
         project={project} items={items} adresse={adresse}
-        aujourdhui={aujourdhui} auteur={auteur} company={company}
+        aujourdhui={aujourdhui} auteur={signataire} company={company} accent={marque.accentColor}
       />
     ))
 
@@ -440,12 +452,12 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, base,
     bloc('mentions', (
       <p className="mt-6 border-t pt-3 text-muted-foreground">
         {priceBasisNote()} Diagnostic établi à vue, sans sondage destructif, le {aujourdhui}
-        {auteur ? ` par ${auteur}` : ''}. Rapport généré par Diagly.
+        {signataire ? ` par ${signataire}` : ''}. Rapport généré par Diagly.
       </p>
     ))
 
     return out
-  }, [project, items, chapitres, chapitresDoc, avecEnergie, devis, variantes, catalogue, articles, nomDEtape, etatExistant, metrics, adresse, aujourdhui, auteur, company])
+  }, [project, items, chapitres, chapitresDoc, avecEnergie, devis, variantes, catalogue, articles, nomDEtape, etatExistant, metrics, adresse, aujourdhui, signataire, marque, company])
 
   return (
     <DocumentA4
@@ -457,13 +469,15 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, base,
 }
 
 /** Page de garde : elle occupe la hauteur utile d'une feuille, à elle seule. */
-function PageDeGarde({ project, items, adresse, aujourdhui, auteur, company }: {
+function PageDeGarde({ project, items, adresse, aujourdhui, auteur, company, accent }: {
   project: ApiProject
   items: ApiDiagnosticItem[]
   adresse: string
   aujourdhui: string
   auteur: string
   company: Entreprise
+  /** La couleur du dossier : le seul endroit de la garde où elle se voit. */
+  accent: string | null
 }) {
   const photo = items.find((i) => i.photos.length > 0)?.photos[0]
   const ligne2 = [company?.postalCode, company?.city].filter(Boolean).join(' ')
@@ -475,6 +489,7 @@ function PageDeGarde({ project, items, adresse, aujourdhui, auteur, company }: {
       <div className="flex-1">
         <p className="uppercase tracking-[0.2em] text-muted-foreground">Diagnostic de bâtiment</p>
         <h1 className="mt-2 text-4xl font-bold leading-tight">Rapport de diagnostic</h1>
+        <div className="mt-3 h-1 w-24" style={{ backgroundColor: accent ?? undefined }} />
         <p className="mt-6 text-xl">{project.name}</p>
         {adresse && <p className="text-lg text-muted-foreground">{adresse}</p>}
         {photo && <img src={photo} alt="" className="mt-8 max-h-[95mm] w-full rounded border object-cover" />}
