@@ -18,7 +18,7 @@ import { formatCHF, cn } from '@/lib/utils'
 import { dureeVieDeReference, dureeVieResiduelle } from '@/lib/duree-vie'
 import { aUnOubliImportant, bilanDesOublis, oublisDUnReleve, phraseDAlerte, relevesIncomplets } from '@/lib/oublis'
 import { circonference, decalageAnneau, partRemplie } from '@/lib/anneau'
-import { RecapOublis, type ModeRecap } from '@/components/diagnostic/RecapOublis'
+import { RecapOublis } from '@/components/diagnostic/RecapOublis'
 import {
   STATE_PRIORITY, workForState, priceForState, computeCost, computeCostFromPrice,
   appliedUnitPrice, getMarketCoeff, priceBasisNote, priceToNumber, type PrixCatalogue,
@@ -395,18 +395,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   const grouped = filtrerLeParcours(parcours.etapes, search)
 
   // Parcours de visite : une étape à la fois, comme sur le terrain. null = tout voir.
-  // Le récapitulatif de ce qui reste à faire, ouvert soit depuis l'alerte, soit
-  // au moment de clore la visite.
-  const [recap, setRecap] = useState<ModeRecap | null>(null)
-
-  const terminer = useMutation({
-    mutationFn: () => api.diagnostics.update(id!, { status: 'COMPLETED' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['diagnostic', id] })
-      queryClient.invalidateQueries({ queryKey: ['project'] })
-      setRecap(null)
-    },
-  })
+  // Le récapitulatif de ce qui reste à faire, ouvert depuis l'alerte du bandeau.
+  const [recap, setRecap] = useState(false)
 
   const [etape, setEtape] = useState<EtapeChoisie>(null)
   // Ouvrage choisi dans l'étape (façade, fenêtres…) : le niveau intermédiaire du
@@ -493,9 +483,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
           etapes={avancementVisite.etapes}
           etape={etape}
           alerte={phraseDAlerte(bilanDesOublis(items))}
-          onAlerte={() => setRecap('consultation')}
-          onTerminer={() => setRecap('fin')}
-          termine={diagQuery.data?.diagnostic?.status === 'COMPLETED'}
+          onAlerte={() => setRecap(true)}
         />
 
         <ReindexPanel diagnosticId={id!} />
@@ -744,11 +732,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
           incomplets={relevesIncomplets(items)}
           restants={Math.max(0, avancementVisite.total - avancementVisite.faits)}
           groupesMalRepartis={groupesIncomplets(groupesSurface)}
-          mode={recap}
-          onOuvrir={(itemId) => { setSelectedItemId(itemId); setRecap(null) }}
-          onFermer={() => setRecap(null)}
-          onTerminer={() => terminer.mutate()}
-          terminaisonEnCours={terminer.isPending}
+          onOuvrir={(itemId) => { setSelectedItemId(itemId); setRecap(false) }}
+          onFermer={() => setRecap(false)}
         />
       )}
     </div>
@@ -981,7 +966,7 @@ type EtapeChoisie = number | null
  * Les montants gardent leur écran, celui des coûts, où ils ont la place d'être
  * lus poste par poste.
  */
-function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte, onTerminer, termine }: {
+function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte }: {
   faits: number
   total: number
   etapes: EtapeDuDiagnostic[]
@@ -990,8 +975,6 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte, onTer
   alerte?: string | null
   /** Ouvre la liste de ce qui reste à faire. */
   onAlerte?: () => void
-  onTerminer?: () => void
-  termine?: boolean
 }) {
   const rang = etapes.findIndex((g) => g.numero === etape)
   const courante = rang >= 0 ? etapes[rang] : null
@@ -1032,20 +1015,6 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte, onTer
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             {alerte}
             <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
-          </button>
-        )}
-        <span className="flex-1" />
-        {onTerminer && (
-          <button
-            onClick={onTerminer}
-            className={cn(
-              'shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
-              termine
-                ? 'bg-green-100 text-green-800'
-                : 'border border-black/[0.08] hover:bg-muted',
-            )}
-          >
-            {termine ? 'Relevé terminé' : 'Terminer le relevé'}
           </button>
         )}
       </div>

@@ -242,7 +242,15 @@ function Articles({ articles, etapes, noeuds }: {
   const [choisi, setChoisi] = useState<string | null>(null)
   const [creation, setCreation] = useState(false)
   const [toutMontrer, setToutMontrer] = useState(false)
-  const [parEtape, setParEtape] = useState(false)
+  /**
+   * L'entrée par étape de visite ouvre la page.
+   *
+   * C'est dans cet ordre que le diagnostiqueur travaille : il fait le tour du
+   * bâtiment étape par étape, et cherche un article en se demandant où il le
+   * rencontre. Le code CFC, lui, sert à vérifier une position dans la
+   * nomenclature, ce qui vient après.
+   */
+  const [parEtape, setParEtape] = useState(true)
 
   const codesConnus = useMemo(() => new Set(noeuds.map((n) => n.code)), [noeuds])
   const controles = useMemo(

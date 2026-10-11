@@ -16,6 +16,7 @@ import { useAuth } from '@/stores/auth'
 import { MarqueDuRapport } from '@/components/report/marque-contexte'
 import { PersonnaliserLeRapport } from '@/components/report/PersonnaliserLeRapport'
 import { RapportComplet } from '@/components/report/RapportComplet'
+import { RappelDuBureau } from '@/components/RappelDuBureau'
 import { RapportStandard } from '@/components/report/RapportStandard'
 import { RapportExistant } from '@/components/report/RapportExistant'
 import { RapportPhoto } from '@/components/report/RapportPhoto'
@@ -248,6 +249,10 @@ export function ProjectRapports() {
           alors la feuille, à portée du regard et de la main, au lieu d'aller
           se ranger au bord de la fenêtre. */}
       <div className="js-print-column min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible lg:h-full lg:max-w-[calc(210mm+1rem)] lg:overflow-auto lg:[scrollbar-width:thin]">
+      {/* Au-dessus de la feuille, et non dans les réglages : c'est en voyant
+          le document qu'on mesure ce qui lui manque. */}
+      <RappelDuBureau />
+
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
       {/* Rapport complet : le livrable clé en main, garde + sommaire + méthode + état + devis */}

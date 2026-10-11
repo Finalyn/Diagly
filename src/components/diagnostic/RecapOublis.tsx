@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { AlertTriangle, ArrowRight, Check, Loader2, X } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { Oubli, ReleveIncomplet } from '@/lib/oublis'
@@ -14,16 +14,10 @@ import type { ApiDiagnosticItem } from '@/lib/api-types'
  * les deux. Ici chaque ligne ouvre l'ouvrage concerné : on y va, on photographie,
  * on revient.
  *
- * Le même écran sert à clore la visite. Avant de marquer un relevé terminé, on
- * montre ce qui ne l'est pas. Pas pour l'interdire, un diagnostiqueur sait ce
- * qu'il fait et certains ouvrages restent inaccessibles : pour qu'il ne l'apprenne
- * pas de retour au bureau.
  */
 
-export type ModeRecap = 'consultation' | 'fin'
-
 export function RecapOublis({
-  incomplets, restants, groupesMalRepartis, mode, onOuvrir, onFermer, onTerminer, terminaisonEnCours,
+  incomplets, restants, groupesMalRepartis, onOuvrir, onFermer,
 }: {
   incomplets: ReleveIncomplet<ApiDiagnosticItem>[]
   /** Ouvrages du catalogue pas encore relevés. Ce n'est pas un oubli, mais ça compte pour clore. */
@@ -36,11 +30,8 @@ export function RecapOublis({
    * passe donc en tête du récapitulatif, avant ce qui manque.
    */
   groupesMalRepartis?: GroupeSurface[]
-  mode: ModeRecap
   onOuvrir: (itemId: string) => void
   onFermer: () => void
-  onTerminer?: () => void
-  terminaisonEnCours?: boolean
 }) {
   useEffect(() => {
     const auClavier = (e: KeyboardEvent) => { if (e.key === 'Escape') onFermer() }
@@ -57,7 +48,7 @@ export function RecapOublis({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={mode === 'fin' ? 'Terminer le relevé' : 'Ce qui reste à faire'}
+      aria-label="Ce qui reste à faire"
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6"
       onClick={(e) => { if (e.target === e.currentTarget) onFermer() }}
     >
@@ -65,15 +56,9 @@ export function RecapOublis({
 
         <div className="flex shrink-0 items-start gap-3 border-b px-5 py-4">
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold">
-              {mode === 'fin' ? 'Terminer le relevé ?' : 'Ce qui reste à faire'}
-            </h2>
+            <h2 className="text-base font-semibold">Ce qui reste à faire</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {rienAsignaler
-                ? 'Tout est relevé, rien ne manque.'
-                : mode === 'fin'
-                  ? 'Voici ce qui ne sera pas dans le rapport en l’état.'
-                  : 'Touchez une ligne pour aller à l’ouvrage.'}
+              {rienAsignaler ? 'Tout est relevé, rien ne manque.' : 'Touchez une ligne pour aller à l’ouvrage.'}
             </p>
           </div>
           <button
@@ -145,20 +130,7 @@ export function RecapOublis({
         </div>
 
         <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t px-5 py-4">
-          {mode === 'fin' ? (
-            <>
-              <Button variant="outline" onClick={onFermer} disabled={terminaisonEnCours}>
-                Continuer le relevé
-              </Button>
-              <Button onClick={onTerminer} disabled={terminaisonEnCours}>
-                {terminaisonEnCours
-                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Enregistrement…</>
-                  : importants.length > 0 ? 'Terminer quand même' : 'Terminer le relevé'}
-              </Button>
-            </>
-          ) : (
-            <Button variant="outline" onClick={onFermer}>Fermer</Button>
-          )}
+          <Button variant="outline" onClick={onFermer}>Fermer</Button>
         </div>
       </div>
     </div>
