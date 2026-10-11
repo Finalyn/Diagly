@@ -164,7 +164,11 @@ export function ProjectRapports() {
        visible pendant qu'on fait défiler le document, et les actions se rangent
        dessous au lieu de flotter à l'opposé de ce qu'elles actionnent. */
     <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-      <aside className="shrink-0 space-y-4 print:hidden lg:sticky lg:top-3 lg:w-60">
+      {/* Le document à gauche, les commandes à droite. Il commence ainsi au
+          bord de l'écran, là où l'on se met pour le lire, et la colonne garde
+          la place qu'il faut au panneau de personnalisation. Elle défile
+          d'elle-même quand elle dépasse, sans emporter le document. */}
+      <aside className="shrink-0 space-y-4 print:hidden lg:order-2 lg:sticky lg:top-3 lg:max-h-[calc(100dvh-5.5rem)] lg:w-64 lg:overflow-y-auto lg:pb-2">
         <nav className="space-y-1" aria-label="Type de rapport">
           {kinds.map(([k, label, Icon]) => (
             <button
@@ -231,7 +235,7 @@ export function ProjectRapports() {
       {/* Tout le document porte la marque du dossier : les en-têtes de page
           sont trop loin d'ici pour qu'on la leur passe de main en main. */}
       <MarqueDuRapport dossier={project.reportBranding} auteur={auteur}>
-      <div className="min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible">
+      <div className="min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible lg:order-1">
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
       {/* Rapport complet : le livrable clé en main, garde + sommaire + méthode + état + devis */}
