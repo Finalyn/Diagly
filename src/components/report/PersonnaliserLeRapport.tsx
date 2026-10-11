@@ -13,10 +13,11 @@
  * couleur en la regardant sur la page, pas en imaginant ce qu'elle donnera.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, ImagePlus, Loader2, Palette, Settings2 } from 'lucide-react'
 import { Button, Input } from '@/components/ui'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import { cn } from '@/lib/utils'
@@ -55,9 +56,12 @@ export function PersonnaliserLeRapport({ projectId, dossier, auteurParDefaut, on
   onApercu: (brouillon: MarqueDuDossier | null) => void
 }) {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const bureau = useAuth((s) => s.user?.preferences?.company)
   const [ouvert, setOuvert] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
+  /** Où l'on voulait aller : une adresse, ou null pour « refermer le panneau ». */
+  const [sortie, setSortie] = useState<{ vers: string | null } | null>(null)
 
   const depart = useMemo(() => ({
     name: dossier?.name ?? '',
@@ -89,6 +93,43 @@ export function PersonnaliserLeRapport({ projectId, dossier, auteurParDefaut, on
   const ecarte = Boolean(depart.name || depart.auteur || depart.accentColor || depart.choixLogo !== 'reglages')
   const couleurDesReglages = bureau?.accentColor || ACCENT_PAR_DEFAUT
 
+  /**
+   * Personne ne quitte la page sur un aperçu.
+   *
+   * Ce qu'on voit à l'écran n'est pas encore sur le rapport : tant qu'on n'a
+   * pas appliqué, le dossier garde son ancienne marque. Partir sans le savoir,
+   * c'est croire avoir changé le logo d'un rapport qui sortira comme avant.
+   *
+   * On retient les trois façons de s'en aller : un lien de l'application (les
+   * onglets du dossier, le menu de gauche, le lien vers les réglages), la
+   * fermeture ou le rechargement de l'onglet, et le repli du panneau. Le
+   * bouton « Précédent » du navigateur n'est pas couvert : l'application n'a
+   * pas de routeur de données, et détourner l'historique à la main casserait
+   * la navigation plus souvent qu'il ne sauverait une couleur.
+   */
+  useEffect(() => {
+    if (!ouvert || !modifie) return
+    const avantFermeture = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    const surClic = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+      const lien = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+      if (!lien || lien.target === '_blank' || lien.hasAttribute('download')) return
+      const url = new URL(lien.href, window.location.href)
+      if (url.origin !== window.location.origin) return
+      const ici = window.location.pathname + window.location.search
+      if (url.pathname + url.search === ici) return
+      e.preventDefault()
+      e.stopPropagation()
+      setSortie({ vers: url.pathname + url.search })
+    }
+    window.addEventListener('beforeunload', avantFermeture)
+    document.addEventListener('click', surClic, true)
+    return () => {
+      window.removeEventListener('beforeunload', avantFermeture)
+      document.removeEventListener('click', surClic, true)
+    }
+  }, [ouvert, modifie])
+
   const enregistrer = useMutation({
     mutationFn: (valeur: MarqueDuDossier | null) => api.projects.update(projectId, { reportBranding: valeur }),
     onSuccess: () => {
@@ -97,6 +138,23 @@ export function PersonnaliserLeRapport({ projectId, dossier, auteurParDefaut, on
     },
     onError: (e) => setErreur(e instanceof ApiError ? e.message : 'Enregistrement impossible.'),
   })
+
+  /** On part en laissant le dossier tel qu'il était enregistré. */
+  const partir = (vers: string | null) => {
+    setSortie(null)
+    setF(depart)
+    setOuvert(false)
+    if (vers) navigate(vers)
+  }
+
+  /** On applique d'abord, et l'on ne part que si l'enregistrement a tenu. */
+  const appliquerPuisPartir = async (vers: string | null) => {
+    try { await enregistrer.mutateAsync(brouillon) }
+    catch { setSortie(null); return }
+    setSortie(null)
+    setOuvert(false)
+    if (vers) navigate(vers)
+  }
 
   const revenir = () => {
     setF({ name: '', auteur: '', accentColor: '', logo: '', choixLogo: 'reglages' })
@@ -115,13 +173,48 @@ export function PersonnaliserLeRapport({ projectId, dossier, auteurParDefaut, on
   return (
     <div className="border-t pt-4 print:hidden">
       <button
-        onClick={() => setOuvert((v) => !v)}
+        onClick={() => { if (ouvert && modifie) setSortie({ vers: null }); else setOuvert((v) => !v) }}
         className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <Palette className="h-4 w-4 shrink-0" />
         <span className="flex-1">Personnaliser</span>
         {ecarte && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />}
       </button>
+
+      <Dialog open={sortie !== null} onOpenChange={(o) => { if (!o) setSortie(null) }}>
+        <DialogContent className="max-w-md space-y-4">
+          <div>
+            <h2 className="text-base font-semibold">Vos changements ne sont pas appliqués</h2>
+            <p className="mt-1.5 text-sm leading-snug text-muted-foreground">
+              Le logo, la couleur, la raison sociale et l’auteur que vous voyez ne sont qu’un aperçu.
+              {sortie?.vers
+                ? ' Si vous quittez la page maintenant, le rapport repartira avec vos réglages habituels.'
+                : ' Si vous refermez le panneau maintenant, le rapport repartira avec vos réglages habituels.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              onClick={() => appliquerPuisPartir(sortie?.vers ?? null)}
+              disabled={enregistrer.isPending}
+            >
+              {enregistrer.isPending
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <><Check className="mr-1.5 h-3.5 w-3.5" />Appliquer et continuer</>}
+            </Button>
+            <Button
+              size="sm" variant="outline"
+              onClick={() => partir(sortie?.vers ?? null)}
+              disabled={enregistrer.isPending}
+            >
+              {sortie?.vers ? 'Quitter sans appliquer' : 'Fermer sans appliquer'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSortie(null)} disabled={enregistrer.isPending}>
+              Rester
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {ouvert && (
         <div className="mt-2 space-y-4 rounded-xl border bg-muted/30 p-3">
