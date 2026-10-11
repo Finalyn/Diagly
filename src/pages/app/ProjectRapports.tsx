@@ -163,7 +163,7 @@ export function ProjectRapports() {
        descendait d'autant. En colonne, la liste porte des noms entiers, reste
        visible pendant qu'on fait défiler le document, et les actions se rangent
        dessous au lieu de flotter à l'opposé de ce qu'elles actionnent. */
-    <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       {/* À gauche ce qui compose le document : le type de rapport et son
           apparence. Au milieu le document. À droite ce qui en sort : imprimer,
           exporter, partager. Chaque colonne défile d'elle-même quand elle
@@ -226,7 +226,10 @@ export function ProjectRapports() {
       {/* Tout le document porte la marque du dossier : les en-têtes de page
           sont trop loin d'ici pour qu'on la leur passe de main en main. */}
       <MarqueDuRapport dossier={project.reportBranding} auteur={auteur}>
-      <div className="min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible">
+      {/* La feuille a une largeur fixe : la colonne prend la sienne au lieu de
+          s'étirer, sinon les boutons d'export partaient se coller au bord droit
+          de l'écran, loin du document qu'ils éditent. */}
+      <div className="min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible lg:w-auto lg:flex-none">
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
       {/* Rapport complet : le livrable clé en main, garde + sommaire + méthode + état + devis */}
