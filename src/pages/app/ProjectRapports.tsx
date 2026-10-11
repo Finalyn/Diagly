@@ -11,6 +11,7 @@ import { cfcGroupCode, cfcGroupLabels } from '@/lib/cfc'
 import { api } from '@/lib/api'
 import { useBaseCfc } from '@/lib/base-cfc/requete'
 import type { ElementState } from '@/lib/api-types'
+import type { MarqueDuDossier } from '@/lib/marque'
 import { useAuth } from '@/stores/auth'
 import { MarqueDuRapport } from '@/components/report/marque-contexte'
 import { PersonnaliserLeRapport } from '@/components/report/PersonnaliserLeRapport'
@@ -41,7 +42,15 @@ export function ProjectRapports() {
   const { pathname } = useLocation()
   const mode: 'variantes' | 'rapports' = pathname.endsWith('/rapports') ? 'rapports' : 'variantes'
   const user = useAuth((s) => s.user)
-  const auteur = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.companyName || ''
+  const auteurDuCompte = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.companyName || ''
+  /**
+   * L'aperçu de la personnalisation, pendant qu'on la règle.
+   *
+   * Le panneau remonte son brouillon ici, et le document le montre aussitôt :
+   * on choisit une couleur en la regardant sur la page, pas en imaginant ce
+   * qu'elle donnera. null = on affiche ce qui est enregistré.
+   */
+  const [apercu, setApercu] = useState<MarqueDuDossier | null>(null)
   const kinds = mode === 'rapports' ? KINDS_RAPPORTS : KINDS_VARIANTES
   const [report, setReport] = useState<ReportKind>(mode === 'rapports' ? 'complet' : 'detaille')
   const [scenario, setScenario] = useState<ScenarioId>('energetique')
@@ -49,6 +58,9 @@ export function ProjectRapports() {
 
   const projectQuery = useQuery({ queryKey: ['project', id], queryFn: () => api.projects.get(id!), enabled: !!id })
   const project = projectQuery.data?.project
+  const marqueDuDossier = apercu ?? project?.reportBranding ?? null
+  // L'auteur du dossier signe tous ses rapports, pas seulement le complet.
+  const auteur = marqueDuDossier?.auteur?.trim() || auteurDuCompte
   const diagnostic = projectQuery.data?.diagnostics[0]
 
   const itemsQuery = useQuery({
@@ -216,6 +228,7 @@ export function ProjectRapports() {
           projectId={id!}
           dossier={project.reportBranding}
           auteurParDefaut={auteur}
+          onApercu={setApercu}
         />
 
       </aside>
@@ -225,7 +238,7 @@ export function ProjectRapports() {
           la page déborder. À l'impression, la contrainte disparaît. */}
       {/* Tout le document porte la marque du dossier : les en-têtes de page
           sont trop loin d'ici pour qu'on la leur passe de main en main. */}
-      <MarqueDuRapport dossier={project.reportBranding} auteur={auteur}>
+      <MarqueDuRapport dossier={marqueDuDossier} auteur={auteur}>
       {/* La feuille a une largeur fixe : la colonne prend la sienne au lieu de
           s'étirer, sinon les boutons d'export partaient se coller au bord droit
           de l'écran, loin du document qu'ils éditent. */}

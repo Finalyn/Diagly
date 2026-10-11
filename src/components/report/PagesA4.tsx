@@ -193,6 +193,17 @@ export function DocumentA4({ blocs, entete, mentionPied }: DocumentA4Props) {
     return carte
   }, [pages])
 
+  /**
+   * Les blocs du moment, par clé.
+   *
+   * La pagination garde ses pages tant que la composition ne change pas, pour
+   * ne pas boucler entre mesure et rendu. Mais elle gardait aussi les noeuds
+   * mesurés : un texte corrigé, une couleur changée ou un auteur renommé ne
+   * paraissaient plus, puisque l'écran montrait la version d'avant. On ne
+   * conserve donc que le découpage, et le contenu vient du rendu courant.
+   */
+  const blocsDuMoment = useMemo(() => new Map(blocs.map((b) => [b.cle, b])), [blocs])
+
   const tableauxUniques = useMemo(() => {
     const vus = new Map<string, Extract<BlocDocument, { type: 'lignes' }>>()
     for (const b of blocs) if (b.type === 'lignes' && !vus.has(b.tableauId)) vus.set(b.tableauId, b)
@@ -226,7 +237,7 @@ export function DocumentA4({ blocs, entete, mentionPied }: DocumentA4Props) {
           <div className="doc-contenu">
             <header className="doc-entete">{entete}</header>
             <div className="doc-corps">
-              {grouper(page.blocs).map((g) => (
+              {grouper(page.blocs.map((b) => blocsDuMoment.get(b.cle) ?? b)).map((g) => (
                 'type' in g && g.type === 'tableau' ? (
                   <div key={g.cle} className="doc-bloc">
                     <table className="doc-tableau w-full">
