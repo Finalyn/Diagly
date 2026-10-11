@@ -15,7 +15,8 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertTriangle, ChevronRight, Download, Loader2, Pencil, Plus, Search, Settings2, X,
+  AlertTriangle, ChevronRight, Download, HardHat, Loader2, Pencil, Percent, Plus, Search,
+  Wrench, X, type LucideIcon,
 } from 'lucide-react'
 import {
   Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Textarea,
@@ -96,16 +97,19 @@ export function CFCManager() {
     {
       id: 'articles' as const,
       label: 'Articles et prix',
+      icone: Wrench,
       phrase: `Les ${base.data.articles.filter((a) => a.actif).length} ouvrages que le diagnostiqueur peut relever, avec leur prix par état et les étapes de visite où ils se présentent.`,
     },
     {
       id: 'postes' as const,
       label: 'Postes de chantier',
+      icone: HardHat,
       phrase: "Ce qui s'ajoute d'office au devis sans avoir été relevé : échafaudage, nettoyage, protection des ouvrages.",
     },
     {
       id: 'valeurs' as const,
       label: 'Honoraires et TVA',
+      icone: Percent,
       phrase: 'Les pourcentages appliqués au chiffrage des nouveaux diagnostics, et leur effet sur un montant.',
     },
   ]
@@ -113,30 +117,26 @@ export function CFCManager() {
 
   return (
     <div className="flex h-[calc(100dvh-7rem)] flex-col gap-4">
-      <div className="flex shrink-0 flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-bold">Base de données</h1>
-          <p className="text-sm text-muted-foreground">
-            {courant.phrase} Elle est commune au bureau : une correction change le devis de tout le monde.
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button
+      <div className="shrink-0 space-y-3">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-bold">Base de données</h1>
+            <p className="text-sm text-muted-foreground">
+              {courant.phrase} Elle est commune au bureau : une correction change le devis de tout le monde.
+            </p>
+          </div>
+          <Button
+            variant="outline" size="sm"
             onClick={() => exporterLaBase(base.data!, nomenclature.data?.noeuds ?? [])}
             title="Sortir la base au format du classeur, pour la corriger dans Excel"
-            className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted"
           >
-            <Download className="h-3.5 w-3.5" />Exporter
-          </button>
-          {ONGLETS.map((o) => (
-            <button
-              key={o.id}
-              onClick={() => setOnglet(o.id)}
-              className={cn('rounded-full border px-3 py-1.5 text-xs font-medium',
-                onglet === o.id ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
-            >{o.label}</button>
-          ))}
+            <Download className="h-3.5 w-3.5" />Exporter en Excel
+          </Button>
         </div>
+        {/* Les trois parties de la base changent de vue ; « Exporter » agit sur
+            elle. Les quatre étaient alignés, de même forme et de même taille :
+            rien ne disait lequel ouvrait quoi. */}
+        <Commutateur options={ONGLETS} valeur={onglet} onChoisir={setOnglet} />
       </div>
 
       {onglet === 'articles' && (
@@ -151,6 +151,48 @@ export function CFCManager() {
           leur place est avec les prix, pas dans les réglages du compte. */}
       {onglet === 'valeurs' && <ValeursParDefaut />}
     </div>
+  )
+}
+
+/**
+ * Changer de vue, et le voir.
+ *
+ * Trois pastilles bordées, de la même forme que les boutons d'action, ne
+ * disaient pas qu'elles ouvraient trois contenus différents : on les prenait
+ * pour des filtres, ou pour trois actions à déclencher. Le cadre gris tient
+ * les choix ensemble, le fond blanc dit lequel est ouvert, et ce qui agit sur
+ * la base reste en dehors du cadre.
+ */
+function Commutateur<T extends string>({ options, valeur, onChoisir }: {
+  options: readonly { id: T; label: string; icone: LucideIcon }[]
+  valeur: T
+  onChoisir: (id: T) => void
+}) {
+  return (
+    <nav className="inline-flex gap-1 rounded-[20px] border border-black/[0.05] bg-neutral-100/70 p-1.5">
+      {options.map((o) => {
+        const actif = o.id === valeur
+        return (
+          <button
+            key={o.id}
+            onClick={() => onChoisir(o.id)}
+            aria-current={actif ? 'page' : undefined}
+            className={cn(
+              'flex shrink-0 items-center gap-2 rounded-2xl px-4 py-2 text-[13.5px] font-semibold transition-all',
+              actif
+                ? 'bg-white text-neutral-900 shadow-[0_1px_3px_rgba(0,0,0,0.12),0_1px_1px_rgba(0,0,0,0.04)]'
+                : 'text-neutral-500 hover:text-neutral-900',
+            )}
+          >
+            <o.icone
+              className={cn('h-[17px] w-[17px] shrink-0 transition-colors', actif ? 'text-blue-600' : 'text-neutral-400')}
+              strokeWidth={1.9}
+            />
+            {o.label}
+          </button>
+        )
+      })}
+    </nav>
   )
 }
 
@@ -219,19 +261,36 @@ function Articles({ articles, etapes, noeuds }: {
       {/* ----- Arborescence ----- */}
       <Card className="flex w-full shrink-0 flex-col overflow-hidden lg:w-72">
         <CardHeader className="shrink-0 border-b px-4 py-3">
-          <CardTitle className="text-sm">{parEtape ? 'Étapes de visite' : 'Nomenclature CFC'}</CardTitle>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <button
-              onClick={() => setParEtape((v) => !v)}
-              className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
-            >{parEtape ? 'Voir par code CFC' : 'Voir par étape'}</button>
-            {!parEtape && (
+          <CardTitle className="text-sm">Parcourir la base</CardTitle>
+          {/* Les deux entrées sont montrées ensemble. Un bouton unique qui
+              affichait « Voir par étape » laissait entière la question de
+              savoir ce qu'on avait sous les yeux. */}
+          <div className="mt-2 inline-flex gap-0.5 rounded-full border bg-muted/50 p-0.5">
+            {([
+              { parEtape: false, label: 'Par code CFC' },
+              { parEtape: true, label: 'Par étape de visite' },
+            ] as const).map((v) => (
               <button
-                onClick={() => setToutMontrer((v) => !v)}
-                className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
-              >{toutMontrer ? 'Branches utilisées' : 'Toute la nomenclature'}</button>
-            )}
+                key={v.label}
+                onClick={() => setParEtape(v.parEtape)}
+                aria-pressed={parEtape === v.parEtape}
+                className={cn('rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors',
+                  parEtape === v.parEtape
+                    ? 'bg-white text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.08)]'
+                    : 'text-muted-foreground hover:text-foreground')}
+              >{v.label}</button>
+            ))}
           </div>
+          {!parEtape && (
+            <label className="mt-2 flex w-fit cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground">
+              <input
+                type="checkbox" checked={toutMontrer}
+                onChange={(e) => setToutMontrer(e.target.checked)}
+                className="h-3 w-3 cursor-pointer"
+              />
+              Montrer les branches sans article
+            </label>
+          )}
         </CardHeader>
         <CardContent className="flex-1 overflow-y-auto px-2 py-2">
           {parEtape ? (
@@ -267,19 +326,14 @@ function Articles({ articles, etapes, noeuds }: {
               />
             </div>
             <span className="text-xs text-muted-foreground">{listes.length} articles</span>
-            <button
-              onClick={() => setCreation(true)}
-              className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
-            >
+            {/* Ajouter un article agit sur la base : c'est un bouton, et non
+                une pastille de filtre comme celles de la ligne du dessous. */}
+            <Button size="sm" onClick={() => setCreation(true)}>
               <Plus className="h-3.5 w-3.5" />Nouvel article
-            </button>
-            {filtresPosés(filtres) && (
-              <button onClick={() => setFiltres({})} className="text-xs text-primary hover:underline">
-                Tout afficher
-              </button>
-            )}
+            </Button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Filtrer</span>
             <Select
               className="h-8 w-auto max-w-44 py-0 text-xs"
               value={filtres.domaineRapport ?? ''}
@@ -301,7 +355,7 @@ function Articles({ articles, etapes, noeuds }: {
               value={filtres.controle ?? ''}
               onChange={(e) => poser({ controle: (e.target.value || null) as RaisonControle | null })}
             >
-              <option value="">Tous les articles</option>
+              <option value="">Tous les contrôles</option>
               {(Object.keys(LIBELLES_CONTROLES) as RaisonControle[]).map((r) => (
                 <option key={r} value={r}>
                   {LIBELLES_CONTROLES[r]} ({controles.filter((c) => c.raison === r).length})
@@ -318,6 +372,11 @@ function Articles({ articles, etapes, noeuds }: {
               className={cn('rounded-full border px-2 py-0.5 text-[11px]',
                 filtres.inactifs ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground')}
             >Articles retirés</button>
+            {filtresPosés(filtres) && (
+              <button onClick={() => setFiltres({})} className="text-xs text-primary hover:underline">
+                Retirer les filtres
+              </button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="flex-1 overflow-auto p-0">
@@ -1142,10 +1201,9 @@ function PostesAutomatiques({ postes }: { postes: ApiPosteAutomatique[] }) {
                   ) : (
                     <button
                       onClick={() => { setEdite(p.cfcCode); setPrix(String(p.prix)); setErreur(null) }}
-                      className="rounded p-1.5 hover:bg-muted"
-                      title="Modifier le prix"
+                      className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
                     >
-                      <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      <Pencil className="h-3 w-3" />Modifier le prix
                     </button>
                   )}
                 </td>

@@ -70,7 +70,7 @@ export function ValeursParDefaut() {
   }
 
   return (
-    <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <Card className="flex min-h-0 w-full max-w-3xl flex-col overflow-hidden">
       <CardHeader className="shrink-0 border-b px-4 py-3">
         <CardTitle className="text-sm">Valeurs appliquées aux nouveaux diagnostics</CardTitle>
         <p className="text-xs text-muted-foreground">
