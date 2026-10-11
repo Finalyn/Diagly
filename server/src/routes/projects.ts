@@ -3,6 +3,7 @@ import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { BuildingType, Prisma, ProjectStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { notifierSansAttendre } from "../lib/notifications.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { validateBody } from "../middlewares/validate.js";
 import { notFound, badRequest } from "../lib/http-error.js";
@@ -191,6 +192,18 @@ router.post("/:id/diagnostics", validateBody(createDiagnosticSchema), async (req
       notes: data.notes,
     },
   });
+
+  // La notification part sans retenir la réponse : le dossier est créé, c'est
+  // ce qui compte, et un rappel manqué ne vaut pas une création échouée.
+  notifierSansAttendre(req.auth!.sub, "diagnostic_cree", {
+    titre: `Diagnostic ouvert : ${project.name}`,
+    texte: data.visitDate
+      ? `Visite prévue le ${new Date(data.visitDate).toLocaleDateString("fr-CH", { day: "numeric", month: "long" })}.`
+      : "Aucune date de visite pour l'instant.",
+    url: `/app/diagnostic/${diagnostic.id}`,
+    cle: `diagnostic-cree-${diagnostic.id}`,
+  });
+
   res.status(201).json({ diagnostic });
 });
 

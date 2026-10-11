@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { DiagnosticStatus, ElementState, Localisation, Priority } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { notifierSansAttendre } from "../lib/notifications.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { validateBody } from "../middlewares/validate.js";
 import { notFound } from "../lib/http-error.js";
@@ -59,6 +60,35 @@ router.get("/:id", async (req, res) => {
   res.json({ diagnostic: diag, items });
 });
 
+/**
+ * Les urgences d'un relevé, signalées une fois, à la clôture.
+ *
+ * Les signaler au fil de la saisie reviendrait à envoyer trente messages
+ * pendant une visite, et l'on apprendrait à les ignorer. À la clôture, le
+ * compte est fait et la personne est redescendue de l'immeuble : c'est le
+ * moment où elle peut en faire quelque chose.
+ */
+async function signalerLesUrgences(userId: string, diagnosticId: string) {
+  const diag = await prisma.diagnostic.findUnique({
+    where: { id: diagnosticId },
+    include: { project: { select: { name: true } } },
+  });
+  if (!diag) return;
+  const urgents = await prisma.diagnosticItem.count({
+    where: { diagnosticId, priority: "I" },
+  });
+  if (urgents === 0) return;
+
+  notifierSansAttendre(userId, "priorite_urgente", {
+    titre: `${urgents} ouvrage${urgents > 1 ? "s" : ""} en priorité I sur ${diag.project.name}`,
+    texte: urgents > 1
+      ? "À engager dans les cinq ans. Ouvrez le devis pour voir ce qu'ils représentent."
+      : "À engager dans les cinq ans. Ouvrez le devis pour voir ce qu'il représente.",
+    url: `/app/diagnostic/${diagnosticId}`,
+    cle: `urgences-${diagnosticId}`,
+  });
+}
+
 const updateDiagnosticSchema = z.object({
   visitDate: z.coerce.date().optional(),
   status: z.nativeEnum(DiagnosticStatus).optional(),
@@ -75,6 +105,7 @@ router.put("/:id", validateBody(updateDiagnosticSchema), async (req, res) => {
   // Événement de finalisation (transition vers COMPLETED uniquement).
   if (data.status === "COMPLETED" && diag.status !== "COMPLETED") {
     fireEvent(req.auth!.sub, "diagnostic.finalise", { diagnosticId: diag.id, projectId: diag.projectId, egid: diag.project.egid ?? null });
+    signalerLesUrgences(req.auth!.sub, diag.id).catch(() => undefined);
   }
   res.json({ diagnostic });
 });

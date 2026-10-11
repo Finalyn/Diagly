@@ -42,8 +42,11 @@ export function TitreRapport({ titre, projet, mention }: {
   projet: string
   mention?: ReactNode
 }) {
+  // Le trait porte la couleur du bureau : c'est le seul endroit du document
+  // imprimé où elle se voit, et elle n'aurait aucun effet sans cela.
+  const accent = useAuth((s) => s.user?.preferences?.company?.accentColor)
   return (
-    <div className="mb-4 border-b-2 border-foreground pb-2">
+    <div className="mb-4 border-b-2 pb-2" style={{ borderColor: accent || undefined }}>
       <h1 className="text-2xl font-bold">{titre}</h1>
       <p className="text-muted-foreground">{projet}</p>
       {mention && <p className="text-muted-foreground">{mention}</p>}

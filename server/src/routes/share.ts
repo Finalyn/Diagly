@@ -38,6 +38,10 @@ router.get("/:token", async (req, res) => {
         city: c.city ?? null,
         canton: c.canton ?? null,
         vatNumber: c.vatNumber ?? null,
+        // Coordonnees : le lecteur du rapport doit pouvoir joindre le bureau.
+        phone: c.phone ?? null,
+        email: c.email ?? null,
+        web: c.web ?? null,
         logo: c.logo ?? null,
         accentColor: c.accentColor ?? null,
       }

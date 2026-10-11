@@ -14,6 +14,7 @@ import { errorHandler, notFoundHandler } from "./middlewares/error.js";
 
 import authRouter from "./routes/auth.js";
 import cfcRouter from "./routes/cfc.js";
+import notificationsRouter from "./routes/notifications.js";
 import projectsRouter from "./routes/projects.js";
 import variantsRouter from "./routes/variants.js";
 import operationsRouter from "./routes/operations.js";
@@ -99,6 +100,7 @@ app.use("/api", apiLimiter);
 
 app.use("/api/auth", authRouter);
 app.use("/api/cfc", cfcRouter);
+app.use("/api/notifications", notificationsRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/operations", operationsRouter);
 app.use("/api/diagnostics", diagnosticsRouter);

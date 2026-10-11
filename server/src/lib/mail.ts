@@ -64,3 +64,42 @@ export function invitationEmail(orgName: string, role: string, acceptUrl: string
     </div>`,
   };
 }
+
+/**
+ * Gabarit d'une notification envoyée par courriel.
+ *
+ * Même texte que la cloche et que le push : trois formulations différentes du
+ * même fait feraient douter de laquelle est la bonne. Le lien ramène à
+ * l'endroit exact dont il est question, pas à l'accueil.
+ */
+export function notificationEmail(n: { titre: string; texte: string; url: string | null }) {
+  const lien = n.url ? `${env.APP_URL.replace(/\/$/, "")}${n.url}` : null;
+  return {
+    subject: n.titre,
+    text: `${n.titre}
+
+${n.texte}${lien ? `
+
+${lien}` : ""}
+
+Vous recevez ce message parce que vous l'avez demandé dans vos réglages Diagly.`,
+    html: `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:auto">
+      <h2 style="color:#1f2937;font-size:18px">${echapper(n.titre)}</h2>
+      <p style="color:#374151;line-height:1.5">${echapper(n.texte)}</p>
+      ${lien ? `<p style="margin:24px 0"><a href="${lien}" style="background:#2563eb;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Ouvrir dans Diagly</a></p>` : ""}
+      <p style="color:#6b7280;font-size:12px;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:24px">
+        Vous recevez ce message parce que vous l'avez demandé dans vos réglages Diagly.
+        Vous pouvez les changer à tout moment depuis Paramètres, Notifications.
+      </p>
+    </div>`,
+  };
+}
+
+/** Un texte venu de la base ne doit pas pouvoir écrire du HTML dans un courriel. */
+function echapper(texte: string): string {
+  return texte
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}

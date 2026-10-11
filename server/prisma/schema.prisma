@@ -59,6 +59,7 @@ model User {
   refreshTokens     RefreshToken[]
   events            Event[]
   pushSubscriptions PushSubscription[]
+  notifications     Notification[]
   apiKeys           ApiKey[]
   webhookEndpoints  WebhookEndpoint[]
   supportTickets    SupportTicket[]
@@ -900,4 +901,28 @@ model ArticleHistorique {
 
   @@index([articleId, date], map: "idx_ah_article")
   @@map("article_historique")
+}
+
+/// Une notification de l'application : ce que la cloche montre, ce que le push
+/// envoie et ce que l'email reprend. Une seule ligne par sujet grace a `cle`.
+model Notification {
+  id     String  @id @default(cuid())
+  userId String  @map("user_id")
+  /// diagnostic_cree, priorite_urgente, rappel_visite, resume_hebdo.
+  type   String  @db.VarChar(40)
+  titre  String  @db.VarChar(160)
+  texte  String? @db.Text
+  /// Ou mene la notification quand on la touche.
+  url    String? @db.VarChar(255)
+  /// Dedoublonnage : « priorite-<diagnostic>-<jour> ». null = pas de regroupement.
+  cle    String? @db.VarChar(120)
+
+  lueLe  DateTime? @map("lue_le")
+  creeLe DateTime  @default(now()) @map("cree_le")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cle], map: "uniq_notif_cle")
+  @@index([userId, creeLe], map: "idx_notif_user")
+  @@map("notifications")
 }

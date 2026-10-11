@@ -51,7 +51,18 @@ export interface ApiUser {
 export interface UserPreferences {
   // `null` = champ explicitement vidé. `undefined` disparaîtrait de la requête JSON
   // et le serveur, qui fusionne, garderait l'ancienne valeur.
-  company?: { name?: string; address?: string; postalCode?: string; city?: string; canton?: string; vatNumber?: string; iban?: string; logo?: string | null; accentColor?: string }
+  company?: {
+    name?: string; address?: string; postalCode?: string; city?: string; canton?: string
+    vatNumber?: string; iban?: string; logo?: string | null; accentColor?: string
+    /** Coordonnées : elles paraissent en tête du rapport partagé. */
+    phone?: string; email?: string; web?: string
+  }
+  /** Coordonnées de facturation, quand elles diffèrent de celles de l'entreprise. */
+  billing?: {
+    memeAdresse?: boolean
+    destinataire?: string; email?: string; reference?: string
+    address?: string; postalCode?: string; city?: string; canton?: string
+  }
   defaults?: { honoraryPct?: number; reservePct?: number; vatPct?: number; unit?: 'm' | 'cm' | 'mm' }
   notifications?: { emailDiagnostic?: boolean; calendarReminders?: boolean; weeklyDigest?: boolean; priorityAlerts?: boolean }
   /** Modèles d'export enregistrés (mapping de colonnes) + modèle par défaut. */
@@ -183,6 +194,8 @@ export interface CecbExtraction {
 export interface CompanyBrand {
   name: string | null; address: string | null; postalCode: string | null
   city: string | null; canton: string | null; vatNumber: string | null
+  /** Coordonnées imprimées sous la raison sociale, sur le rapport partagé. */
+  phone: string | null; email: string | null; web: string | null
   logo: string | null; accentColor: string | null
 }
 export interface PublicReportProject {
@@ -650,4 +663,28 @@ export interface ApiModificationArticle {
   /** null = écrit par un import, pas par une personne. */
   auteur: string | null
   date: string
+}
+
+// ---------- Notifications ----------
+
+export type TypeNotification = 'diagnostic_cree' | 'priorite_urgente' | 'rappel_visite' | 'resume_hebdo'
+
+/** Une notification du centre : la trace durable, que la cloche affiche. */
+export interface ApiNotification {
+  id: string
+  type: TypeNotification
+  titre: string
+  texte: string | null
+  /** Où mène la notification quand on la touche. */
+  url: string | null
+  /** Regroupement : une seule notification par sujet. */
+  cle: string | null
+  lueLe: string | null
+  creeLe: string
+}
+
+/** Ce que le serveur sait envoyer, indépendamment des réglages de la personne. */
+export interface CanauxDisponibles {
+  push: boolean
+  email: boolean
 }

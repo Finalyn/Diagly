@@ -206,6 +206,9 @@ const txt = (max: number) => z.string().max(max).nullish();
 const companySchema = z.object({
   name: txt(150), address: txt(200), postalCode: txt(20), city: txt(120),
   canton: txt(60), vatNumber: txt(40), iban: txt(40),
+  // Coordonnees : elles paraissent en tete du rapport partage, pour que le
+  // client sache a qui s'adresser sans chercher le site du bureau.
+  phone: txt(40), email: txt(160), web: txt(200),
   // Logo : uniquement une image en data URL (une URL externe fuiterait vers un tiers
   // depuis le rapport client, et serait de toute facon bloquee par la CSP).
   logo: z.string().max(400_000).regex(/^data:image\/(png|jpeg|webp|svg\+xml);base64,/, "Logo invalide.").nullish(),
@@ -213,8 +216,22 @@ const companySchema = z.object({
 }).strict().partial();
 
 const exportColumn = z.object({ key: z.string().max(60), label: z.string().max(120), active: z.boolean() });
+/**
+ * Coordonnees de facturation.
+ *
+ * Distinctes de l'entreprise : la facture part souvent a une comptabilite, a
+ * une autre adresse, avec une reference que le client exige sur ses factures.
+ * `memeAdresse` evite de saisir deux fois la meme chose quand c'est le cas.
+ */
+const billingSchema = z.object({
+  memeAdresse: z.boolean(),
+  destinataire: txt(150), email: txt(160), reference: txt(80),
+  address: txt(200), postalCode: txt(20), city: txt(120), canton: txt(60),
+}).strict().partial();
+
 const preferencesSchema = z.object({
   company: companySchema,
+  billing: billingSchema,
   defaults: z.object({
     honoraryPct: z.number().min(0).max(100), reservePct: z.number().min(0).max(100),
     vatPct: z.number().min(0).max(100), unit: z.enum(["m", "cm", "mm"]),

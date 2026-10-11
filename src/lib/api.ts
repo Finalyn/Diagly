@@ -4,6 +4,7 @@ import type {
   ApiProject, ApiOperation, ApiPlan, ApiEvent, AuthResponse,
   ApiVariant, ApiVariantLine, ElementState,
   ApiArticle, ApiArticleEcrit, ApiBaseCfc, ApiModificationArticle, ApiNoeudCfc, ApiPosteAutomatique,
+  ApiNotification, CanauxDisponibles,
 } from './api-types'
 
 // En prod, l'app est servie par le même domaine que l'API -> requêtes same-origin
@@ -392,6 +393,23 @@ export const api = {
     revokeInvite: (id: string) => request<void>(`/api/org/invitations/${id}`, { method: 'DELETE' }),
     inviteInfo: (token: string) => request<{ organizationName: string; role: import('./api-types').OrgRole; email: string }>(`/api/org/invitations/token/${token}`),
     accept: (token: string) => request<{ ok: boolean; organizationId: string; role: import('./api-types').OrgRole }>(`/api/org/invitations/token/${token}/accept`, { method: 'POST' }),
+  },
+
+  notifications: {
+    /** Le centre de notifications : tout ce que l'application a signalé. */
+    list: (q?: { limite?: number; nonLues?: boolean }) =>
+      request<{
+        notifications: ApiNotification[]
+        nonLues: number
+        canaux: CanauxDisponibles
+      }>('/api/notifications', {
+        query: { limite: q?.limite, nonLues: q?.nonLues ? 'true' : undefined },
+      }),
+    marquerLue: (id: string) =>
+      request<{ lues: number }>(`/api/notifications/${encodeURIComponent(id)}/lue`, { method: 'PUT' }),
+    toutMarquerLu: () => request<{ lues: number }>('/api/notifications/lues', { method: 'PUT' }),
+    supprimer: (id: string) =>
+      request<void>(`/api/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   },
 
   apiKeys: {

@@ -89,6 +89,11 @@ export function PublicReport() {
               <p className="font-semibold">{company?.name || 'Diagly'}</p>
               {company?.address && <p className="text-gray-500">{company.address}</p>}
               {(company?.postalCode || company?.city) && <p className="text-gray-500">{[company?.postalCode, company?.city].filter(Boolean).join(' ')}</p>}
+              {/* Les coordonnées : le client doit pouvoir joindre le bureau depuis
+                  le rapport, sans aller chercher ailleurs. */}
+              {company?.phone && <p className="text-gray-500">{company.phone}</p>}
+              {company?.email && <p className="text-gray-500">{company.email}</p>}
+              {company?.web && <p className="text-gray-500">{company.web}</p>}
               {company?.vatNumber && <p className="text-gray-400 text-xs">{company.vatNumber}</p>}
             </div>
           </div>

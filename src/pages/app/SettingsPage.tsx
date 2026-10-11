@@ -23,7 +23,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle, Bell, BellRing, Building2, Check, ChevronLeft, ChevronRight, CircleUser,
-  Loader2, LogOut, ShieldCheck, ShieldOff, SlidersHorizontal, User as UserIcon, Users,
+  CreditCard, Loader2, LogOut, Mail, Palette, ShieldCheck, ShieldOff, SlidersHorizontal,
+  User as UserIcon, Users,
 } from 'lucide-react'
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
@@ -33,12 +34,13 @@ import { cn, formatCHF } from '@/lib/utils'
 import { getPushState, subscribePush, unsubscribePush, type PushState } from '@/lib/push-client'
 import { logout as endSession } from '@/lib/session'
 import {
-  aChange, apercuDesValeurs, etatDeLaSecurite, etatDuBureau, etatDuProfil, initiales, nomAffiche,
-  type Pastille,
+  aChange, apercuDesValeurs, champsManquantsDuBureau, etatDuProfil, initiales, nomAffiche,
 } from '@/lib/reglages'
 import type { UserPreferences } from '@/lib/api-types'
 
-type IdSection = 'profil' | 'securite' | 'notifications' | 'bureau' | 'valeurs' | 'compte'
+type IdSection =
+  | 'profil' | 'securite' | 'notifications' | 'compte'
+  | 'bureau' | 'personnalisation' | 'valeurs' | 'facturation'
 
 const SECTIONS: {
   id: IdSection
@@ -51,14 +53,15 @@ const SECTIONS: {
   { id: 'securite', label: 'Sécurité', aide: 'Mot de passe et double authentification', icone: ShieldCheck, famille: 'Mon compte' },
   { id: 'notifications', label: 'Notifications', aide: 'Ce que Diagly vous signale', icone: Bell, famille: 'Mon compte' },
   { id: 'compte', label: 'Compte', aide: 'Plan, équipe, déconnexion', icone: CircleUser, famille: 'Mon compte' },
-  { id: 'bureau', label: 'Entreprise', aide: 'Ce qui paraît en tête des rapports', icone: Building2, famille: 'Mon travail' },
+  { id: 'bureau', label: 'Entreprise', aide: 'Identité et coordonnées du bureau', icone: Building2, famille: 'Mon travail' },
+  { id: 'personnalisation', label: 'Personnalisation', aide: 'Logo et couleur de vos rapports', icone: Palette, famille: 'Mon travail' },
   { id: 'valeurs', label: 'Valeurs par défaut', aide: 'Honoraires, réserve, TVA', icone: SlidersHorizontal, famille: 'Mon travail' },
+  { id: 'facturation', label: 'Facturation', aide: 'Plan et coordonnées de facturation', icone: CreditCard, famille: 'Mon travail' },
 ]
 
 const FAMILLES = ['Mon compte', 'Mon travail'] as const
 
 export function SettingsPage() {
-  const user = useAuth((s) => s.user)
   const isMobile = useIsMobile()
   /**
    * La section ouverte vit dans l'adresse, et nulle part ailleurs.
@@ -73,47 +76,22 @@ export function SettingsPage() {
   const choisie = demandee ?? (isMobile ? null : 'profil')
   const choisir = (id: IdSection | null) => setParametres(id ? { s: id } : {}, { replace: true })
 
-  const doubleAuth = !!user?.twoFactorEnabled
-  const pastilles: Record<IdSection, Pastille> = {
-    profil: etatDuProfil(user ?? undefined),
-    securite: etatDeLaSecurite(doubleAuth),
-    notifications: { etat: 'complet', mention: null },
-    // Même repli que le formulaire : la raison sociale peut encore venir du
-    // profil, et la pastille doit dire la même chose que la section.
-    bureau: etatDuBureau({
-      ...user?.preferences?.company,
-      name: user?.preferences?.company?.name || user?.companyName || '',
-    }),
-    valeurs: { etat: 'complet', mention: null },
-    compte: { etat: 'complet', mention: null },
-  }
-  const aRegler = SECTIONS.filter((s) => pastilles[s.id].etat !== 'complet')
-
   const section = SECTIONS.find((s) => s.id === choisie)
 
+  // Les deux panneaux suivent leur contenu : une hauteur figée laissait un
+  // grand vide sous un formulaire court, et passait sous la barre de
+  // navigation flottante du téléphone. C'est la page qui défile.
   return (
-    <div className={cn(
-      'flex gap-4',
-      // Sur grand écran, deux panneaux qui tiennent la hauteur et défilent
-      // chacun. Sur téléphone, la carte suit son contenu : une hauteur figée
-      // passerait sous la barre de navigation flottante.
-      isMobile ? 'flex-col' : 'h-[calc(100dvh-7rem)]',
-    )}>
+    <div className={cn('flex gap-4', isMobile ? 'flex-col' : 'items-start')}>
       {/* ----- Le menu, à gauche ----- */}
       {(!isMobile || choisie === null) && (
-        <Menu
-          choisie={choisie}
-          pastilles={pastilles}
-          aRegler={aRegler.length}
-          onChoisir={choisir}
-          mobile={isMobile}
-        />
+        <Menu choisie={choisie} onChoisir={choisir} mobile={isMobile} />
       )}
 
       {/* ----- Les réglages de la section, à droite ----- */}
       {section && (
-        <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <CardHeader className="shrink-0 space-y-0 border-b border-black/[0.06] px-5 py-3.5">
+        <Card className="min-w-0 flex-1 overflow-hidden">
+          <CardHeader className="space-y-0 border-b border-black/[0.06] px-5 py-3.5">
             {isMobile && (
               <button
                 onClick={() => choisir(null)}
@@ -125,12 +103,14 @@ export function SettingsPage() {
             <CardTitle className="text-base">{section.label}</CardTitle>
             <p className="mt-0.5 text-sm text-muted-foreground">{section.aide}</p>
           </CardHeader>
-          <CardContent className="flex-1 space-y-5 overflow-y-auto p-5">
+          <CardContent className="space-y-5 p-5">
             {choisie === 'profil' && <SectionProfil />}
             {choisie === 'securite' && <SectionSecurite />}
             {choisie === 'notifications' && <SectionNotifications />}
             {choisie === 'bureau' && <SectionBureau />}
+            {choisie === 'personnalisation' && <SectionPersonnalisation />}
             {choisie === 'valeurs' && <SectionValeurs />}
+            {choisie === 'facturation' && <SectionFacturation />}
             {choisie === 'compte' && <SectionCompte />}
           </CardContent>
         </Card>
@@ -146,25 +126,20 @@ export function SettingsPage() {
  * connectée, puis les sections par famille, chacune avec ce qui lui manque.
  * Même carte et même colonne que les autres écrans à deux panneaux.
  */
-function Menu({ choisie, pastilles, aRegler, onChoisir, mobile }: {
+function Menu({ choisie, onChoisir, mobile }: {
   choisie: IdSection | null
-  pastilles: Record<IdSection, Pastille>
-  aRegler: number
   onChoisir: (id: IdSection) => void
   mobile: boolean
 }) {
   const user = useAuth((s) => s.user)
   const bureau = user?.preferences?.company
   return (
-    <Card className="flex w-full shrink-0 flex-col overflow-hidden lg:w-72">
-      <CardHeader className="shrink-0 space-y-0 border-b border-black/[0.06] px-4 py-3.5">
+    <Card className="w-full shrink-0 overflow-hidden lg:w-72">
+      <CardHeader className="space-y-0 border-b border-black/[0.06] px-4 py-3.5">
         <CardTitle className="text-base">Paramètres</CardTitle>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {aRegler === 0 ? 'Tout est réglé.' : `${aRegler} point${aRegler > 1 ? 's' : ''} à regarder.`}
-        </p>
       </CardHeader>
 
-      <div className="flex shrink-0 items-center gap-3 border-b border-black/[0.06] px-4 py-3">
+      <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-sm font-semibold text-foreground">
           {initiales(user ?? {})}
         </div>
@@ -174,13 +149,12 @@ function Menu({ choisie, pastilles, aRegler, onChoisir, mobile }: {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-4 overflow-y-auto p-2">
+      <nav className="space-y-4 p-2">
         {FAMILLES.map((famille) => (
           <div key={famille}>
             <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{famille}</p>
             <div className="space-y-1">
               {SECTIONS.filter((s) => s.famille === famille).map((s) => {
-                const p = pastilles[s.id]
                 const on = s.id === choisie
                 return (
                   <button
@@ -197,19 +171,8 @@ function Menu({ choisie, pastilles, aRegler, onChoisir, mobile }: {
                     <s.icone className="h-4 w-4 shrink-0" />
                     <span className="min-w-0 flex-1">
                       <span className={cn('block truncate text-sm', on && !mobile ? 'font-semibold' : 'font-medium')}>{s.label}</span>
-                      {(p.mention || mobile) && (
-                        <span className={cn('block truncate text-[11px]',
-                          p.etat === 'incomplet' ? 'text-red-600'
-                            : p.etat === 'attention' ? 'text-amber-600'
-                              : 'text-muted-foreground')}>
-                          {p.mention ?? s.aide}
-                        </span>
-                      )}
+                      {mobile && <span className="block truncate text-[11px] text-muted-foreground">{s.aide}</span>}
                     </span>
-                    {p.etat !== 'complet' && (
-                      <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full',
-                        p.etat === 'incomplet' ? 'bg-red-500' : 'bg-amber-500')} />
-                    )}
                     {mobile && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
                   </button>
                 )
@@ -252,6 +215,22 @@ function Champ({ label, aide, children }: { label: string; aide?: string; childr
       {children}
       {aide && <span className="mt-1 block text-[11px] text-muted-foreground">{aide}</span>}
     </label>
+  )
+}
+
+/**
+ * Ce qui manque, dit là où on peut le remplir.
+ *
+ * Les mentions vivaient dans le menu, en orange sous chaque entrée : on les
+ * voyait sans pouvoir y faire quoi que ce soit, et elles finissaient par faire
+ * partie du décor. Dans la section, la phrase est à côté du champ qu'elle
+ * désigne.
+ */
+function Avertissement({ message }: { message: string }) {
+  return (
+    <p className="mb-4 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0 text-amber-600" />{message}
+    </p>
   )
 }
 
@@ -369,9 +348,17 @@ function SectionProfil() {
     } finally { setEnCours(false) }
   }
 
+  const manque = etatDuProfil({ firstName: f.firstName, lastName: f.lastName, phone: f.phone })
+
   return (
     <>
       <Bloc titre="Profil" aide="Votre nom signe les rapports que vous éditez.">
+        {manque.etat === 'incomplet' && (
+          <Avertissement message="Sans nom, les rapports que vous éditez partent anonymes." />
+        )}
+        {manque.etat === 'attention' && (
+          <Avertissement message="Aucun téléphone : vos clients n'auront pas de quoi vous rappeler." />
+        )}
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-base font-semibold text-foreground">
             {initiales({ firstName: f.firstName, lastName: f.lastName, email: user?.email })}
@@ -621,18 +608,22 @@ function SectionNotifications() {
   }
 
   const lignes: { k: keyof typeof etat; titre: string; aide: string }[] = [
-    { k: 'priorityAlerts', titre: 'Urgences', aide: 'Quand un ouvrage relevé appelle une intervention sous cinq ans.' },
-    { k: 'calendarReminders', titre: 'Rappels de visite', aide: 'La veille d’une visite ou d’une échéance.' },
-    { k: 'emailDiagnostic', titre: 'Nouveau diagnostic', aide: 'À la création d’un diagnostic sur un de vos bâtiments.' },
-    { k: 'weeklyDigest', titre: 'Résumé du lundi', aide: 'Ce qui a avancé la semaine passée, en un message.' },
+    { k: 'priorityAlerts', titre: 'Urgences', aide: "À la clôture d'un relevé, le compte des ouvrages en priorité I." },
+    { k: 'calendarReminders', titre: 'Rappels de visite', aide: 'Une demi-heure avant un rendez-vous du calendrier.' },
+    { k: 'emailDiagnostic', titre: 'Diagnostic ouvert', aide: "À l'ouverture d'un diagnostic sur un de vos bâtiments." },
+    { k: 'weeklyDigest', titre: 'Résumé du lundi', aide: 'Ce qui a avancé, et les visites de la semaine qui vient.' },
   ]
 
   return (
     <>
-      <Bloc titre="Sur cet appareil" aide="Les notifications poussées s'arrêtent à ce navigateur.">
-        <NotificationsPoussees />
+      <Bloc titre="Les trois canaux" aide="Ils ne jouent pas le même rôle.">
+        <Canaux />
       </Bloc>
-      <Bloc titre="Par courriel" aide="Un réglage par type de message, enregistré aussitôt.">
+
+      <Bloc
+        titre="Ce que Diagly vous signale"
+        aide="Chaque réglage s'enregistre aussitôt. Décoché, l'événement reste dans la cloche mais ne vous poursuit plus."
+      >
         <div className="divide-y divide-black/[0.06]">
           {lignes.map((l) => (
             <Bascule
@@ -647,6 +638,66 @@ function SectionNotifications() {
         </div>
       </Bloc>
     </>
+  )
+}
+
+/**
+ * Ce que chaque canal fait, et s'il est disponible.
+ *
+ * Dire « notifications activées » sans dire par où elles passent ne renseigne
+ * personne : le push se refuse au niveau du navigateur, le courriel demande un
+ * serveur d'envoi. Quand l'un manque, mieux vaut l'écrire que laisser croire à
+ * un message qui n'arrivera jamais.
+ */
+function Canaux() {
+  const centre = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api.notifications.list({ limite: 1 }),
+    staleTime: 60_000,
+  })
+  const courrielPret = centre.data?.canaux.email ?? null
+
+  return (
+    <div className="divide-y divide-black/[0.06]">
+      <div className="flex items-start gap-3 pb-3">
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+          <Bell className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">La cloche, en haut à droite</p>
+          <p className="text-xs text-muted-foreground">
+            Elle reçoit tout et garde la trace. C'est le seul canal qu'on ne coupe pas : une
+            notification qu'on ne reçoit pas par courriel doit rester consultable quelque part.
+          </p>
+        </div>
+      </div>
+
+      <NotificationsPoussees />
+
+      <div className="flex items-start gap-3 pt-3">
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600">
+          <Mail className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">Le courriel</p>
+          <p className="text-xs text-muted-foreground">
+            {courrielPret === null
+              ? 'Vérification…'
+              : courrielPret
+                ? 'Envoyé à votre adresse de connexion, pour ce que vous avez coché ci-dessous.'
+                : "L'envoi de courriels n'est pas configuré sur ce serveur : rien ne partira tant qu'il ne l'est pas."}
+          </p>
+        </div>
+        {courrielPret !== null && (
+          <Badge
+            variant="outline"
+            className={cn('shrink-0', courrielPret ? 'border-green-200 text-green-700' : 'text-muted-foreground')}
+          >
+            {courrielPret ? 'Prêt' : 'Non configuré'}
+          </Badge>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -732,6 +783,17 @@ async function lireLogo(fichier: File): Promise<string> {
   return toile.toDataURL('image/png')
 }
 
+/**
+ * L'entreprise : qui édite le rapport.
+ *
+ * Ces lignes paraissent en tête du rapport partagé et sur chaque page du
+ * document imprimé. Un rapport de diagnostic engage celui qui le signe : sans
+ * raison sociale ni adresse, le client ne sait pas à qui il parle, et la pièce
+ * ne vaut rien devant une régie.
+ *
+ * Le logo et la couleur ne sont pas ici : ils relèvent de l'apparence, pas de
+ * l'identité, et ils ont leur propre section.
+ */
 function SectionBureau() {
   const user = useAuth((s) => s.user)
   const setAuth = useAuth((s) => s.setAuth)
@@ -750,6 +812,115 @@ function SectionBureau() {
     canton: c.canton ?? '',
     vatNumber: c.vatNumber ?? '',
     iban: c.iban ?? '',
+    phone: c.phone ?? '',
+    email: c.email ?? '',
+    web: c.web ?? '',
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [user])
+  const [f, setF] = useState(depart)
+  const [enCours, setEnCours] = useState(false)
+  const [erreur, setErreur] = useState<string | null>(null)
+  const modifie = aChange(f, depart)
+  const poser = (p: Partial<typeof f>) => setF((v) => ({ ...v, ...p }))
+
+  const enregistrer = async () => {
+    setEnCours(true); setErreur(null)
+    try {
+      await enregistrerPrefs({ company: f })
+      // La raison sociale vivait en double, sur le profil et sur l'entreprise.
+      // Une seule saisie, désormais, et elle tient les deux à jour.
+      if ((f.name.trim() || null) !== (user?.companyName ?? null)) {
+        const r = await api.auth.updateProfile({ companyName: f.name.trim() || null })
+        if (accessToken && refreshToken) {
+          setAuth({ ...r.user, preferences: { ...r.user.preferences, company: { ...c, ...f } } }, accessToken, refreshToken)
+        }
+      }
+    } catch (e) {
+      setErreur(e instanceof ApiError ? e.message : 'Enregistrement impossible.')
+    } finally { setEnCours(false) }
+  }
+
+  const manquants = champsManquantsDuBureau(f)
+
+  return (
+    <>
+      <Bloc titre="Identité" aide="Ce qui paraît en tête de vos rapports et sur vos devis.">
+        {manquants.length > 0 && (
+          <Avertissement
+            message={`À compléter pour que vos rapports disent qui les a écrits : ${manquants.join(', ')}.`}
+          />
+        )}
+        <div className="grid gap-3">
+          <Champ label="Raison sociale">
+            <Input value={f.name} onChange={(e) => poser({ name: e.target.value })} placeholder="Berger & Fils SA" />
+          </Champ>
+          <Champ label="Adresse">
+            <Input value={f.address} onChange={(e) => poser({ address: e.target.value })} placeholder="Rue de la Gare 10" />
+          </Champ>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Champ label="NPA">
+              <Input value={f.postalCode} onChange={(e) => poser({ postalCode: e.target.value })} maxLength={4} />
+            </Champ>
+            <Champ label="Ville">
+              <Input value={f.city} onChange={(e) => poser({ city: e.target.value })} />
+            </Champ>
+            <Champ label="Canton">
+              <Input value={f.canton} onChange={(e) => poser({ canton: e.target.value.toUpperCase() })} maxLength={2} />
+            </Champ>
+          </div>
+        </div>
+      </Bloc>
+
+      <Bloc titre="Comment vous joindre" aide="Imprimé sous votre raison sociale sur le rapport partagé.">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Champ label="Téléphone">
+            <Input value={f.phone} onChange={(e) => poser({ phone: e.target.value })} placeholder="+41 27 000 00 00" />
+          </Champ>
+          <Champ label="Courriel">
+            <Input value={f.email} onChange={(e) => poser({ email: e.target.value })} placeholder="bureau@exemple.ch" />
+          </Champ>
+          <div className="sm:col-span-2">
+            <Champ label="Site" aide="Sans https, il s'affiche tel quel.">
+              <Input value={f.web} onChange={(e) => poser({ web: e.target.value })} placeholder="www.exemple.ch" />
+            </Champ>
+          </div>
+        </div>
+      </Bloc>
+
+      <Bloc titre="Mentions légales" aide="Reprises sur les devis et les factures.">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Champ label="Numéro de TVA">
+            <Input value={f.vatNumber} onChange={(e) => poser({ vatNumber: e.target.value })} placeholder="CHE-000.000.000 TVA" />
+          </Champ>
+          <Champ label="IBAN">
+            <Input value={f.iban} onChange={(e) => poser({ iban: e.target.value })} placeholder="CH00 0000 0000 0000 0000 0" />
+          </Champ>
+        </div>
+      </Bloc>
+
+      <BarreEnregistrement
+        modifie={modifie} enCours={enCours} erreur={erreur}
+        onAnnuler={() => { setF(depart); setErreur(null) }}
+        onEnregistrer={enregistrer}
+      />
+    </>
+  )
+}
+
+/**
+ * La personnalisation : l'apparence des documents.
+ *
+ * Deux réglages seulement, mais ce sont les deux que le client voit. L'aperçu
+ * est là parce qu'un sélecteur de couleur ne dit rien de ce qu'il fait : on
+ * choisit un bleu en pensant à son logo, et c'est un trait sous un titre de
+ * rapport qui en sort.
+ */
+function SectionPersonnalisation() {
+  const user = useAuth((s) => s.user)
+  const enregistrerPrefs = usePreferences()
+  const c = user?.preferences?.company ?? {}
+
+  const depart = useMemo(() => ({
     logo: c.logo ?? '',
     accentColor: c.accentColor ?? '#3b82f6',
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -773,13 +944,7 @@ function SectionBureau() {
     try {
       // `undefined` disparaît du JSON : le serveur, qui fusionne, garderait
       // l'ancien logo. On envoie donc explicitement `null` pour l'effacer.
-      await enregistrerPrefs({ company: { ...f, logo: f.logo || null } })
-      // La raison sociale vivait en double, sur le profil et sur l'entreprise.
-      // Une seule saisie, désormais, et elle tient les deux à jour.
-      if ((f.name.trim() || null) !== (user?.companyName ?? null)) {
-        const r = await api.auth.updateProfile({ companyName: f.name.trim() || null })
-        if (accessToken && refreshToken) setAuth({ ...r.user, preferences: { ...r.user.preferences, company: { ...f, logo: f.logo || null } } }, accessToken, refreshToken)
-      }
+      await enregistrerPrefs({ company: { logo: f.logo || null, accentColor: f.accentColor } })
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'Enregistrement impossible.')
     } finally { setEnCours(false) }
@@ -787,62 +952,78 @@ function SectionBureau() {
 
   return (
     <>
-      <Bloc titre="En-tête des rapports" aide="Ce que votre client voit en premier.">
-        <ApercuEnTete bureau={f} auteur={nomAffiche(user ?? {})} />
-        <div className="mt-4 flex flex-wrap items-center gap-4">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white">
+      <Bloc titre="Aperçu" aide="L'en-tête de vos rapports, tel qu'il partira.">
+        <ApercuEnTete
+          bureau={{
+            name: c.name || user?.companyName || '',
+            address: c.address ?? '',
+            postalCode: c.postalCode ?? '',
+            city: c.city ?? '',
+            logo: f.logo,
+            accentColor: f.accentColor,
+          }}
+          auteur={nomAffiche(user ?? {})}
+        />
+      </Bloc>
+
+      <Bloc titre="Logo" aide="Il paraît en tête du rapport partagé et en haut de chaque page imprimée.">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex h-20 w-32 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white">
             {f.logo
-              ? <img src={f.logo} alt="" className="max-h-full max-w-full object-contain" />
+              ? <img src={f.logo} alt="" className="max-h-full max-w-full object-contain p-2" />
               : <Building2 className="h-7 w-7 text-muted-foreground" />}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Logo</p>
-            <p className="text-xs text-muted-foreground">PNG ou JPG. Réduit automatiquement à 320 pixels.</p>
-            <div className="mt-1 flex flex-wrap items-center gap-3">
+            <p className="text-sm text-muted-foreground">
+              PNG, JPG ou SVG. L'image est réduite à 320 pixels et conserve sa transparence.
+              Un logo en largeur passe mieux qu'un logo en hauteur : la place est celle d'une ligne.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
               <label className="cursor-pointer text-sm font-medium text-blue-700 hover:underline">
                 <input type="file" accept="image/*" onChange={choisirLogo} className="hidden" />
-                {f.logo ? 'Changer' : 'Importer'}
+                {f.logo ? 'Changer le logo' : 'Importer un logo'}
               </label>
               {f.logo && (
-                <button onClick={() => poser({ logo: '' })} className="text-sm text-red-600 hover:underline">Retirer</button>
+                <button onClick={() => poser({ logo: '' })} className="text-sm text-red-600 hover:underline">
+                  Retirer
+                </button>
               )}
             </div>
+            {!f.logo && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Sans logo, les rapports portent celui de Diagly.
+              </p>
+            )}
           </div>
-          <Champ label="Couleur d'accent">
-            <input
-              type="color" value={f.accentColor} onChange={(e) => poser({ accentColor: e.target.value })}
-              className="h-9 w-20 cursor-pointer rounded-lg border bg-white"
-            />
-          </Champ>
         </div>
       </Bloc>
 
-      <Bloc titre="Identité" aide="Reprise sur les rapports, les devis et les exports.">
-        <div className="grid gap-3">
-          <Champ label="Raison sociale">
-            <Input value={f.name} onChange={(e) => poser({ name: e.target.value })} placeholder="Berger & Fils SA" />
-          </Champ>
-          <Champ label="Adresse">
-            <Input value={f.address} onChange={(e) => poser({ address: e.target.value })} placeholder="Rue de la Gare 10" />
-          </Champ>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Champ label="NPA">
-              <Input value={f.postalCode} onChange={(e) => poser({ postalCode: e.target.value })} maxLength={4} />
-            </Champ>
-            <Champ label="Ville">
-              <Input value={f.city} onChange={(e) => poser({ city: e.target.value })} />
-            </Champ>
-            <Champ label="Canton">
-              <Input value={f.canton} onChange={(e) => poser({ canton: e.target.value.toUpperCase() })} maxLength={2} />
-            </Champ>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Champ label="Numéro de TVA">
-              <Input value={f.vatNumber} onChange={(e) => poser({ vatNumber: e.target.value })} placeholder="CHE-000.000.000 TVA" />
-            </Champ>
-            <Champ label="IBAN" aide="Pour les devis et les factures.">
-              <Input value={f.iban} onChange={(e) => poser({ iban: e.target.value })} placeholder="CH00 0000 0000 0000 0000 0" />
-            </Champ>
+      <Bloc titre="Couleur" aide="Le trait sous le titre, et les repères du rapport partagé.">
+        <div className="flex flex-wrap items-center gap-4">
+          <input
+            type="color" value={f.accentColor} onChange={(e) => poser({ accentColor: e.target.value })}
+            aria-label="Couleur d'accent"
+            className="h-11 w-20 cursor-pointer rounded-lg border bg-white"
+          />
+          <Input
+            value={f.accentColor.toUpperCase()}
+            onChange={(e) => {
+              const v = e.target.value.trim()
+              if (/^#[0-9a-fA-F]{0,6}$/.test(v)) poser({ accentColor: v.toLowerCase() })
+            }}
+            className="w-32 font-mono text-sm"
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {COULEURS.map((couleur) => (
+              <button
+                key={couleur}
+                onClick={() => poser({ accentColor: couleur })}
+                aria-label={`Couleur ${couleur}`}
+                className={cn('h-7 w-7 rounded-full border-2 transition-transform hover:scale-110',
+                  f.accentColor === couleur ? 'border-neutral-900' : 'border-white')}
+                style={{ backgroundColor: couleur }}
+              />
+            ))}
           </div>
         </div>
       </Bloc>
@@ -856,7 +1037,9 @@ function SectionBureau() {
   )
 }
 
-/** L'en-tête d'un rapport, tel qu'il partira. */
+/** Quelques couleurs sobres, pour ne pas partir d'un sélecteur vide. */
+const COULEURS = ['#3b82f6', '#0f172a', '#0e7490', '#15803d', '#b45309', '#b91c1c', '#7c3aed']
+
 function ApercuEnTete({ bureau, auteur }: {
   bureau: { name: string; address: string; postalCode: string; city: string; logo: string; accentColor: string }
   auteur: string
@@ -971,6 +1154,140 @@ function SectionValeurs() {
             <option value="mm">Millimètres</option>
           </Select>
         </Champ>
+      </Bloc>
+
+      <BarreEnregistrement
+        modifie={modifie} enCours={enCours} erreur={erreur}
+        onAnnuler={() => { setF(depart); setErreur(null) }}
+        onEnregistrer={enregistrer}
+      />
+    </>
+  )
+}
+
+// --------------------------------------------------------- facturation
+
+/**
+ * La facturation.
+ *
+ * Deux choses distinctes : ce que coûte l'abonnement, et à qui la facture doit
+ * être adressée. La seconde n'est pas l'entreprise : une facture part souvent à
+ * une comptabilité, à une autre adresse, avec une référence que le client exige
+ * sur ses documents. Les saisir ici évite de les redemander à chaque échéance.
+ *
+ * Il n'y a pas d'historique de factures : elles ne sont pas encore émises
+ * depuis l'application. Le dire est plus honnête qu'un tableau vide.
+ */
+function SectionFacturation() {
+  const user = useAuth((s) => s.user)
+  const enregistrerPrefs = usePreferences()
+  const org = useQuery({ queryKey: ['org'], queryFn: () => api.org.get(), staleTime: 5 * 60_000 })
+  const membres = useQuery({
+    queryKey: ['org-membres'],
+    queryFn: () => api.org.members(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  const c = user?.preferences?.company ?? {}
+  const b = user?.preferences?.billing ?? {}
+
+  const depart = useMemo(() => ({
+    memeAdresse: b.memeAdresse ?? true,
+    destinataire: b.destinataire ?? '',
+    email: b.email ?? '',
+    reference: b.reference ?? '',
+    address: b.address ?? '',
+    postalCode: b.postalCode ?? '',
+    city: b.city ?? '',
+    canton: b.canton ?? '',
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [user])
+  const [f, setF] = useState(depart)
+  const [enCours, setEnCours] = useState(false)
+  const [erreur, setErreur] = useState<string | null>(null)
+  const modifie = aChange(f, depart)
+  const poser = (p: Partial<typeof f>) => setF((v) => ({ ...v, ...p }))
+
+  const enregistrer = async () => {
+    setEnCours(true); setErreur(null)
+    try { await enregistrerPrefs({ billing: f }) }
+    catch (e) { setErreur(e instanceof ApiError ? e.message : 'Enregistrement impossible.') }
+    finally { setEnCours(false) }
+  }
+
+  const sieges = membres.data?.members.length ?? null
+  const adresseDuBureau = [c.address, [c.postalCode, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+
+  return (
+    <>
+      <Bloc
+        titre="Votre abonnement"
+        aide="Diagly Pro, sans limite de diagnostics ni de bâtiments."
+        action={<Badge className="shrink-0 border border-blue-100 bg-blue-50 text-blue-700">Actif</Badge>}
+      >
+        <dl className="divide-y divide-black/[0.06] text-sm">
+          <Ligne terme="Plan">Diagly Pro</Ligne>
+          <Ligne terme="Organisation">{org.data?.organization?.name ?? 'Compte individuel'}</Ligne>
+          <Ligne terme="Comptes">
+            {sieges === null ? 'Vous seul' : `${sieges} personne${sieges > 1 ? 's' : ''}`}
+          </Ligne>
+          <Ligne terme="Ouvert le">
+            {user?.createdAt
+              ? new Date(user.createdAt).toLocaleDateString('fr-CH', { day: 'numeric', month: 'long', year: 'numeric' })
+              : 'Inconnu'}
+          </Ligne>
+        </dl>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Les factures sont établies par Finalyn et envoyées par courriel. Il n'y a pas encore de
+          paiement en ligne ni d'historique consultable ici : pour une copie, une modification de
+          plan ou une question sur un montant, passez par le support.
+        </p>
+      </Bloc>
+
+      <Bloc titre="Coordonnées de facturation" aide="Ce qui figurera sur vos factures.">
+        <Bascule
+          actif={f.memeAdresse}
+          onChange={() => poser({ memeAdresse: !f.memeAdresse })}
+          titre="Les mêmes que l'entreprise"
+          aide={adresseDuBureau || "L'adresse de l'entreprise n'est pas encore remplie."}
+        />
+
+        {!f.memeAdresse && (
+          <div className="mt-3 grid gap-3 border-t border-black/[0.06] pt-4">
+            <Champ label="Destinataire" aide="Le service ou la personne qui reçoit la facture.">
+              <Input
+                value={f.destinataire} onChange={(e) => poser({ destinataire: e.target.value })}
+                placeholder="Comptabilité"
+              />
+            </Champ>
+            <Champ label="Adresse">
+              <Input value={f.address} onChange={(e) => poser({ address: e.target.value })} />
+            </Champ>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Champ label="NPA">
+                <Input value={f.postalCode} onChange={(e) => poser({ postalCode: e.target.value })} maxLength={4} />
+              </Champ>
+              <Champ label="Ville">
+                <Input value={f.city} onChange={(e) => poser({ city: e.target.value })} />
+              </Champ>
+              <Champ label="Canton">
+                <Input value={f.canton} onChange={(e) => poser({ canton: e.target.value.toUpperCase() })} maxLength={2} />
+              </Champ>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-3 grid gap-3 border-t border-black/[0.06] pt-4 sm:grid-cols-2">
+          <Champ label="Courriel de facturation" aide="À défaut, votre adresse de connexion.">
+            <Input
+              type="email" value={f.email} onChange={(e) => poser({ email: e.target.value })}
+              placeholder={user?.email ?? 'compta@exemple.ch'}
+            />
+          </Champ>
+          <Champ label="Référence" aide="Bon de commande ou référence interne, reprise sur la facture.">
+            <Input value={f.reference} onChange={(e) => poser({ reference: e.target.value })} placeholder="BC-2026-014" />
+          </Champ>
+        </div>
       </Bloc>
 
       <BarreEnregistrement
