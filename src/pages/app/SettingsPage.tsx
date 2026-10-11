@@ -80,38 +80,51 @@ export function SettingsPage() {
   // grand vide sous un formulaire court, et passait sous la barre de
   // navigation flottante du téléphone. C'est la page qui défile.
   return (
-    <div className={cn('flex gap-4', isMobile ? 'flex-col' : 'items-start')}>
-      {/* ----- Le menu, à gauche ----- */}
-      {(!isMobile || choisie === null) && (
-        <Menu choisie={choisie} onChoisir={choisir} mobile={isMobile} />
-      )}
+    <div className="space-y-4">
+      {/* Le titre nomme la page, pas le menu : dans la carte de gauche, il
+          servait d'étiquette à la colonne des sections, et la page elle-même
+          n'avait plus de nom. Il se tient maintenant au-dessus des deux
+          panneaux, comme sur les autres écrans. */}
+      <div>
+        <h1 className="text-xl font-bold">Paramètres</h1>
+        <p className="text-sm text-muted-foreground">
+          Votre compte, votre bureau, et ce que Diagly fait en votre nom.
+        </p>
+      </div>
 
-      {/* ----- Les réglages de la section, à droite ----- */}
-      {section && (
-        <Card className="min-w-0 flex-1 overflow-hidden">
-          <CardHeader className="space-y-0 border-b border-black/[0.06] px-5 py-3.5">
-            {isMobile && (
-              <button
-                onClick={() => choisir(null)}
-                className="mb-1.5 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-              >
-                <ChevronLeft className="h-4 w-4" />Paramètres
-              </button>
-            )}
-            <CardTitle className="text-base">{section.label}</CardTitle>
-            <p className="mt-0.5 text-sm text-muted-foreground">{section.aide}</p>
-          </CardHeader>
-          <CardContent className="space-y-5 p-5">
-            {choisie === 'profil' && <SectionProfil />}
-            {choisie === 'securite' && <SectionSecurite />}
-            {choisie === 'notifications' && <SectionNotifications />}
-            {choisie === 'bureau' && <SectionBureau />}
-            {choisie === 'personnalisation' && <SectionPersonnalisation />}
-            {choisie === 'facturation' && <SectionFacturation />}
-            {choisie === 'compte' && <SectionCompte />}
-          </CardContent>
-        </Card>
-      )}
+      <div className={cn('flex gap-4', isMobile ? 'flex-col' : 'items-start')}>
+        {/* ----- Le menu, à gauche ----- */}
+        {(!isMobile || choisie === null) && (
+          <Menu choisie={choisie} onChoisir={choisir} mobile={isMobile} />
+        )}
+
+        {/* ----- Les réglages de la section, à droite ----- */}
+        {section && (
+          <Card className="min-w-0 flex-1 overflow-hidden">
+            <CardHeader className="space-y-0 border-b border-black/[0.06] px-5 py-3.5">
+              {isMobile && (
+                <button
+                  onClick={() => choisir(null)}
+                  className="mb-1.5 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronLeft className="h-4 w-4" />Paramètres
+                </button>
+              )}
+              <CardTitle className="text-base">{section.label}</CardTitle>
+              <p className="mt-0.5 text-sm text-muted-foreground">{section.aide}</p>
+            </CardHeader>
+            <CardContent className="space-y-5 p-5">
+              {choisie === 'profil' && <SectionProfil />}
+              {choisie === 'securite' && <SectionSecurite />}
+              {choisie === 'notifications' && <SectionNotifications />}
+              {choisie === 'bureau' && <SectionBureau />}
+              {choisie === 'personnalisation' && <SectionPersonnalisation />}
+              {choisie === 'facturation' && <SectionFacturation />}
+              {choisie === 'compte' && <SectionCompte />}
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   )
 }
@@ -132,11 +145,7 @@ function Menu({ choisie, onChoisir, mobile }: {
   const bureau = user?.preferences?.company
   return (
     <Card className="w-full shrink-0 overflow-hidden lg:w-72">
-      <CardHeader className="space-y-0 border-b border-black/[0.06] px-4 py-3.5">
-        <CardTitle className="text-base">Paramètres</CardTitle>
-      </CardHeader>
-
-      <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-3">
+      <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-3.5">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-sm font-semibold text-foreground">
           {initiales(user ?? {})}
         </div>
