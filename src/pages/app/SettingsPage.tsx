@@ -89,85 +89,96 @@ export function SettingsPage() {
   }
   const aRegler = SECTIONS.filter((s) => pastilles[s.id].etat !== 'complet')
 
+  const section = SECTIONS.find((s) => s.id === choisie)
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-10">
-      <div>
-        <h1 className="text-xl font-bold">Réglages</h1>
-        <p className="text-sm text-muted-foreground">
-          {aRegler.length === 0
-            ? 'Tout est réglé.'
-            : `${aRegler.length} point${aRegler.length > 1 ? 's' : ''} à regarder : ${aRegler.map((s) => s.label.toLowerCase()).join(', ')}.`}
-        </p>
-      </div>
+    <div className={cn(
+      'flex gap-4',
+      // Sur grand écran, deux panneaux qui tiennent la hauteur et défilent
+      // chacun. Sur téléphone, la carte suit son contenu : une hauteur figée
+      // passerait sous la barre de navigation flottante.
+      isMobile ? 'flex-col' : 'h-[calc(100dvh-7rem)]',
+    )}>
+      {/* ----- Le menu, à gauche ----- */}
+      {(!isMobile || choisie === null) && (
+        <Menu
+          choisie={choisie}
+          pastilles={pastilles}
+          aRegler={aRegler.length}
+          onChoisir={choisir}
+          mobile={isMobile}
+        />
+      )}
 
-      <div className="gap-6 lg:grid lg:grid-cols-[220px_1fr]">
-        {(!isMobile || choisie === null) && (
-          <Rail
-            choisie={choisie}
-            pastilles={pastilles}
-            onChoisir={choisir}
-            mobile={isMobile}
-          />
-        )}
-
-        {choisie !== null && (
-          <div className="min-w-0 space-y-5">
+      {/* ----- Les réglages de la section, à droite ----- */}
+      {section && (
+        <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <CardHeader className="shrink-0 space-y-0 border-b border-black/[0.06] px-5 py-3.5">
             {isMobile && (
               <button
                 onClick={() => choisir(null)}
-                className="mb-3 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+                className="mb-1.5 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
               >
-                <ChevronLeft className="h-4 w-4" />Réglages
+                <ChevronLeft className="h-4 w-4" />Paramètres
               </button>
             )}
+            <CardTitle className="text-base">{section.label}</CardTitle>
+            <p className="mt-0.5 text-sm text-muted-foreground">{section.aide}</p>
+          </CardHeader>
+          <CardContent className="flex-1 space-y-5 overflow-y-auto p-5">
             {choisie === 'profil' && <SectionProfil />}
             {choisie === 'securite' && <SectionSecurite />}
             {choisie === 'notifications' && <SectionNotifications />}
             {choisie === 'bureau' && <SectionBureau />}
             {choisie === 'valeurs' && <SectionValeurs />}
             {choisie === 'compte' && <SectionCompte />}
-          </div>
-        )}
-      </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
 
-/** Le sommaire : l'identité, puis les sections avec ce qu'il leur manque. */
-function Rail({ choisie, pastilles, onChoisir, mobile }: {
+/**
+ * Le menu, dans sa carte.
+ *
+ * En tête le titre de la page et ce qu'il reste à regarder, puis la personne
+ * connectée, puis les sections par famille, chacune avec ce qui lui manque.
+ * Même carte et même colonne que les autres écrans à deux panneaux.
+ */
+function Menu({ choisie, pastilles, aRegler, onChoisir, mobile }: {
   choisie: IdSection | null
   pastilles: Record<IdSection, Pastille>
+  aRegler: number
   onChoisir: (id: IdSection) => void
   mobile: boolean
 }) {
   const user = useAuth((s) => s.user)
   const bureau = user?.preferences?.company
   return (
-    <nav className="lg:sticky lg:top-2 lg:self-start">
-      {/* Sur grand écran, la barre latérale porte déjà l'identité juste en
-          dessous : la répéter ici ferait deux fois la même carte. */}
-      {mobile && (
-        <Card className="mb-3 flex items-center gap-3 p-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-sm font-semibold text-foreground">
-            {initiales(user ?? {})}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold leading-tight">{nomAffiche(user ?? {})}</p>
-            <p className="truncate text-xs text-muted-foreground">{bureau?.name || user?.companyName || user?.email}</p>
-          </div>
-        </Card>
-      )}
+    <Card className="flex w-full shrink-0 flex-col overflow-hidden lg:w-72">
+      <CardHeader className="shrink-0 space-y-0 border-b border-black/[0.06] px-4 py-3.5">
+        <CardTitle className="text-base">Paramètres</CardTitle>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {aRegler === 0 ? 'Tout est réglé.' : `${aRegler} point${aRegler > 1 ? 's' : ''} à regarder.`}
+        </p>
+      </CardHeader>
 
-      <div className="space-y-4">
+      <div className="flex shrink-0 items-center gap-3 border-b border-black/[0.06] px-4 py-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-sm font-semibold text-foreground">
+          {initiales(user ?? {})}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold leading-tight">{nomAffiche(user ?? {})}</p>
+          <p className="truncate text-xs text-muted-foreground">{bureau?.name || user?.companyName || user?.email}</p>
+        </div>
+      </div>
+
+      <nav className="flex-1 space-y-4 overflow-y-auto p-2">
         {FAMILLES.map((famille) => (
           <div key={famille}>
             <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{famille}</p>
-            <div className={cn(
-              'space-y-1',
-              // Sur téléphone, la famille devient une carte : des rangées posées
-              // sur le fond gris ne se lisent pas comme une liste à toucher.
-              mobile && 'space-y-0 divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.06] bg-card shadow-[0_1px_2px_rgba(0,0,0,0.03),0_12px_32px_-16px_rgba(0,0,0,0.10)]',
-            )}>
+            <div className="space-y-1">
               {SECTIONS.filter((s) => s.famille === famille).map((s) => {
                 const p = pastilles[s.id]
                 const on = s.id === choisie
@@ -176,8 +187,8 @@ function Rail({ choisie, pastilles, onChoisir, mobile }: {
                     key={s.id}
                     onClick={() => onChoisir(s.id)}
                     className={cn(
-                      'flex w-full items-center gap-2.5 text-left transition-colors',
-                      mobile ? 'px-3 py-3' : 'rounded-2xl px-3 py-2.5',
+                      'flex w-full items-center gap-2.5 rounded-2xl px-3 text-left transition-colors',
+                      mobile ? 'py-3' : 'py-2.5',
                       on && !mobile
                         ? 'border border-blue-100 bg-blue-50 text-blue-700'
                         : 'text-neutral-600 hover:bg-black/[0.03] hover:text-neutral-900',
@@ -206,8 +217,8 @@ function Rail({ choisie, pastilles, onChoisir, mobile }: {
             </div>
           </div>
         ))}
-      </div>
-    </nav>
+      </nav>
+    </Card>
   )
 }
 
@@ -221,16 +232,16 @@ function Bloc({ titre, aide, children, action }: {
   action?: React.ReactNode
 }) {
   return (
-    <Card>
-      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0 p-5 pb-3">
+    <section className="border-t border-black/[0.06] pt-5 first:border-0 first:pt-0">
+      <header className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <CardTitle className="text-base">{titre}</CardTitle>
-          {aide && <p className="mt-1 text-sm text-muted-foreground">{aide}</p>}
+          <h3 className="text-sm font-semibold">{titre}</h3>
+          {aide && <p className="mt-0.5 text-sm text-muted-foreground">{aide}</p>}
         </div>
         {action}
-      </CardHeader>
-      <CardContent className="p-5 pt-0">{children}</CardContent>
-    </Card>
+      </header>
+      {children}
+    </section>
   )
 }
 
@@ -268,7 +279,7 @@ function BarreEnregistrement({ modifie, enCours, erreur, onAnnuler, onEnregistre
 }) {
   if (!modifie && !erreur) return null
   return (
-    <div className="sticky bottom-2 z-10 rounded-2xl border border-black/[0.08] bg-card/95 p-3 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)] backdrop-blur">
+    <div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-5 border-t border-black/[0.08] bg-card/95 px-5 py-3 backdrop-blur">
       {erreur && <div className="mb-2"><Erreur message={erreur} /></div>}
       {modifie && (
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1042,14 +1053,12 @@ function SectionCompte() {
         </Button>
       </Bloc>
 
-      <Card className="border-red-200 bg-red-50/40">
-        <CardHeader className="p-5 pb-3">
-          <CardTitle className="text-base text-red-800">Fermer le compte</CardTitle>
-          <p className="text-sm text-red-700">
-            La fermeture supprime vos diagnostics, vos photos et vos rapports, sans retour possible.
-          </p>
-        </CardHeader>
-        <CardContent className="p-5 pt-0">
+      <section className="rounded-2xl border border-red-200 bg-red-50/40 p-4">
+        <h3 className="text-sm font-semibold text-red-800">Fermer le compte</h3>
+        <p className="mt-0.5 text-sm text-red-700">
+          La fermeture supprime vos diagnostics, vos photos et vos rapports, sans retour possible.
+        </p>
+        <div className="mt-3">
           <p className="mb-3 text-sm text-muted-foreground">
             Elle passe par le support, qui vérifie d'abord qu'aucun dossier partagé n'en dépend et vous
             laisse exporter ce que vous voulez garder.
@@ -1057,8 +1066,8 @@ function SectionCompte() {
           <Button variant="outline" size="sm" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => navigate('/app/support/new')}>
             Demander la fermeture
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </>
   )
 }
