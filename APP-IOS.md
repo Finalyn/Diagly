@@ -73,25 +73,38 @@ gratuit.
   quinzaine de minutes plus tard. Le numéro de build est l'heure UTC
   (`AAMMJJHHMM`).
 
-La signature est automatique : Xcode crée lui-même certificats et profils avec
-la clé d'API. Chaque envoi peut laisser un certificat de développement
-« Created via API » dans le portail ; s'ils s'accumulent, on révoque les
-anciens, cela n'a aucun effet sur les versions publiées.
+La signature est une **signature de distribution**, réglée à la main dans la
+configuration Release de la cible App. La signature automatique de Xcode passe
+par un profil de développement, qu'Apple refuse de créer tant qu'aucun appareil
+n'est enregistré sur le compte : avec la distribution, aucun appareil n'est
+nécessaire.
+
+- Le **certificat de distribution** (« Apple Distribution: Jack Guisolan »,
+  expire le 12 octobre 2027) a été créé une fois, par l'API, depuis le poste.
+  Il vit dans les secrets `IOS_DIST_P12` (le .p12 en base64) et
+  `IOS_DIST_P12_PASSWORD`, et nulle part ailleurs : à son expiration, ou s'il
+  est perdu, on en crée un autre et on remplace ces deux secrets.
+- Le **profil App Store** « Diagly App Store (CI) » est recréé à chaque envoi
+  par `ios/outils/profil-app-store.mjs`. Il suit ainsi les capacités cochées
+  sur l'identifiant `ch.diagly.app` (notifications, connexion Apple…).
+- Ce script vérifie d'abord que l'app existe dans App Store Connect : Apple ne
+  permet pas de l'y créer par l'API, c'est la seule étape à faire à la main.
 
 ## À faire une fois chez Apple
 
+État au 12 octobre 2026 : faits, sauf le point 3 (l'app dans App Store Connect).
+
 1. **Identifiant d'équipe.** developer.apple.com > Account > Membership
    details : *Team ID*, 10 caractères.
-2. **Identifiant de l'app.** Certificates, Identifiers & Profiles >
-   Identifiers > + > App IDs > App. Bundle ID explicite : `ch.diagly.app`.
-   Cocher *Push Notifications*, *Sign in with Apple* et *Associated Domains*
-   (serviront aux phases suivantes ; les cocher maintenant évite d'y revenir).
+2. **Identifiant de l'app** `ch.diagly.app` : créé par l'API. Les capacités
+   (*Push Notifications*, *Sign in with Apple*, *Associated Domains*) se
+   cocheront aux phases qui en ont besoin.
 3. **L'app dans App Store Connect.** Apps > + > Nouvelle app. Plateforme iOS,
    nom « Diagly », langue principale Français, bundle ID `ch.diagly.app`,
    SKU `diagly-ios`, accès complet.
 4. **Clé d'API App Store Connect.** Users and Access > Integrations > App
    Store Connect API > Team Keys > +. Nom « GitHub Actions », accès *Admin*
-   (la signature automatique doit pouvoir créer des certificats). Télécharger
+   (pour créer certificats et profils). Télécharger
    le fichier `.p8` : **il ne se télécharge qu'une fois**. Noter le *Key ID*
    et l'*Issuer ID* affiché au-dessus de la liste.
 5. **Les secrets du dépôt.** GitHub > Settings > Secrets and variables >

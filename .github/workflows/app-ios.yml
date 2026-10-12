@@ -16,6 +16,8 @@
 #   ASC_KEY_ID      identifiant de la clé d'API App Store Connect
 #   ASC_ISSUER_ID   identifiant de l'émetteur, affiché au-dessus de la liste des clés
 #   ASC_KEY_P8      contenu complet du fichier AuthKey_XXXXXXXXXX.p8
+#   IOS_DIST_P12, IOS_DIST_P12_PASSWORD
+#                   certificat de distribution (.p12, en base64) et son mot de passe
 # Voir APP-IOS.md.
 
 name: App iOS
@@ -78,9 +80,11 @@ jobs:
       - name: Secrets présents
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          IOS_DIST_P12: ${{ secrets.IOS_DIST_P12 }}
+          IOS_DIST_P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
         run: |
           manque=""
-          for s in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do [ -n "${!s}" ] || manque="$manque $s"; done
+          for s in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 IOS_DIST_P12 IOS_DIST_P12_PASSWORD; do [ -n "${!s}" ] || manque="$manque $s"; done
           if [ -n "$manque" ]; then echo "::error::Secrets manquants :$manque (voir APP-IOS.md)"; exit 1; fi
 
       - uses: actions/checkout@v5
@@ -100,21 +104,46 @@ jobs:
           printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey.p8"
           chmod 600 "$RUNNER_TEMP/asc/AuthKey.p8"
 
+      # La signature de distribution ne dépend d'aucun appareil enregistré,
+      # contrairement à la signature automatique de Xcode (profil de
+      # développement). Le certificat, créé une fois, vit dans les secrets ;
+      # il passe par un trousseau jetable, effacé à la fin.
+      - name: Certificat de distribution (trousseau temporaire)
+        env:
+          IOS_DIST_P12: ${{ secrets.IOS_DIST_P12 }}
+          IOS_DIST_P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
+        run: |
+          TROUSSEAU="$RUNNER_TEMP/signature.keychain-db"
+          MDP=$(openssl rand -hex 16)
+          printf '%s' "$IOS_DIST_P12" | base64 --decode > "$RUNNER_TEMP/distribution.p12"
+          security create-keychain -p "$MDP" "$TROUSSEAU"
+          security set-keychain-settings -lut 21600 "$TROUSSEAU"
+          security unlock-keychain -p "$MDP" "$TROUSSEAU"
+          security import "$RUNNER_TEMP/distribution.p12" -P "$IOS_DIST_P12_PASSWORD" -A -t cert -f pkcs12 -k "$TROUSSEAU"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MDP" "$TROUSSEAU" > /dev/null
+          security list-keychains -d user -s "$TROUSSEAU" $(security list-keychains -d user | tr -d '"')
+          openssl pkcs12 -in "$RUNNER_TEMP/distribution.p12" -passin "pass:$IOS_DIST_P12_PASSWORD" -nokeys -out "$RUNNER_TEMP/distribution.pem"
+          rm -f "$RUNNER_TEMP/distribution.p12"
+          security find-identity -v -p codesigning "$TROUSSEAU"
+
+      - name: Profil App Store
+        run: |
+          ASC_KEY_PATH="$RUNNER_TEMP/asc/AuthKey.p8" CERT_PEM="$RUNNER_TEMP/distribution.pem" \
+            node ios/outils/profil-app-store.mjs
+
       # Numéro de build : l'heure UTC (AAMMJJHHMM). Il croît toujours, même si
       # le workflow est renommé, ce que le numéro d'exécution ne garantit pas.
-      - name: Archiver (signature automatique)
+      # La signature (manuelle, distribution, profil « Diagly App Store (CI) »)
+      # est réglée dans la configuration Release de la cible App.
+      - name: Archiver
         run: |
           NUMERO=$(date -u +%y%m%d%H%M)
           echo "Build $NUMERO"
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Diagly.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CURRENT_PROJECT_VERSION="$NUMERO" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/signature.keychain-db" \
             -quiet archive
 
       - name: Envoyer sur App Store Connect
@@ -126,8 +155,13 @@ jobs:
           <dict>
             <key>method</key><string>app-store-connect</string>
             <key>destination</key><string>upload</string>
-            <key>signingStyle</key><string>automatic</string>
+            <key>signingStyle</key><string>manual</string>
             <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>ch.diagly.app</key><string>Diagly App Store (CI)</string>
+            </dict>
             <key>uploadSymbols</key><true/>
             <key>manageAppVersionAndBuildNumber</key><false/>
           </dict>
@@ -142,6 +176,8 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
-      - name: Effacer la clé
+      - name: Effacer la clé et le trousseau
         if: always()
-        run: rm -rf "$RUNNER_TEMP/asc"
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signature.keychain-db" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/asc" "$RUNNER_TEMP/distribution.pem"
