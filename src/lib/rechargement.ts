@@ -1,35 +1,53 @@
-// Recharger la page quand un fichier de code d'une version précédente manque
-// (onglet ouvert pendant une mise en ligne). Voir components/FiletDeSecurite.tsx.
+// Recharger la page quand un fichier de code manque ou ne se charge pas : un
+// onglet ouvert pendant une mise en ligne, ou un cache du service worker qui
+// garde une mauvaise version. Voir components/FiletDeSecurite.tsx.
 
 const CLE = 'diagly.rechargement'
 
-/** Un fichier de code d'une version précédente, introuvable depuis la mise en ligne. */
-function fichierDeVersionPrecedente(err: unknown): boolean {
+/** Un fichier de code introuvable ou illisible (version précédente, cache abîmé). */
+function fichierDeCodeIntrouvable(err: unknown): boolean {
   const m = err instanceof Error ? err.message : String(err)
-  return /dynamically imported module|Importing a module script failed|error loading dynamically imported|Failed to fetch|MIME type/i.test(m)
+  return /dynamically imported module|Importing a module script failed|error loading dynamically imported|Unable to preload|Failed to fetch|MIME type/i.test(m)
 }
 
 /**
- * Un onglet ouvert avant une mise en ligne demande, en changeant de page, un
- * fichier de code de l'ancienne version, effacé depuis : on recharge la page
- * une fois, ce qui charge la nouvelle version. Une seule fois par minute : si
- * le fichier manque encore après rechargement, c'est une autre panne, et elle
- * doit se voir (FiletDeSecurite).
+ * Recharge en repartant de zéro : caches du service worker vidés et service
+ * worker désinscrit (il se réinstalle au chargement suivant). Un simple
+ * rechargement repassait par le même cache, qui resservait le même fichier
+ * abîmé : la page tournait en boucle.
+ */
+export async function rechargerProprement(): Promise<void> {
+  try {
+    const enregistrements = await navigator.serviceWorker?.getRegistrations?.() ?? []
+    await Promise.all(enregistrements.map((r) => r.unregister()))
+  } catch { /* pas de service worker */ }
+  try {
+    const cles = await caches.keys()
+    // Seulement le code et les fichiers : les données gardées pour le
+    // hors-ligne restent (react-query et la file d'envoi n'y sont pas).
+    await Promise.all(cles.filter((k) => !k.startsWith('diagly-api')).map((k) => caches.delete(k)))
+  } catch { /* Cache API indisponible */ }
+  window.location.reload()
+}
+
+/**
+ * Un fichier de code manque : on recharge proprement, une fois par minute au
+ * plus. Si le fichier manque encore juste après, c'est une autre panne, et elle
+ * doit se voir (FiletDeSecurite) plutôt que tourner en boucle.
  */
 export function rechargerUneFois(err: unknown): never {
-  if (fichierDeVersionPrecedente(err)) {
+  if (fichierDeCodeIntrouvable(err)) {
     let dernier = 0
     try { dernier = Number(sessionStorage.getItem(CLE) ?? 0) } catch { /* stockage indisponible */ }
     if (Date.now() - dernier > 60_000) {
       try { sessionStorage.setItem(CLE, String(Date.now())) } catch { /* idem */ }
-      window.location.reload()
+      void rechargerProprement()
     }
   }
   throw err
 }
 
-// Le préchargement de Vite échoue de la même façon avant même l'import.
-window.addEventListener('vite:preloadError', (e) => {
-  e.preventDefault()
-  try { rechargerUneFois((e as Event & { payload?: unknown }).payload ?? new Error('Failed to fetch dynamically imported module')) } catch { /* rechargement lancé ou déjà tenté */ }
-})
+// Vite signale aussi l'échec d'un préchargement. On ne l'empêche pas d'échouer
+// (preventDefault rendrait un module vide, et l'écran planterait plus loin sur
+// une erreur incompréhensible) : on laisse l'import échouer, et il passe par
+// rechargerUneFois (App.tsx, `named`).

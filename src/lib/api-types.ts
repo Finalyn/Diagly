@@ -67,7 +67,7 @@ export interface UserPreferences {
     address?: string; postalCode?: string; city?: string; canton?: string
   }
   defaults?: { honoraryPct?: number; reservePct?: number; vatPct?: number; unit?: 'm' | 'cm' | 'mm' }
-  notifications?: { emailDiagnostic?: boolean; calendarReminders?: boolean; weeklyDigest?: boolean; priorityAlerts?: boolean }
+  notifications?: { emailDiagnostic?: boolean; calendarReminders?: boolean; weeklyDigest?: boolean; priorityAlerts?: boolean; relances?: boolean }
   /** Modèles d'export enregistrés (mapping de colonnes) + modèle par défaut. */
   exportTemplates?: ExportTemplate[]
   exportDefaultTemplateId?: string

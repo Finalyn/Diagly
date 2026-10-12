@@ -12,6 +12,7 @@ export const TYPES_NOTIFICATION = [
   "priorite_urgente",
   "rappel_visite",
   "resume_hebdo",
+  "relance_absence",
 ] as const;
 
 export type TypeNotification = (typeof TYPES_NOTIFICATION)[number];
@@ -22,6 +23,7 @@ export interface ReglagesNotification {
   calendarReminders?: boolean;
   priorityAlerts?: boolean;
   weeklyDigest?: boolean;
+  relances?: boolean;
 }
 
 /** Le réglage qui commande chaque type, et sa valeur quand rien n'est choisi. */
@@ -32,6 +34,9 @@ export const REGLAGE: Record<TypeNotification, { champ: keyof ReglagesNotificati
   // Le seul qui ne part pas sans qu'on l'ait demandé : un résumé hebdomadaire
   // non souhaité est le premier courriel qu'on apprend à ignorer.
   resume_hebdo: { champ: "weeklyDigest", parDefaut: false },
+  // Activé par défaut : il ne parle que du travail en cours de la personne, et
+  // se tait après deux rappels.
+  relance_absence: { champ: "relances", parDefaut: true },
 };
 
 export interface Canaux {
@@ -109,4 +114,60 @@ export function numeroDeSemaine(d: Date): string {
 /** L'heure du résumé : le lundi matin, entre sept heures et midi. */
 export function cestLHeureDuResume(d: Date): boolean {
   return d.getDay() === 1 && d.getHours() >= 7 && d.getHours() < 12;
+}
+
+// ------------------------------------------------------- rappels d'absence
+
+/**
+ * Les paliers des rappels d'absence, en jours sans venir sur Diagly.
+ *
+ * Deux, puis plus rien jusqu'au retour : qui ne revient pas après deux rappels
+ * n'en veut pas un troisième, et une app qui insiste se fait couper ses
+ * notifications, celles qui comptent comprises.
+ */
+export const PALIERS_RELANCE = [7, 21] as const;
+
+/** Le dernier palier atteint par une absence de tant de jours, ou null. */
+export function palierDeRelance(joursAbsent: number): number | null {
+  let atteint: number | null = null;
+  for (const p of PALIERS_RELANCE) if (joursAbsent >= p) atteint = p;
+  return atteint;
+}
+
+/**
+ * L'heure des rappels : en semaine, entre neuf et onze heures, heure suisse.
+ * Le serveur peut tourner en UTC : l'heure se lit à Zurich, pas sur sa montre.
+ */
+export function cestLHeureDesRelances(d: Date): boolean {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Zurich", weekday: "short", hour: "numeric", hourCycle: "h23",
+  }).formatToParts(d);
+  const jour = parts.find((p) => p.type === "weekday")?.value;
+  const heure = Number(parts.find((p) => p.type === "hour")?.value);
+  return jour !== "Sat" && jour !== "Sun" && heure >= 9 && heure < 11;
+}
+
+/** Le dossier qui attend : le diagnostic pas terminé le plus récemment touché. */
+export interface DossierEnAttente {
+  nom: string;
+  releves: number;
+}
+
+/**
+ * Le rappel en deux lignes. Il nomme le travail en cours, qui est la seule
+ * bonne raison de revenir ; sans dossier ouvert, il propose d'en commencer un.
+ */
+export function phraseDeRelance(dossier: DossierEnAttente | null): { titre: string; texte: string } {
+  if (!dossier) {
+    return {
+      titre: "Un bâtiment à diagnostiquer ?",
+      texte: "Le relevé se fait sur place, pièce par pièce, même sans réseau.",
+    };
+  }
+  return {
+    titre: `Le relevé de « ${dossier.nom} » vous attend`,
+    texte: dossier.releves > 0
+      ? `${dossier.releves} ouvrage${dossier.releves > 1 ? "s" : ""} déjà relevé${dossier.releves > 1 ? "s" : ""}. Reprenez où vous en étiez.`
+      : "Rien n'est encore relevé : la visite peut commencer.",
+  };
 }

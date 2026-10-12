@@ -110,6 +110,17 @@ html.natif #root {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+/* Pas de barres de défilement dans l'app : sur iPhone et iPad, on défile au
+   doigt, et ces barres grises au bord des listes font page web. */
+html.natif,
+html.natif * {
+  scrollbar-width: none;
+}
+html.natif *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
 html.natif :where(button, a, nav, label, summary, [role='button'], [role='tab'], [role='menuitem'], [role='option']) {
   -webkit-user-select: none;
   user-select: none;

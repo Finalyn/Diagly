@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { rechargerProprement } from '@/lib/rechargement'
 
 /**
  * Le dernier rempart : une erreur de rendu affichait une page entièrement
@@ -29,7 +30,9 @@ export class FiletDeSecurite extends Component<{ children: ReactNode }, { erreur
         </div>
         <button
           type="button"
-          onClick={() => window.location.reload()}
+          // Recharger en vidant les caches du code : un simple rechargement
+          // resservait le même fichier abîmé.
+          onClick={() => { void rechargerProprement() }}
           className="inline-flex h-11 items-center gap-2 rounded-xl bg-neutral-900 px-5 text-sm font-medium text-white"
         >
           <RefreshCw className="h-4 w-4" />Recharger

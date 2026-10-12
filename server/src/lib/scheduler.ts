@@ -2,6 +2,7 @@ import { prisma } from "./prisma.js";
 import { notifier } from "./notifications.js";
 import {
   bilanDigneDEtreEnvoye, cestLHeureDuResume, numeroDeSemaine, phraseDuBilan,
+  cestLHeureDesRelances, palierDeRelance, phraseDeRelance,
   type BilanDeLaSemaine,
 } from "./notifications-regles.js";
 import { logger } from "./logger.js";
@@ -25,6 +26,7 @@ const MINUTE = 60_000;
 export function startReminderScheduler(): void {
   setInterval(() => { rappelerLesVisites().catch(bruit("rappels")) }, MINUTE);
   setInterval(() => { envoyerLesResumes().catch(bruit("résumé hebdomadaire")) }, 60 * MINUTE);
+  setInterval(() => { relancerLesAbsents().catch(bruit("rappels d'absence")) }, 60 * MINUTE);
   // Au démarrage : un serveur relancé un lundi matin ne doit pas sauter le résumé.
   setTimeout(() => { envoyerLesResumes().catch(bruit("résumé hebdomadaire")) }, MINUTE);
   logger.info("Planificateur de notifications démarré");
@@ -99,4 +101,53 @@ async function bilanDeLaSemaine(userId: string, depuis: Date): Promise<BilanDeLa
     prisma.event.count({ where: { userId, startAt: { gte: new Date(), lte: new Date(Date.now() + 7 * 24 * 60 * MINUTE) } } }),
   ]);
   return { diagnostics, releves, visites };
+}
+
+/**
+ * Les rappels d'absence : une semaine sans venir sur Diagly, puis trois.
+ *
+ * L'absence se compte depuis la dernière visite (`vuLe`, posée par
+ * requireAuth). Un compte qui n'en a pas encore (antérieur à ce suivi) n'est
+ * pas relancé : son absence est inconnue, et la compter depuis la création du
+ * compte relancerait des gens venus la veille.
+ *
+ * Un rappel par palier et par absence : la clé de regroupement porte le palier
+ * et le jour de la dernière visite. Revenir ouvre une nouvelle absence, avec
+ * ses propres rappels.
+ */
+async function relancerLesAbsents(): Promise<void> {
+  const maintenant = new Date();
+  if (!cestLHeureDesRelances(maintenant)) return;
+
+  const comptes = await prisma.user.findMany({
+    where: { vuLe: { not: null } },
+    select: { id: true, vuLe: true, preferences: true },
+  });
+
+  for (const u of comptes) {
+    const reglages = ((u.preferences as { notifications?: { relances?: boolean } } | null) ?? {}).notifications;
+    // Coupé : rien, même pas dans la cloche, où un rappel d'absence n'a pas de sens.
+    if (reglages?.relances === false || !u.vuLe) continue;
+
+    const palier = palierDeRelance(Math.floor((maintenant.getTime() - u.vuLe.getTime()) / (24 * 60 * MINUTE)));
+    if (!palier) continue;
+    const cle = `relance-${palier}-${u.vuLe.toISOString().slice(0, 10)}`;
+    const deja = await prisma.notification.findUnique({ where: { userId_cle: { userId: u.id, cle } } });
+    if (deja) continue;
+
+    const diag = await prisma.diagnostic.findFirst({
+      where: { project: { ownerId: u.id }, status: { not: "COMPLETED" } },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, project: { select: { name: true } } },
+    });
+    const releves = diag ? await prisma.diagnosticItem.count({ where: { diagnosticId: diag.id, state: { not: null } } }) : 0;
+    const { titre, texte } = phraseDeRelance(diag ? { nom: diag.project.name, releves } : null);
+
+    await notifier(u.id, "relance_absence", {
+      titre,
+      texte,
+      url: diag ? `/app/diagnostic/${diag.id}` : "/app/projects/new",
+      cle,
+    });
+  }
 }

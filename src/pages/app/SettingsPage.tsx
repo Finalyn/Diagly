@@ -700,6 +700,7 @@ function SectionNotifications() {
     calendarReminders: n.calendarReminders ?? true,
     priorityAlerts: n.priorityAlerts ?? true,
     weeklyDigest: n.weeklyDigest ?? false,
+    relances: n.relances ?? true,
   })
   const [occupe, setOccupe] = useState<string | null>(null)
 
@@ -714,6 +715,7 @@ function SectionNotifications() {
     { k: 'calendarReminders', titre: 'Rappels de visite', aide: 'Une demi-heure avant un rendez-vous du calendrier.' },
     { k: 'emailDiagnostic', titre: 'Diagnostic ouvert', aide: "À l'ouverture d'un diagnostic sur un de vos bâtiments." },
     { k: 'weeklyDigest', titre: 'Résumé du lundi', aide: 'Ce qui a avancé, et les visites de la semaine qui vient.' },
+    { k: 'relances', titre: "Rappels d'absence", aide: "Après une semaine sans venir, le dossier qui vous attend. Deux rappels au plus, en semaine, le matin." },
   ]
 
   return (

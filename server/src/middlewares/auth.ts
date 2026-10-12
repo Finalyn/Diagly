@@ -1,6 +1,21 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken, type AccessTokenPayload } from "../lib/jwt.js";
 import { unauthorized, forbidden } from "../lib/http-error.js";
+import { prisma } from "../lib/prisma.js";
+
+/**
+ * La dernière visite de chacun (users.vu_le), pour les rappels d'absence.
+ * Écrite au plus une fois par heure et par compte : l'app fait des dizaines
+ * de requêtes par minute, la base n'a pas à en garder la trace.
+ */
+const derniereEcriture = new Map<string, number>();
+const HEURE = 60 * 60_000;
+function noterLaVisite(userId: string): void {
+  const maintenant = Date.now();
+  if (maintenant - (derniereEcriture.get(userId) ?? 0) < HEURE) return;
+  derniereEcriture.set(userId, maintenant);
+  prisma.user.update({ where: { id: userId }, data: { vuLe: new Date(maintenant) } }).catch(() => undefined);
+}
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -25,6 +40,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
     // les filtres Prisma `where: { userId: sub }` deviendraient des requetes SANS filtre.
     if (!payload.sub) return next(unauthorized("Invalid token"));
     req.auth = payload;
+    noterLaVisite(payload.sub);
     return next();
   } catch {
     return next(unauthorized("Invalid or expired token"));

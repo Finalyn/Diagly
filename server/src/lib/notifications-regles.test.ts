@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   bilanDigneDEtreEnvoye, canauxVoulus, cestLHeureDuResume, numeroDeSemaine, phraseDuBilan,
+  palierDeRelance, cestLHeureDesRelances, phraseDeRelance,
 } from './notifications-regles.js'
 
 const TOUT = { push: true, email: true }
@@ -87,5 +88,47 @@ describe('la semaine et son heure', () => {
     expect(cestLHeureDuResume(new Date('2026-10-12T06:00:00'))).toBe(false)
     expect(cestLHeureDuResume(new Date('2026-10-12T14:00:00'))).toBe(false)
     expect(cestLHeureDuResume(new Date('2026-10-13T08:00:00'))).toBe(false)
+  })
+})
+
+describe('les rappels d’absence', () => {
+  it('se taisent avant une semaine d’absence', () => {
+    expect(palierDeRelance(0)).toBeNull()
+    expect(palierDeRelance(6)).toBeNull()
+  })
+
+  it('partent après une semaine, puis après trois, et plus jamais ensuite', () => {
+    expect(palierDeRelance(7)).toBe(7)
+    expect(palierDeRelance(20)).toBe(7)
+    expect(palierDeRelance(21)).toBe(21)
+    expect(palierDeRelance(400)).toBe(21)
+  })
+
+  it('sont actifs par défaut, et se coupent par leur réglage', () => {
+    expect(canauxVoulus({}, 'relance_absence', TOUT).push).toBe(true)
+    expect(canauxVoulus({ relances: false }, 'relance_absence', TOUT).push).toBe(false)
+  })
+
+  it('arrivent en semaine, le matin, à l’heure suisse', () => {
+    // Mardi 13 octobre 2026, 7 h 30 UTC = 9 h 30 à Zurich (heure d’été).
+    expect(cestLHeureDesRelances(new Date('2026-10-13T07:30:00Z'))).toBe(true)
+    // 6 h 30 à Zurich : trop tôt.
+    expect(cestLHeureDesRelances(new Date('2026-10-13T04:30:00Z'))).toBe(false)
+    // Samedi 17 octobre, 9 h 30 à Zurich : pas le week-end.
+    expect(cestLHeureDesRelances(new Date('2026-10-17T07:30:00Z'))).toBe(false)
+    // Hiver : lundi 7 décembre, 9 h 30 à Zurich = 8 h 30 UTC.
+    expect(cestLHeureDesRelances(new Date('2026-12-07T08:30:00Z'))).toBe(true)
+  })
+
+  it('nomment le dossier qui attend', () => {
+    const p = phraseDeRelance({ nom: 'Chalet Belalp', releves: 13 })
+    expect(p.titre).toBe('Le relevé de « Chalet Belalp » vous attend')
+    expect(p.texte).toBe('13 ouvrages déjà relevés. Reprenez où vous en étiez.')
+    expect(phraseDeRelance({ nom: 'Villa', releves: 1 }).texte).toBe('1 ouvrage déjà relevé. Reprenez où vous en étiez.')
+    expect(phraseDeRelance({ nom: 'Villa', releves: 0 }).texte).toMatch(/visite peut commencer/)
+  })
+
+  it('proposent un nouveau dossier quand rien n’est en cours', () => {
+    expect(phraseDeRelance(null).titre).toBe('Un bâtiment à diagnostiquer ?')
   })
 })
