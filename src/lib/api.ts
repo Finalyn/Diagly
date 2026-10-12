@@ -1,4 +1,5 @@
 import { useAuth } from '@/stores/auth'
+import { estAppNative } from '@/lib/plateforme'
 import type {
   ApiCatalogItem, ApiCfcEntry, ApiDiagnostic, ApiDiagnosticItem,
   ApiProject, ApiOperation, ApiPlan, ApiEvent, AuthResponse,
@@ -10,11 +11,16 @@ import type {
 // En prod, l'app est servie par le même domaine que l'API -> requêtes same-origin
 // (BASE_URL vide = chemins relatifs /api...). En dev local (localhost), on vise le
 // backend sur :4000. VITE_API_URL, si défini au build, reste prioritaire.
+// L'app iPhone/iPad est servie depuis capacitor://localhost : son nom d'hôte est
+// « localhost », il faut donc la reconnaître avant le test du dev local, sans quoi
+// elle chercherait l'API sur le téléphone lui-même.
 export const BASE_URL =
   import.meta.env.VITE_API_URL ??
-  (typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)
-    ? 'http://localhost:4000'
-    : '')
+  (estAppNative
+    ? 'https://diagly.ch'
+    : typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)
+      ? 'http://localhost:4000'
+      : '')
 
 export class ApiError extends Error {
   status: number

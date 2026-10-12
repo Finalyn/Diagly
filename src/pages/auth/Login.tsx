@@ -4,6 +4,7 @@ import { Loader2, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { Button, Input } from '@/components/ui'
 import { AuthCard } from '@/components/auth/AuthCard'
 import { GoogleButton, OrDivider } from '@/components/auth/Social'
+import { estAppNative } from '@/lib/plateforme'
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import type { AuthResponse } from '@/lib/api-types'
@@ -157,8 +158,12 @@ export function Login() {
         </Button>
       </form>
 
-      <OrDivider label="ou continuer avec" />
-      <GoogleButton />
+      {/* Dans l'app, Google passera par sa connexion native (avec « Se connecter
+          avec Apple ») : le flux web ci-dessous n'y fonctionne pas. */}
+      {!estAppNative && (<>
+        <OrDivider label="ou continuer avec" />
+        <GoogleButton />
+      </>)}
 
       <p className="text-center text-sm text-muted-foreground mt-6">
         Pas encore de compte ? <Link to="/register" className="text-neutral-900 font-medium hover:underline">Créer un compte</Link>

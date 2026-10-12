@@ -6,6 +6,8 @@ import { get, set, del } from 'idb-keyval'
 import './index.css'
 import App from './App.tsx'
 import { queryClient, QUERY_CACHE_KEY } from '@/lib/query-client'
+import { estAppNative } from '@/lib/plateforme'
+import { demarrerNatif } from '@/lib/natif'
 
 // Persistance du cache (requêtes + mutations en attente) sur IndexedDB : les données
 // restent disponibles hors-ligne et au redémarrage de l'app (chantier, sous-sol).
@@ -18,6 +20,8 @@ const persister = createAsyncStoragePersister({
     removeItem: (k) => del(k),
   },
 })
+
+demarrerNatif()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -32,8 +36,10 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-// PWA : enregistre le service worker (installable + offline).
-if ('serviceWorker' in navigator) {
+// PWA : enregistre le service worker (installable + offline). Pas dans l'app
+// iPhone/iPad : elle embarque déjà tout le front, et WebKit n'y autorise pas les
+// service workers (origine capacitor://).
+if ('serviceWorker' in navigator && !estAppNative) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => undefined)
   })

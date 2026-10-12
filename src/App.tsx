@@ -6,6 +6,8 @@ import { setMarketInfo } from '@/lib/diagnostic-auto'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { useIsMobile } from '@/lib/use-mobile'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { estAppNative } from '@/lib/plateforme'
+import { masquerEcranDeLancement } from '@/lib/natif'
 // Entrée : chargée immédiatement pour un premier affichage rapide.
 import { Soon } from '@/pages/marketing/Soon'
 import { Login } from '@/pages/auth/Login'
@@ -86,6 +88,9 @@ function App() {
   useEffect(() => {
     api.market.index().then(setMarketInfo).catch(() => {})
   }, [])
+  // App iPhone/iPad : l'écran de lancement s'efface quand le routeur est monté,
+  // la page arrive juste derrière (le front est embarqué, rien à télécharger).
+  useEffect(() => { requestAnimationFrame(() => masquerEcranDeLancement()) }, [])
 
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
@@ -94,7 +99,9 @@ function App() {
           {/* Racine : la vitrine est publiée. La page « bientôt disponible »
               garde son adresse, elle sert encore à fermer le site le temps
               d'une intervention sans toucher au routage. */}
-          <Route path="/" element={<LandingV3 />} />
+          {/* L'app iPhone/iPad n'a pas de vitrine : elle s'ouvre sur le travail
+              (ou sur la connexion, que ProtectedRoute impose au besoin). */}
+          <Route path="/" element={estAppNative ? <Navigate to="/app" replace /> : <LandingV3 />} />
           <Route path="/bientot" element={<Soon />} />
           {/* Les deux versions précédentes restent accessibles le temps de la
               comparaison. Elles ne sont liées depuis nulle part. */}
@@ -116,7 +123,8 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/oauth-callback" element={<OAuthCallback />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/register/payment" element={<Payment />} />
+          {/* Pas de paiement dans l'app : l'App Store l'interdit hors de ses achats intégrés. */}
+          <Route path="/register/payment" element={estAppNative ? <Navigate to="/app" replace /> : <Payment />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/onboarding" element={<Onboarding />} />

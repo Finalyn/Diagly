@@ -88,6 +88,24 @@ body {
 .safe-top { padding-top: var(--safe-top); }
 .safe-sides { padding-left: var(--safe-left); padding-right: var(--safe-right); }
 
+/* ============ App iPhone/iPad ============ */
+/* La classe `natif` est posée sur <html> par lib/natif.ts, dans l'app seulement.
+   Une app ne réagit pas au toucher comme une page de Safari : pas de voile gris
+   sur ce qu'on touche, pas de sélection du libellé d'un bouton ni de bulle
+   « Copier » au toucher prolongé. Le texte des champs et des documents reste
+   sélectionnable. */
+html.natif {
+  -webkit-tap-highlight-color: transparent;
+}
+html.natif :where(button, a, nav, label, summary, [role='button'], [role='tab'], [role='menuitem'], [role='option']) {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+html.natif :where(img, svg) {
+  -webkit-touch-callout: none;
+}
+
 /* ============ Liquid glass ============ */
 .liquid-glass {
   position: relative;

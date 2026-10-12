@@ -72,7 +72,13 @@ app.use(
   }),
 );
 
-const allowedOrigins = env.CORS_ORIGIN.split(",").map((s) => s.trim());
+// L'app iPhone/iPad embarque le front et appelle l'API depuis sa propre origine,
+// capacitor://localhost. Elle est autorisée ici, en dur : un .env de production
+// qui l'oublierait couperait l'app sans autre symptôme qu'un écran vide.
+// L'authentification passe par un jeton Bearer, pas par un cookie : ouvrir
+// cette origine ne donne accès à rien sans jeton.
+const ORIGINES_APP_NATIVE = ["capacitor://localhost"];
+const allowedOrigins = [...env.CORS_ORIGIN.split(",").map((s) => s.trim()), ...ORIGINES_APP_NATIVE];
 const allowLocalhost = env.NODE_ENV !== "production"; // localhost autorise seulement hors prod
 app.use(cors({
   origin: (origin, cb) => {
@@ -142,6 +148,10 @@ app.use("/uploads", (req, res, next) => {
 app.use("/uploads", express.static(UPLOAD_DIR, {
   setHeaders: (res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
+    // Helmet pose « same-origin » par défaut : l'app iPhone/iPad, servie depuis
+    // capacitor://localhost, ne pourrait alors afficher aucun plan ni aucune
+    // capture dans une balise <img>. L'accès reste gardé par le jeton signé.
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; object-src 'none'");
   },
 }));

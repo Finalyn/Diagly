@@ -1,4 +1,5 @@
 import { api } from './api'
+import { estAppNative } from './plateforme'
 
 export type PushState = 'unsupported' | 'denied' | 'subscribed' | 'unsubscribed'
 
@@ -12,6 +13,8 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 export function pushSupported(): boolean {
+  // L'app native passera par les notifications Apple (APNs), pas par le push web.
+  if (estAppNative) return false
   return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
 }
 

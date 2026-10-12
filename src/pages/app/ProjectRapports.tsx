@@ -24,6 +24,8 @@ import { RapportPhoto } from '@/components/report/RapportPhoto'
 import { RapportScenario } from '@/components/report/RapportScenario'
 import type { RVariant, ScenarioId } from '@/components/report/scenarios'
 import { TVA, toNum } from '@/components/report/constants'
+import { ORIGINE_PUBLIQUE } from '@/lib/plateforme'
+import { imprimerLaPage } from '@/lib/impression'
 
 type ReportKind = 'complet' | 'sommaire' | 'detaille' | 'documente' | 'scenario' | 'rapport' | 'photos' | 'existant'
 const REPORT_TITLES: Record<ReportKind, string> = {
@@ -332,7 +334,7 @@ export function ProjectRapports() {
           on choisit à gauche, on relit au milieu, on édite à droite. */}
       {/* Téléphone : imprimer, exporter, partager montent avant le document. */}
       <aside className="shrink-0 space-y-2 print:hidden max-lg:order-2 lg:h-full lg:w-52 lg:overflow-y-auto">
-        <Button onClick={() => window.print()} className="w-full justify-start">
+        <Button onClick={() => { void imprimerLaPage(`${REPORT_TITLES[report]} - ${project.name}`).catch(() => undefined) }} className="w-full justify-start">
           <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
         </Button>
         <Button variant="outline" onClick={() => setExportOpen(true)} className="w-full justify-start">
@@ -352,7 +354,7 @@ function ShareControl({ projectId, initialToken }: { projectId: string; initialT
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  const url = token ? `${window.location.origin}/share/${token}` : ''
+  const url = token ? `${ORIGINE_PUBLIQUE}/share/${token}` : ''
 
   const enable = async () => {
     setLoading(true)

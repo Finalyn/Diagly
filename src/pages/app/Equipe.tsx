@@ -16,6 +16,7 @@ import { Input, Button } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import { cn, formatDate } from '@/lib/utils'
+import { ORIGINE_PUBLIQUE } from '@/lib/plateforme'
 import type { OrgRole, OrgMember, OrgInvitation } from '@/lib/api-types'
 
 const ROLE_LABEL: Record<OrgRole, string> = { OWNER: 'Propriétaire', ADMIN: 'Administrateur', MEMBER: 'Membre', VIEWER: 'Lecture seule' }
@@ -368,7 +369,7 @@ function SectionInvitations({ invites, loading }: { invites: OrgInvitation[]; lo
             <div className="divide-y divide-black/[0.05]">
               {invites.map((inv) => {
                 const expiree = new Date(inv.expiresAt).getTime() < maintenant
-                const lien = `${window.location.origin}/app/join/${inv.token}`
+                const lien = `${ORIGINE_PUBLIQUE}/app/join/${inv.token}`
                 return (
                   <div key={inv.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_150px_150px_80px]">
                     <div className="min-w-0">

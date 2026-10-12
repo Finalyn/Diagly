@@ -32,6 +32,7 @@ import { useIsMobile } from '@/lib/use-mobile'
 import { cn } from '@/lib/utils'
 import { getPushState, subscribePush, unsubscribePush, type PushState } from '@/lib/push-client'
 import { logout as endSession } from '@/lib/session'
+import { estAppNative } from '@/lib/plateforme'
 import {
   aChange, champsManquantsDuBureau, etatDuProfil, initiales, nomAffiche,
 } from '@/lib/reglages'
@@ -43,7 +44,7 @@ type IdSection =
   | 'bureau' | 'personnalisation' | 'facturation'
   | IdSectionEquipe
 
-const SECTIONS: {
+const TOUTES_LES_SECTIONS: {
   id: IdSection
   label: string
   aide: string
@@ -62,6 +63,10 @@ const SECTIONS: {
   { id: 'invitations', label: 'Invitations', aide: 'Invitations envoyées, pas encore acceptées', icone: Mail, famille: 'Mon organisation' },
   { id: 'roles', label: 'Rôles et droits', aide: 'Ce que chaque rôle peut faire', icone: KeyRound, famille: 'Mon organisation' },
 ]
+
+// L'App Store refuse qu'une app parle d'abonnement payé hors de ses achats
+// intégrés (règle 3.1.1) : la facturation reste sur le site.
+const SECTIONS = TOUTES_LES_SECTIONS.filter((s) => !(estAppNative && s.id === 'facturation'))
 
 const FAMILLES = ['Mon compte', 'Mon travail', 'Mon organisation'] as const
 

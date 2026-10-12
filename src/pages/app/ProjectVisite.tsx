@@ -21,6 +21,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import { cn } from '@/lib/utils'
+import { imprimerHtml } from '@/lib/impression'
 import type { ApiProject, VisitContact, VisitContactRole, VisitMail, VisitPlan } from '@/lib/api-types'
 import {
   MODELES, MOMENTS, PREPARATION, ROLE_LABEL, dateLongue, destinatairesParDefaut, duree, heure, modele,
@@ -406,18 +407,15 @@ function Composer({ modele: m, ctx, projet, mailConfigured, onFermer, onEnvoye }
 
   /** L'avis s'imprime aussi, pour l'afficher dans l'entrée de l'immeuble. */
   const imprimer = () => {
-    const w = window.open('', '_blank', 'width=800,height=1000')
-    if (!w) return
     const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     const logo = ctx.expediteur.logo
-    w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Avis aux locataires</title>
+    void imprimerHtml(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Avis aux locataires</title>
       <style>body{font-family:Arial,Helvetica,sans-serif;color:#1d1d1f;max-width:640px;margin:56px auto;line-height:1.6;font-size:15px}
       h1{font-size:26px;margin:0 0 6px}p.sous{color:#6e6e73;margin:0 0 32px}pre{white-space:pre-wrap;font-family:inherit;margin:0}
       img{max-height:56px;margin-bottom:28px}@page{margin:18mm}</style></head><body>
       ${logo ? `<img src="${esc(String(logo))}" alt="">` : ''}
       <h1>Avis aux locataires</h1><p class="sous">${esc(objet)}</p><pre>${esc(corps)}</pre>
-      <script>window.onload=()=>{window.print()}</script></body></html>`)
-    w.document.close()
+      </body></html>`, 'Avis aux locataires').catch(() => undefined)
   }
 
   return (

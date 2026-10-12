@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { formatCHF } from '@/lib/utils'
 import { stateLabels, buildingTypeLabels } from '@/data/mock'
 import { cfcGroupCode } from '@/lib/cfc'
+import { imprimerLaPage } from '@/lib/impression'
 import { priceBasisNote, setMarketInfo } from '@/lib/diagnostic-auto'
 
 const toNum = (v: string | null | undefined) => (v ? Number(v) : 0)
@@ -68,7 +69,7 @@ export function PublicReport() {
       {/* Barre d'action (non imprimée) */}
       <div className="max-w-3xl mx-auto mb-4 flex items-center justify-between print:hidden">
         <span className="inline-flex items-center gap-1.5 text-xs text-gray-500"><Lock className="h-3.5 w-3.5" />Lecture seule</span>
-        <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg text-white text-sm font-medium px-3 py-2" style={{ backgroundColor: accent }}>
+        <button onClick={() => { void imprimerLaPage().catch(() => undefined) }} className="inline-flex items-center gap-2 rounded-lg text-white text-sm font-medium px-3 py-2" style={{ backgroundColor: accent }}>
           <Printer className="h-4 w-4" />Imprimer / PDF
         </button>
       </div>
