@@ -43,7 +43,7 @@ export interface Visite {
   objectif: string
   duree: string
   /** Icône, résolue à l'affichage. */
-  icone: 'boussole' | 'dossier' | 'onglets' | 'aide'
+  icone: 'boussole' | 'dossier' | 'onglets' | 'aide' | 'releve' | 'agenda'
   etapes: EtapeVisite[]
   /** Tutoriel écrit correspondant, pour qui préfère lire. */
   tutoriel?: string
@@ -59,7 +59,7 @@ export const VISITES: Visite[] = [
     etapes: [
       {
         titre: 'Bienvenue dans l’aide',
-        texte: 'Cette visite vous montre l’application écran par écran : la fenêtre reste ouverte pendant que vous faites. Commençons par là où vous êtes.',
+        texte: 'Les visites vous montrent l’application écran par écran : la bulle reste ouverte pendant que vous faites. Commençons par là où vous êtes.',
       },
       {
         cible: '[data-visite="aide-recherche"]',
@@ -74,10 +74,18 @@ export const VISITES: Visite[] = [
         texte: 'La documentation pour comprendre, les tutoriels pour faire, les questions fréquentes pour une réponse courte, et vos demandes au support.',
       },
       {
+        cible: '[data-visite="aide-onglet-tuto"]',
+        cote: 'bas',
+        sauterSi: '[data-visite="aide-visites"]',
+        titre: 'Ouvrez les tutoriels',
+        texte: 'Cliquez sur Tutoriels : les visites guidées y sont rangées, à côté des tutoriels écrits.',
+        avanceAuClic: true,
+      },
+      {
         cible: '[data-visite="aide-visites"]',
         cote: 'bas',
         titre: 'Les visites guidées',
-        texte: 'Elles partent toutes d’ici. Chacune ouvre l’écran concerné, entoure le bouton dont elle parle, et vous laisse cliquer dessus en chemin.',
+        texte: 'Elles partent toutes d’ici. Chacune ouvre l’écran concerné et entoure ce dont elle parle. Quand c’est à vous d’agir, il n’y a pas de bouton Suivant : la visite continue dès que vous avez cliqué.',
       },
       {
         cible: '[data-visite="aide-contact"]',
@@ -99,19 +107,25 @@ export const VISITES: Visite[] = [
       {
         route: '/app/dashboard',
         titre: 'On commence par l’accueil',
-        texte: 'C’est votre tableau de bord : les chiffres du moment et les dossiers en cours. Tout le reste part du menu de gauche.',
+        texte: 'Votre tableau de bord : le dernier dossier à reprendre, les accès rapides, vos diagnostics par statut et l’activité récente. Tout le reste part du menu de gauche.',
+      },
+      {
+        cible: '[data-visite="dash-reprendre"]',
+        cote: 'bas',
+        titre: 'Reprendre où vous en étiez',
+        texte: 'Le dernier dossier modifié, avec ses chiffres : relevés, urgents, coût estimé, date de visite. Un clic rouvre son relevé.',
       },
       {
         cible: '[data-visite="nav-projects"]',
         cote: 'droite',
         titre: 'Vos diagnostics',
-        texte: 'Le cœur de l’application. Un diagnostic, c’est un bâtiment : son relevé, son chiffrage, ses rapports.',
+        texte: 'La liste de vos dossiers. Un diagnostic, c’est un bâtiment : son relevé, son chiffrage, ses rapports. Un dossier s’ouvre directement sur son relevé.',
       },
       {
         cible: '[data-visite="nouveau"]',
         cote: 'droite',
-        titre: 'Créer un dossier',
-        texte: 'Ce bouton est accessible de partout. L’adresse suffit pour démarrer : Diagly va chercher seul les données publiques du bâtiment.',
+        titre: 'Créer un diagnostic',
+        texte: 'Accessible de partout. Trois départs possibles : de zéro avec l’adresse, depuis un document (ancien rapport, relevé Excel, Word ou PDF), ou depuis un certificat énergétique cantonal (CECB®).',
       },
       {
         cible: '[data-visite="nav-cfc"]',
@@ -120,10 +134,28 @@ export const VISITES: Visite[] = [
         texte: 'Votre catalogue d’ouvrages CFC : les prix unitaires, les unités et les textes qui partiront dans vos rapports. Vous pouvez tout y adapter à votre pratique.',
       },
       {
+        cible: '[data-visite="nav-integrations"]',
+        cote: 'droite',
+        titre: 'Les intégrations',
+        texte: 'Pour relier Diagly à vos autres outils : clés d’API pour un ERP ou une gérance, webhooks, et votre propre assistant IA branché sur vos diagnostics.',
+      },
+      {
         cible: '[data-visite="nav-buildings"]',
         cote: 'droite',
         titre: 'Le parc immobilier',
         texte: 'La même matière, vue comme un patrimoine plutôt que dossier par dossier. C’est la vue des régies et des propriétaires institutionnels.',
+      },
+      {
+        cible: '[data-visite="nav-partenaires"]',
+        cote: 'droite',
+        titre: 'Les prestataires',
+        texte: 'Pour la suite d’un diagnostic : un expert CECB®, un architecte, une entreprise générale, ou un outil comme Arkia pour les images. Partez de votre besoin, contactez-les avec le dossier joint et suivez chaque demande.',
+      },
+      {
+        cible: '[data-visite="nav-settings"]',
+        cote: 'droite',
+        titre: 'Les paramètres',
+        texte: 'Votre compte et votre sécurité, votre entreprise et l’apparence de vos rapports, et votre équipe : membres, invitations, rôles et droits.',
       },
       {
         cible: '[data-visite="recherche"]',
@@ -147,16 +179,83 @@ export const VISITES: Visite[] = [
   },
 
   {
-    id: 'dossier',
-    titre: 'Tout ce que contient un dossier',
-    objectif: 'Faire le tour des huit onglets d’un diagnostic, outil Plans compris.',
-    duree: '5 min',
-    icone: 'onglets',
+    id: 'creation',
+    titre: 'Créer un diagnostic',
+    objectif: 'Choisir comment commencer, et voir ce que Diagly remplit tout seul.',
+    duree: '2 min',
+    icone: 'dossier',
     tutoriel: 'premier-diagnostic',
     etapes: [
       {
-        titre: 'Le dossier est créé',
-        texte: 'Il est maintenant fait de huit onglets, et tout part du relevé. Je vous les montre un par un, puis nous descendrons dans l’outil Plans, qui est le plus riche.',
+        route: '/app/projects/new',
+        cible: '[data-visite="creation-departs"]',
+        cote: 'bas',
+        sauterSi: '[data-visite="nom"]',
+        titre: 'Trois façons de commencer',
+        texte: 'De zéro, depuis un document, ou depuis un certificat énergétique. Dans les deux derniers cas, l’assistant Diagly lit le fichier et vous relisez tout avant que le dossier soit créé.',
+      },
+      {
+        cible: '[data-visite="depart-document"]',
+        cote: 'bas',
+        sauterSi: '[data-visite="nom"]',
+        titre: 'Depuis un document',
+        texte: 'Un ancien rapport, un relevé Excel, un état des lieux Word ou PDF. Le bâtiment et les éléments décrits sont repris avec leur état, rattachés à votre base, prêts à vérifier sur place.',
+      },
+      {
+        cible: '[data-visite="depart-cecb"]',
+        cote: 'bas',
+        sauterSi: '[data-visite="nom"]',
+        titre: 'Depuis un certificat énergétique',
+        texte: 'Le certificat donne le bâtiment, l’étiquette énergétique, et les éléments visés par ses mesures recommandées, qui entrent dans le relevé à vérifier.',
+      },
+      {
+        cible: '[data-visite="depart-zero"]',
+        cote: 'bas',
+        sauterSi: '[data-visite="nom"]',
+        titre: 'Partons de zéro',
+        texte: 'Pour cette visite, cliquez sur Partir de zéro : c’est le chemin le plus court, et l’adresse suffit.',
+        avanceAuClic: true,
+      },
+      {
+        cible: '[data-visite="nom"]',
+        cote: 'droite',
+        titre: 'Le nom du dossier',
+        texte: 'Celui sous lequel vous le retrouverez dans la liste. Le nom de l’immeuble, ou celui du mandat.',
+      },
+      {
+        cible: '[data-visite="adresse"]',
+        cote: 'droite',
+        titre: 'L’adresse, la seule chose vraiment nécessaire',
+        texte: 'Commencez à taper puis choisissez dans la liste : code postal, ville, canton, parcelle, année et surfaces se remplissent seuls. Diagly identifie le bâtiment au registre fédéral et récupère son EGID.',
+      },
+      {
+        cible: '[data-visite="carte"]',
+        cote: 'droite',
+        titre: 'Vérifiez le bon bâtiment',
+        texte: 'Deux entrées voisines portent souvent le même numéro. La carte apparaît avec l’adresse : vérifiez que le repère tombe sur le bâtiment à diagnostiquer.',
+      },
+      {
+        titre: 'Ce que vous n’avez pas à saisir',
+        texte: 'Emprise, volume, affectation, sensibilité au bruit, zone radon, classe de sol sismique, patrimoine protégé : tout cela arrive seul des services publics. Les contraintes apparaîtront dans le rapport, ce sont des surcoûts à anticiper.',
+      },
+      {
+        titre: 'Puis deux écrans encore',
+        texte: 'Les surfaces et la géométrie, qui servent à estimer les quantités, puis le récapitulatif. Validez : le dossier s’ouvre directement sur son relevé.',
+      },
+    ],
+  },
+
+  {
+    id: 'releve',
+    titre: 'Faire un relevé',
+    objectif: 'Parcourir le bâtiment étape par étape, relever un ouvrage et voir ce que Diagly en calcule.',
+    duree: '3 min',
+    icone: 'releve',
+    tutoriel: 'premier-diagnostic',
+    etapes: [
+      {
+        titre: 'Le relevé, le cœur du dossier',
+        texte: 'Tout le reste se nourrit de lui : coûts, variantes, rapports. On l’ouvre en ouvrant le dossier, et l’on suit le bâtiment dans l’ordre de la visite.',
       },
       {
         route: '/app/projects',
@@ -164,80 +263,251 @@ export const VISITES: Visite[] = [
         cote: 'haut',
         sauterSi: '[data-visite="onglet-diagnostic"]',
         titre: 'Ouvrez un dossier',
-        texte: 'Cliquez sur une ligne de la liste : les huit onglets nous attendent à l’intérieur. Si vous venez d’en créer un, vous y êtes déjà et je passe cette étape.',
+        texte: 'Cliquez sur une ligne de la liste : le dossier s’ouvre sur son relevé. Si vous y êtes déjà, je passe cette étape.',
         avanceAuClic: true,
       },
       {
         cible: '[data-visite="onglet-diagnostic"]',
-        cote: 'bas',
-        titre: 'Diagnostic, le cœur',
-        texte: 'C’est ici que le travail se fait : chaque ouvrage, son état parmi quatre, ses photos, sa quantité. Tout le reste de l’application se nourrit de cet onglet.',
+        cote: 'droite',
+        sauterSi: '[data-visite="releve-avancement"]',
+        titre: 'Ouvrez le relevé',
+        texte: 'Cliquez sur Relevé, en tête du menu du dossier.',
+        avanceAuClic: true,
       },
       {
-        cible: '[data-visite="onglet-photos"]',
+        cible: '[data-visite="releve-avancement"]',
         cote: 'bas',
-        titre: 'Photos',
-        texte: 'Toutes les photos du dossier rassemblées, ouvrage par ouvrage. C’est la matière du reportage photo et du rapport documenté.',
+        titre: 'Où vous en êtes',
+        texte: 'Le tour du bâtiment et sa progression : combien d’ouvrages relevés sur ceux que le bâtiment compte. Un oubli important (un ouvrage dégradé sans photo) s’y signale.',
+      },
+      {
+        cible: '[data-visite="releve-guide"]',
+        cote: 'bas',
+        titre: 'Le guide IA',
+        texte: 'À la demande, il analyse vos photos quand vous le lui demandez ; toujours, il le fait à chaque photo ; sans guide, il se tait. Il propose, vous décidez.',
+      },
+      {
+        cible: '[data-visite="releve-etapes"]',
+        cote: 'droite',
+        sauterSi: '[data-visite="releve-categories"], [data-visite="releve-ouvrage"], [data-visite="releve-etat"]',
+        titre: 'Les étapes de la visite',
+        texte: 'Dans l’ordre où l’on marche : dehors, la cage d’escalier, la structure, les locaux techniques, les logements, les aménagements extérieurs. Chaque étape montre ce qu’il y reste à voir.',
+      },
+      {
+        cible: '[data-visite="releve-etape"]',
+        cote: 'droite',
+        sauterSi: '[data-visite="releve-categories"], [data-visite="releve-ouvrage"], [data-visite="releve-etat"]',
+        titre: 'Entrez dans une étape',
+        texte: 'Cliquez sur la première étape pour voir ce qu’elle contient.',
+        avanceAuClic: true,
+      },
+      {
+        cible: '[data-visite="releve-categorie"]',
+        cote: 'droite',
+        sauterSi: '[data-visite="releve-ouvrage"], [data-visite="releve-etat"]',
+        titre: 'Choisissez un ouvrage',
+        texte: 'L’étape est rangée par ouvrage : façade, fenêtres, balcons… Cliquez sur le premier.',
+        avanceAuClic: true,
+      },
+      {
+        cible: '[data-visite="releve-ouvrage"]',
+        cote: 'droite',
+        sauterSi: '[data-visite="releve-etat"]',
+        titre: 'Le type que vous avez devant vous',
+        texte: 'Cliquez sur le type rencontré : il entre dans le relevé, sans état tant que vous n’en avez pas choisi, et sa fiche s’ouvre à droite. Un type déjà relevé s’ouvre simplement.',
+        avanceAuClic: true,
+      },
+      {
+        cible: '[data-visite="releve-etat"]',
+        cote: 'gauche',
+        titre: 'L’état, le seul vrai choix',
+        texte: 'Très bon, bon, moyen ou mauvais. La priorité, les travaux et le coût en découlent tout seuls.',
+      },
+      {
+        cible: '[data-visite="releve-photos"]',
+        cote: 'gauche',
+        titre: 'Les photos',
+        texte: 'Prenez-en une dès que l’état se discute, c’est-à-dire partout où vous relevez moyen ou mauvais. Elles alimentent le rapport photo, et le guide IA peut les lire.',
+      },
+      {
+        cible: '[data-visite="releve-resultat"]',
+        cote: 'gauche',
+        titre: 'Ce que Diagly calcule',
+        texte: 'Les travaux, la priorité, la quantité tirée du bâtiment et le coût. Une quantité ou un coût repris à la main reste tel quel : il ne suit plus le calcul tant que vous ne le lui rendez pas.',
+      },
+      {
+        titre: 'Et l’ouvrage suivant',
+        texte: 'Revenez à la liste et continuez la visite : chaque étape se coche à mesure. Le reste du dossier est dans le menu de gauche, la visite « Tout ce que contient un dossier » vous le montre.',
+      },
+    ],
+  },
+
+  {
+    id: 'visite',
+    titre: 'Organiser la visite',
+    objectif: 'Préparer le rendez-vous, prévenir les bonnes personnes et suivre les mails envoyés.',
+    duree: '2 min',
+    icone: 'agenda',
+    tutoriel: 'organiser-visite',
+    etapes: [
+      {
+        titre: 'Avant d’aller sur place',
+        texte: 'L’onglet Visite d’un dossier rassemble ce qu’il faut pour que la visite ait lieu : les interlocuteurs, le rendez-vous, la préparation, et un mail tout prêt pour chaque étape.',
+      },
+      {
+        route: '/app/projects',
+        cible: '[data-visite="liste"]',
+        cote: 'haut',
+        sauterSi: '[data-visite="onglet-visite"]',
+        titre: 'Ouvrez un dossier',
+        texte: 'Cliquez sur une ligne de la liste. Si vous êtes déjà dans un dossier, je passe cette étape.',
+        avanceAuClic: true,
+      },
+      {
+        cible: '[data-visite="onglet-visite"]',
+        cote: 'droite',
+        sauterSi: '[data-visite="visite-etapes"]',
+        titre: 'Ouvrez Visite',
+        texte: 'Cliquez sur Visite, dans le menu du dossier.',
+        avanceAuClic: true,
+      },
+      {
+        cible: '[data-visite="visite-etapes"]',
+        cote: 'bas',
+        titre: 'Où en est l’organisation',
+        texte: 'Cinq étapes, des interlocuteurs à la visite effectuée. Elles se cochent toutes seules d’après ce que vous faites ici.',
+      },
+      {
+        cible: '[data-visite="visite-interlocuteurs"]',
+        cote: 'gauche',
+        titre: 'Les interlocuteurs',
+        texte: 'La gérance, le propriétaire, le concierge, les locataires avec leur logement. Ce sont eux qui reçoivent les mails.',
+      },
+      {
+        cible: '[data-visite="visite-rdv"]',
+        cote: 'droite',
+        titre: 'Le rendez-vous',
+        texte: 'La date, l’heure, la durée, le lieu et qui ouvre les locaux. Enregistré, il entre dans votre calendrier avec un rappel et devient la date de visite du diagnostic. Avant de le fixer, proposez des créneaux.',
+      },
+      {
+        cible: '[data-visite="visite-mails"]',
+        cote: 'droite',
+        titre: 'Un mail pour chaque étape',
+        texte: 'Demande de visite, créneaux, documents, confirmation, avis aux locataires, rappel, report, remerciements. Chacun est pré-rempli avec le dossier ; vous le relisez, puis il part ou s’ouvre dans votre messagerie, et il est noté dans l’historique.',
+      },
+      {
+        cible: '[data-visite="visite-preparation"]',
+        cote: 'gauche',
+        titre: 'La préparation',
+        texte: 'Les documents à obtenir, les locaux à rendre accessibles, le matériel à emporter. Les documents pas encore reçus remplissent d’eux-mêmes les mails qui les demandent.',
+      },
+    ],
+  },
+
+  {
+    id: 'dossier',
+    titre: 'Tout ce que contient un dossier',
+    objectif: 'Faire le tour des outils du menu de gauche, outil Plans compris.',
+    duree: '4 min',
+    icone: 'onglets',
+    tutoriel: 'premier-diagnostic',
+    etapes: [
+      {
+        titre: 'Le menu du dossier',
+        texte: 'Un dossier s’ouvre sur son relevé, et ses outils sont rangés dans le menu de gauche : le bâtiment, l’analyse, les documents. Je vous les montre un par un, puis nous descendrons dans l’outil Plans, qui est le plus riche.',
+      },
+      {
+        route: '/app/projects',
+        cible: '[data-visite="liste"]',
+        cote: 'haut',
+        sauterSi: '[data-visite="onglet-diagnostic"]',
+        titre: 'Ouvrez un dossier',
+        texte: 'Cliquez sur une ligne de la liste. Si vous êtes déjà dans un dossier, je passe cette étape.',
+        avanceAuClic: true,
+      },
+      {
+        cible: '[data-visite="onglet-diagnostic"]',
+        cote: 'droite',
+        titre: 'Le relevé, toujours en tête',
+        texte: 'C’est ici que le travail se fait, ouvrage par ouvrage. La visite « Faire un relevé » le montre en détail.',
+      },
+      {
+        cible: '[data-visite="onglet-fiche"]',
+        cote: 'droite',
+        titre: 'Fiche du bâtiment',
+        texte: 'L’adresse, les surfaces, les étages, les données publiques et les contraintes du terrain. Les quantités du relevé en dépendent.',
+      },
+      {
+        cible: '[data-visite="onglet-visite"]',
+        cote: 'droite',
+        titre: 'Visite',
+        texte: 'Les interlocuteurs, le rendez-vous, la préparation et les mails de chaque étape, pré-remplis.',
+      },
+      {
+        cible: '[data-visite="onglet-cecb"]',
+        cote: 'droite',
+        titre: 'Étiquette énergétique',
+        texte: 'La performance du bâtiment, et l’import d’un certificat en PDF : Diagly en extrait les données que vous validez avant de les appliquer.',
       },
       {
         cible: '[data-visite="onglet-couts"]',
-        cote: 'bas',
+        cote: 'droite',
         titre: 'Coûts',
         texte: 'Le chiffrage avec le détail du calcul : prix unitaire, quantité, indexation sur l’indice suisse, honoraires, réserve, TVA. Rien n’y est saisi, tout s’y ajuste.',
       },
       {
         cible: '[data-visite="onglet-variantes"]',
-        cote: 'bas',
+        cote: 'droite',
         titre: 'Variantes',
-        texte: 'Les trois scénarios comparés : maintenance, rénovation, rénovation énergétique. C’est la vue qui sert à la discussion avec le propriétaire.',
+        texte: 'Une variante reprend tout le diagnostic et ne change que ce que vous désignez : l’ouvrage remplacé sort du total, la solution retenue prend sa place. Elles se comparent côte à côte.',
+      },
+      {
+        cible: '[data-visite="onglet-photos"]',
+        cote: 'droite',
+        titre: 'Photos',
+        texte: 'Toutes les photos du dossier rassemblées, ouvrage par ouvrage. C’est la matière du rapport photo et du rapport documenté.',
       },
       {
         cible: '[data-visite="onglet-rapports"]',
-        cote: 'bas',
+        cote: 'droite',
         titre: 'Rapports',
-        texte: 'Huit documents, de l’état des lieux au rapport complet, tous paginés en A4 avec votre logo. Et le lien de partage pour votre client.',
-      },
-      {
-        cible: '[data-visite="onglet-cecb"]',
-        cote: 'bas',
-        titre: 'Étiquette énergétique',
-        texte: 'La performance du bâtiment, et l’import d’un certificat énergétique en PDF : Diagly en extrait les données que vous validez avant application.',
+        texte: 'Le document remis au client, du rapport complet au rapport photo, en A4 avec votre logo. Il s’imprime, s’exporte, ou se partage par un lien.',
       },
       {
         cible: '[data-visite="onglet-plans"]',
-        cote: 'bas',
+        cote: 'droite',
         titre: 'Plans, et c’est là que ça devient intéressant',
-        texte: 'Cliquez sur l’onglet Plans. C’est lui qui transforme un dessin d’architecte en quantités justes dans le diagnostic.',
+        texte: 'Cliquez sur Plans : c’est l’outil qui transforme un dessin d’architecte en quantités justes dans le relevé.',
         avanceAuClic: true,
       },
       {
         cible: '[data-visite="plans-ajouter"], [data-visite="plans-vide"]',
         cote: 'gauche',
         titre: 'Importer un plan',
-        texte: 'Déposez un PDF ou une image, jusqu’à trente mégaoctets. Un PDF de plusieurs pages est géré tel quel : chaque page garde ses propres mesures et sa propre échelle.',
+        texte: 'Déposez un PDF ou une image, jusqu’à trente mégaoctets. Un PDF de plusieurs pages est gardé tel quel : chaque page a ses propres mesures et sa propre échelle.',
       },
       {
         cible: '[data-visite="plans-liste"]',
         cote: 'haut',
         titre: 'Vos plans',
-        texte: 'Chaque vignette montre le plan, son nombre de pages et le nombre de mesures déjà rattachées à un ouvrage. Un clic l’ouvre dans l’éditeur.',
+        texte: 'Chaque vignette montre le plan, son nombre de pages et le nombre de mesures déjà rattachées à un ouvrage.',
       },
       {
         cible: '[data-visite="plan-vignette"]',
         cote: 'bas',
         titre: 'Ouvrez un plan',
-        texte: 'Cliquez sur une vignette : l’éditeur s’ouvre en plein écran et je vous montre ses outils. Si vous n’avez pas encore de plan, passez à la suite, je vous les décris quand même.',
+        texte: 'Cliquez sur une vignette : l’éditeur s’ouvre en plein écran et je vous montre ses outils.',
         avanceAuClic: true,
       },
       {
         titre: 'L’éditeur s’ouvre sur l’étalonnage',
-        texte: 'Tant qu’une page n’a pas d’échelle, les outils de mesure restent inaccessibles : une surface relevée sur un plan non étalonné serait fausse sans que rien ne le signale.',
+        texte: 'Tant qu’une page n’a pas d’échelle, les outils de mesure restent inaccessibles : une surface relevée sur un plan non étalonné serait fausse sans que rien ne le signale. Sans plan dans ce dossier, je vous décris les outils quand même.',
       },
       {
         cible: '[data-outil="calibrate"]',
         cote: 'droite',
         titre: 'Étalonner',
-        texte: 'Tracez un trait sur la cote connue la plus longue du plan, puis saisissez sa longueur réelle en mètres, centimètres ou millimètres. Sur un document de plusieurs pages, Diagly propose d’appliquer l’échelle aux autres pages, avec un aperçu de chacune.',
+        texte: 'Tracez un trait sur la cote connue la plus longue du plan, puis saisissez sa longueur réelle. Sur un document de plusieurs pages, Diagly propose d’appliquer l’échelle aux autres, avec un aperçu de chacune.',
       },
       {
         cible: '[data-outil="measure"]',
@@ -253,7 +523,7 @@ export const VISITES: Visite[] = [
       },
       {
         titre: 'Rattacher la zone à un ouvrage',
-        texte: 'Dès la zone tracée, Diagly propose de la rattacher à un ouvrage du diagnostic. La liste des mesures, à droite de l’éditeur, signale en orange celles qui ne le sont pas : un clic sur la ligne ouvre le choix. Le rattachement est possible avant même que l’ouvrage soit relevé.',
+        texte: 'Dès la zone tracée, Diagly propose de la rattacher à un ouvrage du relevé. La liste des mesures, à droite de l’éditeur, signale en orange celles qui ne le sont pas : un clic sur la ligne ouvre le choix.',
       },
       {
         cible: '[data-outil="reference"]',
@@ -263,58 +533,17 @@ export const VISITES: Visite[] = [
       },
       {
         titre: 'Annoter, et revenir en arrière',
-        texte: 'Dessiner, flèche et note servent à commenter le plan. Ctrl+Z défait le dernier geste et Ctrl+Maj+Z le rejoue, y compris un déplacement ou un changement de couleur. Échap abandonne le tracé en cours sans rien effacer.',
+        texte: 'Dessiner, flèche et note servent à commenter le plan. Ctrl+Z défait le dernier geste et Ctrl+Maj+Z le rejoue. Échap abandonne le tracé en cours sans rien effacer.',
       },
       {
         cible: '[data-visite="plans-quantites"]',
         cote: 'haut',
-        titre: 'Reporter dans le diagnostic',
+        titre: 'Reporter dans le relevé',
         texte: 'Les zones et les cotes rattachées à un même ouvrage s’additionnent, à travers tous vos plans et toutes leurs pages. Diagly vous montre ce qu’il a mesuré et ce que cela changerait au coût, et vous validez : une quantité ne change jamais toute seule.',
       },
       {
         titre: 'Voilà le dossier',
-        texte: 'Relevez, vérifiez les quantités, contrôlez le chiffrage, comparez les variantes, éditez le rapport. Toutes ces visites restent disponibles dans Aide et support, et la documentation écrite va plus loin sur chaque point.',
-      },
-    ],
-  },
-
-  {
-    id: 'creation',
-    titre: 'Créer un diagnostic',
-    objectif: 'Comprendre l’écran de création, et ce que Diagly remplit tout seul.',
-    duree: '2 min',
-    icone: 'dossier',
-    tutoriel: 'premier-diagnostic',
-    etapes: [
-      {
-        titre: 'Un dossier commence ici',
-        texte: 'Trois écrans à remplir, mais presque rien à saisir : l’adresse suffit à Diagly pour aller chercher ce que les registres publics savent déjà du bâtiment.',
-      },
-      {
-        cible: '[data-visite="nom"]',
-        cote: 'droite',
-        titre: 'Le nom du dossier',
-        texte: 'Celui sous lequel vous le retrouverez dans la liste. Le nom de l’immeuble, ou celui du mandat.',
-      },
-      {
-        cible: '[data-visite="adresse"]',
-        cote: 'droite',
-        titre: 'L’adresse, la seule chose vraiment nécessaire',
-        texte: 'Commencez à taper puis choisissez dans la liste : code postal, ville, canton, parcelle, année et surface se remplissent seuls. Diagly identifie le bâtiment au registre fédéral et récupère son EGID.',
-      },
-      {
-        cible: '[data-visite="carte"]',
-        cote: 'droite',
-        titre: 'Vérifiez le bon bâtiment',
-        texte: 'Deux entrées voisines portent souvent le même numéro. La carte répond à la question avant que vous ne vous déplaciez : vérifiez que le repère tombe sur le bâtiment à diagnostiquer.',
-      },
-      {
-        titre: 'Ce que vous n’avez pas à saisir',
-        texte: 'Emprise, volume, affectation, sensibilité au bruit, zone radon, classe de sol sismique, patrimoine protégé : tout cela arrive seul des services publics. Les contraintes apparaîtront dans le rapport, ce sont des surcoûts à anticiper.',
-      },
-      {
-        titre: 'Puis les deux écrans suivants',
-        texte: 'Les surfaces et la géométrie, qui serviront à estimer les quantités, puis les options du dossier. Validez, et le diagnostic s’ouvre sur son relevé.',
+        texte: 'Relevez, vérifiez les quantités, contrôlez le chiffrage, comparez les variantes, éditez le rapport. Toutes ces visites restent disponibles dans Aide et support.',
       },
     ],
   },

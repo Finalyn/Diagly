@@ -15,7 +15,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Upload, Trash2, Loader2, AlertCircle, Ruler, Pencil, FileText, Image as ImageIcon,
+  Upload, Trash2, Loader2, AlertCircle, Pencil, FileText, Image as ImageIcon,
   Check, ArrowRight, Link2,
 } from 'lucide-react'
 import { Button, Card, CardContent, Badge } from '@/components/ui'
@@ -104,9 +104,6 @@ export function ProjectPlans() {
       ) : plans.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center md:py-20">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-              <Ruler className="h-8 w-8 text-primary" />
-            </div>
             <h2 className="mb-2 text-lg font-semibold">Aucun plan</h2>
             <p className="mx-auto mb-6 max-w-sm text-sm text-muted-foreground">
               Ajoutez les plans du bâtiment. Une fois le plan étalonné, les zones que vous tracez

@@ -1,7 +1,8 @@
 import { Outlet, useLocation, Navigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
-import { DiagnosticTabs } from './DiagnosticTabs'
+import { DossierSidebar } from './DossierSidebar'
+import { DossierMobileBar } from './DossierMobileBar'
 import { MobileNav } from './MobileNav'
 import { OfflineIndicator } from '@/components/OfflineIndicator'
 import { VisiteGuidee } from '@/components/visite/VisiteGuidee'
@@ -17,7 +18,9 @@ const DASH_MASK = 'linear-gradient(to right, transparent 40%, #000 66%), linear-
 // est réservé au desktop et redirigé vers la liste des diagnostics.
 function isMobileAllowed(pathname: string): boolean {
   if (pathname === '/app' || pathname === '/app/projects' || pathname === '/app/projects/new') return true
-  if (/^\/app\/projects\/[^/]+$/.test(pathname)) return true // fiche projet -> redirige vers l'éditeur
+  if (/^\/app\/projects\/[^/]+$/.test(pathname)) return true // ouverture d'un dossier -> l'éditeur
+  // Les outils du dossier qui tiennent sur un téléphone ; plans et variantes restent au bureau.
+  if (/^\/app\/projects\/[^/]+\/(sommaire|fiche|visite|photos|couts|cecb|rapports|diagnostic)$/.test(pathname)) return true
   if (pathname.startsWith('/app/diagnostic/')) return true    // éditeur de diagnostic + item
   if (pathname === '/app/cfc') return true                    // base de données
   if (pathname === '/app/assistant') return true              // assistant, en page plein écran
@@ -46,7 +49,10 @@ export function AppLayout() {
   // contre ses boutons d'export, et non la page entière sous les panneaux. La
   // barre de défilement se tient ainsi au bord de la feuille, là où l'on
   // regarde, et non au bord de la fenêtre.
+  // Intégrations aussi : le menu reste en place, seul le panneau de la section
+  // défile.
   const pageEncastree = /^\/app\/projects\/[^/]+\/(diagnostic|rapports)$/.test(location.pathname)
+    || location.pathname === '/app/integrations' || location.pathname === '/app/prestataires'
   const mainRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
 
@@ -66,7 +72,8 @@ export function AppLayout() {
     <div className="js-print-shell safe-top safe-sides flex h-dvh overflow-hidden bg-muted">
       {/* Colonne gauche : panneau unique (desktop) */}
       <div className="js-print-hide hidden md:flex md:flex-col gap-3 pl-3 py-3 w-[15rem] lg:w-[17.5rem] shrink-0">
-        <Sidebar />
+        {/* Dans un dossier, la barre de gauche devient la sienne. */}
+        {diagProjectId && !isMobile ? <DossierSidebar projectId={diagProjectId} /> : <Sidebar />}
       </div>
 
       {/* Zone principale */}
@@ -88,15 +95,21 @@ export function AppLayout() {
         <div className={`js-print-column relative z-10 flex min-h-0 flex-1 flex-col ${onDashboard ? 'px-2 pt-1 sm:px-4 lg:px-8 lg:pt-4' : ''}`}>
           <div className="js-print-hide"><TopBar /></div>
           <OfflineIndicator />
-          {diagProjectId && !isMobile && <div className="js-print-hide"><DiagnosticTabs projectId={diagProjectId} /></div>}
+          {/* Téléphone : en tête d'un outil du dossier, le retour au sommaire. */}
+          {isMobile && diagProjectId && /\/(fiche|visite|photos|couts|cecb|rapports)$/.test(location.pathname) && (
+            <div className="js-print-hide"><DossierMobileBar projectId={diagProjectId} /></div>
+          )}
           {/* L'éditeur encastré se cale sur la hauteur restante et fait défiler ses
               propres colonnes : c'est ici que la zone cesse de défiler, sinon la page
               entière glisse sous les panneaux et le catalogue sort par le bas. */}
           <main
             ref={mainRef}
-            className={`js-print-main flex-1 overscroll-none ${onDashboard ? 'mt-6 lg:mt-8' : 'mt-3'} ${
-              pageEncastree
+            className={`js-print-main flex-1 overscroll-none ${onDashboard ? 'mt-6 lg:mt-8 short:mt-3' : 'mt-3'} ${
+              // Sur téléphone, rien n'est encastré : la page défile, c'est le geste attendu.
+              pageEncastree && !isMobile
                 ? 'min-h-0 overflow-hidden pb-3'
+                : onDashboard
+                ? 'min-h-0 overflow-y-auto pb-24 md:pb-6'
                 : `overflow-y-auto md:pb-16 ${editeurPleinEcran ? 'pb-6' : 'pb-24'}`
             }`}
           >
@@ -106,7 +119,10 @@ export function AppLayout() {
       </div>
 
       {/* Navigation mobile épurée (masquée dans l'éditeur) */}
-      {!editeurPleinEcran && (
+      {/* Masquée dans les écrans de saisie, sauf l'éditeur du relevé sur téléphone :
+          dans un dossier, elle devient la barre du dossier (relevé, visite, photos,
+          sommaire) et c'est par elle qu'on atteint le reste. */}
+      {(!editeurPleinEcran || /^\/app\/diagnostic\/[^/]+$/.test(location.pathname)) && (
         <div className="js-print-hide">
           <MobileNav />
         </div>

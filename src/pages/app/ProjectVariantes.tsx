@@ -15,8 +15,8 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, AlertTriangle, Loader2, Layers, Plus, Trash2, X, ArrowRight } from 'lucide-react'
-import { Button, Card, CardContent, Input, Badge } from '@/components/ui'
+import { AlertCircle, AlertTriangle, Loader2, Plus, Trash2, X, ArrowRight } from 'lucide-react'
+import { Button, Card, CardContent, Input } from '@/components/ui'
 import { api } from '@/lib/api'
 import { cn, formatCHF } from '@/lib/utils'
 import { baseDuProjet, calculerVariantes, montantDepuisCatalogue, montantOuvrage, type LigneArbitrage, type Variante } from '@/lib/variantes'
@@ -120,7 +120,6 @@ export function ProjectVariantes() {
   if (!diagnostic) {
     return (
       <Card><CardContent className="py-16 text-center">
-        <Layers className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
         <h3 className="mb-1 text-lg font-semibold">Aucun diagnostic</h3>
         <p className="text-sm text-muted-foreground">Une variante s'appuie sur le diagnostic de base. Commencez par le faire.</p>
       </CardContent></Card>
@@ -128,22 +127,24 @@ export function ProjectVariantes() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="space-y-4 md:space-y-6">
+      {/* Même en-tête que les autres pages du dossier : le titre, puis ce qu'on y voit. */}
+      <div>
+        <h1 className="text-xl font-bold md:text-2xl">Variantes</h1>
+        <p className="text-sm text-muted-foreground">
+          {variants.length === 0
+            ? 'Aucune variante pour l’instant'
+            : `${variants.length} variante${variants.length > 1 ? 's' : ''} comparée${variants.length > 1 ? 's' : ''} au diagnostic de base`}
+        </p>
+      </div>
+
       <Card>
         <CardContent className="p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-2xl">
-              <h1 className="text-xl font-bold">Variantes de projet</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Une variante reprend tout le diagnostic et ne change que ce que vous désignez :
-                l'ouvrage remplacé sort du total, la solution retenue prend sa place. Corriger le
-                diagnostic met à jour toutes les variantes d'un coup.
-              </p>
-            </div>
-            <Badge variant="outline" className="shrink-0">
-              {variants.length} variante{variants.length !== 1 ? 's' : ''}
-            </Badge>
-          </div>
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            Une variante reprend tout le diagnostic et ne change que ce que vous désignez :
+            l'ouvrage remplacé sort du total, la solution retenue prend sa place. Corriger le
+            diagnostic met à jour toutes les variantes d'un coup.
+          </p>
 
           {/* Comparaison : c'est la raison d'être de l'écran, elle vient donc en premier. */}
           <Comparaison base={base} variantes={calculees} />

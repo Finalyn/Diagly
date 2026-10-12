@@ -37,6 +37,9 @@ import { apiLimiter } from "./middlewares/rate-limit.js";
 import { startReminderScheduler } from "./lib/scheduler.js";
 import { startWebhookWorker } from "./lib/webhook-worker.js";
 import webhooksRouter from "./routes/webhooks.js";
+import visiteRouter from "./routes/visite.js";
+import demarrageRouter from "./routes/demarrage.js";
+import partenairesRouter from "./routes/partenaires.js";
 import mcpRouter from "./routes/mcp.js";
 
 const app = express();
@@ -108,7 +111,10 @@ app.use("/api/variants", variantsRouter); // variantes de projet (arbitrages sur
 app.use("/api/plans", plansRouter);
 app.use("/api/boards", boardsRouter);
 app.use("/api/events", eventsRouter);
+app.use("/api/visite", visiteRouter); // organisation de la visite : interlocuteurs, rendez-vous, mails
 app.use("/api/assistant", assistantRouter);
+app.use("/api/demarrage", demarrageRouter); // démarrer un diagnostic depuis un document ou un CECB (lecture IA)
+app.use("/api/partenaires", partenairesRouter); // annuaire des partenaires (tenu par Finalyn) et mises en relation
 app.use("/api/geo", geoRouter);
 app.use("/api/market", marketRouter); // public : indice des prix de la construction (coefficient marché)
 app.use("/api/export", exportRouter); // export structuré (JSON/CSV/XLSX) partagé avec la future API

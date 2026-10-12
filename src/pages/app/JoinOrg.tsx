@@ -22,7 +22,7 @@ export function JoinOrg() {
       await api.org.accept(token!)
       await qc.invalidateQueries({ queryKey: ['org'] })
       await qc.invalidateQueries({ queryKey: ['projects'] })
-      navigate('/app/team')
+      navigate('/app/settings?s=membres')
     } catch (e) { setError(e instanceof ApiError ? e.message : 'Erreur'); setJoining(false) }
   }
 

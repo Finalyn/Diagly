@@ -1,6 +1,8 @@
-import { useParams } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { Navigate, useParams, useSearchParams } from 'react-router-dom'
+import { useIsMobile } from '@/lib/use-mobile'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ClipboardCheck, Plus, Loader2, AlertCircle } from 'lucide-react'
+import { Plus, Loader2, AlertCircle } from 'lucide-react'
 import { Button, Card, CardContent } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
 import { DiagnosticDetail } from './DiagnosticDetail'
@@ -20,6 +22,8 @@ import { DiagnosticDetail } from './DiagnosticDetail'
 export function ProjectDiagnostic() {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
+  const isMobile = useIsMobile()
+  const [parametres] = useSearchParams()
 
   const projectQuery = useQuery({
     queryKey: ['project', id],
@@ -31,6 +35,17 @@ export function ProjectDiagnostic() {
     mutationFn: () => api.projects.createDiagnostic(id!, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project', id] }),
   })
+
+  // Un dossier s'ouvre sur son relevé : s'il n'a pas encore de diagnostic, on
+  // le crée tout de suite plutôt que de montrer un bouton de plus. Une seule
+  // tentative ; en cas d'échec (lecture seule, réseau), le bouton reste.
+  const tente = useRef(false)
+  const sansDiagnostic = !!projectQuery.data && projectQuery.data.diagnostics.length === 0
+  useEffect(() => {
+    if (!sansDiagnostic || tente.current) return
+    tente.current = true
+    creer.mutate()
+  }, [sansDiagnostic, creer])
 
   if (projectQuery.isLoading) {
     return (
@@ -55,11 +70,18 @@ export function ProjectDiagnostic() {
 
   const diagnostic = projectQuery.data.diagnostics[0]
 
+  if (!diagnostic && !creer.isError) {
+    return (
+      <div className="flex items-center justify-center py-32 text-muted-foreground">
+        <Loader2 className="mr-2 h-6 w-6 animate-spin" />Préparation du relevé…
+      </div>
+    )
+  }
+
   if (!diagnostic) {
     return (
       <Card>
         <CardContent className="py-16 text-center">
-          <ClipboardCheck className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
           <h3 className="mb-1 text-lg font-semibold">Aucun diagnostic</h3>
           <p className="mb-4 text-sm text-muted-foreground">Commencez par créer un diagnostic du bâtiment.</p>
           <Button onClick={() => creer.mutate()} disabled={creer.isPending}>
@@ -70,6 +92,12 @@ export function ProjectDiagnostic() {
         </CardContent>
       </Card>
     )
+  }
+
+  // Téléphone : l'éditeur plein écran, avec le relevé demandé s'il y en a un.
+  if (isMobile) {
+    const item = parametres.get('item')
+    return <Navigate to={`/app/diagnostic/${diagnostic.id}${item ? `?item=${item}` : ''}`} replace />
   }
 
   return <DiagnosticDetail diagnosticId={diagnostic.id} encastre />

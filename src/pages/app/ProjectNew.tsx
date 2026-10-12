@@ -6,6 +6,8 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Badge 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AddressAutocomplete, type AddressSelection } from '@/components/AddressAutocomplete'
 import { fetchRegistryInfo } from '@/lib/geoadmin'
+import { ChoixDepart, ImportFichier, type Depart } from '@/components/demarrage/Demarrage'
+import { champsEnergie, relevesPourLeDiagnostic, type ImportPret } from '@/lib/demarrage'
 
 // Leaflet et sa feuille de style pesent : la carte ne se charge qu'une fois une
 // adresse saisie, pas a l'ouverture du formulaire.
@@ -14,7 +16,7 @@ import { computeProjectMetrics, perimeterWarning } from '@/lib/formulas'
 import { buildingTypeLabels, type BuildingType } from '@/data/mock'
 import { cn } from '@/lib/utils'
 import { api, ApiError } from '@/lib/api'
-import type { AggregationMode, RoofType } from '@/lib/api-types'
+import type { AggregationMode, ApiProject, RoofType } from '@/lib/api-types'
 
 const buildingTypeOrder: BuildingType[] = ['LOGEMENT', 'VILLA', 'CHALET', 'SCOLAIRE', 'BUREAU', 'ADMINISTRATIF', 'INDUSTRIEL', 'HOTEL', 'COMMERCIAL', 'AUTRE']
 
@@ -131,6 +133,15 @@ export function ProjectNew() {
   const [enriching, setEnriching] = useState(false)
   const [enrichNote, setEnrichNote] = useState<string | null>(null)
 
+  /**
+   * Le point de départ : de zéro, d'un document ou d'un CECB. Tant qu'il n'est
+   * pas choisi, l'écran propose les trois. Un fichier relu pré-remplit le
+   * formulaire et apporte des relevés, créés avec le diagnostic.
+   */
+  const [depart, setDepart] = useState<Depart | null>(null)
+  const [importPret, setImportPret] = useState<ImportPret | null>(null)
+  const [progression, setProgression] = useState<string | null>(null)
+
   const [form, setForm] = useState<FormState>({
     name: '', address: '', postalCode: '', city: '', canton: 'VD',
     buildingType: 'LOGEMENT', roofType: '', parcelNumber: '',
@@ -147,7 +158,7 @@ export function ProjectNew() {
   })
 
   const create = useMutation({
-    mutationFn: async (): Promise<{ kind: 'single'; projectId: string } | { kind: 'multi'; operationId: string }> => {
+    mutationFn: async (): Promise<{ kind: 'single'; projectId: string; releves: number } | { kind: 'multi'; operationId: string }> => {
       const num = (v: Num) => (v === '' ? undefined : v)
       const primary = {
         name: form.name,
@@ -171,6 +182,9 @@ export function ProjectNew() {
         windowPct: form.windowPct * 100, // form 0-1, API attend 0-100
         honoraryPct: num(form.honoraryPct),
         reservePct: num(form.reservePct),
+        // Un fichier importé apporte l'EGID et, pour un CECB, l'étiquette.
+        egid: importPret?.batiment.egid?.slice(0, 20) || undefined,
+        ...(importPret ? champsEnergie(importPret) : {}),
       }
       const validExtras = extras.filter(b => b.address && b.city)
 
@@ -178,7 +192,8 @@ export function ProjectNew() {
       if (validExtras.length > 0) {
         const grp = await api.operations.create({ name: form.name, aggregationMode })
         const opId = grp.operation.id
-        await api.projects.create({ ...primary, operationId: opId })
+        const principal = await api.projects.create({ ...primary, operationId: opId })
+        await creerReleves(principal.project)
         for (let i = 0; i < validExtras.length; i++) {
           const b = validExtras[i]
           await api.projects.create({
@@ -205,7 +220,8 @@ export function ProjectNew() {
 
       // Bâtiment unique (éventuellement rattaché à un groupe existant via l'URL).
       const res = await api.projects.create({ ...primary, operationId: operationId ?? undefined })
-      return { kind: 'single', projectId: res.project.id }
+      const releves = await creerReleves(res.project)
+      return { kind: 'single', projectId: res.project.id, releves }
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
@@ -215,13 +231,63 @@ export function ProjectNew() {
         queryClient.invalidateQueries({ queryKey: ['operation', operationId] })
         navigate(`/app/diagnostics-multi/${operationId}`)
       } else {
-        navigate(`/app/projects/${data.projectId}`)
+        // Avec des relevés importés, on ouvre le diagnostic pour les vérifier.
+        navigate(data.releves ? `/app/projects/${data.projectId}/diagnostic` : `/app/projects/${data.projectId}`)
       }
     },
+    onSettled: () => setProgression(null),
     onError: (err) => {
       setError(err instanceof ApiError ? err.message : 'Erreur de création')
     },
   })
+
+  /**
+   * Les relevés d'un fichier importé : le diagnostic d'abord, puis chaque
+   * relevé, quatre à la fois. Un relevé refusé n'arrête pas les autres.
+   */
+  async function creerReleves(projet: ApiProject): Promise<number> {
+    if (!importPret?.releves.length) return 0
+    setProgression('Création du diagnostic…')
+    const { diagnostic } = await api.projects.createDiagnostic(projet.id, {})
+    const base = await queryClient.fetchQuery({ queryKey: ['base-cfc'], queryFn: () => api.cfc.base(), staleTime: 60 * 60 * 1000 })
+    const items = relevesPourLeDiagnostic(importPret, base, projet)
+    let faits = 0
+    for (let i = 0; i < items.length; i += 4) {
+      const lot = items.slice(i, i + 4)
+      const res = await Promise.allSettled(lot.map((it) => api.diagnostics.createItem(diagnostic.id, it)))
+      faits += res.filter((x) => x.status === 'fulfilled').length
+      setProgression(`Création des relevés ${Math.min(i + 4, items.length)}/${items.length}…`)
+    }
+    return faits
+  }
+
+  /** Une lecture relue pré-remplit le formulaire ; rien n'est encore créé. */
+  const appliquerImport = (imp: ImportPret) => {
+    const b = imp.batiment
+    const nombre = (v: number | null | undefined): Num => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : '')
+    const canton = b.canton?.trim().toUpperCase()
+    setForm((prev) => ({
+      ...prev,
+      name: b.nom?.trim() || [b.adresse, b.localite].filter(Boolean).join(', ') || prev.name,
+      address: b.adresse?.trim() || prev.address,
+      postalCode: b.npa?.trim() || prev.postalCode,
+      city: b.localite?.trim() || prev.city,
+      canton: canton && CANTONS.includes(canton) ? canton : prev.canton,
+      buildingType: b.type ?? prev.buildingType,
+      yearBuilt: nombre(b.anneeConstruction) || prev.yearBuilt,
+      renovationYear: nombre(b.anneeRenovation) || prev.renovationYear,
+      nbApartments: nombre(b.nbLogements) || prev.nbApartments,
+      nbFloors: nombre(b.nbEtages) || prev.nbFloors,
+      nbStaircases: nombre(b.nbCages) || prev.nbStaircases,
+      floorArea: nombre(b.surfacePlancher) || prev.floorArea,
+      builtArea: nombre(b.surfaceBatie) || prev.builtArea,
+      terrainArea: nombre(b.surfaceTerrain) || prev.terrainArea,
+      perimeter: nombre(b.perimetre) || prev.perimeter,
+    }))
+    setErrors(new Set())
+    setImportPret(imp)
+    setStep(1)
+  }
 
   const clearError = (...keys: string[]) =>
     setErrors(prev => {
@@ -349,9 +415,33 @@ export function ProjectNew() {
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
         <div>
           <h1 className="text-2xl font-bold">{operationId ? 'Ajouter un bâtiment' : 'Nouveau diagnostic'}</h1>
-          <p className="text-muted-foreground">Étape {step} sur 3{operationId ? " · rattaché à l'opération" : ''}</p>
+          <p className="text-muted-foreground">
+            {!depart
+              ? 'Comment voulez-vous commencer ?'
+              : depart !== 'zero' && !importPret
+                ? (depart === 'cecb' ? 'À partir d’un certificat énergétique' : 'À partir d’un document')
+                : `Étape ${step} sur 3${operationId ? " · rattaché à l'opération" : ''}`}
+          </p>
         </div>
       </div>
+
+      {!depart && <ChoixDepart onChoisir={setDepart} />}
+      {depart && depart !== 'zero' && !importPret && (
+        <ImportFichier source={depart} onRetour={() => setDepart(null)} onPret={appliquerImport} />
+      )}
+
+      {(depart === 'zero' || importPret) && <>
+      {importPret && (
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm">
+          <p className="min-w-0 text-blue-900">
+            Pré-rempli depuis « {importPret.fichier} ». Vérifiez chaque champ ; en choisissant l’adresse dans la liste proposée, les registres fédéraux complètent le reste.
+            {importPret.releves.length > 0 && ` ${importPret.releves.length} relevé${importPret.releves.length > 1 ? 's' : ''} seront créés avec le diagnostic.`}
+          </p>
+          <button className="shrink-0 text-xs font-medium text-blue-700 hover:underline" onClick={() => setImportPret(null)}>
+            Changer de fichier
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mb-6">
         {[1, 2, 3].map(s => (
@@ -650,17 +740,18 @@ export function ProjectNew() {
       )}
 
       <div className="flex justify-between">
-        <Button variant="outline" disabled={create.isPending} onClick={() => step > 1 ? setStep(step - 1) : navigate(-1)}>
-          <ArrowLeft className="mr-2 h-4 w-4" />{step > 1 ? 'Précédent' : 'Annuler'}
+        <Button variant="outline" disabled={create.isPending} onClick={() => step > 1 ? setStep(step - 1) : (setImportPret(null), setDepart(null))}>
+          <ArrowLeft className="mr-2 h-4 w-4" />{step > 1 ? 'Précédent' : 'Point de départ'}
         </Button>
         <Button disabled={create.isPending} onClick={goNext} className={cn(step === 3 && 'min-w-44')}>
           {step < 3
             ? <>Suivant<ArrowRight className="ml-2 h-4 w-4" /></>
             : create.isPending
-              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Création…</>
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{progression ?? 'Création…'}</>
               : <><Check className="mr-2 h-4 w-4" />Créer le diagnostic</>}
         </Button>
       </div>
+      </>}
 
       {/*
         Les oublis se confirment, ils ne bloquent pas.

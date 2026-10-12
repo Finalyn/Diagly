@@ -1,10 +1,9 @@
 import { useEffect, useRef } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link, useNavigate, Navigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useIsMobile } from '@/lib/use-mobile'
-import { Loader2, AlertCircle, ClipboardCheck, Plus } from 'lucide-react'
+import { Loader2, AlertCircle, ClipboardCheck, Plus, CalendarCheck, Navigation, Phone } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Select, Input } from '@/components/ui'
-import { VisitEmail } from '@/components/VisitEmail'
 import { Dropdown } from '@/components/Dropdown'
 import { ProjectMap } from '@/components/ProjectMap'
 import { TerrainConstraintsCard } from '@/components/TerrainConstraintsCard'
@@ -14,6 +13,7 @@ import type { ProjectStatus, ApiProject, RoofType } from '@/lib/api-types'
 import { computeProjectMetrics, roofSurface, perimeterWarning, floorsWarning } from '@/lib/formulas'
 import { formatDate } from '@/lib/utils'
 import { api } from '@/lib/api'
+import { aAppeler, lienItineraire } from '@/lib/visite-mails'
 
 const STATUSES: ProjectStatus[] = ['NON_PLANIFIE', 'PLANIFIE', 'EN_COURS', 'EN_REVUE', 'TERMINE', 'ARCHIVE']
 const STATUS_OPTIONS = STATUSES.map(s => ({ value: s, label: statusLabels[s], color: statusColors[s] }))
@@ -29,7 +29,24 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-export function ProjectDetail() {
+/**
+ * Ouvrir un dossier, c'est ouvrir son relevé : l'éditeur est l'écran du
+ * travail, la fiche du bâtiment n'en est qu'un outil. Sur téléphone, la fiche
+ * garde son rôle d'aiguillage vers l'éditeur plein écran.
+ */
+export function OuvertureDossier() {
+  const { id } = useParams<{ id: string }>()
+  const isMobile = useIsMobile()
+  if (isMobile) return <ProjectDetail aiguillage />
+  return <Navigate to={`/app/projects/${id}/diagnostic`} replace />
+}
+
+/**
+ * La fiche du bâtiment. Avec `aiguillage` (l'ouverture d'un dossier sur
+ * téléphone), elle ne s'affiche pas : elle mène à l'éditeur plein écran. Sans
+ * lui, elle s'affiche partout, téléphone compris, depuis le sommaire du dossier.
+ */
+export function ProjectDetail({ aiguillage = false }: { aiguillage?: boolean } = {}) {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -39,6 +56,9 @@ export function ProjectDetail() {
     queryFn: () => api.projects.get(id!),
     enabled: !!id,
   })
+
+  // Les interlocuteurs de la visite : la fiche propose d'appeler celui qui ouvre.
+  const visiteQ = useQuery({ queryKey: ['visite', id], queryFn: () => api.visite.get(id!), enabled: !!id && !aiguillage })
 
   const update = useMutation({
     mutationFn: (body: Partial<ApiProject>) => api.projects.update(id!, body),
@@ -52,7 +72,8 @@ export function ProjectDetail() {
     mutationFn: () => api.projects.createDiagnostic(id!, {}),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['project', id] })
-      navigate(`/app/diagnostic/${res.diagnostic.id}`)
+      // Téléphone : l'éditeur plein écran ; ordinateur : le relevé dans son dossier.
+      navigate(window.matchMedia('screen and (max-width: 767px)').matches ? `/app/diagnostic/${res.diagnostic.id}` : `/app/projects/${id}/diagnostic`)
     },
   })
 
@@ -62,13 +83,13 @@ export function ProjectDetail() {
   const firstDiagId = data?.diagnostics?.[0]?.id
   const autoDiag = useRef(false)
   useEffect(() => {
-    if (!isMobile || !data) return
+    if (!aiguillage || !isMobile || !data) return
     if (firstDiagId) { navigate(`/app/diagnostic/${firstDiagId}`, { replace: true }); return }
     if (!autoDiag.current && !createDiag.isPending) { autoDiag.current = true; createDiag.mutate() }
-  }, [isMobile, data, firstDiagId, navigate, createDiag])
+  }, [aiguillage, isMobile, data, firstDiagId, navigate, createDiag])
 
   // Mobile : on n'affiche jamais la page projet (onglets, cartes…), seulement un chargement le temps de basculer.
-  if (isMobile && (isLoading || data)) {
+  if (aiguillage && isMobile && (isLoading || data)) {
     return <div className="flex items-center justify-center py-32 text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mr-2" />Ouverture de l'éditeur…</div>
   }
 
@@ -110,6 +131,9 @@ export function ProjectDetail() {
     }
 
   const isResidential = RESIDENTIAL.includes(project.buildingType)
+  const adresse = [project.address, [project.postalCode, project.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+  const contact = aAppeler(visiteQ.data?.contacts ?? [])
+  const lienDiscret = 'inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground'
 
   return (
     <div className="space-y-6">
@@ -121,21 +145,39 @@ export function ProjectDetail() {
             onBlur={saveText('name', project.name, true)}
             className="text-xl md:text-2xl font-bold h-auto border-0 px-0 shadow-none focus-visible:ring-0 bg-transparent"
           />
-          <div className="flex items-center gap-2 mt-1">
-            <Dropdown
-              value={project.status}
-              options={STATUS_OPTIONS}
-              disabled={update.isPending}
-              onChange={(v) => update.mutate({ status: v as ProjectStatus })}
-            />
-            {update.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <div className="flex items-center gap-2">
+              <Dropdown
+                value={project.status}
+                options={STATUS_OPTIONS}
+                disabled={update.isPending}
+                onChange={(v) => update.mutate({ status: v as ProjectStatus })}
+              />
+              {update.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            </div>
+            {/* Se rendre au bâtiment, et joindre qui l'ouvre. */}
+            <a href={lienItineraire(adresse)} target="_blank" rel="noopener noreferrer" className={lienDiscret}>
+              <Navigation className="h-3.5 w-3.5" />Itinéraire
+            </a>
+            {contact ? (
+              <a href={`tel:${contact.phone!.replace(/\s/g, '')}`} className={lienDiscret} title={`Appeler ${contact.name}`}>
+                <Phone className="h-3.5 w-3.5" />Appeler {contact.name}<span className="text-muted-foreground/70">{contact.phone}</span>
+              </a>
+            ) : visiteQ.data && (
+              <Link to={`/app/projects/${project.id}/visite`} className={lienDiscret}>
+                <Phone className="h-3.5 w-3.5" />Ajouter un numéro à appeler
+              </Link>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-start">
-        <VisitEmail project={project} />
+        {/* L'organisation de la visite a son onglet : interlocuteurs, rendez-vous, mails. */}
+        <Link to={`/app/projects/${project.id}/visite`} className="shrink-0">
+          <Button variant="outline" className="w-full sm:w-auto"><CalendarCheck className="mr-2 h-4 w-4" />Organiser la visite</Button>
+        </Link>
         {diagnostic ? (
-          <Link to={`/app/diagnostic/${diagnostic.id}`} className="shrink-0">
-            <Button className="w-full sm:w-auto"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir le diagnostic</Button>
+          <Link to={`/app/projects/${project.id}/diagnostic`} className="shrink-0">
+            <Button className="w-full sm:w-auto"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir le relevé</Button>
           </Link>
         ) : (
           <Button onClick={() => createDiag.mutate()} disabled={createDiag.isPending} className="w-full shrink-0 sm:w-auto">
@@ -259,7 +301,7 @@ export function ProjectDetail() {
                 : 'Visite non planifiée'}
             </p>
           </div>
-          <StatistiquesDiagnostic diagnosticId={diagnostic.id} />
+          <StatistiquesDiagnostic diagnosticId={diagnostic.id} projectId={project.id} />
           <ZoneDanger diagnosticId={diagnostic.id} onSupprime={() => navigate('/app/projects')} />
         </>
       )}

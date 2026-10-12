@@ -1,13 +1,14 @@
 import { useParams } from 'react-router-dom'
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, AlertCircle, Zap, Upload, Check, AlertTriangle, FileText } from 'lucide-react'
+import { Loader2, AlertCircle, Upload, Check, AlertTriangle, FileText } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui'
 import { EstimationEnergetique } from '@/components/energie/EstimationEnergetique'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { buildingTypeLabels } from '@/data/mock'
 import { cn, formatDate } from '@/lib/utils'
 import { api } from '@/lib/api'
+import { MENTION_CECB } from '@/lib/marque-cecb'
 import type { ApiProject, CecbExtraction } from '@/lib/api-types'
 
 const CLASSES = [
@@ -141,7 +142,7 @@ export function ProjectCECB() {
           <p className="text-muted-foreground text-sm">
             {measured
               ? 'Classe issue du certificat importé'
-              : "Estimation d'après l'année de construction, en l'absence de certificat. À confirmer par un CECB."}
+              : "Estimation d'après l'année de construction, en l'absence de certificat. À confirmer par un certificat CECB® établi par un expert certifié."}
           </p>
         </div>
         <div className="shrink-0">
@@ -173,8 +174,9 @@ export function ProjectCECB() {
       <div className="pt-2">
         <h2 className="text-lg font-semibold">Certificat officiel</h2>
         <p className="text-sm text-muted-foreground">
-          Si le bâtiment possède un CECB, importez-le : ses valeurs mesurées remplacent l'estimation.
+          Si le bâtiment possède un certificat énergétique cantonal (CECB®), importez-le : ses valeurs remplacent l'estimation.
         </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{MENTION_CECB}</p>
       </div>
 
       <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
@@ -195,7 +197,6 @@ export function ProjectCECB() {
               </>
             ) : (
               <div className="py-8">
-                <Zap className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">Importez un certificat, ou renseignez l'année de construction/rénovation sur le résumé pour estimer la classe.</p>
               </div>
             )}

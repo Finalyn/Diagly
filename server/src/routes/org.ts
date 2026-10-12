@@ -47,6 +47,20 @@ router.post("/", validateBody(z.object({ name: z.string().min(1).max(150) })), a
   res.status(201).json({ organization: org, role: "OWNER" });
 });
 
+// Renommer l'organisation (ADMIN+). Elle porte le nom de la société, et le suit
+// quand il change dans les réglages de l'entreprise. Le slug ne bouge pas : il
+// sert d'identifiant stable.
+router.put("/", requireOrgRole("ADMIN"), validateBody(z.object({ name: z.string().trim().min(1).max(150) })), async (req, res) => {
+  const ctx = await getOrgContext(req.auth!.sub);
+  const { name } = req.body as { name: string };
+  const organization = await prisma.organization.update({
+    where: { id: ctx.organizationId! },
+    data: { name },
+    include: { _count: { select: { members: true } } },
+  });
+  res.json({ organization, role: ctx.orgRole });
+});
+
 // ---- Membres (ADMIN+) ----
 router.get("/members", requireOrgRole("ADMIN"), async (req, res) => {
   const ctx = await getOrgContext(req.auth!.sub);

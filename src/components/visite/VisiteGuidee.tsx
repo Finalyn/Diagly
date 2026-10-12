@@ -53,16 +53,31 @@ export function VisiteGuidee() {
    * la visite rebondirait sans fin.
    */
   const etapePrecedente = useRef(0)
+  /**
+   * La route d'une étape s'ouvre quand l'étape s'ouvre, et seulement alors.
+   *
+   * Imposée à chaque changement d'adresse, elle ramenait à la liste celui qui
+   * venait justement d'ouvrir un dossier comme on le lui demandait : l'adresse
+   * change avant que l'écran attendu ait fini de charger.
+   */
+  const routeOuverte = useRef<string | null>(null)
+  /** Vrai quand on est arrivé sur l'étape en avançant (et non par « précédent »). */
+  const enAvantRef = useRef(true)
   useEffect(() => {
     const enAvant = etape >= etapePrecedente.current
     etapePrecedente.current = etape
+    enAvantRef.current = enAvant
     if (!pas) return
     if (enAvant && pas.sauterSi && document.querySelector(pas.sauterSi)) {
       aller(etape + 1)
       return
     }
-    if (pas.route && location.pathname !== pas.route) navigate(pas.route)
-  }, [pas, etape, location.pathname, navigate, aller])
+    const cle = `${visiteId}:${etape}`
+    if (pas.route && routeOuverte.current !== cle) {
+      routeOuverte.current = cle
+      if (location.pathname !== pas.route) navigate(pas.route)
+    }
+  }, [pas, etape, visiteId, location.pathname, navigate, aller])
 
   /*
    * La cible est relue à chaque image.
@@ -77,6 +92,13 @@ export function VisiteGuidee() {
     let brut = 0
     let amene = false
     const lire = () => {
+      // L'écran qui rend l'étape inutile peut arriver après elle (un éditeur
+      // qui charge) : on la saute dès qu'il est là, et pas seulement à l'entrée.
+      if (enAvantRef.current && pas.sauterSi && document.querySelector(pas.sauterSi)) {
+        const s = useVisite.getState()
+        s.aller(s.etape + 1)
+        return
+      }
       const el = pas.cible ? document.querySelector(pas.cible) : null
       if (el) {
         const r = el.getBoundingClientRect()
@@ -115,8 +137,14 @@ export function VisiteGuidee() {
     const el = document.querySelector(pas.cible)
     if (!el) return
     const auClic = () => {
-      // On laisse l'application réagir avant de montrer la suite.
-      window.setTimeout(() => useVisite.getState().aller(useVisite.getState().etape + 1), 450)
+      // On laisse l'application réagir avant de montrer la suite. Le clic peut
+      // aussi avoir fait apparaître ce qui rend l'étape inutile (sauterSi), et la
+      // visite a déjà avancé : on n'avance alors pas une seconde fois.
+      const depart = useVisite.getState().etape
+      window.setTimeout(() => {
+        const s = useVisite.getState()
+        if (s.etape === depart) s.aller(depart + 1)
+      }, 450)
     }
     el.addEventListener('click', auClic, { once: true })
     return () => el.removeEventListener('click', auClic)
@@ -151,6 +179,9 @@ export function VisiteGuidee() {
   }, [visite, quitter, terminer])
 
   if (!visite || !pas || isMobile) return null
+
+  /** L'étape attend un clic, et l'élément à cliquer est bien à l'écran. */
+  const attendGeste = !!pas.avanceAuClic && !!cible
 
   const bulle = { w: Math.min(LARGEUR_BULLE, fenetre.w - 32), h: hauteurBulle }
   const trou = cible ? trouDuProjecteur(cible, 8, fenetre) : null
@@ -251,45 +282,48 @@ export function VisiteGuidee() {
 
         <p className="px-4 pt-2 text-[13.5px] leading-relaxed text-neutral-700">{pas.texte}</p>
 
-        {pas.avanceAuClic && (
+        {attendGeste && (
           <p className="mx-4 mt-2 rounded-lg bg-blue-50 px-3 py-2 text-[12px] font-medium text-blue-700">
             À vous : cliquez sur l’élément entouré. Je continue juste après.
           </p>
         )}
 
         <div className="mt-3 flex items-center gap-2 border-t px-4 py-3">
-          <div className="flex flex-1 items-center gap-1.5" aria-label={`Étape ${etape + 1} sur ${visite.etapes.length}`}>
-            {visite.etapes.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => aller(i)}
-                title={`Étape ${i + 1}`}
-                className={cn('h-1.5 rounded-full transition-all', i === etape ? 'w-5 bg-blue-600' : i < etape ? 'w-1.5 bg-blue-300' : 'w-1.5 bg-neutral-200')}
-              />
-            ))}
+          {/* Une barre plutôt qu'un point par étape : à douze étapes et plus, les
+              points poussaient « Suivant » hors de la bulle. */}
+          <div className="flex min-w-0 flex-1 items-center gap-2" aria-label={`Étape ${etape + 1} sur ${visite.etapes.length}`}>
+            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-neutral-200">
+              <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${((etape + 1) / visite.etapes.length) * 100}%` }} />
+            </div>
+            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{etape + 1}/{visite.etapes.length}</span>
           </div>
           {/* « Passer » en toutes lettres : une visite qui s'invite doit
               pouvoir se congédier sans chercher la croix. */}
           {!dernier && (
-            <button onClick={quitter} className="rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
+            <button onClick={quitter} className="shrink-0 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
               Passer
             </button>
           )}
           <button
             onClick={() => aller(etape - 1)}
             disabled={etape === 0}
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted disabled:opacity-30"
+            className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted disabled:opacity-30"
             title="Étape précédente"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button
-            onClick={() => (dernier ? terminer() : aller(etape + 1))}
-            className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-          >
-            {dernier ? 'Terminer' : 'Suivant'}
-            {!dernier && <ChevronRight className="h-4 w-4" />}
-          </button>
+          {/* Une étape qui attend un geste n'a pas de « Suivant » : c'est le clic
+              sur l'élément entouré qui fait avancer. Si l'élément manque (écran
+              différent, rien à ouvrir), le bouton revient pour ne pas bloquer. */}
+          {!attendGeste && (
+            <button
+              onClick={() => (dernier ? terminer() : aller(etape + 1))}
+              className="flex shrink-0 items-center gap-1 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-colors hover:border-black/[0.14] hover:bg-neutral-50"
+            >
+              {dernier ? 'Terminer' : 'Suivant'}
+              {!dernier && <ChevronRight className="h-4 w-4" />}
+            </button>
+          )}
         </div>
       </div>
     </div>

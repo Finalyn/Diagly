@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle, Download, Camera } from 'lucide-react'
+import { Loader2, AlertCircle, Download } from 'lucide-react'
 import { Button, Card, CardContent } from '@/components/ui'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -157,7 +157,6 @@ export function ProjectPhotos() {
       {photos.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
-            <Camera className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
             <p className="text-muted-foreground">
               Les photos prises pendant la visite apparaîtront ici, regroupées par élément.
             </p>

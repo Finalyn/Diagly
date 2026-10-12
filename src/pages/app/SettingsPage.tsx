@@ -20,10 +20,10 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle, Bell, BellRing, Building2, Check, ChevronLeft, ChevronRight, CircleUser,
-  CreditCard, Loader2, LogOut, Mail, Palette, ShieldCheck, ShieldOff, User as UserIcon, Users,
+  CreditCard, KeyRound, Loader2, LogOut, Mail, Palette, ShieldCheck, ShieldOff, User as UserIcon, Users,
 } from 'lucide-react'
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
@@ -36,17 +36,19 @@ import {
   aChange, champsManquantsDuBureau, etatDuProfil, initiales, nomAffiche,
 } from '@/lib/reglages'
 import type { UserPreferences } from '@/lib/api-types'
+import { SectionEquipe, type IdSectionEquipe } from './Equipe'
 
 type IdSection =
   | 'profil' | 'securite' | 'notifications' | 'compte'
   | 'bureau' | 'personnalisation' | 'facturation'
+  | IdSectionEquipe
 
 const SECTIONS: {
   id: IdSection
   label: string
   aide: string
   icone: React.ComponentType<{ className?: string }>
-  famille: 'Mon compte' | 'Mon travail'
+  famille: 'Mon compte' | 'Mon travail' | 'Mon organisation'
 }[] = [
   { id: 'profil', label: 'Profil', aide: 'Votre nom, votre téléphone', icone: UserIcon, famille: 'Mon compte' },
   { id: 'securite', label: 'Sécurité', aide: 'Mot de passe et double authentification', icone: ShieldCheck, famille: 'Mon compte' },
@@ -55,9 +57,13 @@ const SECTIONS: {
   { id: 'bureau', label: 'Entreprise', aide: 'Identité et coordonnées du bureau', icone: Building2, famille: 'Mon travail' },
   { id: 'personnalisation', label: 'Personnalisation', aide: 'Logo et couleur de vos rapports', icone: Palette, famille: 'Mon travail' },
   { id: 'facturation', label: 'Facturation', aide: 'Plan et coordonnées de facturation', icone: CreditCard, famille: 'Mon travail' },
+  // L'équipe se règle ici, avec le reste : elle n'a plus sa page dans le menu principal.
+  { id: 'membres', label: 'Membres', aide: 'Les personnes de votre organisation et leur rôle', icone: Users, famille: 'Mon organisation' },
+  { id: 'invitations', label: 'Invitations', aide: 'Invitations envoyées, pas encore acceptées', icone: Mail, famille: 'Mon organisation' },
+  { id: 'roles', label: 'Rôles et droits', aide: 'Ce que chaque rôle peut faire', icone: KeyRound, famille: 'Mon organisation' },
 ]
 
-const FAMILLES = ['Mon compte', 'Mon travail'] as const
+const FAMILLES = ['Mon compte', 'Mon travail', 'Mon organisation'] as const
 
 export function SettingsPage() {
   const isMobile = useIsMobile()
@@ -121,6 +127,9 @@ export function SettingsPage() {
               {choisie === 'personnalisation' && <SectionPersonnalisation />}
               {choisie === 'facturation' && <SectionFacturation />}
               {choisie === 'compte' && <SectionCompte />}
+              {(choisie === 'membres' || choisie === 'invitations' || choisie === 'roles') && (
+                <SectionEquipe section={choisie} onChoisir={choisir} />
+              )}
             </CardContent>
           </Card>
         )}
@@ -143,6 +152,10 @@ function Menu({ choisie, onChoisir, mobile }: {
 }) {
   const user = useAuth((s) => s.user)
   const bureau = user?.preferences?.company
+  // Les invitations ne regardent que les administrateurs d'une organisation.
+  const org = useQuery({ queryKey: ['org'], queryFn: () => api.org.get(), staleTime: 5 * 60_000 })
+  const gereEquipe = !!org.data?.organization && (org.data.role === 'OWNER' || org.data.role === 'ADMIN')
+  const visibles = SECTIONS.filter((s) => s.id !== 'invitations' || gereEquipe)
   return (
     <Card className="w-full shrink-0 overflow-hidden lg:w-72">
       <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-3.5">
@@ -160,7 +173,7 @@ function Menu({ choisie, onChoisir, mobile }: {
           <div key={famille}>
             <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{famille}</p>
             <div className="space-y-1">
-              {SECTIONS.filter((s) => s.famille === famille).map((s) => {
+              {visibles.filter((s) => s.famille === famille).map((s) => {
                 const on = s.id === choisie
                 return (
                   <button
@@ -419,7 +432,7 @@ function SectionSecurite() {
           <p className={cn('mt-0.5 text-xs', doubleAuth ? 'text-green-800' : 'text-amber-800')}>
             {doubleAuth
               ? 'Un mot de passe volé ne suffit plus à ouvrir vos dossiers.'
-              : 'Vos dossiers contiennent des adresses, des plans et des montants. Un code à usage unique prend une minute à activer.'}
+              : 'Vos dossiers contiennent des adresses, des plans et des montants. Un code à usage unique, par une application ou par email, prend une minute à activer.'}
           </p>
         </div>
       </div>
@@ -435,15 +448,22 @@ function DoubleAuthentification() {
   const accessToken = useAuth((s) => s.accessToken)
   const refreshToken = useAuth((s) => s.refreshToken)
   const [actif, setActif] = useState(!!user?.twoFactorEnabled)
+  // Un compte activé avant l'email n'a pas de méthode enregistrée : c'est l'application.
+  const [methode, setMethode] = useState<'TOTP' | 'EMAIL'>(user?.twoFactorMethod === 'EMAIL' ? 'EMAIL' : 'TOTP')
+  const [options, setOptions] = useState<{ email: boolean; adresse: string | null } | null>(null)
+  const [choix, setChoix] = useState<'TOTP' | 'EMAIL'>('TOTP')
   const [installation, setInstallation] = useState<{ qr: string; secret: string } | null>(null)
+  /** Le code de confirmation envoyé par email : son ticket, et l'adresse masquée. */
+  const [envoi, setEnvoi] = useState<{ ticket: string; email: string } | null>(null)
   const [retrait, setRetrait] = useState(false)
   const [code, setCode] = useState('')
   const [enCours, setEnCours] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
 
-  const synchroniser = (valeur: boolean) => {
+  const synchroniser = (valeur: boolean, m: 'TOTP' | 'EMAIL' | null) => {
     setActif(valeur)
-    if (user && accessToken && refreshToken) setAuth({ ...user, twoFactorEnabled: valeur }, accessToken, refreshToken)
+    if (m) setMethode(m)
+    if (user && accessToken && refreshToken) setAuth({ ...user, twoFactorEnabled: valeur, twoFactorMethod: valeur ? m : null }, accessToken, refreshToken)
   }
 
   // L'état réel est celui du serveur : revenir sur la page ne doit pas montrer
@@ -452,8 +472,10 @@ function DoubleAuthentification() {
     api.auth.me().then((r) => {
       if (!r.user) return
       setActif(!!r.user.twoFactorEnabled)
+      setMethode(r.user.twoFactorMethod === 'EMAIL' ? 'EMAIL' : 'TOTP')
       if (accessToken && refreshToken) setAuth(r.user, accessToken, refreshToken)
     }).catch(() => undefined)
+    api.auth.twoFactorOptions().then(setOptions).catch(() => setOptions({ email: false, adresse: null }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -462,27 +484,68 @@ function DoubleAuthentification() {
     setErreur(null); setEnCours(true)
     try { await action() } catch (e) { setErreur(e instanceof ApiError ? e.message : defaut) } finally { setEnCours(false) }
   }
+  const annuler = () => { setInstallation(null); setEnvoi(null); setRetrait(false); setCode(''); setErreur(null) }
+  const envoyerCode = () => faire(async () => { setEnvoi(await api.auth.twoFactorEmailCode()); setCode('') }, 'Le code n’a pas pu partir.')
+
+  const champCode = (
+    <Input
+      value={code} onChange={(e) => setCode(chiffres(e.target.value))} inputMode="numeric" autoFocus
+      placeholder="000000" className="max-w-xs text-center font-semibold tracking-[0.3em]"
+    />
+  )
+
+  const METHODES: { id: 'TOTP' | 'EMAIL'; titre: string; aide: string; indisponible?: string }[] = [
+    { id: 'TOTP', titre: 'Application d’authentification', aide: 'Un code change toutes les trente secondes dans une application du téléphone (Google Authenticator, Microsoft Authenticator…). Fonctionne sans réseau.' },
+    {
+      id: 'EMAIL', titre: 'Code par email',
+      aide: `Un code à six chiffres vous est envoyé à chaque connexion${options?.adresse ? `, à ${options.adresse}` : ''}. Rien à installer.`,
+      indisponible: options && !options.email ? 'L’envoi d’emails n’est pas configuré sur ce serveur.' : undefined,
+    },
+  ]
 
   return (
     <Bloc
       titre="Double authentification"
-      aide="Un code à usage unique, donné par une application sur votre téléphone."
+      aide={actif
+        ? (methode === 'EMAIL' ? 'Un code envoyé par email est demandé à chaque connexion.' : 'Un code de votre application est demandé à chaque connexion.')
+        : 'Un code à usage unique demandé après le mot de passe, à chaque connexion.'}
       action={actif
         ? <Badge className="shrink-0 bg-green-600 text-white">Active</Badge>
         : <Badge variant="outline" className="shrink-0">Inactive</Badge>}
     >
       {erreur && <div className="mb-3"><Erreur message={erreur} /></div>}
 
-      {!actif && !installation && (
-        <Button onClick={() => faire(async () => {
-          const r = await api.auth.twoFactorSetup()
-          setInstallation({ qr: r.qr, secret: r.secret })
-        }, 'Impossible de démarrer.')} disabled={enCours}>
-          {enCours ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-          Activer
-        </Button>
+      {/* ----- Choisir la méthode ----- */}
+      {!actif && !installation && !envoi && (
+        <div className="space-y-3">
+          <div className="grid max-w-2xl gap-2 sm:grid-cols-2">
+            {METHODES.map((m) => (
+              <label key={m.id} className={cn(
+                'flex items-start gap-2.5 rounded-xl border p-3 transition-colors',
+                m.indisponible ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                choix === m.id && !m.indisponible ? 'border-blue-300 bg-white' : 'border-black/[0.08] bg-white/50 hover:bg-white',
+              )}>
+                <input type="radio" name="methode-2fa" checked={choix === m.id} disabled={!!m.indisponible} onChange={() => setChoix(m.id)} className="mt-0.5 accent-blue-600" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{m.titre}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{m.indisponible ?? m.aide}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <Button
+            disabled={enCours}
+            onClick={() => (choix === 'EMAIL'
+              ? envoyerCode()
+              : faire(async () => { const r = await api.auth.twoFactorSetup(); setInstallation({ qr: r.qr, secret: r.secret }) }, 'Impossible de démarrer.'))}
+          >
+            {enCours ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+            {choix === 'EMAIL' ? 'Recevoir un code de confirmation' : 'Activer'}
+          </Button>
+        </div>
       )}
 
+      {/* ----- Activer par l'application ----- */}
       {!actif && installation && (
         <div className="flex flex-col gap-4 sm:flex-row">
           <img src={installation.qr} alt="Code à scanner" className="h-40 w-40 shrink-0 rounded-xl border bg-white" />
@@ -493,52 +556,78 @@ function DoubleAuthentification() {
               <li>Entrez les six chiffres affichés.</li>
             </ol>
             <code className="block break-all rounded-lg bg-muted px-2 py-1.5 text-[11px]">{installation.secret}</code>
-            <Input
-              value={code} onChange={(e) => setCode(chiffres(e.target.value))} inputMode="numeric"
-              placeholder="000000" className="text-center font-semibold tracking-[0.3em]"
-            />
+            {champCode}
             <div className="flex gap-2">
               <Button
-                className="flex-1"
                 disabled={enCours || code.length < 6}
                 onClick={() => faire(async () => {
                   await api.auth.twoFactorEnable(code)
-                  synchroniser(true); setInstallation(null); setCode('')
+                  synchroniser(true, 'TOTP'); annuler()
                 }, 'Code invalide.')}
               >
                 {enCours ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Check className="mr-2 h-4 w-4" />Activer</>}
               </Button>
-              <Button variant="outline" onClick={() => { setInstallation(null); setCode(''); setErreur(null) }}>Annuler</Button>
+              <Button variant="outline" onClick={annuler}>Annuler</Button>
             </div>
           </div>
         </div>
       )}
 
-      {actif && !retrait && (
-        <Button variant="outline" className="text-red-600 hover:text-red-700" onClick={() => { setRetrait(true); setErreur(null) }}>
-          <ShieldOff className="mr-2 h-4 w-4" />Désactiver
-        </Button>
+      {/* ----- Activer par email, ou désactiver une 2FA par email : le code reçu ----- */}
+      {envoi && (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Un code à six chiffres vient de partir à <span className="font-medium text-foreground">{envoi.email}</span>. Il est valable 10 minutes.
+          </p>
+          {champCode}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant={actif ? 'outline' : 'default'}
+              className={actif ? 'text-red-600 hover:text-red-700' : undefined}
+              disabled={enCours || code.length < 6}
+              onClick={() => faire(async () => {
+                if (actif) { await api.auth.twoFactorDisable(code, envoi.ticket); synchroniser(false, null) }
+                else { await api.auth.twoFactorEmailEnable(envoi.ticket, code); synchroniser(true, 'EMAIL') }
+                annuler()
+              }, 'Code invalide.')}
+            >
+              {enCours ? <Loader2 className="h-4 w-4 animate-spin" /> : actif ? 'Désactiver' : <><Check className="mr-2 h-4 w-4" />Activer</>}
+            </Button>
+            <Button variant="ghost" onClick={envoyerCode} disabled={enCours}>Renvoyer un code</Button>
+            <Button variant="ghost" onClick={annuler}>Annuler</Button>
+          </div>
+        </div>
+      )}
+
+      {/* ----- Active ----- */}
+      {actif && !retrait && !envoi && (
+        <div className="space-y-3">
+          <p className="text-sm">
+            Méthode : <span className="font-medium">{methode === 'EMAIL' ? `code par email${options?.adresse ? ` (${options.adresse})` : ''}` : 'application d’authentification'}</span>
+          </p>
+          <Button variant="outline" className="text-red-600 hover:text-red-700" disabled={enCours}
+            onClick={() => { setErreur(null); if (methode === 'EMAIL') envoyerCode(); else setRetrait(true) }}>
+            {enCours ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldOff className="mr-2 h-4 w-4" />}Désactiver
+          </Button>
+        </div>
       )}
 
       {actif && retrait && (
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">Entrez un code de votre application pour confirmer.</p>
-          <Input
-            value={code} onChange={(e) => setCode(chiffres(e.target.value))} inputMode="numeric"
-            placeholder="000000" className="max-w-xs text-center font-semibold tracking-[0.3em]"
-          />
+          {champCode}
           <div className="flex gap-2">
             <Button
               variant="outline" className="text-red-600 hover:text-red-700"
               disabled={enCours || code.length < 6}
               onClick={() => faire(async () => {
                 await api.auth.twoFactorDisable(code)
-                synchroniser(false); setRetrait(false); setCode('')
+                synchroniser(false, null); annuler()
               }, 'Code invalide.')}
             >
               {enCours ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirmer'}
             </Button>
-            <Button variant="ghost" onClick={() => { setRetrait(false); setCode(''); setErreur(null) }}>Annuler</Button>
+            <Button variant="ghost" onClick={annuler}>Annuler</Button>
           </div>
         </div>
       )}
@@ -803,6 +892,7 @@ async function lireLogo(fichier: File): Promise<string> {
  * l'identité, et ils ont leur propre section.
  */
 function SectionBureau() {
+  const queryClient = useQueryClient()
   const user = useAuth((s) => s.user)
   const setAuth = useAuth((s) => s.setAuth)
   const accessToken = useAuth((s) => s.accessToken)
@@ -841,6 +931,15 @@ function SectionBureau() {
         const r = await api.auth.updateProfile({ companyName: f.name.trim() || null })
         if (accessToken && refreshToken) {
           setAuth({ ...r.user, preferences: { ...r.user.preferences, company: { ...c, ...f } } }, accessToken, refreshToken)
+        }
+      }
+      // L'équipe porte le nom de la société : elle le suit. Seul un administrateur
+      // peut la renommer, et sans organisation il n'y a rien à suivre.
+      if (f.name.trim()) {
+        const { organization, role } = await api.org.get()
+        if (organization && (role === 'OWNER' || role === 'ADMIN') && organization.name !== f.name.trim()) {
+          await api.org.rename(f.name.trim())
+          queryClient.invalidateQueries({ queryKey: ['org'] })
         }
       }
     } catch (e) {
@@ -979,7 +1078,7 @@ function SectionPersonnalisation() {
           <div className="flex h-20 w-32 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white">
             {f.logo
               ? <img src={f.logo} alt="" className="max-h-full max-w-full object-contain p-2" />
-              : <Building2 className="h-7 w-7 text-muted-foreground" />}
+              : <span className="text-xs text-muted-foreground">Aucun logo</span>}
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm text-muted-foreground">
@@ -1261,14 +1360,14 @@ function SectionCompte() {
                 Vous y êtes {ROLES_ORG[org.data.role ?? ''] ?? org.data.role ?? 'membre'}.
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => navigate('/app/team')}>
+            <Button variant="outline" size="sm" onClick={() => navigate('/app/settings?s=membres')}>
               <Users className="mr-2 h-4 w-4" />Gérer l'équipe
             </Button>
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">Vous travaillez seul, sans organisation.</p>
-            <Button variant="outline" size="sm" onClick={() => navigate('/app/team')}>Créer une organisation</Button>
+            <Button variant="outline" size="sm" onClick={() => navigate('/app/settings?s=membres')}>Créer l'équipe</Button>
           </div>
         )}
       </Bloc>

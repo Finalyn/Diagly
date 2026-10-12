@@ -768,7 +768,7 @@ function blocCadreNormatif(): ReactNode {
               "Valeurs limites de déperdition qui servent de repère pour juger l'isolation d'une paroi, d'une toiture ou d'une fenêtre."],
             ['SIA 358 · Garde-corps et allèges',
               "Hauteurs et écartements exigés. C'est la référence des remises aux normes de garde-corps relevées au chapitre 3."],
-            ['CECB / CECB+',
+            ['CECB® / CECB®Plus',
               "Certificat énergétique cantonal des bâtiments. Lorsqu'il existe, ses étiquettes et ses variantes sont reprises et non recalculées."],
           ].map(([norme, role]) => (
             <tr key={norme} className="border-t align-top">

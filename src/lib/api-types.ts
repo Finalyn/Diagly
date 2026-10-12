@@ -44,6 +44,8 @@ export interface ApiUser {
   companyName: string | null
   phone: string | null
   twoFactorEnabled?: boolean
+  /** TOTP (application) ou EMAIL ; null sur un compte activé avant l'email (application). */
+  twoFactorMethod?: 'TOTP' | 'EMAIL' | null
   preferences?: UserPreferences
   createdAt: string
   updatedAt: string
@@ -454,6 +456,83 @@ export interface RecentDiagnosticItem {
   projectName: string
 }
 
+// ---- Démarrer un diagnostic depuis un fichier (lecture IA) ----
+export interface BatimentLu {
+  nom?: string | null; adresse?: string | null; npa?: string | null; localite?: string | null; canton?: string | null
+  egid?: string | null; anneeConstruction?: number | null; anneeRenovation?: number | null
+  type?: BuildingType | null; nbLogements?: number | null; nbEtages?: number | null; nbCages?: number | null
+  surfacePlancher?: number | null; surfaceBatie?: number | null; surfaceTerrain?: number | null; perimetre?: number | null
+}
+/** Élément trouvé dans un document, rapproché (ou non) d'un article de la base. */
+export interface ElementLu {
+  source: string
+  articleId: string | null
+  etapeNumero: number | null
+  etat: ElementState | null
+  remarque: string | null
+  annee: number | null
+}
+export interface LectureDocument {
+  estUnBatiment: boolean
+  batiment: BatimentLu
+  elements: ElementLu[]
+  resume: string | null
+  confiance: 'high' | 'medium' | 'low' | null
+}
+export interface EnergieLue {
+  sre?: number | null; consumptionHeat?: number | null; consumptionElec?: number | null; energyAgent?: string | null
+  classEnvelope?: string | null; classGlobal?: string | null; refYear?: number | null; dateCertificat?: string | null
+}
+export interface MesureLue { label: string; priorite: string | null; articleId: string | null; etapeNumero: number | null }
+export interface LectureCecb {
+  estUnCertificat: boolean
+  batiment: BatimentLu
+  energie: EnergieLue
+  mesures: MesureLue[]
+  confiance: 'high' | 'medium' | 'low' | null
+}
+
+// ---- Organisation de la visite ----
+export type VisitContactRole = 'GERANCE' | 'PROPRIETAIRE' | 'CONCIERGE' | 'LOCATAIRE' | 'ENTREPRISE' | 'AUTRE'
+export interface VisitContact {
+  id: string
+  projectId: string
+  role: VisitContactRole
+  name: string
+  company: string | null
+  email: string | null
+  phone: string | null
+  /** Logement ou étage, pour un locataire. */
+  unit: string | null
+  notes: string | null
+  createdAt: string
+}
+export interface VisitPlan {
+  /** Rendez-vous (ISO). null = pas encore fixé. */
+  startAt?: string | null
+  durationMin?: number
+  meetingPoint?: string | null
+  /** Interlocuteur qui ouvre les locaux. */
+  openerContactId?: string | null
+  notes?: string | null
+  /** Créneaux à proposer, avant que la date soit fixée. */
+  creneaux?: { startAt: string }[]
+  /** Préparation : clé d'élément → coché. */
+  checklist?: Record<string, boolean>
+  eventId?: string | null
+}
+export type VisitMailStatus = 'ENVOYE' | 'ECHEC' | 'MESSAGERIE'
+export interface VisitMail {
+  id: string
+  template: string
+  subject: string
+  body: string
+  recipients: { name: string; email: string }[]
+  status: VisitMailStatus
+  authorName: string
+  createdAt: string
+}
+
 // ---- Clés d'API (API REST publique v1) ----
 export interface ApiKey {
   id: string
@@ -694,4 +773,71 @@ export interface ApiNotification {
 export interface CanauxDisponibles {
   push: boolean
   email: boolean
+}
+
+// ---------------------------------------------------------------- partenaires
+
+export type MetierPartenaire =
+  | 'ARCHITECTE' | 'EXPERT_CECB' | 'INGENIEUR_CIVIL' | 'INGENIEUR_CVSE' | 'PHYSICIEN_BATIMENT'
+  | 'CONSEIL_ENERGIE' | 'DIAGNOSTIC_POLLUANTS' | 'GEOMETRE' | 'ENTREPRISE_GENERALE' | 'AUTRE'
+
+/**
+ * Un partenaire de l'annuaire, tenu par Finalyn : un professionnel qu'on
+ * contacte par Diagly (PRO), ou un outil qu'on rejoint par un lien (OUTIL).
+ */
+export interface Partenaire {
+  id: string
+  type: 'PRO' | 'OUTIL'
+  nom: string
+  contact: string | null
+  metiers: MetierPartenaire[]
+  cantons: string[]
+  langues: string[]
+  description: string | null
+  /** Ce que fait un outil, en quelques mots. */
+  categorie: string | null
+  /** L'offre réservée aux utilisateurs de Diagly, et le lien qui la donne. */
+  offre: string | null
+  lienOffre: string | null
+  /** Ouvertures de l'offre depuis Diagly. */
+  clics: number
+  email: string | null
+  telephone: string | null
+  siteWeb: string | null
+  localite: string | null
+  verifie: boolean
+  certification: string | null
+  actif: boolean
+  createdAt: string
+  updatedAt: string
+  _count?: { demandes: number }
+}
+
+export type StatutDemande = 'ENVOYEE' | 'MESSAGERIE' | 'ECHEC' | 'EN_COURS' | 'TERMINEE'
+
+/** Une mise en relation, telle que la suit celui qui l'a envoyée. */
+export interface DemandePartenaire {
+  id: string
+  partnerId: string
+  projectId: string | null
+  objet: string
+  message: string
+  dossier: string | null
+  lienRapport: string | null
+  statut: StatutDemande
+  createdAt: string
+  updatedAt: string
+  partner: { id: string; nom: string; metiers: MetierPartenaire[]; email: string | null; telephone: string | null }
+  projet: string | null
+}
+
+/** Une mise en relation, vue depuis la gestion de l'annuaire. */
+export interface DemandePartenaireAdmin {
+  id: string
+  partenaire: string
+  objet: string
+  statut: StatutDemande
+  createdAt: string
+  auteur: string
+  societe: string | null
 }

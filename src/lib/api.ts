@@ -63,7 +63,7 @@ async function refreshAccessToken(): Promise<string | null> {
 }
 
 interface RequestOpts {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   query?: Record<string, string | number | undefined>
   /** Si false : ne tente pas le refresh automatique sur 401 (utile pour /auth/login). */
@@ -116,6 +116,28 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
 }
 
 /** Comme request(), mais renvoie un fichier binaire (Blob) + son nom — pour les téléchargements authentifiés. */
+/** L'étape du code, après le mot de passe : application (totp) ou code envoyé par email. */
+export interface EtapeDoubleAuth {
+  twoFactorRequired: true
+  ticket: string
+  method?: 'totp' | 'email'
+  /** Adresse masquée où le code est parti (méthode email). */
+  email?: string
+}
+
+/** Envoi d'un fichier en multipart (champ « file »), réponse JSON. */
+async function envoyerFichier<T>(path: string, file: File): Promise<T> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const token = useAuth.getState().accessToken
+  const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+  const text = await res.text()
+  let data: { error?: string; details?: unknown } | null = null
+  try { data = text ? JSON.parse(text) : null } catch { /* réponse non JSON */ }
+  if (!res.ok) throw new ApiError(res.status, data?.error ?? `HTTP ${res.status}`, data?.details)
+  return data as T
+}
+
 async function requestBlob(path: string, opts: { method?: 'GET' | 'POST'; body?: unknown } = {}): Promise<{ blob: Blob; filename: string }> {
   const { method = 'GET', body } = opts
   const doFetch = (token: string | null) => {
@@ -158,7 +180,7 @@ export const api = {
       request<AuthResponse>('/api/auth/register', { method: 'POST', body, withAuth: false }),
     // Login : renvoie soit les tokens, soit une demande de code 2FA (ticket).
     login: (body: { email: string; password: string }) =>
-      request<AuthResponse | { twoFactorRequired: true; ticket: string }>('/api/auth/login', { method: 'POST', body, withAuth: false }),
+      request<AuthResponse | EtapeDoubleAuth>('/api/auth/login', { method: 'POST', body, withAuth: false }),
     // Étape 2 : vérifie le code de l'app d'authentification.
     twoFactorVerify: (body: { ticket: string; code: string }) =>
       request<AuthResponse>('/api/auth/2fa/verify', { method: 'POST', body, withAuth: false }),
@@ -167,8 +189,16 @@ export const api = {
       request<{ otpauth: string; qr: string; secret: string }>('/api/auth/2fa/setup', { method: 'POST' }),
     twoFactorEnable: (code: string) =>
       request<{ enabled: boolean }>('/api/auth/2fa/enable', { method: 'POST', body: { code } }),
-    twoFactorDisable: (code: string) =>
-      request<{ enabled: boolean }>('/api/auth/2fa/disable', { method: 'POST', body: { code } }),
+    // Code par email : renvoi à la connexion, méthodes proposables, confirmation.
+    twoFactorResend: (ticket: string) =>
+      request<EtapeDoubleAuth>('/api/auth/2fa/resend', { method: 'POST', body: { ticket }, withAuth: false }),
+    twoFactorOptions: () => request<{ email: boolean; adresse: string | null }>('/api/auth/2fa/options'),
+    twoFactorEmailCode: () =>
+      request<{ ticket: string; email: string }>('/api/auth/2fa/email/code', { method: 'POST' }),
+    twoFactorEmailEnable: (ticket: string, code: string) =>
+      request<{ enabled: boolean; method: string }>('/api/auth/2fa/email/enable', { method: 'POST', body: { ticket, code } }),
+    twoFactorDisable: (code: string, ticket?: string) =>
+      request<{ enabled: boolean }>('/api/auth/2fa/disable', { method: 'POST', body: { code, ticket } }),
     me: () => request<{ user: import('./api-types').ApiUser }>('/api/auth/me'),
     updateProfile: (body: { firstName?: string | null; lastName?: string | null; companyName?: string | null; phone?: string | null }) =>
       request<{ user: import('./api-types').ApiUser }>('/api/auth/me', { method: 'PUT', body }),
@@ -385,6 +415,7 @@ export const api = {
   org: {
     get: () => request<{ organization: import('./api-types').Organization | null; role: import('./api-types').OrgRole | null }>('/api/org'),
     create: (name: string) => request<{ organization: import('./api-types').Organization; role: import('./api-types').OrgRole }>('/api/org', { method: 'POST', body: { name } }),
+    rename: (name: string) => request<{ organization: import('./api-types').Organization; role: import('./api-types').OrgRole }>('/api/org', { method: 'PUT', body: { name } }),
     members: () => request<{ members: import('./api-types').OrgMember[] }>('/api/org/members'),
     setRole: (userId: string, role: import('./api-types').OrgRole) => request<{ member: import('./api-types').OrgMember }>(`/api/org/members/${userId}`, { method: 'PUT', body: { role } }),
     removeMember: (userId: string) => request<void>(`/api/org/members/${userId}`, { method: 'DELETE' }),
@@ -432,6 +463,46 @@ export const api = {
     replay: (deliveryId: string) => request<{ delivery: import('./api-types').WebhookDelivery }>(`/api/webhooks/deliveries/${deliveryId}/replay`, { method: 'POST' }),
   },
 
+  /** Démarrer un diagnostic depuis un document (Word, Excel, PDF) ou un CECB : lecture par l'IA. */
+  demarrage: {
+    document: (file: File) =>
+      envoyerFichier<{ configured: boolean; tronque?: boolean; lecture?: import('./api-types').LectureDocument | null }>('/api/demarrage/document', file),
+    cecb: (file: File) =>
+      envoyerFichier<{ configured: boolean; tronque?: boolean; lecture?: import('./api-types').LectureCecb | null }>('/api/demarrage/cecb', file),
+  },
+  /** Organisation de la visite d'un dossier : interlocuteurs, rendez-vous, mails. */
+  visite: {
+    get: (projectId: string) =>
+      request<{ plan: import('./api-types').VisitPlan | null; contacts: import('./api-types').VisitContact[]; mails: import('./api-types').VisitMail[]; mailConfigured: boolean }>(`/api/visite/${projectId}`),
+    savePlan: (projectId: string, plan: Partial<import('./api-types').VisitPlan>) =>
+      request<{ plan: import('./api-types').VisitPlan }>(`/api/visite/${projectId}/plan`, { method: 'PUT', body: plan }),
+    addContact: (projectId: string, body: Partial<import('./api-types').VisitContact>) =>
+      request<{ contact: import('./api-types').VisitContact }>(`/api/visite/${projectId}/contacts`, { method: 'POST', body }),
+    updateContact: (id: string, body: Partial<import('./api-types').VisitContact>) =>
+      request<{ contact: import('./api-types').VisitContact }>(`/api/visite/contacts/${id}`, { method: 'PUT', body }),
+    removeContact: (id: string) => request<void>(`/api/visite/contacts/${id}`, { method: 'DELETE' }),
+    sendMail: (projectId: string, body: { template: string; subject: string; body: string; recipients: { name: string; email: string }[]; mode: 'send' | 'messagerie' }) =>
+      request<{ mail: import('./api-types').VisitMail }>(`/api/visite/${projectId}/mails`, { method: 'POST', body }),
+  },
+  /** L'annuaire des partenaires (tenu par Finalyn) et les mises en relation. */
+  partenaires: {
+    config: () => request<{ admin: boolean; mailConfigured: boolean }>('/api/partenaires/config'),
+    list: (tous?: boolean) =>
+      request<{ partenaires: import('./api-types').Partenaire[] }>('/api/partenaires', { query: tous ? { tous: 1 } : undefined }),
+    create: (body: Partial<import('./api-types').Partenaire>) =>
+      request<{ partenaire: import('./api-types').Partenaire }>('/api/partenaires', { method: 'POST', body }),
+    update: (id: string, body: Partial<import('./api-types').Partenaire>) =>
+      request<{ partenaire: import('./api-types').Partenaire }>(`/api/partenaires/${id}`, { method: 'PUT', body }),
+    remove: (id: string) => request<{ retire: boolean; supprime: boolean }>(`/api/partenaires/${id}`, { method: 'DELETE' }),
+    contacter: (id: string, body: { projectId: string | null; partagerRapport: boolean; objet: string; message: string; mode: 'send' | 'messagerie' }) =>
+      request<{ demande: import('./api-types').DemandePartenaire }>(`/api/partenaires/${id}/demandes`, { method: 'POST', body }),
+    /** Compte l'ouverture de l'offre d'un outil (le lien s'ouvre à côté). */
+    ouvrirOffre: (id: string) => request<{ url: string }>(`/api/partenaires/${id}/offre`, { method: 'POST' }),
+    demandes: () => request<{ demandes: import('./api-types').DemandePartenaire[] }>('/api/partenaires/demandes'),
+    suivre: (id: string, statut: 'EN_COURS' | 'TERMINEE' | 'MESSAGERIE') =>
+      request<{ demande: import('./api-types').DemandePartenaire }>(`/api/partenaires/demandes/${id}`, { method: 'PATCH', body: { statut } }),
+    demandesAdmin: () => request<{ demandes: import('./api-types').DemandePartenaireAdmin[] }>('/api/partenaires/admin/demandes'),
+  },
   events: {
     list: (q?: { from?: string; to?: string }) =>
       request<{ events: ApiEvent[]; count: number }>('/api/events', { query: q }),

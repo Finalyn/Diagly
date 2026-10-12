@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, type ReactNode } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Loader2, AlertCircle, AlertTriangle, Search, Plus, Check, ImagePlus, X, ArrowRight, ScanSearch, Trash2, ChevronDown, RefreshCw,
@@ -191,7 +191,16 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   const batiment = useMemo(() => donneesDuBatiment(projectQuery.data?.project ?? {}), [projectQuery.data])
 
   // ----- local UI state -----
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  // ?item=<id> : l'activité récente du tableau de bord ouvre directement ce relevé.
+  const [searchParams] = useSearchParams()
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(() => searchParams.get('item'))
+  // Téléphone : la fiche d'un relevé occupe tout l'écran, la barre du dossier
+  // s'efface pour ne pas recouvrir ses boutons (voir .releve-ouvert dans index.css).
+  useEffect(() => {
+    if (!isMobile) return
+    document.documentElement.classList.toggle('releve-ouvert', !!selectedItemId)
+    return () => document.documentElement.classList.remove('releve-ouvert')
+  }, [isMobile, selectedItemId])
   const [search, setSearch] = useState('')
   const [guideMode, setGuideMode] = useGuideMode()
 
@@ -458,7 +467,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     // Encastré, l'éditeur prend la hauteur que son conteneur lui laisse : la barre
     // d'onglets occupe déjà une place qu'un calcul en hauteur de fenêtre ignorerait,
     // et les colonnes sortiraient par le bas en faisant défiler la page entière.
-    <div className={cn('flex flex-col gap-4', encastre ? 'h-full' : 'h-[calc(100dvh-7rem)]')}>
+    // Téléphone : la barre du dossier occupe le bas de l'écran, l'éditeur s'arrête au-dessus.
+    <div className={cn('flex flex-col gap-4', encastre ? 'h-full' : 'h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-7rem)]')}>
       {/* Header (masqué sur mobile pendant l'édition d'un élément) */}
       <div className={cn('space-y-3 shrink-0', isMobile && selectedItemId && 'hidden')}>
         {!encastre && (
@@ -467,12 +477,16 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
               <ArrowLeft className="h-5 w-5 text-muted-foreground hover:text-foreground" />
             </button>
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl font-bold truncate">Diagnostic</h1>
+              {/* Sur téléphone, le bâtiment en titre : c'est lui qu'on cherche des yeux. */}
+              <h1 className="text-xl font-bold truncate">{isMobile && projectQuery.data?.project.name ? projectQuery.data.project.name : 'Diagnostic'}</h1>
               <p className="text-sm text-muted-foreground truncate">
-                {items.length} élément{items.length !== 1 ? 's' : ''} diagnostiqué{items.length !== 1 ? 's' : ''}
+                {isMobile
+                  ? `Relevé · ${items.length} élément${items.length !== 1 ? 's' : ''}`
+                  : `${items.length} élément${items.length !== 1 ? 's' : ''} diagnostiqué${items.length !== 1 ? 's' : ''}`}
               </p>
             </div>
             {projectId && !isMobile && <ProjectSectionsMenu projectId={projectId} onDeleteDiagnostic={handleDeleteDiagnostic} />}
+
           </div>
         )}
         {/* Le même bandeau sur les deux tailles d'écran. Les montants par priorité
@@ -985,7 +999,7 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte }: {
   const part = total > 0 ? Math.round((faits / total) * 100) : 0
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5" data-visite="releve-avancement">
       <div className="flex items-baseline justify-between gap-3">
         <p className="min-w-0 truncate text-sm font-medium">{titre}</p>
         <p className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{part} %</p>
@@ -1056,7 +1070,7 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
   // --- Niveau 1 : les grandes étapes du tour du bâtiment ---
   if (!courante) {
     return (
-      <div className="space-y-2 px-2 py-2">
+      <div className="space-y-2 px-2 py-2" data-visite="releve-etapes">
         <p className="px-1 text-xs text-muted-foreground">
           Suivez le bâtiment dans l'ordre : on commence dehors, on entre, on monte, puis on
           redescend. Touchez une étape pour relever ce qu'elle contient.
@@ -1068,6 +1082,7 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
           return (
             <button
               key={g.numero}
+              data-visite={g === etapes[0] ? 'releve-etape' : undefined}
               onClick={() => { onEtape(g.numero); onCategorie(null) }}
               className="flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left hover:bg-muted/50"
             >
@@ -1107,13 +1122,14 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
             {faits} relevé{faits > 1 ? 's' : ''} sur {total} · touchez l'ouvrage que vous avez devant vous
           </p>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2" data-visite="releve-categories">
           {courante.domaines.map((cat) => {
             const a = avancement(cat.lignes)
             const incompletCat = alerte(cat.lignes)
             return (
               <button
                 key={cat.nom}
+                data-visite={cat === courante.domaines[0] ? 'releve-categorie' : undefined}
                 onClick={() => onCategorie(cat.nom)}
                 className="flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left hover:bg-muted/50"
               >
@@ -1171,6 +1187,7 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
         return (
           <button
             key={ligne.cle}
+            data-visite={ligne === choisie.lignes[0] ? 'releve-ouvrage' : undefined}
             onClick={() => (existant ? onOuvrir(existant.id) : onAjouter(ligne))}
             disabled={ajoutEnCours}
             className="flex w-full items-start gap-2.5 rounded-lg px-3 py-3 text-left text-sm hover:bg-muted/50"
@@ -1935,7 +1952,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
       </CardHeader>
       <CardContent className="space-y-6">
         {/* 1. État — le seul vrai choix du diagnostiqueur */}
-        <div>
+        <div data-visite="releve-etat">
           <p className="text-sm font-medium mb-3">État constaté</p>
           <StateGuide item={item} catalog={catalog} onApply={applyState} isMutating={isMutating} />
         </div>
@@ -1944,7 +1961,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
         <AnneeDePose item={item} yearBuilt={yearBuilt} onUpdate={onUpdate} isMutating={isMutating} />
 
         {/* 3. Photos */}
-        <div>
+        <div data-visite="releve-photos">
           <p className="text-sm font-medium mb-2">Photos</p>
           {/* L'avertissement est ici, contre le bouton qui le résout, et pas en haut
               de l'écran : une alerte qu'il faut aller chercher ne sert à rien. */}
@@ -1998,7 +2015,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
         {guide}
 
         {/* 3. Résultat automatique (travaux, priorité, coût) */}
-        <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+        <div className="rounded-lg border bg-muted/20 p-4 space-y-3" data-visite="releve-resultat">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold">
@@ -2177,7 +2194,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
 function GuideModeToggle({ mode, onChange }: { mode: GuideMode; onChange: (m: GuideMode) => void }) {
   const opts: GuideMode[] = ['off', 'ask', 'always']
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-2 flex-wrap" data-visite="releve-guide">
       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <ScanSearch className="h-3.5 w-3.5 text-primary" />Guide IA
       </span>

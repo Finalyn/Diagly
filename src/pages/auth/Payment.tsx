@@ -29,9 +29,9 @@ export function Payment() {
                 <Check className="h-6 w-6 text-primary" />
               </div>
               <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
-                <li>Diagnostics illimites</li>
+                <li>Diagnostics illimités</li>
                 <li>5 utilisateurs</li>
-                <li>CRM batiments + CECB</li>
+                <li>Parc immobilier et import des certificats énergétiques</li>
               </ul>
             </div>
 

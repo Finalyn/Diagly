@@ -111,7 +111,6 @@ export function NotificationsBell() {
           <div className="max-h-[60vh] overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="px-4 py-10 text-center">
-                <Bell className="mx-auto mb-2 h-6 w-6 text-muted-foreground/50" />
                 <p className="text-sm text-muted-foreground">Rien à signaler.</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Les diagnostics ouverts, les urgences relevées et les rappels de visite paraîtront ici.

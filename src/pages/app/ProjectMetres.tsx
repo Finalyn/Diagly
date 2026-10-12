@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, AlertCircle, ClipboardCheck, DollarSign, Download, FileDown } from 'lucide-react'
+import { Loader2, AlertCircle, ClipboardCheck, Download, FileDown } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Input } from '@/components/ui'
 import { ExportDialog } from '@/components/ExportDialog'
 import { stateLabels, stateColors, priorityColors } from '@/data/mock'
@@ -53,7 +53,6 @@ export function ProjectMetres() {
   if (!diagnostic) {
     return (
       <Card><CardContent className="py-16 text-center">
-        <ClipboardCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
         <h3 className="text-lg font-semibold mb-1">Aucun diagnostic</h3>
         <p className="text-sm text-muted-foreground mb-4">Les coûts proviennent du diagnostic. Démarrez-le d'abord.</p>
         <Link to={`/app/projects/${id}/diagnostic`}><Button>Aller au diagnostic</Button></Link>
@@ -100,20 +99,19 @@ export function ProjectMetres() {
               }}><FileDown className="mr-2 h-4 w-4" />PDF</Button>
             </>
           )}
-          <Link to={`/app/diagnostic/${diagnostic.id}`}><Button variant="outline"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir le diagnostic</Button></Link>
+          <Link to={`/app/projects/${id}/diagnostic`}><Button variant="outline"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir le relevé</Button></Link>
         </div>
         <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
       </div>
 
       {items.length === 0 ? (
         <Card><CardContent className="py-16 text-center">
-          <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-1">Aucun coût</h3>
           <p className="text-sm text-muted-foreground mb-4">Ajoutez des éléments dans le diagnostic pour voir les coûts ici.</p>
-          <Link to={`/app/diagnostic/${diagnostic.id}`}><Button><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir l'éditeur</Button></Link>
+          <Link to={`/app/projects/${id}/diagnostic`}><Button><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir le relevé</Button></Link>
         </CardContent></Card>
       ) : (
-        <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3">
           {/* Détail par priorité */}
           <div className="lg:col-span-2 space-y-4">
             {priorities.map(group => group.items.length > 0 && (

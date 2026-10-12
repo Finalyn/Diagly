@@ -1,23 +1,34 @@
 import { useMemo, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  ArrowRight, ChevronRight, Plus, ClipboardCheck, Calendar, FileText, Layers,
-  FilePlus, AlertTriangle, FolderKanban, CheckCircle2, Wallet,
+  ArrowRight, ChevronRight, Plus, ClipboardCheck, FileText, Layers,
+  FilePlus, History, MapPin, type LucideIcon,
 } from 'lucide-react'
 import { formatDate, formatCHF, cn } from '@/lib/utils'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
+import { statusLabels } from '@/data/mock'
+import type { ProjectStatus } from '@/lib/api-types'
 
-const toNum = (v: string | null | undefined) => (v ? Number(v) : 0)
 const glass = (alpha: number): CSSProperties => ({ background: `rgba(255,255,255,${alpha})` })
 
-const QUICK = [
-  { icon: Plus, title: 'Nouveau diagnostic', desc: 'Créer un diagnostic de bâtiment', to: '/app/projects/new' },
-  { icon: ClipboardCheck, title: 'Mes diagnostics', desc: 'Consulter tous vos diagnostics', to: '/app/projects' },
-  { icon: Calendar, title: 'Calendrier', desc: 'Planifier vos visites sur site', to: '/app/planning' },
-  { icon: FileText, title: 'Base de données', desc: 'Articles, prix et postes de chantier', to: '/app/cfc' },
+// L'assistant porte le picto Diagly plutôt qu'une icône générique.
+const QUICK: { icon: LucideIcon; img?: string; title: string; desc: string; to: string }[] = [
+  { icon: Plus, title: 'Nouveau diagnostic', desc: 'Créer un dossier', to: '/app/projects/new' },
+  { icon: ClipboardCheck, title: 'Mes diagnostics', desc: 'Tous vos dossiers', to: '/app/projects' },
+  { icon: FileText, title: 'Base de données', desc: 'Articles et prix', to: '/app/cfc' },
+  { icon: ClipboardCheck, img: '/diagly-mark.svg', title: 'Assistant Diagly', desc: 'Poser une question', to: '/app/assistant' },
 ]
+
+const STATUS_PILL: Record<ProjectStatus, { dot: string; pill: string }> = {
+  NON_PLANIFIE: { dot: 'bg-gray-400', pill: 'bg-gray-100 text-gray-600' },
+  PLANIFIE: { dot: 'bg-blue-400', pill: 'bg-blue-50 text-blue-700' },
+  EN_COURS: { dot: 'bg-blue-500', pill: 'bg-blue-50 text-blue-700' },
+  EN_REVUE: { dot: 'bg-amber-500', pill: 'bg-amber-50 text-amber-700' },
+  TERMINE: { dot: 'bg-emerald-500', pill: 'bg-emerald-50 text-emerald-700' },
+  ARCHIVE: { dot: 'bg-gray-400', pill: 'bg-gray-100 text-gray-500' },
+}
 
 // Teintes colorées des icônes (option « colorIcons » de la maquette)
 const TINTS = [
@@ -28,39 +39,46 @@ const TINTS = [
   'bg-rose-100/80 text-rose-600',
 ]
 
-function ProgressRing({ pct }: { pct: number }) {
-  const r = 46
-  const c = 2 * Math.PI * r
-  return (
-    <div className="relative h-[138px] w-[138px] shrink-0">
-      <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90">
-        <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(0,0,0,0.05)" strokeWidth="8" />
-        <circle cx="60" cy="60" r={r} fill="none" stroke="#2563eb" strokeWidth="8" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)} />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[30px] font-medium leading-none tracking-tight text-neutral-900">{pct}%</span>
-        <span className="mt-1.5 text-[11px] leading-tight text-neutral-400">avancement</span>
-      </div>
-    </div>
-  )
-}
-
 export function Dashboard() {
   const user = useAuth((s) => s.user)
   const { data } = useQuery({ queryKey: ['projects'], queryFn: () => api.projects.list() })
   const { data: itemsData } = useQuery({ queryKey: ['recent-items'], queryFn: () => api.diagnostics.recentItems() })
 
   // Références stables : sans useMemo, `?? []` crée un tableau neuf à chaque rendu,
-  // ce qui invalide toutes les mémorisations en aval (fil d'activité, KPI).
+  // ce qui invalide toutes les mémorisations en aval (fil d'activité).
   const projects = useMemo(() => data?.projects ?? [], [data])
   const recentItems = useMemo(() => itemsData?.items ?? [], [itemsData])
 
-  const totalProjects = projects.length
-  const inProgress = projects.filter((p) => ['PLANIFIE', 'EN_COURS', 'EN_REVUE'].includes(p.status)).length
-  const completed = projects.filter((p) => p.status === 'TERMINE').length
-  const budget = projects.reduce((s, p) => s + toNum(p.totalBudget), 0)
-  const urgents = recentItems.filter((it) => it.priority === 'I').length
-  const avancement = totalProjects ? Math.round((completed / totalProjects) * 100) : 0
+  const recentProjects = useMemo(
+    () => [...projects].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+    [projects],
+  )
+  // Le dernier diagnostic touché : c'est presque toujours celui qu'on rouvre.
+  const lastProject = recentProjects[0]
+
+  // Ses chiffres : mêmes clés de cache que l'éditeur, qui les a souvent déjà chargés.
+  const { data: lastProjectData } = useQuery({
+    queryKey: ['project', lastProject?.id],
+    queryFn: () => api.projects.get(lastProject!.id),
+    enabled: !!lastProject,
+  })
+  const lastDiag = useMemo(
+    () => [...(lastProjectData?.diagnostics ?? [])].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0],
+    [lastProjectData],
+  )
+  const { data: lastDiagData } = useQuery({
+    queryKey: ['diagnostic', lastDiag?.id],
+    queryFn: () => api.diagnostics.get(lastDiag!.id),
+    enabled: !!lastDiag,
+  })
+  const lastStats = useMemo(() => {
+    const items = lastDiagData?.items ?? []
+    return {
+      releves: items.length,
+      urgents: items.filter((it) => it.priority === 'I').length,
+      cout: items.reduce((s, it) => s + (it.estimatedCost ? Number(it.estimatedCost) : 0), 0),
+    }
+  }, [lastDiagData])
 
   const greeting = user?.firstName ? `Bonjour ${user.firstName}` : 'Bonjour'
 
@@ -75,118 +93,152 @@ export function Dashboard() {
         : { id: 'pu' + p.id, ts: p.updatedAt, icon: ClipboardCheck, title: 'Diagnostic mis à jour', sub: p.name, to: `/app/projects/${p.id}` })
     }
     for (const it of recentItems) {
-      acc.push({ id: 'i' + it.id, ts: it.updatedAt, icon: Layers, title: it.cfcLabel, sub: it.projectName, to: `/app/projects/${it.projectId}/diagnostic` })
+      acc.push({ id: 'i' + it.id, ts: it.updatedAt, icon: Layers, title: it.cfcLabel, sub: it.projectName, to: `/app/projects/${it.projectId}/diagnostic?item=${it.id}` })
     }
-    return acc.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()).slice(0, 6)
+    return acc.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()).slice(0, 10)
   }, [projects, recentItems])
 
-  const KPIS = [
-    { icon: FolderKanban, value: String(inProgress), label: 'Diagnostics en cours', tint: 'bg-violet-100/80 text-violet-600' },
-    { icon: CheckCircle2, value: String(completed), label: 'Diagnostics réalisés', tint: 'bg-emerald-100/80 text-emerald-600' },
-    { icon: Layers, value: String(totalProjects), label: 'Total diagnostics', tint: 'bg-sky-100/80 text-sky-600' },
-    { icon: Wallet, value: budget ? formatCHF(budget) : 'n.c.', label: 'Budget estimé', tint: 'bg-amber-100/80 text-amber-600' },
+  const STATS = lastProject ? [
+    { label: 'Relevés', value: lastDiagData ? String(lastStats.releves) : '…' },
+    { label: 'Urgents', value: lastDiagData ? String(lastStats.urgents) : '…', alert: lastStats.urgents > 0 },
+    { label: 'Coût estimé HT', value: lastDiagData ? (lastStats.cout ? formatCHF(lastStats.cout) : 'n.c.') : '…' },
+    { label: 'Visite', value: lastDiag?.visitDate ? formatDate(new Date(lastDiag.visitDate)) : 'Non planifiée' },
+  ] : []
+
+  // Mêmes regroupements que les onglets de la liste des diagnostics.
+  const COMPTEURS = [
+    { onglet: 'En cours', label: 'En cours', dot: 'bg-blue-500', value: projects.filter((p) => ['PLANIFIE', 'EN_COURS', 'EN_REVUE'].includes(p.status)).length },
+    { onglet: 'À traiter', label: 'À planifier', dot: 'bg-gray-400', value: projects.filter((p) => p.status === 'NON_PLANIFIE').length },
+    { onglet: 'Terminés', label: 'Terminés', dot: 'bg-emerald-500', value: projects.filter((p) => p.status === 'TERMINE').length },
+    { onglet: 'Tous', label: 'Total', dot: 'bg-neutral-300', value: projects.length },
   ]
 
+  const btn = 'inline-flex h-10 items-center gap-2 rounded-xl border border-black/10 bg-white/80 px-4 text-sm font-medium text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-colors hover:border-black/[0.14] hover:bg-white'
+
+  // Chaque bloc garde sa hauteur naturelle : aucun cadre ne s'étire à vide, et
+  // les écrans bas n'affichent que les premières lignes de chaque liste pour
+  // que la page tienne sans défiler.
   return (
-    <div className="space-y-6 pb-6">
+    <div className="flex flex-col gap-6 pb-6 short:gap-3 lg:h-full lg:min-h-0 lg:pb-0">
       {/* Salutation */}
-      <div>
-        <h1 className="text-[40px] font-normal leading-none tracking-tight text-neutral-900">{greeting}</h1>
-        <p className="mt-2.5 text-[15px] text-neutral-500">Prêt à piloter vos diagnostics du jour&nbsp;?</p>
+      <div className="shrink-0">
+        <h1 className="text-[40px] font-normal leading-none tracking-tight text-foreground short:text-[30px]">{greeting}</h1>
+        <p className="mt-2.5 text-[15px] text-muted-foreground short:hidden">Prêt à piloter vos diagnostics du jour&nbsp;?</p>
       </div>
 
-      {/* Rangée : En cours + À traiter */}
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch">
-        <div className="liquid-glass relative overflow-hidden rounded-[26px] lg:w-fit" style={glass(0.62)}>
-          <div className="relative z-10 flex h-full flex-col gap-7 p-7 sm:flex-row sm:items-center sm:gap-9 sm:p-8">
-            <div className="max-w-[240px]">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-500">En cours</span>
-              <p className="mt-3 text-[27px] font-medium leading-[1.15] tracking-tight">
-                <span className="text-neutral-900">{inProgress} diagnostic{inProgress > 1 ? 's' : ''}</span><br />
-                <span className="text-neutral-400">à suivre aujourd’hui</span>
-              </p>
-              <Link to="/app/projects" className="mt-7 inline-flex items-center gap-2 rounded-full bg-neutral-900 px-6 py-3 text-[14px] font-medium text-white transition-transform hover:scale-[1.02] active:scale-95">
-                Voir mes diagnostics <ArrowRight className="h-4 w-4" strokeWidth={1.8} />
+      {/* Dossier mis en avant : le dernier modifié */}
+      <div className="liquid-glass relative overflow-hidden rounded-[26px] lg:max-w-[720px]" style={glass(0.72)} data-visite="dash-reprendre">
+        <div className="relative z-10 p-5 sm:p-6 short:sm:p-5">
+          {lastProject ? (
+            <>
+              {/* Le bouton monte dans l'en-tête et le statut suit l'étiquette : la
+                  carte tient sur une largeur réduite, chiffres sur une seule ligne. */}
+              <div className="flex items-start gap-3.5">
+                <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100/80 text-blue-600"><History className="h-[18px] w-[18px]" strokeWidth={1.8} /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Reprendre</span>
+                    <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium', STATUS_PILL[lastProject.status].pill)}>
+                      <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_PILL[lastProject.status].dot)} />{statusLabels[lastProject.status]}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 truncate text-[21px] font-medium leading-tight tracking-tight text-foreground">{lastProject.name}</p>
+                  <p className="mt-1 flex items-center gap-1.5 text-[13px] text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+                    <span className="truncate">{[lastProject.address, lastProject.city].filter(Boolean).join(', ') || 'Adresse non renseignée'}</span>
+                  </p>
+                </div>
+                <Link to={`/app/projects/${lastProject.id}/diagnostic`} className={cn(btn, 'shrink-0')}>
+                  Reprendre le relevé <ArrowRight className="h-4 w-4" strokeWidth={1.8} />
+                </Link>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-x-8 gap-y-3 border-t border-black/[0.06] pt-4 short:mt-3 short:pt-3">
+                {STATS.map((st) => (
+                  <div key={st.label} className="shrink-0">
+                    <p className="text-[11px] text-muted-foreground">{st.label}</p>
+                    <p className={cn('mt-0.5 whitespace-nowrap text-[16px] font-semibold tracking-tight', st.alert ? 'text-red-600' : 'text-foreground')}>{st.value}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-[20px] font-medium tracking-tight text-foreground">Aucun diagnostic pour le moment</p>
+                <p className="mt-1 text-[13px] text-muted-foreground">Créez votre premier dossier pour commencer un relevé.</p>
+              </div>
+              <Link to="/app/projects/new" className={btn}>
+                <Plus className="h-4 w-4" strokeWidth={1.8} /> Nouveau diagnostic
               </Link>
             </div>
-            <div className="sm:pr-3"><ProgressRing pct={avancement} /></div>
-          </div>
+          )}
         </div>
-
-        <Link to="/app/projects" className="liquid-glass relative block overflow-hidden rounded-[26px] p-6 sm:p-7 lg:w-[320px]" style={glass(0.72)}>
-          <div className="relative z-10 flex h-full flex-col justify-between gap-5">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100/80 text-orange-600"><AlertTriangle className="h-[18px] w-[18px]" strokeWidth={1.8} /></span>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">À traiter</span>
-            </div>
-            <div>
-              <p className="text-[32px] font-medium leading-none tracking-tight text-neutral-900">{urgents}</p>
-              <p className="mt-2 text-[13.5px] text-neutral-500">{urgents > 1 ? 'éléments urgents en priorité' : 'élément urgent en priorité'}</p>
-            </div>
-            <span className="inline-flex w-fit items-center gap-1.5 text-[13.5px] font-semibold text-neutral-900">
-              Traiter maintenant <ArrowRight className="h-4 w-4" strokeWidth={2} />
-            </span>
-          </div>
-        </Link>
       </div>
 
-      {/* Grille : (Accès rapides + En bref) | Activité récente */}
-      <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
-        <div className="space-y-5">
-          {/* Accès rapides */}
-          <section className="liquid-glass rounded-[24px] p-6" style={glass(1)}>
-            <h2 className="mb-5 text-[16px] font-semibold text-neutral-800">Accès rapides</h2>
-            <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+      {/* Grille : Accès rapides | Activité récente */}
+      <div className="grid gap-5 short:gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[1.6fr_1fr] lg:grid-rows-[minmax(0,1fr)]">
+        <div className="flex min-h-0 flex-col gap-5 short:gap-3">
+          <section className="liquid-glass flex min-h-0 flex-col rounded-[24px] p-5 lg:flex-1" style={glass(1)}>
+            <h2 className="mb-4 text-[16px] font-semibold text-foreground short:mb-3">Accès rapides</h2>
+            <div className="grid grid-cols-2 gap-3 lg:min-h-0 lg:flex-1 2xl:grid-cols-4">
               {QUICK.map((q) => (
-                <Link key={q.title} to={q.to} className="group flex flex-col items-center gap-4 rounded-2xl border border-black/[0.05] bg-white/45 px-4 py-14 text-center transition-all hover:-translate-y-0.5 hover:bg-white/80 hover:shadow-[0_14px_40px_-16px_rgba(0,0,0,0.22)]">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-neutral-900/[0.05] text-neutral-600 transition-colors group-hover:bg-blue-100 group-hover:text-blue-600">
-                    <q.icon className="h-[19px] w-[19px]" strokeWidth={1.5} />
+                <Link key={q.title} to={q.to} className="group flex items-center gap-3 rounded-2xl lg:flex-col lg:justify-center lg:text-center short:lg:flex-row short:lg:justify-start short:lg:text-left border border-black/[0.05] bg-white/45 p-3 transition-all hover:-translate-y-0.5 hover:bg-white/80 hover:shadow-[0_14px_40px_-16px_rgba(0,0,0,0.22)] short:py-2">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full lg:h-14 lg:w-14 short:lg:h-8 short:lg:w-8 bg-neutral-900/[0.05] text-muted-foreground transition-colors group-hover:bg-blue-100 group-hover:text-blue-600">
+                    {q.img
+                      ? <img src={q.img} alt="" className="h-[18px] w-[18px] lg:h-6 lg:w-6 short:lg:h-[18px] short:lg:w-[18px]" />
+                      : <q.icon className="h-[18px] w-[18px] lg:h-6 lg:w-6 short:lg:h-[18px] short:lg:w-[18px]" strokeWidth={1.5} />}
                   </span>
-                  <div>
-                    <p className="text-[13px] font-semibold leading-tight text-neutral-900">{q.title}</p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-neutral-500">{q.desc}</p>
+                  <div className="min-w-0 max-w-full">
+                    <p className="truncate text-[13px] font-semibold leading-tight text-foreground lg:text-[15px] short:lg:text-[13px]">{q.title}</p>
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground lg:mt-1 lg:text-[12.5px] short:hidden">{q.desc}</p>
                   </div>
                 </Link>
               ))}
             </div>
           </section>
 
-          {/* En bref */}
-          <section className="liquid-glass rounded-[24px] p-5" style={glass(0.55)}>
-            <h2 className="mb-4 text-[16px] font-semibold text-neutral-800">En bref</h2>
-            <div className="grid grid-cols-2 divide-black/[0.06] xl:grid-cols-4 xl:divide-x">
-              {KPIS.map((k) => (
-                <div key={k.label} className="px-1 sm:px-4 first:sm:pl-0 last:sm:pr-0">
-                  <div className="flex items-center gap-2.5">
-                    <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', k.tint)}><k.icon className="h-[17px] w-[17px]" strokeWidth={1.7} /></span>
-                    <p className="text-[22px] font-bold tracking-tight text-neutral-900">{k.value}</p>
-                  </div>
-                  <p className="mt-2 text-[12px] text-neutral-500">{k.label}</p>
-                </div>
+          {/* Mes diagnostics : les onglets de la liste, chacun ouvre la liste filtrée. */}
+          <section className="liquid-glass shrink-0 rounded-[24px] p-5" style={glass(1)}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-[16px] font-semibold text-foreground">Mes diagnostics</h2>
+              <Link to="/app/projects" className="text-[12px] font-medium text-muted-foreground/70 transition-colors hover:text-foreground">Voir tout</Link>
+            </div>
+            {/* Écran bas : une seule rangée, le total (déjà dans « Voir tout ») s'efface. */}
+            <div className="grid grid-cols-2 gap-3 2xl:grid-cols-4 short:grid-cols-3 short:[&>*:nth-child(4)]:hidden">
+              {COMPTEURS.map((c) => (
+                <Link key={c.onglet} to={`/app/projects?onglet=${encodeURIComponent(c.onglet)}`} className="group flex items-center gap-3 rounded-2xl border border-black/[0.05] bg-white/45 px-3.5 py-3 transition-all hover:-translate-y-0.5 hover:bg-white/80 hover:shadow-[0_14px_40px_-16px_rgba(0,0,0,0.22)] short:py-2">
+                  <span className={cn('h-2 w-2 shrink-0 rounded-full', c.dot)} />
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{c.label}</span>
+                  <span className="text-[20px] font-semibold tracking-tight text-foreground">{c.value}</span>
+                </Link>
               ))}
             </div>
           </section>
         </div>
 
-        {/* Activité récente */}
-        <section className="liquid-glass flex flex-col rounded-[24px] p-5" style={glass(1)}>
+        {/* Activité récente : h-0 + min-h-full, elle ne pèse pas sur la hauteur de
+            la rangée et se cale sur la colonne de gauche. Les lignes qui ne
+            tiennent pas passent dans une colonne masquée (flex-wrap), au lieu
+            d'être coupées en deux. */}
+        <section className="liquid-glass flex flex-col rounded-[24px] p-5 lg:h-0 lg:min-h-full" style={glass(1)}>
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-[16px] font-semibold text-neutral-800">Activité récente</h2>
-            <Link to="/app/projects" className="text-[12px] font-medium text-neutral-400 transition-colors hover:text-neutral-800">Voir tout</Link>
+            <h2 className="text-[16px] font-semibold text-foreground">Activité récente</h2>
+            <Link to="/app/projects" className="text-[12px] font-medium text-muted-foreground/70 transition-colors hover:text-foreground">Voir tout</Link>
           </div>
           {activity.length === 0 ? (
-            <p className="py-10 text-center text-[13px] text-neutral-400">Aucune activité pour le moment.</p>
+            <p className="py-10 text-center text-[13px] text-muted-foreground/70">Aucune activité pour le moment.</p>
           ) : (
-            <div className="divide-y divide-black/[0.05]">
+            <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-wrap lg:content-start lg:overflow-hidden">
               {activity.map((a, i) => (
-                <Link key={a.id} to={a.to} className="flex w-full items-center gap-3 rounded-xl py-2.5 text-left transition-colors hover:bg-white/40">
+                <Link key={a.id} to={a.to} className="flex w-full items-center gap-3 border-b border-black/[0.05] py-2.5 text-left transition-colors last:border-0 hover:bg-white/40">
                   <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', TINTS[i % TINTS.length])}><a.icon className="h-[17px] w-[17px]" strokeWidth={1.6} /></span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium text-neutral-900">{a.title}</p>
-                    <p className="truncate text-[11.5px] text-neutral-500">{a.sub}</p>
+                    <p className="truncate text-[13px] font-medium text-foreground">{a.title}</p>
+                    <p className="truncate text-[11.5px] text-muted-foreground">{a.sub}</p>
                   </div>
-                  <span className="shrink-0 text-[11px] text-neutral-400">{formatDate(new Date(a.ts))}</span>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-neutral-300" strokeWidth={1.6} />
+                  <span className="shrink-0 text-[11px] text-muted-foreground/70">{formatDate(new Date(a.ts))}</span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" strokeWidth={1.6} />
                 </Link>
               ))}
             </div>

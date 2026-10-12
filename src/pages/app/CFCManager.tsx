@@ -99,31 +99,38 @@ export function CFCManager() {
       label: 'Articles et prix',
       icone: Wrench,
       phrase: `Les ${base.data.articles.filter((a) => a.actif).length} ouvrages que le diagnostiqueur peut relever, avec leur prix par état et les étapes de visite où ils se présentent.`,
+      court: `${base.data.articles.filter((a) => a.actif).length} ouvrages, leurs prix et leurs étapes.`,
     },
     {
       id: 'postes' as const,
       label: 'Postes de chantier',
       icone: HardHat,
       phrase: "Ce qui s'ajoute d'office au devis sans avoir été relevé : échafaudage, nettoyage, protection des ouvrages.",
+      court: "Ce qui s'ajoute d'office au devis.",
     },
     {
       id: 'valeurs' as const,
       label: 'Honoraires et TVA',
       icone: Percent,
       phrase: 'Les pourcentages appliqués au chiffrage des nouveaux diagnostics, et leur effet sur un montant.',
+      court: 'Les pourcentages des nouveaux diagnostics.',
     },
   ]
   const courant = ONGLETS.find((o) => o.id === onglet) ?? ONGLETS[0]
 
   return (
-    <div className="flex h-[calc(100dvh-7rem)] flex-col gap-4">
+    // Sur téléphone, la page défile d'un bloc : une hauteur fixe coinçait la
+    // liste sous la barre du bas, avec ses filtres à moitié cachés.
+    <div className="flex flex-col gap-4 md:h-[calc(100dvh-7rem)]">
       <div className="shrink-0 space-y-3">
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-xl font-bold">Base de données</h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="hidden text-sm text-muted-foreground md:block">
               {courant.phrase} Elle est commune au bureau : une correction change le devis de tout le monde.
             </p>
+            {/* Sur téléphone, la phrase longue occupait la moitié de l'écran. */}
+            <p className="text-sm text-muted-foreground md:hidden">{courant.court}</p>
           </div>
           <Button
             variant="outline" size="sm"
@@ -169,7 +176,9 @@ function Commutateur<T extends string>({ options, valeur, onChoisir }: {
   onChoisir: (id: T) => void
 }) {
   return (
-    <nav className="inline-flex gap-1 rounded-[20px] border border-black/[0.05] bg-neutral-100/70 p-1.5">
+    // Sur téléphone, trois colonnes égales sans icône : en ligne, les trois
+    // libellés dépassaient de l'écran et faisaient glisser toute la page.
+    <nav className="grid w-full grid-cols-3 gap-1 rounded-[20px] border border-black/[0.05] bg-neutral-100/70 p-1.5 md:inline-flex md:w-auto">
       {options.map((o) => {
         const actif = o.id === valeur
         return (
@@ -178,14 +187,14 @@ function Commutateur<T extends string>({ options, valeur, onChoisir }: {
             onClick={() => onChoisir(o.id)}
             aria-current={actif ? 'page' : undefined}
             className={cn(
-              'flex shrink-0 items-center gap-2 rounded-2xl px-4 py-2 text-[13.5px] font-semibold transition-all',
+              'flex min-w-0 items-center justify-center gap-2 rounded-2xl px-2 py-2 text-center text-xs font-semibold leading-tight transition-all md:shrink-0 md:px-4 md:text-[13.5px]',
               actif
                 ? 'bg-white text-neutral-900 shadow-[0_1px_3px_rgba(0,0,0,0.12),0_1px_1px_rgba(0,0,0,0.04)]'
                 : 'text-neutral-500 hover:text-neutral-900',
             )}
           >
             <o.icone
-              className={cn('h-[17px] w-[17px] shrink-0 transition-colors', actif ? 'text-blue-600' : 'text-neutral-400')}
+              className={cn('hidden h-[17px] w-[17px] shrink-0 transition-colors md:block', actif ? 'text-blue-600' : 'text-neutral-400')}
               strokeWidth={1.9}
             />
             {o.label}
@@ -300,7 +309,7 @@ function Articles({ articles, etapes, noeuds }: {
             </label>
           )}
         </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto px-2 py-2">
+        <CardContent className="flex-1 overflow-y-auto px-2 py-2 max-md:max-h-80">
           {parEtape ? (
             <ListeDesEtapes
               etapes={etapes}

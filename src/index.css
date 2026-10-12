@@ -3,6 +3,9 @@
 @import '@fontsource-variable/inter';
 @import "tailwindcss";
 
+/* Écran bas (portable 720p) : le tableau de bord se resserre pour tenir sans défiler. */
+@custom-variant short (@media (max-height: 800px));
+
 @theme {
   --color-background: #ffffff;
   --color-foreground: #1d1d1f;
@@ -469,3 +472,12 @@ body {
   .doc-feuille:last-child { break-after: auto; page-break-after: auto; }
   .doc-contenu { width: auto; height: 265mm; }
 }
+
+/* Rapports sur téléphone : chaque feuille A4 est réduite à la largeur de l'écran.
+   Écran seulement : à l'impression, la feuille garde sa taille réelle. */
+@media screen and (max-width: 767px) {
+  .doc-feuille { zoom: var(--zoom-feuille, 1); }
+}
+
+/* Téléphone : la barre du dossier s'efface pendant qu'une fiche de relevé est ouverte. */
+.releve-ouvert .nav-dossier { display: none; }

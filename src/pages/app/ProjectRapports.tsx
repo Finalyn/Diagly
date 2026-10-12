@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
+import { useIsMobile } from '@/lib/use-mobile'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle, BookOpen, ClipboardCheck, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf } from 'lucide-react'
+import { Loader2, AlertCircle, BookOpen, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf } from 'lucide-react'
 import { Button, Card, CardContent } from '@/components/ui'
 import { ExportDialog } from '@/components/ExportDialog'
 import { cn } from '@/lib/utils'
@@ -53,6 +54,11 @@ export function ProjectRapports() {
    */
   const [apercu, setApercu] = useState<MarqueDuDossier | null>(null)
   const kinds = mode === 'rapports' ? KINDS_RAPPORTS : KINDS_VARIANTES
+  // Une feuille A4 fait 210 mm, soit environ 800 px : sur téléphone, on la réduit à l'écran.
+  const isMobile = useIsMobile()
+  const zoomFeuille = isMobile
+    ? ({ '--zoom-feuille': String(Math.min(1, (window.innerWidth - 32) / 800)) } as CSSProperties)
+    : undefined
   const [report, setReport] = useState<ReportKind>(mode === 'rapports' ? 'complet' : 'detaille')
   const [scenario, setScenario] = useState<ScenarioId>('energetique')
   const [exportOpen, setExportOpen] = useState(false)
@@ -117,7 +123,6 @@ export function ProjectRapports() {
   if (!diagnostic) {
     return (
       <Card><CardContent className="py-16 text-center">
-        <ClipboardCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
         <h3 className="text-lg font-semibold mb-1">Aucun diagnostic</h3>
         <p className="text-sm text-muted-foreground mb-4">Le rapport se base sur le diagnostic. Démarrez-le d'abord.</p>
         <Link to={`/app/projects/${id}/diagnostic`}><Button>Aller au diagnostic</Button></Link>
@@ -176,12 +181,18 @@ export function ProjectRapports() {
        descendait d'autant. En colonne, la liste porte des noms entiers, reste
        visible pendant qu'on fait défiler le document, et les actions se rangent
        dessous au lieu de flotter à l'opposé de ce qu'elles actionnent. */
-    <div className="js-print-column flex h-full min-h-0 flex-col gap-4 overflow-y-auto lg:flex-row lg:overflow-hidden">
+    <div className="js-print-column flex min-h-0 flex-col gap-4 lg:h-full">
+    {/* Même en-tête que les autres pages du dossier ; il ne s'imprime pas. */}
+    <div className="js-print-hide shrink-0 print:hidden">
+      <h1 className="text-xl font-bold md:text-2xl">Rapports</h1>
+      <p className="text-sm text-muted-foreground">Le document remis au client : choisissez son type, réglez son apparence, puis imprimez, exportez ou partagez-le.</p>
+    </div>
+    <div className="js-print-column flex min-h-0 flex-col gap-4 lg:flex-1 lg:flex-row lg:overflow-hidden">
       {/* À gauche ce qui compose le document : le type de rapport et son
           apparence. Au milieu le document. À droite ce qui en sort : imprimer,
           exporter, partager. Chaque colonne défile d'elle-même quand elle
           dépasse, sans emporter le document avec elle. */}
-      <aside className="shrink-0 space-y-4 print:hidden lg:h-full lg:w-60 lg:overflow-y-auto lg:pb-3">
+      <aside className="shrink-0 space-y-4 print:hidden max-lg:order-1 lg:h-full lg:w-60 lg:overflow-y-auto lg:pb-3">
         <nav className="space-y-1" aria-label="Type de rapport">
           {kinds.map(([k, label, Icon]) => (
             <button
@@ -191,7 +202,7 @@ export function ProjectRapports() {
               className={cn(
                 'flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors',
                 report === k
-                  ? 'bg-primary/10 text-primary'
+                  ? 'bg-blue-50 text-blue-700'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               )}
             >
@@ -214,7 +225,7 @@ export function ProjectRapports() {
                   className={cn(
                     'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
                     scenario === v.id
-                      ? 'bg-primary/10 font-medium text-primary'
+                      ? 'bg-blue-50 font-medium text-blue-700'
                       : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                   )}
                 >
@@ -248,7 +259,12 @@ export function ProjectRapports() {
           C'est lui, et non la page, qui défile : la barre de défilement longe
           alors la feuille, à portée du regard et de la main, au lieu d'aller
           se ranger au bord de la fenêtre. */}
-      <div className="js-print-column min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible lg:h-full lg:max-w-[calc(210mm+1rem)] lg:overflow-auto lg:[scrollbar-width:thin]">
+      {/* Téléphone : les feuilles A4 sont réduites à la largeur de l'écran (zoom
+          sur chaque feuille, voir index.css) plutôt que de défiler en largeur. */}
+      <div
+        className="js-print-column min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible max-lg:order-3 lg:h-full lg:max-w-[calc(210mm+1rem)] lg:overflow-auto lg:[scrollbar-width:thin]"
+        style={zoomFeuille}
+      >
       {/* Au-dessus de la feuille, et non dans les réglages : c'est en voyant
           le document qu'on mesure ce qui lui manque. */}
       <RappelDuBureau />
@@ -314,7 +330,8 @@ export function ProjectRapports() {
 
       {/* Ce qui sort du document. À droite parce que c'est la fin du geste :
           on choisit à gauche, on relit au milieu, on édite à droite. */}
-      <aside className="shrink-0 space-y-2 print:hidden lg:h-full lg:w-52 lg:overflow-y-auto">
+      {/* Téléphone : imprimer, exporter, partager montent avant le document. */}
+      <aside className="shrink-0 space-y-2 print:hidden max-lg:order-2 lg:h-full lg:w-52 lg:overflow-y-auto">
         <Button onClick={() => window.print()} className="w-full justify-start">
           <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
         </Button>
@@ -323,6 +340,7 @@ export function ProjectRapports() {
         </Button>
         <ShareControl projectId={id!} initialToken={project.shareToken ?? null} />
       </aside>
+    </div>
     </div>
   )
 }

@@ -13,7 +13,8 @@ import { badRequest, conflict, unauthorized } from "../lib/http-error.js";
 import { validateBody } from "../middlewares/validate.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { loginLimiter, passwordResetLimiter, registerLimiter, twoFaLimiter } from "../middlewares/rate-limit.js";
-import { sendMail, mailConfigured, passwordResetEmail } from "../lib/mail.js";
+import { sendMail, mailConfigured, passwordResetEmail, codeEmail } from "../lib/mail.js";
+import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { logger } from "../lib/logger.js";
 import jwt from "jsonwebtoken";
 import { authenticator } from "otplib";
@@ -115,9 +116,10 @@ router.post("/login", loginLimiter, validateBody(loginSchema), async (req, res) 
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) throw unauthorized("Invalid credentials");
 
-  // Si la 2FA est active : on ne délivre pas encore les tokens, on demande le code.
-  if (user.twoFactorEnabled && user.twoFactorSecret) {
-    return res.json({ twoFactorRequired: true, ticket: sign2faTicket(user.id) });
+  // Si la 2FA est active : on ne délivre pas encore les tokens, on demande le code
+  // (de l'application, ou envoyé par email).
+  if (aLaDoubleAuth(user)) {
+    return res.json(await ouvrirDoubleAuth(user));
   }
 
   const tokens = await issueTokens(user);
@@ -337,16 +339,60 @@ router.post(
   },
 );
 
-// ============================ 2FA (TOTP) ============================
+// ============================ 2FA (application ou email) ============================
 
-/** Ticket court (5 min) émis entre l'étape mot de passe et l'étape code 2FA. */
-function sign2faTicket(userId: string): string {
-  return jwt.sign({ sub: userId, purpose: "2fa" }, env.JWT_ACCESS_SECRET, { expiresIn: "5m" });
+/**
+ * Deux méthodes : l'application d'authentification (TOTP, avec un secret) ou un
+ * code envoyé par email. Un compte activé avant l'email n'a pas de méthode
+ * enregistrée : il a un secret, c'est donc l'application.
+ */
+type CompteDoubleAuth = { id: string; email: string; twoFactorEnabled: boolean; twoFactorSecret: string | null; twoFactorMethod: string | null };
+const parEmail = (u: CompteDoubleAuth) => u.twoFactorMethod === "EMAIL";
+function aLaDoubleAuth(u: CompteDoubleAuth) {
+  return u.twoFactorEnabled && (parEmail(u) || !!u.twoFactorSecret);
 }
-function verify2faTicket(ticket: string): string {
-  const p = jwt.verify(ticket, env.JWT_ACCESS_SECRET) as { sub: string; purpose?: string };
-  if (p.purpose !== "2fa") throw new Error("bad ticket");
-  return p.sub;
+
+/**
+ * Le code par email voyage sans table : le ticket emporte son empreinte (HMAC
+ * lié au compte), jamais le code lui-même. Vérifier, c'est recalculer
+ * l'empreinte du code saisi. Le ticket expire avec le code, en 10 minutes.
+ */
+const CODE_TTL = "10m";
+const empreinte = (userId: string, code: string) =>
+  createHmac("sha256", env.JWT_ACCESS_SECRET).update(`2fa-email:${userId}:${code}`).digest("hex");
+const memeEmpreinte = (a: string, b: string) =>
+  a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const nouveauCode = () => String(randomInt(0, 1_000_000)).padStart(6, "0");
+/** « c•••••@finalyn.com » : assez pour reconnaître sa boîte, pas assez pour la livrer. */
+const masquer = (email: string) => {
+  const [nom, domaine] = email.split("@");
+  return `${nom.slice(0, 1)}${"•".repeat(Math.max(1, Math.min(nom.length - 1, 6)))}@${domaine}`;
+};
+
+async function envoyerCode(user: { id: string; email: string }, usage: "connexion" | "confirmation") {
+  const code = nouveauCode();
+  const parti = await sendMail({ to: user.email, ...codeEmail(code, usage) });
+  if (!parti) throw badRequest("L'email avec votre code n'a pas pu partir. Réessayez dans un instant.");
+  return empreinte(user.id, code);
+}
+
+/** Ticket court émis entre l'étape mot de passe et l'étape code 2FA. */
+function sign2faTicket(userId: string, h?: string): string {
+  return jwt.sign({ sub: userId, purpose: "2fa", ...(h ? { h } : {}) }, env.JWT_ACCESS_SECRET, { expiresIn: h ? CODE_TTL : "5m" });
+}
+function verify2faTicket(ticket: string, purpose = "2fa"): { sub: string; h?: string } {
+  const p = jwt.verify(ticket, env.JWT_ACCESS_SECRET) as { sub: string; purpose?: string; h?: string };
+  if (p.purpose !== purpose) throw new Error("bad ticket");
+  return { sub: p.sub, h: p.h };
+}
+
+/** La réponse de l'étape mot de passe quand un code est demandé (login et Google). */
+async function ouvrirDoubleAuth(user: CompteDoubleAuth) {
+  if (parEmail(user)) {
+    const h = await envoyerCode(user, "connexion");
+    return { twoFactorRequired: true as const, method: "email" as const, email: masquer(user.email), ticket: sign2faTicket(user.id, h) };
+  }
+  return { twoFactorRequired: true as const, method: "totp" as const, ticket: sign2faTicket(user.id) };
 }
 
 const codeSchema = z.object({ code: z.string().min(6).max(12) });
@@ -359,19 +405,82 @@ router.post(
   validateBody(z.object({ ticket: z.string().min(1), code: z.string().min(6).max(12) })),
   async (req, res) => {
     const { ticket, code } = req.body as { ticket: string; code: string };
-    let userId: string;
+    let t: { sub: string; h?: string };
     try {
-      userId = verify2faTicket(ticket);
+      t = verify2faTicket(ticket);
     } catch {
-      throw unauthorized("Session expirée, reconnectez-vous.");
+      throw unauthorized("Code expiré, reconnectez-vous.");
     }
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) throw unauthorized("2FA non configurée");
-    if (!authenticator.verify({ token: cleanCode(code), secret: user.twoFactorSecret })) {
-      throw unauthorized("Code invalide");
-    }
+    const user = await prisma.user.findUnique({ where: { id: t.sub } });
+    if (!user || !aLaDoubleAuth(user)) throw unauthorized("2FA non configurée");
+    const valide = parEmail(user)
+      ? !!t.h && memeEmpreinte(empreinte(user.id, cleanCode(code)), t.h)
+      : authenticator.verify({ token: cleanCode(code), secret: user.twoFactorSecret! });
+    if (!valide) throw unauthorized("Code invalide");
     const tokens = await issueTokens(user);
     res.json({ user: publicUser(user), ...tokens });
+  },
+);
+
+// Renvoie un code par email à l'étape de connexion (le précédent n'est pas arrivé).
+router.post(
+  "/2fa/resend",
+  twoFaLimiter,
+  validateBody(z.object({ ticket: z.string().min(1) })),
+  async (req, res) => {
+    let t: { sub: string };
+    try {
+      t = verify2faTicket((req.body as { ticket: string }).ticket);
+    } catch {
+      throw unauthorized("Code expiré, reconnectez-vous.");
+    }
+    const user = await prisma.user.findUnique({ where: { id: t.sub } });
+    if (!user || !aLaDoubleAuth(user) || !parEmail(user)) throw badRequest("Aucun code à renvoyer.");
+    res.json(await ouvrirDoubleAuth(user));
+  },
+);
+
+// Les méthodes proposables : l'email n'en est une que si le serveur sait envoyer.
+router.get("/2fa/options", requireAuth, async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.auth!.sub }, select: { email: true } });
+  res.json({ email: mailConfigured(), adresse: user ? masquer(user.email) : null });
+});
+
+// Envoie un code de confirmation au compte connecté (activer ou retirer la 2FA par email).
+router.post("/2fa/email/code", requireAuth, twoFaLimiter, async (req, res) => {
+  if (!mailConfigured()) throw badRequest("L'envoi d'emails n'est pas configuré sur ce serveur : la double authentification par email n'est pas disponible.");
+  const user = await prisma.user.findUnique({ where: { id: req.auth!.sub } });
+  if (!user) throw badRequest("User not found");
+  const h = await envoyerCode(user, "confirmation");
+  const ticket = jwt.sign({ sub: user.id, purpose: "2fa-confirm", h }, env.JWT_ACCESS_SECRET, { expiresIn: CODE_TTL });
+  res.json({ ticket, email: masquer(user.email) });
+});
+
+/** Le code de confirmation reçu par email, pour le compte connecté. */
+function codeDeConfirmationValide(userId: string, ticket: string | undefined, code: string) {
+  if (!ticket) return false;
+  try {
+    const t = verify2faTicket(ticket, "2fa-confirm");
+    return t.sub === userId && !!t.h && memeEmpreinte(empreinte(userId, cleanCode(code)), t.h);
+  } catch {
+    return false;
+  }
+}
+
+// Active la 2FA par email, une fois le code de confirmation saisi.
+router.post(
+  "/2fa/email/enable",
+  requireAuth,
+  twoFaLimiter,
+  validateBody(z.object({ ticket: z.string().min(1), code: z.string().min(6).max(12) })),
+  async (req, res) => {
+    const { ticket, code } = req.body as { ticket: string; code: string };
+    if (!codeDeConfirmationValide(req.auth!.sub, ticket, code)) throw badRequest("Code invalide ou expiré.");
+    await prisma.user.update({
+      where: { id: req.auth!.sub },
+      data: { twoFactorEnabled: true, twoFactorMethod: "EMAIL", twoFactorSecret: null },
+    });
+    res.json({ enabled: true, method: "EMAIL" });
   },
 );
 
@@ -379,6 +488,9 @@ router.post(
 router.post("/2fa/setup", requireAuth, async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.auth!.sub } });
   if (!user) throw badRequest("User not found");
+  // Sans ce garde-fou, démarrer l'application désactivait en silence une 2FA par
+  // email déjà en place.
+  if (aLaDoubleAuth(user)) throw badRequest("Désactivez d'abord la double authentification en place.");
   const secret = authenticator.generateSecret();
   await prisma.user.update({
     where: { id: user.id },
@@ -397,21 +509,28 @@ router.post("/2fa/enable", requireAuth, validateBody(codeSchema), async (req, re
   if (!authenticator.verify({ token: cleanCode(code), secret: user.twoFactorSecret })) {
     throw badRequest("Code invalide");
   }
-  await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: true } });
-  res.json({ enabled: true });
+  await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: true, twoFactorMethod: "TOTP" } });
+  res.json({ enabled: true, method: "TOTP" });
 });
 
-// Désactive la 2FA (code requis).
-router.post("/2fa/disable", requireAuth, validateBody(codeSchema), async (req, res) => {
-  const { code } = req.body as { code: string };
-  const user = await prisma.user.findUnique({ where: { id: req.auth!.sub } });
-  if (!user || !user.twoFactorSecret) return res.json({ enabled: false });
-  if (!authenticator.verify({ token: cleanCode(code), secret: user.twoFactorSecret })) {
-    throw badRequest("Code invalide");
-  }
-  await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: false, twoFactorSecret: null } });
-  res.json({ enabled: false });
-});
+// Désactive la 2FA : un code de l'application, ou le code de confirmation reçu par email.
+router.post(
+  "/2fa/disable",
+  requireAuth,
+  twoFaLimiter,
+  validateBody(codeSchema.extend({ ticket: z.string().optional() })),
+  async (req, res) => {
+    const { code, ticket } = req.body as { code: string; ticket?: string };
+    const user = await prisma.user.findUnique({ where: { id: req.auth!.sub } });
+    if (!user || !aLaDoubleAuth(user)) return res.json({ enabled: false });
+    const valide = parEmail(user)
+      ? codeDeConfirmationValide(user.id, ticket, code)
+      : authenticator.verify({ token: cleanCode(code), secret: user.twoFactorSecret! });
+    if (!valide) throw badRequest("Code invalide");
+    await prisma.user.update({ where: { id: user.id }, data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorMethod: null } });
+    res.json({ enabled: false });
+  },
+);
 
 // ============================ Google OAuth ============================
 
@@ -526,8 +645,11 @@ router.get("/google/callback", async (req, res) => {
 
   // La 2FA s'applique AUSSI au parcours Google : sans ce controle, activer la 2FA sur un
   // compte lie a une adresse Gmail serait contournable en un clic.
-  if (user.twoFactorEnabled && user.twoFactorSecret) {
-    const frag = new URLSearchParams({ twoFactorRequired: "1", ticket: sign2faTicket(user.id) });
+  if (aLaDoubleAuth(user)) {
+    const etape = await ouvrirDoubleAuth(user);
+    const frag = new URLSearchParams({
+      twoFactorRequired: "1", ticket: etape.ticket, method: etape.method, ...("email" in etape ? { email: etape.email } : {}),
+    });
     return res.redirect(`${env.APP_URL}/oauth-callback#${frag.toString()}`);
   }
 

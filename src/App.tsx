@@ -24,6 +24,7 @@ const Dashboard = lazy(() => named(import('@/pages/app/Dashboard'), 'Dashboard')
 const ProjectsList = lazy(() => named(import('@/pages/app/ProjectsList'), 'ProjectsList'))
 const ProjectNew = lazy(() => named(import('@/pages/app/ProjectNew'), 'ProjectNew'))
 const ProjectDetail = lazy(() => named(import('@/pages/app/ProjectDetail'), 'ProjectDetail'))
+const OuvertureDossier = lazy(() => named(import('@/pages/app/ProjectDetail'), 'OuvertureDossier'))
 const ProjectEdit = lazy(() => named(import('@/pages/app/ProjectEdit'), 'ProjectEdit'))
 const ProjectDiagnostic = lazy(() => named(import('@/pages/app/ProjectDiagnostic'), 'ProjectDiagnostic'))
 const ProjectMetres = lazy(() => named(import('@/pages/app/ProjectMetres'), 'ProjectMetres'))
@@ -38,6 +39,8 @@ const ProjectRapports = lazy(() => named(import('@/pages/app/ProjectRapports'), 
 const ProjectVariantes = lazy(() => named(import('@/pages/app/ProjectVariantes'), 'ProjectVariantes'))
 const ProjectCECB = lazy(() => named(import('@/pages/app/ProjectCECB'), 'ProjectCECB'))
 const ProjectPlanning = lazy(() => named(import('@/pages/app/ProjectPlanning'), 'ProjectPlanning'))
+const ProjectVisite = lazy(() => named(import('@/pages/app/ProjectVisite'), 'ProjectVisite'))
+const DossierMobile = lazy(() => named(import('@/pages/app/DossierMobile'), 'DossierMobile'))
 const AssistantPage = lazy(() => named(import('@/pages/app/AssistantPage'), 'AssistantPage'))
 const DiagnosticDetail = lazy(() => named(import('@/pages/app/DiagnosticDetail'), 'DiagnosticDetail'))
 const DiagnosticItemDetail = lazy(() => named(import('@/pages/app/DiagnosticItemDetail'), 'DiagnosticItemDetail'))
@@ -54,7 +57,7 @@ const CFCManager = lazy(() => named(import('@/pages/app/CFCManager'), 'CFCManage
 const PlanningPage = lazy(() => named(import('@/pages/app/PlanningPage'), 'PlanningPage'))
 const SettingsPage = lazy(() => named(import('@/pages/app/SettingsPage'), 'SettingsPage'))
 const Integrations = lazy(() => named(import('@/pages/app/Integrations'), 'Integrations'))
-const TeamManagement = lazy(() => named(import('@/pages/app/TeamManagement'), 'TeamManagement'))
+const Partenaires = lazy(() => named(import('@/pages/app/Partenaires'), 'Partenaires'))
 const JoinOrg = lazy(() => named(import('@/pages/app/JoinOrg'), 'JoinOrg'))
 const Support = lazy(() => named(import('@/pages/app/Support'), 'Support'))
 const SupportTicket = lazy(() => named(import('@/pages/app/SupportTicket'), 'SupportTicket'))
@@ -126,7 +129,9 @@ function App() {
             {/* Projects */}
             <Route path="projects" element={<ProjectsList />} />
             <Route path="projects/new" element={<ProjectNew />} />
-            <Route path="projects/:id" element={<ProjectDetail />} />
+            {/* Ouvrir un dossier mène au relevé (sur téléphone, la fiche bascule déjà vers l'éditeur). */}
+            <Route path="projects/:id" element={<OuvertureDossier />} />
+            <Route path="projects/:id/fiche" element={<ProjectDetail />} />
             <Route path="projects/:id/edit" element={<ProjectEdit />} />
             <Route path="projects/:id/diagnostic" element={<ProjectDiagnostic />} />
             <Route path="projects/:id/couts" element={<ProjectMetres />} />
@@ -136,6 +141,9 @@ function App() {
             <Route path="projects/:id/rapports" element={<ProjectRapports />} />
             <Route path="projects/:id/cecb" element={<ProjectCECB />} />
             <Route path="projects/:id/calendrier" element={<ProjectPlanning />} />
+            <Route path="projects/:id/visite" element={<ProjectVisite />} />
+            {/* Le sommaire du dossier sur téléphone (sur ordinateur, la barre de gauche en tient lieu). */}
+            <Route path="projects/:id/sommaire" element={<DossierMobile />} />
 
             {/* Assistant : page plein écran, le parcours mobile n'ouvre pas de fenêtre */}
             <Route path="assistant" element={<AssistantPage />} />
@@ -166,7 +174,9 @@ function App() {
             <Route path="planning" element={<PlanningPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="integrations" element={<Integrations />} />
-            <Route path="team" element={<TeamManagement />} />
+            <Route path="prestataires" element={<Partenaires />} />
+            {/* L'équipe vit désormais dans les Paramètres ; l'ancienne adresse y mène. */}
+            <Route path="team" element={<Navigate to="/app/settings?s=membres" replace />} />
             <Route path="join/:token" element={<JoinOrg />} />
             <Route path="support" element={<Support />} />
             <Route path="support/new" element={<NewSupportRequest />} />

@@ -24,6 +24,12 @@ export function Login() {
   const [ticket, setTicket] = useState<string | null>(
     () => (location.state as { ticket?: string } | null)?.ticket ?? null,
   )
+  // Code par email : l'adresse (masquée) où il est parti, et le renvoi.
+  const [parEmail, setParEmail] = useState<string | null>(() => {
+    const st = location.state as { method?: string; email?: string } | null
+    return st?.method === 'email' ? st.email ?? 'votre adresse' : null
+  })
+  const [renvoye, setRenvoye] = useState(false)
   const [code, setCode] = useState('')
 
   const finishAuth = (res: AuthResponse) => {
@@ -38,8 +44,10 @@ export function Login() {
     setLoading(true)
     try {
       const res = await api.auth.login({ email, password })
-      if ('twoFactorRequired' in res) setTicket(res.ticket)
-      else finishAuth(res)
+      if ('twoFactorRequired' in res) {
+        setTicket(res.ticket)
+        setParEmail(res.method === 'email' ? res.email ?? 'votre adresse' : null)
+      } else finishAuth(res)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erreur de connexion au serveur')
     } finally {
@@ -62,10 +70,26 @@ export function Login() {
     }
   }
 
+  const renvoyer = async () => {
+    if (!ticket) return
+    setError(null); setRenvoye(false)
+    try {
+      const res = await api.auth.twoFactorResend(ticket)
+      setTicket(res.ticket); setCode(''); setRenvoye(true)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Renvoi impossible')
+    }
+  }
+
   // ===== Étape 2 : code 2FA =====
   if (ticket) {
     return (
-      <AuthCard title="Vérification en deux étapes" subtitle="Entrez le code à 6 chiffres de votre application d’authentification.">
+      <AuthCard
+        title="Vérification en deux étapes"
+        subtitle={parEmail
+          ? `Entrez le code à 6 chiffres envoyé à ${parEmail}. Il est valable 10 minutes.`
+          : 'Entrez le code à 6 chiffres de votre application d’authentification.'}
+      >
         <form onSubmit={onVerify} className="space-y-4">
           <Input
             value={code}
@@ -79,9 +103,17 @@ export function Login() {
           <Button type="submit" className="w-full h-11 rounded-xl bg-white border border-black/[0.12] text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)] hover:bg-muted/60" disabled={loading || code.length < 6}>
             {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Vérification…</> : 'Vérifier'}
           </Button>
+          {parEmail && (
+            <p className="text-center text-sm text-muted-foreground">
+              {renvoye ? 'Un nouveau code vient de partir. ' : 'Rien reçu ? Regardez les courriers indésirables, ou '}
+              <button type="button" onClick={renvoyer} className="font-medium text-foreground underline-offset-2 hover:underline">
+                {renvoye ? 'renvoyer encore' : 'renvoyez le code'}
+              </button>
+            </p>
+          )}
           <button
             type="button"
-            onClick={() => { setTicket(null); setCode(''); setError(null) }}
+            onClick={() => { setTicket(null); setParEmail(null); setRenvoye(false); setCode(''); setError(null) }}
             className="w-full text-sm text-muted-foreground hover:text-foreground"
           >
             Utiliser un autre compte

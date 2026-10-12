@@ -247,7 +247,7 @@ function Avertissement({ provisoire }: { provisoire: string[] }) {
     <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
       <p className="flex items-start gap-2.5 text-sm font-medium text-orange-900">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-        Estimation énergétique indicative, méthode simplifiée inspirée du CECB.
+        Estimation énergétique indicative, méthode simplifiée inspirée de celle du CECB®.
       </p>
       <p className="mt-1.5 pl-7 text-sm text-orange-900/80">
         Ce n'est pas un certificat. Seul un expert CECB certifié peut délivrer un certificat officiel.

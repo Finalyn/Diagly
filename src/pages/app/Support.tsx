@@ -5,7 +5,7 @@ import {
   Search, ChevronDown, ChevronRight, Loader2, Plus, MessageSquare, ArrowRight,
   Rocket, ClipboardCheck, Banknote, Ruler, FileText, Database, Users, Clock, BookOpen,
   GraduationCap, HelpCircle, LifeBuoy, CornerDownRight, Compass, FolderPlus, LayoutGrid,
-  Check, Play,
+  Check, Play, CalendarCheck, Handshake,
 } from 'lucide-react'
 import { Card, CardContent, Input, Button, Badge } from '@/components/ui'
 import { api } from '@/lib/api'
@@ -26,11 +26,12 @@ const STATUS: Record<SupportStatus, { label: string; cls: string }> = {
 /** Les données ne connaissent pas React : la clé d'icône se résout ici. */
 const ICONES: Record<CategorieDoc['icone'], typeof Rocket> = {
   depart: Rocket, releve: ClipboardCheck, argent: Banknote, plan: Ruler,
-  rapport: FileText, donnees: Database, compte: Users,
+  rapport: FileText, donnees: Database, compte: Users, partenaires: Handshake,
 }
 
 const ICONES_VISITE: Record<Visite['icone'], typeof Compass> = {
   boussole: Compass, dossier: FolderPlus, onglets: LayoutGrid, aide: LifeBuoy,
+  releve: ClipboardCheck, agenda: CalendarCheck,
 }
 
 const NIVEAUX: Record<Tutoriel['niveau'], string> = {
@@ -89,6 +90,7 @@ export function Support() {
               return (
                 <button
                   key={o.id}
+                  data-visite={`aide-onglet-${o.id}`}
                   onClick={() => setOnglet(o.id)}
                   aria-current={on ? 'page' : undefined}
                   className={cn(

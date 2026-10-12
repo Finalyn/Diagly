@@ -32,7 +32,7 @@ const priorityCircleColors: Record<string, { bg: string; ring: string }> = {
 
 const toNum = (v: string | null | undefined): number => (v ? Number(v) : 0)
 
-export function StatistiquesDiagnostic({ diagnosticId }: { diagnosticId: string }) {
+export function StatistiquesDiagnostic({ diagnosticId, projectId }: { diagnosticId: string; projectId: string }) {
   const itemsQuery = useQuery({
     queryKey: ['diagnostic-items', diagnosticId],
     queryFn: () => api.diagnostics.listItems(diagnosticId),
@@ -88,8 +88,8 @@ export function StatistiquesDiagnostic({ diagnosticId }: { diagnosticId: string 
             <p className="text-sm text-muted-foreground">
               Les graphiques apparaîtront au premier relevé.
             </p>
-            <Link to={`/app/diagnostic/${diagnosticId}`}>
-              <Button variant="outline"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir l'éditeur</Button>
+            <Link to={`/app/projects/${projectId}/diagnostic`}>
+              <Button variant="outline"><ClipboardCheck className="mr-2 h-4 w-4" />Ouvrir le relevé</Button>
             </Link>
           </CardContent>
         </Card>
@@ -109,7 +109,7 @@ export function StatistiquesDiagnostic({ diagnosticId }: { diagnosticId: string 
               return (
                 <Link
                   key={item.id}
-                  to={`/app/diagnostic/${diagnosticId}`}
+                  to={`/app/projects/${projectId}/diagnostic?item=${item.id}`}
                   className="flex items-center gap-4 rounded-lg p-3 transition-colors hover:bg-muted/50"
                 >
                   <span className="w-5 text-sm font-bold text-muted-foreground">{i + 1}</span>

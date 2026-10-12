@@ -69,7 +69,7 @@ function Rappel({ icone: Icone, titre, phrase, vers, action, grave, className }:
       )}
     >
       <Icone className={cn('h-4 w-4 shrink-0', grave ? 'text-amber-600' : 'text-blue-600')} />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-56">
         <p className={cn('text-sm font-medium leading-tight', grave ? 'text-amber-900' : 'text-blue-900')}>{titre}</p>
         <p className={cn('mt-0.5 text-xs leading-snug', grave ? 'text-amber-800' : 'text-blue-800')}>{phrase}</p>
       </div>

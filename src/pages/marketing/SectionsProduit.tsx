@@ -300,8 +300,8 @@ const IA_QUAND = [
     texte: "Une conversation sur le diagnostic en cours : ce qui pèse le plus, ce qui peut attendre, ce qui manque encore au relevé.",
   },
   {
-    titre: "À l'import d'un CECB",
-    texte: "Un certificat énergétique en PDF est lu et ses valeurs reprises, plutôt que retapées à la main.",
+    titre: "À l'import d'un certificat énergétique",
+    texte: "Un certificat énergétique cantonal (CECB®) en PDF est lu et ses valeurs reprises, plutôt que retapées à la main.",
   },
 ]
 

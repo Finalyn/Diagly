@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
-  Home, ClipboardCheck, Database, Users, Building2, Settings, Plus, ChevronRight, Plug, LifeBuoy,
+  Home, ClipboardCheck, Database, Building2, Settings, Plus, ChevronRight, Plug, LifeBuoy, Handshake,
   CircleUser, LogOut, ShieldCheck,
 } from 'lucide-react'
 import { useAuth } from '@/stores/auth'
@@ -23,9 +23,9 @@ const NAV: NavEntry[] = [
   { to: '/app/dashboard', label: 'Accueil', icon: Home, end: true, visite: 'nav-accueil' },
   { to: '/app/projects', label: 'Diagnostics', icon: ClipboardCheck, visite: 'nav-projects' },
   { to: '/app/cfc', label: 'Base de données', icon: Database, visite: 'nav-cfc' },
-  { to: '/app/team', label: 'Gestion équipe', icon: Users, visite: 'nav-team' },
   { to: '/app/integrations', label: 'Intégrations', icon: Plug, visite: 'nav-integrations' },
   { to: '/app/buildings', label: 'Parc immobilier', icon: Building2, visite: 'nav-buildings' },
+  { to: '/app/prestataires', label: 'Prestataires', icon: Handshake, visite: 'nav-partenaires' },
   { to: '/app/settings', label: 'Paramètres', icon: Settings, visite: 'nav-settings' },
   { to: '/app/support', label: 'Aide & support', icon: LifeBuoy, visite: 'nav-support' },
 ]
@@ -92,32 +92,38 @@ export function Sidebar() {
 
       <div className="flex-1" />
 
-      {/* Bas de carte : espace du compte + assistant intégrés */}
-      <div className="space-y-1 border-t border-black/[0.06] pt-3">
-        <EspaceCompte />
-
-        {/* L'assistant a sa page : le panneau flottant cachait l'application
-            derrière lui et ne gardait rien d'une question à l'autre. */}
-        <NavLink
-          to="/app/assistant"
-          data-visite="assistant"
-          className={({ isActive }) => cn(
-            'flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors',
-            isActive ? 'bg-blue-50' : 'hover:bg-black/[0.03]',
-          )}
-        >
-          {({ isActive }) => (
-            <>
-              <div className="min-w-0 flex-1">
-                <p className={cn('truncate text-sm font-semibold leading-tight', isActive ? 'text-blue-700' : 'text-neutral-900')}>Diagly Assistant</p>
-                <p className="truncate text-xs text-muted-foreground">Poser une question</p>
-              </div>
-              <ChevronRight className={cn('h-4 w-4 shrink-0', isActive ? 'text-blue-700' : 'text-muted-foreground')} />
-            </>
-          )}
-        </NavLink>
-      </div>
+      <PiedDeBarre />
     </aside>
+  )
+}
+
+/** Bas de barre : l'espace du compte et l'assistant. Partagé avec la barre d'un dossier. */
+export function PiedDeBarre() {
+  return (
+    <div className="space-y-1 border-t border-black/[0.06] pt-3">
+      <EspaceCompte />
+
+      {/* L'assistant a sa page : le panneau flottant cachait l'application
+          derrière lui et ne gardait rien d'une question à l'autre. */}
+      <NavLink
+        to="/app/assistant"
+        data-visite="assistant"
+        className={({ isActive }) => cn(
+          'flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors',
+          isActive ? 'bg-blue-50' : 'hover:bg-black/[0.03]',
+        )}
+      >
+        {({ isActive }) => (
+          <>
+            <div className="min-w-0 flex-1">
+              <p className={cn('truncate text-sm font-semibold leading-tight', isActive ? 'text-blue-700' : 'text-neutral-900')}>Diagly Assistant</p>
+              <p className="truncate text-xs text-muted-foreground">Poser une question</p>
+            </div>
+            <ChevronRight className={cn('h-4 w-4 shrink-0', isActive ? 'text-blue-700' : 'text-muted-foreground')} />
+          </>
+        )}
+      </NavLink>
+    </div>
   )
 }
 

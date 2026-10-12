@@ -337,7 +337,7 @@ export function DashboardPreview() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2 pl-[38px]">
-              {['Créer un diagnostic', 'Générer un rapport CECB', 'Analyser une photo'].map((q) => (
+              {['Créer un diagnostic', 'Générer un rapport énergétique', 'Analyser une photo'].map((q) => (
                 <button key={q} className="rounded-full border border-black/[0.08] bg-white px-3.5 py-2 text-[12.5px] font-medium text-neutral-700 transition-colors hover:border-black/[0.15] hover:bg-white">{q}</button>
               ))}
             </div>

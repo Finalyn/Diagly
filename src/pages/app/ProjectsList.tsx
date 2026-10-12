@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, useEffect, type Dispatch, type SetStateAction } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Plus, Search, Filter, Loader2, AlertCircle, ClipboardCheck, Layers, Settings2, ChevronRight, MoreHorizontal, ChevronLeft } from 'lucide-react'
+import { Plus, Search, Filter, Loader2, AlertCircle, Layers, Settings2, ChevronRight, MoreHorizontal, ChevronLeft } from 'lucide-react'
 import {
   Button, Card, CardContent, Input, Select,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -84,7 +84,12 @@ function toOperationRow(o: ApiOperation): Omit<Row, 'seq' | 'ref'> {
 
 export function ProjectsList() {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<string>('Tous')
+  // ?onglet=En cours : le tableau de bord ouvre la liste sur l'onglet de son compteur.
+  const [searchParams] = useSearchParams()
+  const ongletDemande = searchParams.get('onglet')
+  const [activeTab, setActiveTab] = useState<string>(
+    ongletDemande && (TABS as readonly string[]).includes(ongletDemande) ? ongletDemande : 'Tous',
+  )
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [page, setPage] = useState(1)
@@ -175,7 +180,6 @@ export function ProjectsList() {
 
       {!isLoading && !isError && total === 0 && (
         <Card><CardContent className="py-16 text-center">
-          <ClipboardCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-1">{rows.length === 0 ? 'Aucun diagnostic' : 'Aucun résultat'}</h3>
           <p className="text-sm text-muted-foreground mb-4">{rows.length === 0 ? 'Démarrez votre premier diagnostic.' : 'Aucun diagnostic ne correspond à votre recherche.'}</p>
           {rows.length === 0 && <Link to="/app/projects/new"><Button><Plus className="mr-2 h-4 w-4" />Nouveau diagnostic</Button></Link>}

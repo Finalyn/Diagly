@@ -51,7 +51,7 @@ export function AvertissementEnergie() {
   return (
     <div className="mb-3 border-l-[3px] border-orange-500 bg-orange-50 px-3 py-2">
       <p className="font-semibold">
-        Estimation énergétique indicative, méthode simplifiée inspirée du CECB.
+        Estimation énergétique indicative, méthode simplifiée inspirée de celle du CECB®.
       </p>
       <p className="text-muted-foreground">
         Ce document n'est pas un certificat. Seul un expert CECB certifié peut délivrer un

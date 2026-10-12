@@ -46,6 +46,9 @@ model User {
   phone            String?  @db.VarChar(50)
   twoFactorEnabled Boolean  @default(false) @map("two_factor_enabled")
   twoFactorSecret  String?  @map("two_factor_secret") @db.VarChar(255)
+  /// Méthode de la double authentification : TOTP (application) ou EMAIL (code envoyé).
+  /// null sur un compte activé avant l'email : il a un secret, c'est donc l'application.
+  twoFactorMethod  String?  @map("two_factor_method") @db.VarChar(10)
   /// Appartenance à une organisation (partage du parc entre membres). null = compte solo.
   organizationId   String?  @map("organization_id")
   orgRole          OrgRole? @map("org_role")
@@ -369,6 +372,9 @@ model Project {
   /// pour un client sans changer les reglages de tous les autres.
   reportBranding        Json?         @map("report_branding")
   sharedAt              DateTime?     @map("shared_at")
+  /// Organisation de la visite : rendez-vous, créneaux proposés, préparation.
+  /// Le rendez-vous est recopié dans un Event (calendrier) et dans visitDate.
+  visitPlan             Json?         @map("visit_plan")
   createdAt             DateTime      @default(now()) @map("created_at")
   updatedAt             DateTime      @updatedAt @map("updated_at")
 
@@ -379,11 +385,123 @@ model Project {
   planBoards  PlanBoard[]
   events      Event[]
   variants    ProjectVariant[]
+  contacts    ProjectContact[]
+  mails       ProjectMail[]
 
   @@index([ownerId])
   @@index([operationId])
   @@index([status])
   @@map("projects")
+}
+
+/// Interlocuteur d'un dossier pour la visite : gérance, propriétaire, concierge,
+/// locataire… Le rôle est libre côté base (GERANCE, PROPRIETAIRE, CONCIERGE,
+/// LOCATAIRE, ENTREPRISE, AUTRE) pour en ajouter sans migration.
+model ProjectContact {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  role      String   @db.VarChar(30)
+  name      String   @db.VarChar(150)
+  company   String?  @db.VarChar(150)
+  email     String?  @db.VarChar(255)
+  phone     String?  @db.VarChar(40)
+  /// Logement ou étage, pour un locataire.
+  unit      String?  @db.VarChar(80)
+  notes     String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_contacts")
+}
+
+/// Mail préparé depuis l'organisation de la visite, tel qu'il est parti.
+/// status : ENVOYE (par le serveur), ECHEC, MESSAGERIE (ouvert dans le
+/// logiciel de messagerie de l'utilisateur, envoi non vérifiable).
+model ProjectMail {
+  id         String   @id @default(cuid())
+  projectId  String   @map("project_id")
+  userId     String   @map("user_id")
+  authorName String   @map("author_name") @db.VarChar(150)
+  template   String   @db.VarChar(40)
+  subject    String   @db.VarChar(255)
+  body       String   @db.Text
+  /// [{ name, email }]
+  recipients Json
+  status     String   @db.VarChar(20)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_mails")
+}
+
+/// Professionnel de l'annuaire Partenaires (architecte, expert CECB®, ingénieur…).
+/// Tenu par Finalyn : seuls ses administrateurs créent, modifient et publient.
+model Partner {
+  id            String   @id @default(cuid())
+  /// PRO : un professionnel qu'on contacte par Diagly. OUTIL : un service en
+  /// ligne qu'on rejoint par un lien, souvent avec une offre (ex. Arkia).
+  type          String   @default("PRO") @db.VarChar(10)
+  nom           String   @db.VarChar(150)
+  /// Personne de contact au sein du bureau.
+  contact       String?  @db.VarChar(150)
+  /// Métiers (codes : ARCHITECTE, EXPERT_CECB, INGENIEUR_CIVIL…).
+  metiers       Json
+  /// Cantons couverts (VD, GE, FR…).
+  cantons       Json
+  /// Langues de travail (fr, de, it, en).
+  langues       Json
+  description   String?  @db.Text
+  /// Ce que fait un outil, en quelques mots (« Images par IA »).
+  categorie     String?  @db.VarChar(100)
+  /// L'offre réservée aux utilisateurs de Diagly, et le lien qui la donne.
+  offre         String?  @db.VarChar(255)
+  lienOffre     String?  @map("lien_offre") @db.VarChar(500)
+  /// Nombre de fois où le lien de l'offre a été ouvert depuis Diagly.
+  clics         Int      @default(0)
+  /// Obligatoire pour un professionnel : les demandes y arrivent.
+  email         String?  @db.VarChar(255)
+  telephone     String?  @db.VarChar(40)
+  siteWeb       String?  @map("site_web") @db.VarChar(255)
+  localite      String?  @db.VarChar(150)
+  /// Certification vérifiée par Finalyn (ex. expert CECB® sur la liste officielle).
+  verifie       Boolean  @default(false)
+  /// Ce que Finalyn a vérifié, montré tel quel (« Expert CECB® certifié »).
+  certification String?  @db.VarChar(255)
+  actif         Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  demandes PartnerRequest[]
+
+  @@map("partners")
+}
+
+/// Demande de mise en relation envoyée par un utilisateur à un partenaire.
+/// statut : ENVOYEE, MESSAGERIE (ouverte dans la messagerie), ECHEC, EN_COURS, TERMINEE.
+model PartnerRequest {
+  id          String   @id @default(cuid())
+  partnerId   String   @map("partner_id")
+  userId      String   @map("user_id")
+  projectId   String?  @map("project_id")
+  objet       String   @db.VarChar(255)
+  message     String   @db.Text
+  /// Résumé du dossier joint, tel qu'il est parti.
+  dossier     String?  @db.Text
+  lienRapport String?  @map("lien_rapport") @db.VarChar(255)
+  statut      String   @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([partnerId])
+  @@map("partner_requests")
 }
 
 /// Plan (PDF ou image) d'un bâtiment, stocké sur le disque serveur.

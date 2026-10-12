@@ -20,6 +20,8 @@ const schema = z.object({
   SMTP_FROM: z.string().default("Diagly <noreply@diagly.ch>"),
   // Adresse qui reçoit les demandes de support.
   SUPPORT_EMAIL: z.string().default("contact@finalyn.com"),
+  /** Comptes Finalyn qui gèrent l'annuaire des partenaires (en plus du rôle ADMIN), séparés par des virgules. */
+  FINALYN_ADMINS: z.string().default("contact@finalyn.com"),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
   // URL publique de l'app (pour construire les redirect_uri OAuth). En dev : localhost.
   APP_URL: z.string().default("http://localhost:4000"),

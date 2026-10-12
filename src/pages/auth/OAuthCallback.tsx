@@ -26,7 +26,7 @@ export function OAuthCallback() {
     // les jetons, il renvoie un ticket. On repasse par l'ecran de connexion (etape 2).
     const ticket = params.get('ticket')
     if (params.get('twoFactorRequired') === '1' && ticket) {
-      navigate('/login', { replace: true, state: { ticket } })
+      navigate('/login', { replace: true, state: { ticket, method: params.get('method') ?? 'totp', email: params.get('email') ?? undefined } })
       return
     }
 
