@@ -12,7 +12,8 @@
  *   - le front déjà construit, dans public/ : le serveur ne le construit pas ;
  *   - quatre choses qui lui sont propres et que ce script ne touche jamais :
  *     scripts/deploy.sh (lancé sur le serveur), son .gitignore, uploads/ et
- *     public/mobile (l'ancienne app mobile, toujours servie sous /mobile).
+ *     public/mobile (l'ancienne app mobile, toujours servie sous /mobile) ;
+ *   - l'import de la base CFC assemblé en un fichier (prisma/base-cfc/importer.mjs).
  *
  * Ensuite, sur le serveur :
  *   cd ~/sites/diagly.ch && git fetch origin && git reset --hard origin/main && bash scripts/deploy.sh
@@ -66,6 +67,14 @@ const garder = new Set(fichiers)
 const retires = sh('git ls-files', CIBLE).split('\n').filter((f) => f && !protege(f) && !garder.has(f))
 for (const f of retires) rmSync(join(CIBLE, f))
 console.log(`${fichiers.length} fichiers recopiés, ${retires.length} retirés`)
+
+// L'import de la base CFC (prisma/base-cfc/importer.ts) emprunte du code au
+// front (src/lib/base-cfc), absent du dépôt de production : il y échouerait.
+// On le livre assemblé en un seul fichier, à côté de l'original, pour que ses
+// chemins relatifs (../correspondance) restent justes. Sur le serveur :
+//   node prisma/base-cfc/importer.mjs DIAGLY_base_CFC_v3.xlsx [--appliquer]
+sh(`npx esbuild prisma/base-cfc/importer.ts --bundle --platform=node --format=esm --target=node20 --packages=external --log-level=warning "--banner:js=// Généré par scripts/publier-production.mjs depuis prisma/base-cfc/importer.ts : ne pas modifier." "--outfile=${join(CIBLE, 'prisma', 'base-cfc', 'importer.mjs')}"`, join(SOURCE, 'server'), true)
+console.log('import de la base CFC assemblé : prisma/base-cfc/importer.mjs')
 
 // -------------------------------------------------------------- front publié
 dire('3/3  Front construit vers public/ (public/mobile conservé)')
