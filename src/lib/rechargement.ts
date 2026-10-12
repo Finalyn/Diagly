@@ -47,7 +47,26 @@ export function rechargerUneFois(err: unknown): never {
   throw err
 }
 
-// Vite signale aussi l'échec d'un préchargement. On ne l'empêche pas d'échouer
-// (preventDefault rendrait un module vide, et l'écran planterait plus loin sur
-// une erreur incompréhensible) : on laisse l'import échouer, et il passe par
-// rechargerUneFois (App.tsx, `named`).
+// Vite signale aussi l'échec d'un préchargement. Pour un fichier de code, on
+// ne l'empêche pas d'échouer (preventDefault rendrait un module vide, et
+// l'écran planterait plus loin sur une erreur incompréhensible) : l'import
+// échoue et passe par rechargerUneFois (App.tsx, `named`).
+//
+// Une feuille de style, elle, ne doit pas faire tomber la page : sans elle,
+// l'écran s'affiche, un peu moins joli, et on la redemande à part. L'adresse
+// change (?r=) pour ne pas retomber sur une copie abîmée gardée par le
+// navigateur : un style manquant (carte Leaflet de la vitrine) bloquait tout
+// l'écran, et « Recharger » ressortait la même copie.
+export function rattraperLesStyles(): void {
+  window.addEventListener('vite:preloadError', (e) => {
+    const erreur = (e as Event & { payload?: unknown }).payload
+    const message = erreur instanceof Error ? erreur.message : String(erreur)
+    const fichier = /^Unable to preload CSS for (\S+)/.exec(message)?.[1]
+    if (!fichier) return
+    e.preventDefault()
+    const lien = document.createElement('link')
+    lien.rel = 'stylesheet'
+    lien.href = `${fichier}${fichier.includes('?') ? '&' : '?'}r=${Date.now()}`
+    document.head.appendChild(lien)
+  })
+}

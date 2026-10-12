@@ -3,8 +3,16 @@
 @import '@fontsource-variable/inter';
 @import "tailwindcss";
 
-/* Écran bas (portable 720p) : le tableau de bord se resserre pour tenir sans défiler. */
-@custom-variant short (@media (max-height: 800px));
+/* Écran bas (portable 720p, iPad à l'horizontale avec ses 820 px de haut) : le
+   tableau de bord se resserre pour tenir sans défiler. À 800 px, l'iPad en
+   restait exclu et ses accès rapides passaient sous « Mes diagnostics ». */
+@custom-variant short (@media (max-height: 900px));
+
+/* Tablette debout (iPad à la verticale) : assez de hauteur pour que le tableau
+   de bord tienne dans l'écran sur une seule colonne, la liste « Activité
+   récente » prenant la place qui reste. Au-delà de 1024 px de large, c'est la
+   mise en page à deux colonnes (lg) qui s'en charge. */
+@custom-variant tablette (@media (min-width: 768px) and (max-width: 1023.98px) and (min-height: 900px));
 
 @theme {
   --color-background: #ffffff;
@@ -94,6 +102,23 @@ body {
    sur ce qu'on touche, pas de sélection du libellé d'un bouton ni de bulle
    « Copier » au toucher prolongé. Le texte des champs et des documents reste
    sélectionnable. */
+/* Champs date et heure de Safari (iPhone, iPad) : sans ces règles, ils gardent
+   leur dessin à eux, plus hauts que les autres champs, la valeur centrée, et
+   une largeur propre qui déborde de leur colonne (Visite, sur iPad). */
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'],
+input[type='month'] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+}
+input::-webkit-date-and-time-value {
+  margin: 0;
+  text-align: left;
+}
+
 html.natif {
   -webkit-tap-highlight-color: transparent;
 }
@@ -547,14 +572,12 @@ body {
   .doc-contenu { width: auto; height: 265mm; }
 }
 
-/* Rapports sur téléphone : chaque feuille A4 est réduite à la largeur de l'écran.
-   Écran seulement : à l'impression, la feuille garde sa taille réelle. */
-@media screen and (max-width: 767px) {
+/* Rapports : chaque feuille A4 est réduite à la largeur de sa colonne quand
+   celle-ci est plus étroite (téléphone, iPad ; ProjectRapports mesure la
+   colonne). Écran seulement : à l'impression, la feuille garde sa taille réelle. */
+@media screen {
   .doc-feuille { zoom: var(--zoom-feuille, 1); }
 }
-
-/* Téléphone : la barre du dossier s'efface pendant qu'une fiche de relevé est ouverte. */
-.releve-ouvert .nav-dossier { display: none; }
 
 /* L'éditeur de diagnostic en bleu Diagly (la coche du logo) : ses boutons et
    ses sélections étaient noirs, la couleur principale de l'app. */

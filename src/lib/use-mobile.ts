@@ -24,3 +24,21 @@ export function useIsMobile() {
     () => false,
   )
 }
+
+// Tablette = un écran tactile assez large pour l'app complète (iPad, à la
+// verticale comme à l'horizontale). Le pointeur grossier la distingue d'un
+// ordinateur à la même largeur : sur iPad, l'éditeur du relevé passe à un
+// panneau à la fois, comme sur téléphone, et replie le menu de gauche.
+const TABLETTE = 'screen and (min-width: 768px) and (pointer: coarse)'
+
+export function useEstTablette() {
+  return useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia(TABLETTE)
+      m.addEventListener('change', cb)
+      return () => m.removeEventListener('change', cb)
+    },
+    () => window.matchMedia(TABLETTE).matches,
+    () => false,
+  )
+}

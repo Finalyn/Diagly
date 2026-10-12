@@ -57,14 +57,20 @@ export function Visionneuse({ photos, index, onIndex, onFermer, titre, sousTitre
   const src = photos[Math.min(index, photos.length - 1)]
 
   return createPortal(
+    // Le voile couvre tout l'écran, mais son contenu reste hors de l'encoche et
+    // des coins de l'iPhone en paysage.
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Photo en grand"
-      className="fixed inset-0 z-[60] flex flex-col bg-black/92 backdrop-blur-sm print:hidden"
+      className="safe-sides fixed inset-0 z-[60] flex flex-col bg-black/92 backdrop-blur-sm print:hidden"
       onClick={(e) => { if (e.target === e.currentTarget) onFermer() }}
     >
-      <div className="safe-top flex shrink-0 items-start justify-between gap-3 px-4 py-3 text-white">
+      {/* La marge de la barre d'état s'ajoute à celle de la barre : la classe
+          safe-top, hors des utilitaires, remplaçait le py-3 au lieu de s'y
+          ajouter. Le titre touchait alors la barre d'état dans l'app, et le
+          haut de la fenêtre sur ordinateur. */}
+      <div className="flex shrink-0 items-start justify-between gap-3 px-4 pb-3 pt-[calc(var(--safe-top)+0.75rem)] text-white">
         <div className="min-w-0">
           {titre && <p className="truncate text-sm font-semibold">{titre}</p>}
           <p className="text-xs text-white/70">
@@ -123,8 +129,10 @@ export function Visionneuse({ photos, index, onIndex, onFermer, titre, sousTitre
         )}
       </div>
 
+      {/* Les vignettes restent au-dessus de la barre d'accueil. Il n'existe pas
+          de classe safe-bottom : celle qui était posée ici ne faisait rien. */}
       {photos.length > 1 && (
-        <div className="safe-bottom flex shrink-0 justify-center gap-2 overflow-x-auto px-4 py-3">
+        <div className="flex shrink-0 justify-center gap-2 overflow-x-auto px-4 pb-[calc(var(--safe-bottom)+0.75rem)] pt-3">
           {photos.map((p, i) => (
             <button
               key={i}

@@ -18,7 +18,7 @@
  * d'enregistrement qui ne paraît que si quelque chose a changé, et qui propose
  * d'annuler : on ne modifie pas une adresse de facturation par inadvertance.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -28,7 +28,6 @@ import {
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
-import { useIsMobile } from '@/lib/use-mobile'
 import { cn } from '@/lib/utils'
 import { getPushState, subscribePush, unsubscribePush, type PushState } from '@/lib/push-client'
 import { logout as endSession, confirmerDeconnexion, apresSuppressionDuCompte } from '@/lib/session'
@@ -70,19 +69,48 @@ const SECTIONS = TOUTES_LES_SECTIONS.filter((s) => !(estAppNative && s.id === 'f
 
 const FAMILLES = ['Mon compte', 'Mon travail', 'Mon organisation'] as const
 
+/**
+ * Sous lg (1024 px), une section à la fois : le sommaire, puis la section.
+ *
+ * Les deux colonnes ne tiennent côte à côte qu'à partir de lg. Entre 768 et
+ * 1023 px, un iPad à la verticale, le menu gardait toute la largeur et la
+ * carte de la section, poussée à côté, tombait à zéro pixel : on touchait une
+ * section et rien ne paraissait. Sur un iPad debout, menu de gauche ouvert,
+ * il reste environ 550 px pour la page ; une colonne de menu en aurait pris
+ * plus du tiers et laissé aux formulaires moins qu'un téléphone. Ils ont
+ * toute la largeur, comme sur téléphone.
+ *
+ * `screen and` pour la même raison que dans use-mobile.ts : à l'impression,
+ * la largeur de référence est celle de la page.
+ */
+const UNE_SECTION_A_LA_FOIS = 'screen and (max-width: 1023px)'
+
+function useUneSectionALaFois() {
+  return useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia(UNE_SECTION_A_LA_FOIS)
+      m.addEventListener('change', cb)
+      return () => m.removeEventListener('change', cb)
+    },
+    () => window.matchMedia(UNE_SECTION_A_LA_FOIS).matches,
+    () => false,
+  )
+}
+
 export function SettingsPage() {
-  const isMobile = useIsMobile()
+  const uneALaFois = useUneSectionALaFois()
   /**
    * La section ouverte vit dans l'adresse, et nulle part ailleurs.
    *
    * Le menu du compte peut ainsi ouvrir directement la bonne, un lien se
    * partage, et le bouton Retour du navigateur fait ce qu'on attend. Sur
-   * téléphone, l'absence de section montre le sommaire : on y revient par la
-   * flèche, plutôt que de garder une barre d'onglets qui déborde de l'écran.
+   * téléphone et sur iPad à la verticale, l'absence de section montre le
+   * sommaire : on y revient par la flèche, plutôt que de garder une barre
+   * d'onglets qui déborde de l'écran.
    */
   const [parametres, setParametres] = useSearchParams()
   const demandee = SECTIONS.find((s) => s.id === parametres.get('s'))?.id ?? null
-  const choisie = demandee ?? (isMobile ? null : 'profil')
+  const choisie = demandee ?? (uneALaFois ? null : 'profil')
   const choisir = (id: IdSection | null) => setParametres(id ? { s: id } : {}, { replace: true })
 
   const section = SECTIONS.find((s) => s.id === choisie)
@@ -103,17 +131,17 @@ export function SettingsPage() {
         </p>
       </div>
 
-      <div className={cn('flex gap-4', isMobile ? 'flex-col' : 'items-start')}>
+      <div className={cn('flex gap-4', uneALaFois ? 'flex-col' : 'items-start')}>
         {/* ----- Le menu, à gauche ----- */}
-        {(!isMobile || choisie === null) && (
-          <Menu choisie={choisie} onChoisir={choisir} mobile={isMobile} />
+        {(!uneALaFois || choisie === null) && (
+          <Menu choisie={choisie} onChoisir={choisir} seul={uneALaFois} />
         )}
 
         {/* ----- Les réglages de la section, à droite ----- */}
         {section && (
           <Card className="min-w-0 flex-1 overflow-hidden">
             <CardHeader className="space-y-0 border-b border-black/[0.06] px-5 py-3.5">
-              {isMobile && (
+              {uneALaFois && (
                 <button
                   onClick={() => choisir(null)}
                   className="mb-1.5 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
@@ -149,11 +177,15 @@ export function SettingsPage() {
  * En tête le titre de la page et ce qu'il reste à regarder, puis la personne
  * connectée, puis les sections par famille, chacune avec ce qui lui manque.
  * Même carte et même colonne que les autres écrans à deux panneaux.
+ *
+ * `seul` : le menu tient l'écran à lui seul (téléphone, iPad à la verticale)
+ * et mène à la section, qui le remplace. Ses lignes sont alors plus hautes,
+ * portent leur aide et un chevron, et aucune n'est marquée comme ouverte.
  */
-function Menu({ choisie, onChoisir, mobile }: {
+function Menu({ choisie, onChoisir, seul }: {
   choisie: IdSection | null
   onChoisir: (id: IdSection) => void
-  mobile: boolean
+  seul: boolean
 }) {
   const user = useAuth((s) => s.user)
   const bureau = user?.preferences?.company
@@ -186,18 +218,18 @@ function Menu({ choisie, onChoisir, mobile }: {
                     onClick={() => onChoisir(s.id)}
                     className={cn(
                       'flex w-full items-center gap-2.5 rounded-2xl px-3 text-left transition-colors',
-                      mobile ? 'py-3' : 'py-2.5',
-                      on && !mobile
+                      seul ? 'py-3' : 'py-2.5',
+                      on && !seul
                         ? 'border border-blue-100 bg-blue-50 text-blue-700'
                         : 'text-neutral-600 hover:bg-black/[0.03] hover:text-neutral-900',
                     )}
                   >
                     <s.icone className="h-4 w-4 shrink-0" />
                     <span className="min-w-0 flex-1">
-                      <span className={cn('block truncate text-sm', on && !mobile ? 'font-semibold' : 'font-medium')}>{s.label}</span>
-                      {mobile && <span className="block truncate text-[11px] text-muted-foreground">{s.aide}</span>}
+                      <span className={cn('block truncate text-sm', on && !seul ? 'font-semibold' : 'font-medium')}>{s.label}</span>
+                      {seul && <span className="block truncate text-[11px] text-muted-foreground">{s.aide}</span>}
                     </span>
-                    {mobile && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                    {seul && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
                   </button>
                 )
               })}

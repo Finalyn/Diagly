@@ -182,7 +182,10 @@ export function ChoixOuvrage({ projectId, nature, choisi, onChoisir, onFermer }:
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-2 border-t p-3">
+        {/* Au téléphone, la fenêtre est posée au bas de l'écran : ses boutons
+            restent au-dessus de la barre d'accueil de l'iPhone. Centrée sur un
+            écran plus large, elle n'en a pas besoin. */}
+        <div className="flex items-center justify-between gap-2 border-t p-3 pb-[calc(var(--safe-bottom)+0.75rem)] sm:pb-3">
           <button
             onClick={() => onChoisir(null)}
             disabled={!choisi}

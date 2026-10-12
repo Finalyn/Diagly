@@ -9,10 +9,14 @@ import { VisiteGuidee } from '@/components/visite/VisiteGuidee'
 import { useVisiteAuto } from '@/components/visite/useVisiteAuto'
 import { useIsMobile } from '@/lib/use-mobile'
 import { cn } from '@/lib/utils'
+import { useMenuDeLaPage } from '@/stores/menu-lateral'
 import { useEffect, useRef, useState } from 'react'
 
-// Fond villa (dashboard uniquement) — fondu sur les bords gauche + bas, aucune ligne de coupure
-const DASH_MASK = 'linear-gradient(to right, transparent 40%, #000 66%), linear-gradient(to bottom, #000 36%, transparent 52%)'
+// Fond villa (tableau de bord uniquement), fondu vers la gauche et vers le bas.
+// Le fondu se cale sur le cadre de l'image et non sur l'écran : calé sur
+// l'écran, il finissait plus bas que l'image sur iPad, et l'image s'arrêtait
+// net avant la fin du fondu.
+const DASH_MASK = 'linear-gradient(to right, transparent 14%, #000 51%), linear-gradient(to bottom, #000 55%, transparent 100%)'
 
 // Routes accessibles sur mobile (app épurée : liste, éditeur, base de données, paramètres).
 // Tout le reste (dashboard, coûts, variantes, rapports, plans, parc, équipe, intégrations…)
@@ -62,6 +66,7 @@ export function AppLayout() {
     || /^\/app\/diagnostic\/[^/]+$/.test(location.pathname)
   const mainRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
+  const menu = useMenuDeLaPage()
   // Téléphone : l'éditeur du relevé ne défile pas d'un bloc, il défile dans ses
   // propres colonnes, au-dessus de la barre du dossier.
   const editeurMobile = isMobile && (
@@ -102,7 +107,9 @@ export function AppLayout() {
     // pour que le verre monte jusqu'en haut de l'écran.
     <div className="js-print-shell safe-sides flex h-dvh overflow-hidden bg-muted md:pt-[var(--safe-top)]">
       {/* Colonne gauche : panneau unique (desktop) */}
-      <div className="js-print-hide hidden md:flex md:flex-col gap-3 pl-3 py-3 w-[15rem] lg:w-[17.5rem] shrink-0">
+      {/* Repliable (bouton de la barre du haut) ; replié d'office dans l'éditeur
+          du relevé sur tablette, qui travaille un panneau à la fois. */}
+      <div className={cn('js-print-hide hidden gap-3 pl-3 py-3 w-[15rem] lg:w-[17.5rem] shrink-0', menu.visible && 'md:flex md:flex-col')}>
         {/* Dans un dossier, la barre de gauche devient la sienne. */}
         {diagProjectId && !isMobile ? <DossierSidebar projectId={diagProjectId} /> : <Sidebar />}
       </div>
@@ -110,12 +117,15 @@ export function AppLayout() {
       {/* Zone principale */}
       <div className="js-print-column relative flex flex-1 flex-col min-w-0 overflow-hidden p-3 max-md:py-0">
         {onDashboard && (
+          // Un cadre en haut à droite, 70 % de la largeur et assez haut pour que
+          // le fondu se fasse dans l'image (« cover » remplit le cadre quelle
+          // que soit sa forme : iPad debout, couché, ou grand écran). La villa
+          // reste dans le cadre (position à 80 % de la largeur).
           <div
-            className="js-print-hide pointer-events-none absolute inset-0 z-0 bg-no-repeat"
+            className="js-print-hide pointer-events-none absolute right-0 top-0 z-0 h-[clamp(26rem,58%,40rem)] w-[70%] bg-cover bg-no-repeat"
             style={{
               backgroundImage: 'url(/preview-bg.jpg)',
-              backgroundSize: '70%',
-              backgroundPosition: '100% 0%',
+              backgroundPosition: '80% 20%',
               WebkitMaskImage: DASH_MASK,
               WebkitMaskComposite: 'source-in',
               maskImage: DASH_MASK,

@@ -45,7 +45,7 @@ import { ProjectSectionsMenu } from '@/components/ProjectSectionsMenu'
 import { CameraCapture } from '@/components/CameraCapture'
 import { PanneauGlissant } from '@/components/PanneauGlissant'
 import { vibrer } from '@/lib/motion'
-import { useIsMobile } from '@/lib/use-mobile'
+import { useIsMobile, useEstTablette } from '@/lib/use-mobile'
 import type { ApiDiagnosticItem, ElementState, Priority } from '@/lib/api-types'
 
 /**
@@ -159,6 +159,10 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
+  // Sur iPad, un panneau à la fois, comme sur téléphone : la liste, puis la
+  // fiche de l'élément, sans colonne vide à droite (le menu de gauche se
+  // replie d'office, stores/menu-lateral.ts).
+  const unPanneau = useEstTablette() || isMobile
 
   // ----- queries -----
   const diagQuery = useQuery({
@@ -192,13 +196,6 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   // ?item=<id> : l'activité récente du tableau de bord ouvre directement ce relevé.
   const [searchParams] = useSearchParams()
   const [selectedItemId, setSelectedItemId] = useState<string | null>(() => searchParams.get('item'))
-  // Téléphone : la fiche d'un relevé occupe tout l'écran, la barre du dossier
-  // s'efface pour ne pas recouvrir ses boutons (voir .releve-ouvert dans index.css).
-  useEffect(() => {
-    if (!isMobile) return
-    document.documentElement.classList.toggle('releve-ouvert', !!selectedItemId)
-    return () => document.documentElement.classList.remove('releve-ouvert')
-  }, [isMobile, selectedItemId])
   // L'éditeur travaille en bleu Diagly plutôt qu'en noir : la couleur
   // principale y est redéfinie (index.css, .editeur-diagnostic). Posée sur
   // <html> et non sur la page, parce que la caméra, la visionneuse et les
@@ -403,6 +400,37 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     )
   }
 
+  // « Suivant » ouvre la ligne d'après dans la liste où l'on a pris l'élément,
+  // comme un toucher sur cette ligne (elle est ajoutée si elle n'est pas encore
+  // relevée). En bout de liste, il ramène à la liste de l'ouvrage suivant de
+  // l'étape ; en bout d'étape, à la liste, qui propose l'étape suivante.
+  // Avant, il ramenait toujours à la liste qu'on venait de quitter.
+  const suivant = (() => {
+    if (!selectedItemId) return null
+    for (const g of grouped) {
+      for (const [rangDomaine, d] of g.domaines.entries()) {
+        const rangLigne = d.lignes.findIndex((l) => l.releve?.id === selectedItemId)
+        if (rangLigne < 0) continue
+        const ligne = d.lignes[rangLigne + 1]
+        if (ligne) {
+          return {
+            libelle: ligne.article.nom,
+            aller: () => (ligne.releve
+              ? setSelectedItemId(ligne.releve.id)
+              : ajouterReleve({ ligne, sharePct: partPourUnAjout(ligne) })),
+          }
+        }
+        const domaine = g.domaines[rangDomaine + 1]
+        if (!domaine) return null
+        return {
+          libelle: nomCategorie(domaine.nom),
+          aller: () => { setEtape(g.numero); setCategorie(domaine.nom); setSelectedItemId(null) },
+        }
+      }
+    }
+    return null
+  })()
+
   return (
     // Encastré, l'éditeur prend la hauteur que son conteneur lui laisse : la barre
     // d'onglets occupe déjà une place qu'un calcul en hauteur de fenêtre ignorerait,
@@ -414,7 +442,21 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     // sur ordinateur, et la page entière glissait.
     <div className="flex h-full flex-col gap-4">
       {/* Header (masqué sur mobile pendant l'édition d'un élément) */}
-      <div className={cn('space-y-3 shrink-0', isMobile && selectedItemId && 'hidden')}>
+      {/* Sur iPad, l'en-tête s'aligne sur la liste, centrée elle aussi. */}
+      <div className={cn('space-y-3 shrink-0', unPanneau && selectedItemId && 'hidden', unPanneau && !isMobile && 'md:mx-auto md:w-full md:max-w-2xl')}>
+        {/* Dans le dossier, sur grand écran : le même en-tête que les autres
+            pages du dossier (Photos, Coûts, Rapports). Sur téléphone, la barre
+            du dossier dit déjà où l'on est, et la place manque. */}
+        {encastre && !isMobile && (
+          <div>
+            <h1 className="text-xl font-bold md:text-2xl">Relevé</h1>
+            <p className="text-sm text-muted-foreground">
+              {items.length === 0
+                ? 'Aucun élément relevé pour le moment. Suivez les étapes du tour du bâtiment.'
+                : `${items.length} élément${items.length !== 1 ? 's' : ''} relevé${items.length !== 1 ? 's' : ''}. Suivez les étapes du tour du bâtiment.`}
+            </p>
+          </div>
+        )}
         {!encastre && (
           <div className="flex items-center gap-3">
             <button onClick={() => navigate(-1)}>
@@ -454,7 +496,9 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
         {/* ===== Catalogue : plein écran sur mobile (masqué pendant l'édition), colonne à gauche sur desktop ===== */}
         <Card className={cn(
           'w-full overflow-hidden flex flex-col',
-          isMobile ? (selectedItemId ? 'hidden' : 'flex-1 min-h-0') : 'lg:w-96 shrink-0',
+          // Sur iPad, la liste seule, centrée : en pleine largeur, ses lignes
+          // s'étiraient sur tout l'écran.
+          unPanneau ? (selectedItemId ? 'hidden' : 'flex-1 min-h-0 md:mx-auto md:max-w-2xl') : 'lg:w-96 shrink-0',
         )}>
           <CardHeader className="py-3 px-4 shrink-0 border-b">
             <CardTitle className="text-sm">Éléments à évaluer</CardTitle>
@@ -551,7 +595,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                       }}
                       className={cn(
                         'flex items-start gap-2 w-full text-left rounded hover:bg-muted/50 transition-colors',
-                        isMobile ? 'px-3 py-2.5 text-sm' : 'px-2 py-1.5 text-xs',
+                        unPanneau ? 'px-3 py-2.5 text-sm' : 'px-2 py-1.5 text-xs',
                         isSelected && 'bg-primary/10 text-primary',
                       )}
                     >
@@ -598,13 +642,14 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
         {/* ===== Éditeur ===== */}
         {/* Sur mobile : panneau qui entre par la droite et se renvoie d'un glissement.
             Sur grand écran : colonne fixe, aucun mouvement n'aurait de sens. */}
-        {isMobile ? (
+        {unPanneau ? (
           <PanneauGlissant
             ouvert={!!selectedItemId}
             onFermer={() => setSelectedItemId(null)}
             // L'editeur gere son propre defilement et son propre degagement du bas :
             // une marge ici raccourcirait le panneau et laisserait une bande vide.
-            className="absolute inset-0 z-30 overflow-hidden bg-background"
+            // Sur iPad, la fiche garde la largeur de la liste (42rem), centrée.
+            className="absolute inset-0 z-30 overflow-hidden bg-background md:px-[max(1.5rem,calc((100%-42rem)/2))]"
           >
             {selectedDiagItem && (
               <ItemEditor
@@ -618,6 +663,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 projectId={projectId}
                 yearBuilt={projectQuery.data?.project?.yearBuilt ?? null}
                 onBack={() => setSelectedItemId(null)}
+                suivant={suivant}
                 onUpdate={(data) => modifierReleve(selectedDiagItem.id, data)}
                 onDelete={() => {
                   const it = selectedDiagItem
@@ -944,22 +990,23 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte }: {
   const part = total > 0 ? Math.round((faits / total) * 100) : 0
 
   return (
-    // Sur grand écran, elle s'arrête au bord de la colonne « Éléments à évaluer »
-    // (lg:w-96) au lieu de traverser tout l'écran.
+    // La barre est courte, le pourcentage collé à sa fin : sur téléphone comme
+    // sur grand écran, elle ne traverse plus toute la largeur. Pleine largeur,
+    // elle prenait plus de place que ce qu'elle dit.
     <div className="space-y-1.5 lg:max-w-96" data-visite="releve-avancement">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="min-w-0 truncate text-sm font-medium">{titre}</p>
+      <p className="min-w-0 truncate text-sm font-medium">{titre}</p>
+      <div className="flex items-center gap-2.5">
+        <div
+          className="h-1.5 min-w-0 max-w-56 flex-1 overflow-hidden rounded-full bg-border"
+          role="progressbar"
+          aria-valuenow={faits}
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-label="Avancement de la visite"
+        >
+          <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${part}%` }} />
+        </div>
         <p className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{part} %</p>
-      </div>
-      <div
-        className="h-1.5 w-full overflow-hidden rounded-full bg-border"
-        role="progressbar"
-        aria-valuenow={faits}
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-label="Avancement de la visite"
-      >
-        <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${part}%` }} />
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <p className="text-xs text-muted-foreground">
@@ -1230,6 +1277,8 @@ interface ItemEditorProps {
   isDeleting: boolean
   mobile?: boolean
   onBack?: () => void
+  /** L'élément d'après dans la liste, ou null en bout de liste (on termine). */
+  suivant?: { libelle: string; aller: () => void } | null
   /**
    * Vrai quand la colonne qui accueille l'éditeur porte déjà le cadre.
    * L'éditeur abandonne alors le sien, sinon on dessine une bordure dans une
@@ -1491,7 +1540,7 @@ function PartDeSurface({ groupe, item, quantiteDuGroupe, unite, onPart }: {
   )
 }
 
-function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, cadreExterne }: ItemEditorProps) {
+function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, suivant, cadreExterne }: ItemEditorProps) {
   const [notes, setNotes] = useState(item.notes ?? '')
   const [showManual, setShowManual] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false) // options expertes repliées (mobile)
@@ -1673,6 +1722,10 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
     onUpdate({ photos: [...item.photos, ...urls] })
   }
   const removePhoto = (i: number) => onUpdate({ photos: item.photos.filter((_, idx) => idx !== i) })
+  // Le guide IA désigne les photos par leur contenu, pas par leur rang, et peut en
+  // retirer plusieurs d'un coup. Même chemin que la croix d'une vignette : une seule
+  // saisie dans la file d'envoi, qui part aussi hors ligne.
+  const removePhotos = (aRetirer: string[]) => onUpdate({ photos: item.photos.filter((p) => !aRetirer.includes(p)) })
   // La photo ouverte en grand, par son rang. On ne garde rien d'autre : la
   // liste, elle, vit dans l'ouvrage.
   const [photoOuverte, setPhotoOuverte] = useState<number | null>(null)
@@ -1687,6 +1740,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
         mode={guideMode}
         onApplyState={applyState}
         onApplyNote={applyGuideNote}
+        onRemovePhotos={removePhotos}
       />
     )
     : null
@@ -1719,7 +1773,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-6 pb-28 px-0.5">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-6 pb-4 px-0.5">
           {/* Étape 1 — photo */}
           <section className="space-y-3">
             <StepHeader n={1} label="Prendre une photo" />
@@ -1838,16 +1892,21 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
           </div>
         </div>
 
-        {/* Bouton posé au ras du bas : les 96 px d'écart d'avant servaient à dégager la
-            barre de navigation, qui n'est plus affichée dans l'éditeur. Il ne reste que
-            la marge de sécurité du bord d'écran (barre d'accueil iOS). */}
-        <button
-          type="button"
-          onClick={onBack}
-          className="absolute bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg active:scale-95 transition-transform z-10"
-        >
-          Suivant <ArrowRight className="h-5 w-5" />
-        </button>
+        {/* Le pas suivant, dans un pied fixe au-dessus de la barre du bas : en
+            bulle, il recouvrait la fiche (le Guide IA passait dessous). Il dit
+            où il mène, puisqu'il n'y ramène plus à la liste. */}
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t pt-3">
+          <p className="min-w-0 truncate text-xs text-muted-foreground">
+            {suivant ? <>Ensuite : <span className="font-medium text-foreground">{suivant.libelle}</span></> : 'Dernier élément de la liste'}
+          </p>
+          <button
+            type="button"
+            onClick={suivant ? suivant.aller : onBack}
+            className="flex shrink-0 items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg active:scale-95 transition-transform"
+          >
+            {suivant ? 'Suivant' : 'Terminer'} <ArrowRight className="h-5 w-5" />
+          </button>
+        </div>
 
         {viewer && (
           <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setViewer(null)}>
@@ -2132,6 +2191,18 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
           />
         </div>
       </CardContent>
+      {/* Le pas suivant, comme sur téléphone : la ligne d'après dans la liste,
+          sans repasser par elle. */}
+      {onBack && (
+        <div className="flex items-center justify-end gap-3 border-t px-6 py-4">
+          <p className="min-w-0 truncate text-sm text-muted-foreground">
+            {suivant ? <>Ensuite : <span className="font-medium text-foreground">{suivant.libelle}</span></> : 'Dernier élément de la liste'}
+          </p>
+          <Button onClick={suivant ? suivant.aller : onBack} className="shrink-0">
+            {suivant ? 'Suivant' : 'Terminer'}<ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </Card>
   )
 }

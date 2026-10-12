@@ -10,6 +10,7 @@ import { logger } from "../lib/logger.js";
 import { badRequest } from "../lib/http-error.js";
 import { ownerScopeFor } from "../lib/org-context.js";
 import { buildProjectContext, buildProjectBrief, buildPortfolioBrief } from "../lib/ai-context.js";
+import { normaliserAnalysePhoto } from "../lib/analyse-photo.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -167,6 +168,11 @@ router.post("/vision", validateBody(visionSchema), async (req, res) => {
     ? `L'utilisateur a pre-selectionne l'element CFC ${cfcCode}${cfcLabel ? ` (${cfcLabel})` : ""}. Indique via "matchesSelected" si les photos correspondent bien a cet element.`
     : `Aucun element CFC n'est pre-selectionne: propose le plus probable et mets matchesSelected a null.`;
 
+  // Sans cette regle, le modele evaluait tout ce qu'on lui montrait : une capture
+  // d'ecran de logiciel recevait « BON, priorite III » et une note de facade. Mieux
+  // vaut ne rien proposer et dire quoi supprimer qu'inventer un etat.
+  const reglePhoto = `Regle photo inutilisable: mets "photoInutilisable" a true si une photo ne permet pas d'evaluer l'element: capture d'ecran, photo d'un ecran ou d'un document, sujet sans rapport avec le batiment, image floue, sombre ou lointaine au point d'etre inexploitable${cfcCode ? ", ou element different du CFC selectionne (matchesSelected false)" : ""}. Dans ce cas ne propose AUCUN etat: "state", "priority", "stateReason" et "note" a null, "raisonInutilisable" dit ce qui cloche en une phrase courte, "photosAEcarter" liste les numeros des photos en cause (1 = premiere photo envoyee). Si une seule photo pose probleme parmi plusieurs, n'evalue pas non plus: l'utilisateur la supprimera puis relancera l'analyse. Une usure, une salissure ou un defaut visibles ne rendent PAS une photo inutilisable: c'est justement ce qu'il faut evaluer. Sinon "photoInutilisable" a false, "raisonInutilisable" vide et "photosAEcarter" vide.`;
+
   const prompt = `Tu es un expert du diagnostic de batiment en Suisse. Analyse ${imageBlocks.length > 1 ? `ces ${imageBlocks.length} photos (differents angles/details d'un meme element), en une seule evaluation d'ensemble` : "cette photo"} prise(s) sur place. ${guidance}
 ${brief ? brief + "\n" : ""}
 Repond UNIQUEMENT avec un objet JSON valide (aucun texte autour), avec exactement ces champs:
@@ -174,15 +180,19 @@ Repond UNIQUEMENT avec un objet JSON valide (aucun texte autour), avec exactemen
  "element": "ce que montre la photo, en une courte phrase",
  "cfc": { "code": "ex 221.1", "label": "libelle court", "confidence": "high|medium|low" },
  "matchesSelected": true,
- "state": "TRES_BON|BON|MOYEN|MAUVAIS",
+ "photoInutilisable": false,
+ "raisonInutilisable": "si photoInutilisable, ce qui cloche en une phrase courte, sinon vide",
+ "photosAEcarter": [],
+ "state": "TRES_BON|BON|MOYEN|MAUVAIS, ou null si photoInutilisable",
  "stateReason": "justification courte de l'etat",
  "priority": "I|II|III",
  "note": "note d'observation professionnelle, 1 a 2 phrases, en francais, sans tiret cadratin",
  "needMorePhoto": false,
- "morePhotoReason": "ce qu'il faudrait photographier en plus si utile, sinon vide",
+ "morePhotoReason": "ce qu'il faudrait photographier en plus (ou a reprendre si photoInutilisable), sinon vide",
  "confidence": "high|medium|low"
 }
-Regle etat: TRES_BON=neuf/recent, BON=usure normale, MOYEN=degradation visible a surveiller, MAUVAIS=defaut necessitant intervention. Priorite: I=securite/urgent, II=moyen terme, III=confort.`;
+Regle etat: TRES_BON=neuf/recent, BON=usure normale, MOYEN=degradation visible a surveiller, MAUVAIS=defaut necessitant intervention. Priorite: I=securite/urgent, II=moyen terme, III=confort.
+${reglePhoto}`;
 
   let r: Awaited<ReturnType<typeof fetch>>;
   try {
@@ -219,11 +229,14 @@ Regle etat: TRES_BON=neuf/recent, BON=usure normale, MOYEN=degradation visible a
     .filter((c) => c.type === "text")
     .map((c) => c.text ?? "")
     .join("");
-  const analysis = extractJson(text);
-  if (!analysis) {
+  const brute = extractJson(text);
+  if (!brute) {
     res.json({ configured: true, analysis: null, raw: text.slice(0, 500) });
     return;
   }
+  // Une photo inutilisable ne repart jamais avec un etat, meme si le modele en a
+  // propose un malgre la consigne (voir analyse-photo.ts).
+  const analysis = normaliserAnalysePhoto(brute, imageBlocks.length, !!cfcCode);
 
   // Verifie le code CFC propose contre le catalogue (libelle officiel + existence).
   const cfc = analysis.cfc as { code?: string; label?: string; confidence?: string } | undefined;

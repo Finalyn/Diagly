@@ -9,6 +9,7 @@ import { queryClient, QUERY_CACHE_KEY } from '@/lib/query-client'
 import { estAppNative } from '@/lib/plateforme'
 import { demarrerNatif } from '@/lib/natif'
 import { chargerFile } from '@/lib/hors-ligne/file-envoi'
+import { rattraperLesStyles } from '@/lib/rechargement'
 
 // Persistance du cache (requêtes + mutations en attente) sur IndexedDB : les données
 // restent disponibles hors-ligne et au redémarrage de l'app (chantier, sous-sol).
@@ -23,6 +24,7 @@ const persister = createAsyncStoragePersister({
 })
 
 demarrerNatif()
+rattraperLesStyles()
 
 // La file d'envoi des relevés (lib/hors-ligne) est relue avant le premier
 // affichage : la première liste montrée contient déjà les saisies pas encore

@@ -154,7 +154,10 @@ export function AssistantPage() {
       {tiroir && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-neutral-900/40" onClick={() => setTiroir(false)} />
-          <div className="absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] p-2">
+          {/* Le tiroir prend toute la hauteur de l'écran : dans l'app, son
+              bouton « Nouvelle conversation » passait sous la barre d'état, et
+              le bas de la liste sous la barre d'accueil. */}
+          <div className="absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] p-2 pb-[calc(var(--safe-bottom)+0.5rem)] pl-[calc(var(--safe-left)+0.5rem)] pt-[calc(var(--safe-top)+0.5rem)]">
             <ListeConversations
               conversations={conversations}
               courante={courante.id}

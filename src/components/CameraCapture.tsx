@@ -186,14 +186,19 @@ export function CameraCapture({ onCapture }: { onCapture: (dataUrl: string) => v
             <video ref={fsRef} autoPlay playsInline muted
               className="absolute inset-0 h-full w-full object-cover origin-center"
               style={{ transform: `scale(${previewScale})` }} />
+            {/* L'image va jusqu'aux bords, mais la croix et le zoom se tiennent
+                sous la barre d'état et hors de l'encoche : dans l'app, posés à
+                seize pixels du haut, ils passaient sous l'heure et la batterie. */}
             <button type="button" onClick={() => setFullscreen(false)} aria-label="Fermer"
-              className="absolute top-4 right-4 h-11 w-11 rounded-full bg-white/15 text-white flex items-center justify-center backdrop-blur">
+              className="absolute top-[calc(var(--safe-top)+1rem)] right-[calc(var(--safe-right)+1rem)] h-11 w-11 rounded-full bg-white/15 text-white flex items-center justify-center backdrop-blur">
               <X className="h-5 w-5" />
             </button>
-            {zoomBadge && <span className="absolute top-5 left-4 text-sm font-medium text-white bg-black/40 rounded-full px-2.5 py-1">{zoomBadge}</span>}
+            {zoomBadge && <span className="absolute top-[calc(var(--safe-top)+1.25rem)] left-[calc(var(--safe-left)+1rem)] text-sm font-medium text-white bg-black/40 rounded-full px-2.5 py-1">{zoomBadge}</span>}
           </div>
 
-          <div className="shrink-0 px-6 pb-10 pt-3 flex flex-col items-center gap-4 bg-black">
+          {/* Le déclencheur garde au moins sa marge d'origine, et passe au-dessus
+              de la barre d'accueil quand elle est plus haute. */}
+          <div className="shrink-0 px-6 pb-[max(2.5rem,calc(var(--safe-bottom)+1rem))] pt-3 flex flex-col items-center gap-4 bg-black">
             {canZoom && (
               <div className="w-full max-w-xs flex items-center gap-3 text-white/80">
                 <ZoomIn className="h-4 w-4 shrink-0" />

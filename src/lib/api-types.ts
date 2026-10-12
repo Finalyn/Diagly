@@ -435,10 +435,20 @@ export interface GuideAnalysis {
   element?: string
   cfc?: { code?: string; label?: string; confidence?: GuideConfidence; known?: boolean }
   matchesSelected?: boolean | null
-  state?: ElementState
-  stateReason?: string
-  priority?: Priority
-  note?: string
+  /**
+   * La photo ne permet pas d'évaluer l'élément : hors sujet, capture d'écran,
+   * inexploitable, ou autre élément que le CFC choisi. Le serveur ne renvoie
+   * alors aucun état ni aucune note. Absent des réponses d'un serveur plus ancien.
+   */
+  photoInutilisable?: boolean
+  /** Ce qui cloche, en une phrase. */
+  raisonInutilisable?: string | null
+  /** Les photos en cause, numérotées à partir de 1 dans l'ordre où elles ont été envoyées. */
+  photosAEcarter?: number[]
+  state?: ElementState | null
+  stateReason?: string | null
+  priority?: Priority | null
+  note?: string | null
   needMorePhoto?: boolean
   morePhotoReason?: string
   confidence?: GuideConfidence

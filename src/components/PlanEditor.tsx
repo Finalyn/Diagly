@@ -927,51 +927,63 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
        actif, posé en `bg-primary` sur un fond déjà sombre, ne se voyait pas. Seule
        la scène garde un fond neutre réglable : c'est lui qui détache la feuille. */
     <div className="fixed inset-0 z-50 flex select-none flex-col bg-background">
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b px-2 sm:px-3">
-        <button onClick={onClose} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Fermer">
-          <X className="h-5 w-5" />
-        </button>
-        <img src="/diagly-logo.svg" alt="Diagly" className="hidden h-7 shrink-0 sm:block" />
-        <div className="hidden h-6 w-px shrink-0 bg-border sm:block" aria-hidden />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{plan.name}</p>
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            {saving
-              ? <><Loader2 className="h-3 w-3 animate-spin" />Enregistrement…</>
-              : dirty
-                ? 'Modifications en cours…'
-                : <><Check className="h-3 w-3 text-emerald-600" />Enregistré</>}
-            <span aria-hidden>·</span>
-            {scale ? <span>échelle définie</span> : <span className="text-amber-600">pas d’échelle</span>}
-          </p>
-        </div>
+      {/* Dans l'app iPhone et iPad, la page passe sous la barre d'état (heure,
+          réseau, batterie) : sans marge, la croix et le nom du plan se
+          retrouvaient dessous. La marge est dans la barre elle-même, et non
+          autour de l'éditeur, pour que son fond monte jusqu'en haut de l'écran
+          sans bande vide. Sur ordinateur, ces marges valent zéro. */}
+      <header className="safe-top safe-sides shrink-0 border-b">
+        <div className="flex h-14 items-center gap-2 px-2 sm:px-3">
+          <button onClick={onClose} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Fermer">
+            <X className="h-5 w-5" />
+          </button>
+          <img src="/diagly-logo.svg" alt="Diagly" className="hidden h-7 shrink-0 sm:block" />
+          <div className="hidden h-6 w-px shrink-0 bg-border sm:block" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{plan.name}</p>
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              {saving
+                ? <><Loader2 className="h-3 w-3 animate-spin" />Enregistrement…</>
+                : dirty
+                  ? 'Modifications en cours…'
+                  : <><Check className="h-3 w-3 text-emerald-600" />Enregistré</>}
+              <span aria-hidden>·</span>
+              {scale ? <span>échelle définie</span> : <span className="text-amber-600">pas d’échelle</span>}
+            </p>
+          </div>
 
-        <div className="flex shrink-0 items-center gap-0.5">
-          <button onClick={() => zoomButton(1 / 1.25)} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Dézoomer"><ZoomOut className="h-4 w-4" /></button>
-          <span className="hidden w-12 text-center text-xs tabular-nums text-muted-foreground sm:block">{Math.round(view.zoom * 100)}%</span>
-          <button onClick={() => zoomButton(1.25)} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Zoomer"><ZoomIn className="h-4 w-4" /></button>
-          <button onClick={fitView} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Ajuster"><Maximize className="h-4 w-4" /></button>
-          <button onClick={annuler} disabled={passe.length === 0} className="rounded-lg p-2 transition-colors hover:bg-muted disabled:opacity-40" title="Annuler (Ctrl+Z)"><Undo2 className="h-4 w-4" /></button>
-          <button onClick={refaire} disabled={futur.length === 0} className="rounded-lg p-2 transition-colors hover:bg-muted disabled:opacity-40" title="Rétablir (Ctrl+Maj+Z)"><Redo2 className="h-4 w-4" /></button>
-          <div className="relative">
-            <button onClick={() => setExportOpen((o) => !o)} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Exporter"><Download className="h-4 w-4" /></button>
-            {exportOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
-                <div className="absolute right-0 top-full z-20 mt-1 w-60 overflow-hidden rounded-xl border bg-popover py-1 shadow-lg">
-                  <button onClick={() => { setExportOpen(false); downloadOriginal() }} className="w-full px-3 py-2 text-left text-sm hover:bg-muted">Plan seul ({outExt} original)</button>
-                  <button onClick={() => { setExportOpen(false); exportAnnotated() }} className="w-full px-3 py-2 text-left text-sm hover:bg-muted">Plan + annotations ({outExt})</button>
-                </div>
-              </>
-            )}
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button onClick={() => zoomButton(1 / 1.25)} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Dézoomer"><ZoomOut className="h-4 w-4" /></button>
+            <span className="hidden w-12 text-center text-xs tabular-nums text-muted-foreground sm:block">{Math.round(view.zoom * 100)}%</span>
+            <button onClick={() => zoomButton(1.25)} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Zoomer"><ZoomIn className="h-4 w-4" /></button>
+            <button onClick={fitView} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Ajuster"><Maximize className="h-4 w-4" /></button>
+            <button onClick={annuler} disabled={passe.length === 0} className="rounded-lg p-2 transition-colors hover:bg-muted disabled:opacity-40" title="Annuler (Ctrl+Z)"><Undo2 className="h-4 w-4" /></button>
+            <button onClick={refaire} disabled={futur.length === 0} className="rounded-lg p-2 transition-colors hover:bg-muted disabled:opacity-40" title="Rétablir (Ctrl+Maj+Z)"><Redo2 className="h-4 w-4" /></button>
+            <div className="relative">
+              <button onClick={() => setExportOpen((o) => !o)} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Exporter"><Download className="h-4 w-4" /></button>
+              {exportOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
+                  <div className="absolute right-0 top-full z-20 mt-1 w-60 overflow-hidden rounded-xl border bg-popover py-1 shadow-lg">
+                    <button onClick={() => { setExportOpen(false); downloadOriginal() }} className="w-full px-3 py-2 text-left text-sm hover:bg-muted">Plan seul ({outExt} original)</button>
+                    <button onClick={() => { setExportOpen(false); exportAnnotated() }} className="w-full px-3 py-2 text-left text-sm hover:bg-muted">Plan + annotations ({outExt})</button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      {/* Mêmes marges sur les côtés : en paysage, l'iPhone a son encoche à
+          gauche ou à droite, et le rail d'outils comme la scène doivent rester
+          hors de sa portée. */}
+      <div className="safe-sides flex min-h-0 flex-1">
         {/* Rail d'outils : vertical sur grand écran, il repasse en bande sous la
-            scène sur mobile, à portée de pouce. */}
-        <nav ref={railRef} className="hidden w-20 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2 sm:flex" aria-label="Outils">
+            scène sur mobile, à portée de pouce. Il descend jusqu'au bas de
+            l'écran : ses dernières pastilles s'arrêtent au-dessus de la barre
+            d'accueil de l'iPad, qui se superpose à la page dans l'app. */}
+        <nav ref={railRef} className="hidden w-20 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2 pb-[calc(var(--safe-bottom)+0.5rem)] sm:flex" aria-label="Outils">
           {TOOLS.map((t) => (
             <BoutonOutil key={t.key} outil={t} actif={tool === t.key} bloque={!outilAutorise(t.key)} onChoisir={choisirOutil} />
           ))}
@@ -1162,8 +1174,11 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
             )}
           </div>
 
-          {/* Bande du bas : les outils sur mobile, puis les réglages de la scène. */}
-          <div className="shrink-0 border-t">
+          {/* Bande du bas : les outils sur mobile, puis les réglages de la scène.
+              Elle garde la marge de la barre d'accueil de l'iPhone et de l'iPad :
+              sans elle, unité, arrondi et fond tombaient sous ce trait, là où un
+              glissement du doigt renvoie à l'écran d'accueil. */}
+          <div className="shrink-0 border-t pb-[var(--safe-bottom)]">
             <div className="flex gap-1 overflow-x-auto p-2 sm:hidden">
               {TOOLS.map((t) => (
                 <BoutonOutil key={t.key} outil={t} actif={tool === t.key} bloque={!outilAutorise(t.key)} onChoisir={choisirOutil} compact />
@@ -1296,17 +1311,6 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
             </div>
           </div>
         </Modal>
-      )}
-
-      {/* Rattachement de la zone sélectionnée à un ouvrage du relevé */}
-      {choixOuvrage && selAnn && (
-        <ChoixOuvrage
-          projectId={plan.projectId}
-          nature={natureDe(selAnn)}
-          choisi={selAnn.itemId ?? null}
-          onChoisir={lierSelection}
-          onFermer={() => setChoixOuvrage(false)}
-        />
       )}
 
       {/* À quelles pages l'étalonnage s'applique-t-il ? */}
@@ -1699,7 +1703,13 @@ function Modal({ title, children, onCancel, onConfirm, confirmLabel, large }: {
   large?: boolean
 }) {
   return (
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onCancel}>
+    // Les marges de l'écran s'ajoutent au cadre : quand la fenêtre est haute
+    // (vignettes des pages) ou que le clavier réduit la place, elle s'étire
+    // jusqu'au bord, et dans l'app ce bord est sous la barre d'état.
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 pb-[calc(var(--safe-bottom)+1rem)] pl-[calc(var(--safe-left)+1rem)] pr-[calc(var(--safe-right)+1rem)] pt-[calc(var(--safe-top)+1rem)]"
+      onClick={onCancel}
+    >
       <div
         className={cn('w-full rounded-2xl border bg-background p-5 shadow-xl', large ? 'max-w-3xl' : 'max-w-sm')}
         onClick={(e) => e.stopPropagation()}

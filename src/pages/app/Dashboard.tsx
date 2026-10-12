@@ -119,7 +119,7 @@ export function Dashboard() {
   // les écrans bas n'affichent que les premières lignes de chaque liste pour
   // que la page tienne sans défiler.
   return (
-    <div className="flex flex-col gap-6 pb-6 short:gap-3 lg:h-full lg:min-h-0 lg:pb-0">
+    <div className="flex flex-col gap-6 pb-6 short:gap-3 tablette:h-full tablette:min-h-0 tablette:pb-0 lg:h-full lg:min-h-0 lg:pb-0">
       {/* Salutation */}
       <div className="shrink-0">
         <h1 className="text-[40px] font-normal leading-none tracking-tight text-foreground short:text-[30px]">{greeting}</h1>
@@ -177,20 +177,20 @@ export function Dashboard() {
       </div>
 
       {/* Grille : Accès rapides | Activité récente */}
-      <div className="grid gap-5 short:gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[1.6fr_1fr] lg:grid-rows-[minmax(0,1fr)]">
+      <div className="grid gap-5 short:gap-3 tablette:min-h-0 tablette:flex-1 tablette:grid-rows-[auto_minmax(0,1fr)] lg:min-h-0 lg:flex-1 lg:grid-cols-[1.6fr_1fr] lg:grid-rows-[minmax(0,1fr)]">
         <div className="flex min-h-0 flex-col gap-5 short:gap-3">
           <section className="liquid-glass flex min-h-0 flex-col rounded-[24px] p-5 lg:flex-1" style={glass(1)}>
             <h2 className="mb-4 text-[16px] font-semibold text-foreground short:mb-3">Accès rapides</h2>
             <div className="grid grid-cols-2 gap-3 lg:min-h-0 lg:flex-1 2xl:grid-cols-4">
               {QUICK.map((q) => (
-                <Link key={q.title} to={q.to} className="group flex items-center gap-3 rounded-2xl lg:flex-col lg:justify-center lg:text-center short:lg:flex-row short:lg:justify-start short:lg:text-left border border-black/[0.05] bg-white/45 p-3 transition-all hover:-translate-y-0.5 hover:bg-white/80 hover:shadow-[0_14px_40px_-16px_rgba(0,0,0,0.22)] short:py-2">
+                <Link key={q.title} to={q.to} className="group flex items-center gap-3 rounded-2xl lg:flex-col lg:justify-center lg:text-center short:xl:flex-row short:xl:justify-start short:xl:text-left border border-black/[0.05] bg-white/45 p-3 transition-all hover:-translate-y-0.5 hover:bg-white/80 hover:shadow-[0_14px_40px_-16px_rgba(0,0,0,0.22)] short:py-2">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full lg:h-14 lg:w-14 short:lg:h-8 short:lg:w-8 bg-neutral-900/[0.05] text-muted-foreground transition-colors group-hover:bg-blue-100 group-hover:text-blue-600">
                     {q.img
                       ? <img src={q.img} alt="" className="h-[18px] w-[18px] lg:h-6 lg:w-6 short:lg:h-[18px] short:lg:w-[18px]" />
                       : <q.icon className="h-[18px] w-[18px] lg:h-6 lg:w-6 short:lg:h-[18px] short:lg:w-[18px]" strokeWidth={1.5} />}
                   </span>
                   <div className="min-w-0 max-w-full">
-                    <p className="truncate text-[13px] font-semibold leading-tight text-foreground lg:text-[15px] short:lg:text-[13px]">{q.title}</p>
+                    <p className="line-clamp-2 text-[13px] font-semibold leading-tight text-foreground lg:text-[15px] short:lg:text-[13px]">{q.title}</p>
                     <p className="mt-0.5 truncate text-[11px] text-muted-foreground lg:mt-1 lg:text-[12.5px] short:hidden">{q.desc}</p>
                   </div>
                 </Link>
@@ -205,7 +205,7 @@ export function Dashboard() {
               <Link to="/app/projects" className="text-[12px] font-medium text-muted-foreground/70 transition-colors hover:text-foreground">Voir tout</Link>
             </div>
             {/* Écran bas : une seule rangée, le total (déjà dans « Voir tout ») s'efface. */}
-            <div className="grid grid-cols-2 gap-3 2xl:grid-cols-4 short:grid-cols-3 short:[&>*:nth-child(4)]:hidden">
+            <div className="grid grid-cols-2 gap-3 2xl:grid-cols-4 short:xl:grid-cols-3 short:xl:[&>*:nth-child(4)]:hidden">
               {COMPTEURS.map((c) => (
                 <Link key={c.onglet} to={`/app/projects?onglet=${encodeURIComponent(c.onglet)}`} className="group flex items-center gap-3 rounded-2xl border border-black/[0.05] bg-white/45 px-3.5 py-3 transition-all hover:-translate-y-0.5 hover:bg-white/80 hover:shadow-[0_14px_40px_-16px_rgba(0,0,0,0.22)] short:py-2">
                   <span className={cn('h-2 w-2 shrink-0 rounded-full', c.dot)} />
@@ -221,7 +221,7 @@ export function Dashboard() {
             la rangée et se cale sur la colonne de gauche. Les lignes qui ne
             tiennent pas passent dans une colonne masquée (flex-wrap), au lieu
             d'être coupées en deux. */}
-        <section className="liquid-glass flex flex-col rounded-[24px] p-5 lg:h-0 lg:min-h-full" style={glass(1)}>
+        <section className="liquid-glass flex flex-col rounded-[24px] p-5 tablette:h-0 tablette:min-h-full lg:h-0 lg:min-h-full" style={glass(1)}>
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-[16px] font-semibold text-foreground">Activité récente</h2>
             <Link to="/app/projects" className="text-[12px] font-medium text-muted-foreground/70 transition-colors hover:text-foreground">Voir tout</Link>
@@ -229,7 +229,7 @@ export function Dashboard() {
           {activity.length === 0 ? (
             <p className="py-10 text-center text-[13px] text-muted-foreground/70">Aucune activité pour le moment.</p>
           ) : (
-            <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-wrap lg:content-start lg:overflow-hidden">
+            <div className="flex flex-col tablette:min-h-0 tablette:flex-1 tablette:flex-wrap tablette:content-start tablette:overflow-hidden lg:min-h-0 lg:flex-1 lg:flex-wrap lg:content-start lg:overflow-hidden">
               {activity.map((a, i) => (
                 <Link key={a.id} to={a.to} className="flex w-full items-center gap-3 border-b border-black/[0.05] py-2.5 text-left transition-colors last:border-0 hover:bg-white/40">
                   <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', TINTS[i % TINTS.length])}><a.icon className="h-[17px] w-[17px]" strokeWidth={1.6} /></span>

@@ -1,5 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react'
-import { useIsMobile } from '@/lib/use-mobile'
+import { useCallback, useMemo, useState, type CSSProperties } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, AlertCircle, BookOpen, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf } from 'lucide-react'
@@ -56,10 +55,20 @@ export function ProjectRapports() {
    */
   const [apercu, setApercu] = useState<MarqueDuDossier | null>(null)
   const kinds = mode === 'rapports' ? KINDS_RAPPORTS : KINDS_VARIANTES
-  // Une feuille A4 fait 210 mm, soit environ 800 px : sur téléphone, on la réduit à l'écran.
-  const isMobile = useIsMobile()
-  const zoomFeuille = isMobile
-    ? ({ '--zoom-feuille': String(Math.min(1, (window.innerWidth - 32) / 800)) } as CSSProperties)
+  // Une feuille A4 fait 210 mm, soit environ 800 px : quand la colonne du
+  // document est plus étroite, on la réduit à sa largeur. Mesurer la colonne
+  // plutôt que l'écran couvre l'iPad, debout (la colonne fait ~550 px) comme
+  // couché (~420 px, entre les réglages et les actions), où la feuille
+  // défilait en largeur ; sur téléphone, cela revient au même qu'avant.
+  const [largeurDoc, setLargeurDoc] = useState<number | null>(null)
+  const mesurerDoc = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return
+    const o = new ResizeObserver(([e]) => setLargeurDoc(e.contentRect.width))
+    o.observe(el)
+    return () => o.disconnect()
+  }, [])
+  const zoomFeuille = largeurDoc && largeurDoc < 800
+    ? ({ '--zoom-feuille': String(Math.max(0.3, largeurDoc / 800)) } as CSSProperties)
     : undefined
   const [report, setReport] = useState<ReportKind>(mode === 'rapports' ? 'complet' : 'detaille')
   const [scenario, setScenario] = useState<ScenarioId>('energetique')
@@ -182,14 +191,26 @@ export function ProjectRapports() {
        document : au quatrième type les libellés se serraient, et le document
        descendait d'autant. En colonne, la liste porte des noms entiers, reste
        visible pendant qu'on fait défiler le document, et les actions se rangent
-       dessous au lieu de flotter à l'opposé de ce qu'elles actionnent. */
-    <div className="js-print-column flex min-h-0 flex-col gap-4 lg:h-full">
+       dessous au lieu de flotter à l'opposé de ce qu'elles actionnent.
+
+       À partir de md, AppLayout encastre la page : sa zone principale ne
+       défile plus, c'est à la page de le faire. Les trois colonnes ne tiennent
+       côte à côte qu'à partir de lg ; entre les deux (iPad à la verticale),
+       elles restent empilées comme sur téléphone, et c'est cette enveloppe,
+       calée sur la hauteur de la zone, qui défile d'un bloc. Sans elle, rien
+       ne défilait : le document dépassait par le bas d'une zone figée. Sur
+       téléphone, la zone principale défile encore elle-même. */
+    <div className="js-print-column flex min-h-0 flex-col gap-4 md:h-full md:max-lg:overflow-y-auto">
     {/* Même en-tête que les autres pages du dossier ; il ne s'imprime pas. */}
     <div className="js-print-hide shrink-0 print:hidden">
       <h1 className="text-xl font-bold md:text-2xl">Rapports</h1>
       <p className="text-sm text-muted-foreground">Le document remis au client : choisissez son type, réglez son apparence, puis imprimez, exportez ou partagez-le.</p>
     </div>
-    <div className="js-print-column flex min-h-0 flex-col gap-4 lg:flex-1 lg:flex-row lg:overflow-hidden">
+    {/* Colonnes empilées : elles gardent leur hauteur entière, pour que
+        l'enveloppe défile au lieu de les tasser dans sa hauteur. À partir de
+        lg, la rangée prend au contraire la hauteur restante (flex-1, min-h-0)
+        et chaque colonne défile en elle-même. */}
+    <div className="js-print-column flex min-h-0 flex-col gap-4 max-lg:shrink-0 lg:flex-1 lg:flex-row lg:overflow-hidden">
       {/* À gauche ce qui compose le document : le type de rapport et son
           apparence. Au milieu le document. À droite ce qui en sort : imprimer,
           exporter, partager. Chaque colonne défile d'elle-même quand elle
@@ -261,9 +282,10 @@ export function ProjectRapports() {
           C'est lui, et non la page, qui défile : la barre de défilement longe
           alors la feuille, à portée du regard et de la main, au lieu d'aller
           se ranger au bord de la fenêtre. */}
-      {/* Téléphone : les feuilles A4 sont réduites à la largeur de l'écran (zoom
-          sur chaque feuille, voir index.css) plutôt que de défiler en largeur. */}
+      {/* Les feuilles A4 sont réduites à la largeur de la colonne (zoom sur
+          chaque feuille, voir index.css) plutôt que de défiler en largeur. */}
       <div
+        ref={mesurerDoc}
         className="js-print-column min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible max-lg:order-3 lg:h-full lg:max-w-[calc(210mm+1rem)] lg:overflow-auto lg:[scrollbar-width:thin]"
         style={zoomFeuille}
       >

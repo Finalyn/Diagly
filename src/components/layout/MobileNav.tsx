@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useRef } from 'react'
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ClipboardCheck, MessageCircle, Settings, Database, LayoutGrid, ChevronLeft } from 'lucide-react'
@@ -17,19 +17,6 @@ interface Entree {
   icone: LucideIcon
   symbole: string
   actif: boolean
-}
-
-/** La classe `releve-ouvert` sur <html> (posée par l'éditeur, voir index.css). */
-function useReleveOuvert(): boolean {
-  return useSyncExternalStore(
-    (cb) => {
-      const o = new MutationObserver(cb)
-      o.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-      return () => o.disconnect()
-    },
-    () => document.documentElement.classList.contains('releve-ouvert'),
-    () => false,
-  )
 }
 
 /**
@@ -51,7 +38,6 @@ export function MobileNav() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const isMobile = useIsMobile()
-  const releveOuvert = useReleveOuvert()
   // Le dossier en cours : par l'adresse, ou par le diagnostic ouvert dans l'éditeur
   // (même clé de cache que l'éditeur, qui l'a déjà chargé).
   const parAdresse = pathname.match(/^\/app\/projects\/([^/]+)\/(sommaire|fiche|visite|photos|couts|cecb|rapports|diagnostic)$/)?.[1]
@@ -91,7 +77,7 @@ export function MobileNav() {
     droite: versNatif(assistant),
     actif: [...centre, assistant].find((e) => e.actif)?.id ?? null,
   })
-  const visible = natif && isMobile && !releveOuvert
+  const visible = natif && isMobile
 
   useEffect(() => {
     if (!natif) return

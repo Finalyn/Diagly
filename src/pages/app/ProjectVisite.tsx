@@ -182,7 +182,9 @@ function Panneau({ titre, aide, action, children, className, visite }: { titre: 
 
 function Champ({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <label className={cn('block', className)}>
+    // min-w-0 : dans une grille, un champ date ou heure de Safari garde sinon sa
+    // largeur propre et déborde sur la colonne voisine (iPad).
+    <label className={cn('block min-w-0', className)}>
       <span className="mb-1 block text-xs font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
