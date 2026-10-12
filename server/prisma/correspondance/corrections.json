@@ -1,7 +1,7 @@
 {
   "lisezMoi": [
     "Decisions prises a la main, appliquees par-dessus le rapprochement automatique.",
-    "La cle est `ancienOrdre` (display_order du catalogue), stable d'un environnement a l'autre car issue du meme seed.",
+    "L'import retrouve chaque decision par le nom (ancienNom, sans accents ni casse), pas par ancienOrdre : la numerotation du catalogue n'est pas la meme dans la base locale et en production. ancienOrdre reste pour construire.mjs, qui travaille sur la base locale.",
     "`nouveauId` null = l'ancien article n'a pas de repreneur : il passe en actif=false et ses releves continuent de pointer dessus.",
     "`aDecider` true = cas que le script n'a pas tranche et que personne n'a encore relu. L'import s'arrete dessus si le releve existe."
   ],
@@ -62,6 +62,27 @@
       "nouveauId": null,
       "aDecider": true,
       "raison": "A023 Fenetres en aluminium ou A021 Fenetres en matiere synthetique."
+    },
+    {
+      "ancienOrdre": 2006,
+      "ancienNom": "Portes exterieures en bois",
+      "nouveauId": null,
+      "aDecider": true,
+      "raison": "Le rapprochement automatique proposait A135 Portes de communication en bois, qui sont des portes interieures. Une porte exterieure en bois a quatre repreneurs possibles (A027 a A030 : panneau plein ou vitree, 1 ou 2 vantaux) : a choisir."
+    },
+    {
+      "ancienOrdre": 2007,
+      "ancienNom": "Portes exterieures en metal",
+      "nouveauId": null,
+      "aDecider": true,
+      "raison": "Le rapprochement automatique proposait A124 Portes interieures en metal. Une porte exterieure en metal a quatre repreneurs possibles (A031 a A034) : a choisir."
+    },
+    {
+      "ancienOrdre": 10021,
+      "ancienNom": "Stores bannes",
+      "nouveauId": null,
+      "aDecider": true,
+      "raison": "Le rapprochement automatique proposait A039 Stores a lamelles, un autre ouvrage. Repreneur a choisir, ou article a creer dans la base v3."
     }
   ]
 }

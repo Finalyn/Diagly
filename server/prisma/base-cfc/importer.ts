@@ -236,6 +236,17 @@ async function migrerReleves(
   const parNom = new Map<string, LigneCorrespondance[]>();
   for (const l of table) parNom.set(cleDeNom(l.ancienNom), [...(parNom.get(cleDeNom(l.ancienNom)) ?? []), l]);
 
+  // Les décisions prises à la main passent avant le rapprochement automatique,
+  // et se retrouvent elles aussi par le nom. Rangées sous un numéro d'ordre,
+  // certaines ne s'appliquaient pas : « Revêtements de paroi sans joints »,
+  // décidée sans repreneur sous le numéro 95 alors que l'article porte le 65,
+  // partait vers les revêtements de SOLS.
+  const decisions = new Map(
+    (JSON.parse(readFileSync(resolve(ICI, "..", "correspondance", "corrections.json"), "utf8")).corrections as
+      { ancienNom: string; nouveauId: string | null; aDecider?: boolean }[])
+      .map((d) => [cleDeNom(d.ancienNom), d]),
+  );
+
   const anciens = new Map(
     (await prisma.catalogItem.findMany({ select: { id: true, displayOrder: true, description: true } }))
       .map((c) => [c.id, c]),
@@ -259,11 +270,15 @@ async function migrerReleves(
     // on ne choisit pas au hasard, le relevé garde son article.
     const candidats = ancien ? parNom.get(cleDeNom(ancien.description)) ?? [] : [];
     const cibles = new Set(candidats.map((c) => c.nouveauId));
-    if (cibles.size > 1) rapport.aTrancher.push(`${ancien?.description} : plusieurs repreneurs possibles (${[...cibles].join(", ")})`);
-    const correspondance = cibles.size === 1 ? candidats[0] : undefined;
+    const decision = ancien ? decisions.get(cleDeNom(ancien.description)) : undefined;
+    if (!decision && cibles.size > 1) rapport.aTrancher.push(`${ancien?.description} : plusieurs repreneurs possibles (${[...cibles].join(", ")})`);
+    const correspondance: Correspondance | undefined = decision
+      ? { nouveauId: decision.nouveauId, confiance: decision.aDecider ? "a_decider" : "decidee" } as Correspondance
+      : cibles.size === 1 ? candidats[0] : undefined;
 
     const { articleId: nouveau, aTrancher } = redirection(correspondance);
-    if (aTrancher) rapport.aTrancher.push(`${ancien?.description} (${correspondance?.releves} relevé(s))`);
+    // Le nombre entre parenthèses, ajouté par le rapport, compte les relevés de cette base.
+    if (aTrancher) rapport.aTrancher.push(`${ancien?.description}`);
     if (!nouveau) {
       rapport.releves.sansRepreneur.push(ancien?.description ?? r.cfcLabel);
       continue;
