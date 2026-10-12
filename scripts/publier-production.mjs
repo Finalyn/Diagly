@@ -13,6 +13,7 @@
  *   - quatre choses qui lui sont propres et que ce script ne touche jamais :
  *     scripts/deploy.sh (lancé sur le serveur), son .gitignore, uploads/ et
  *     public/mobile (l'ancienne app mobile, toujours servie sous /mobile) ;
+ *   - le classeur de la base CFC (prisma/base-cfc/*.xlsx), privé ;
  *   - l'import de la base CFC assemblé en un fichier (prisma/base-cfc/importer.mjs).
  *
  * Ensuite, sur le serveur :
@@ -30,7 +31,11 @@ const CIBLE = resolve(process.env.DIAGLY_DEPLOY ?? join(SOURCE, '..', 'diagly-de
 const POUSSER = process.argv.includes('--pousser')
 
 const PROTEGES = ['.gitignore', 'scripts/deploy.sh', 'uploads/.gitkeep']
-const protege = (f) => PROTEGES.includes(f) || f.startsWith('public/')
+// Le classeur de la base CFC (catalogue et prix du bureau) ne va pas dans ce
+// dépôt-ci, qui est public : il n'existe que dans le dépôt de production, privé,
+// où l'import le lit (prisma/base-cfc/importer.mjs).
+const CLASSEUR = /^prisma\/base-cfc\/[^/]+\.xlsx$/
+const protege = (f) => PROTEGES.includes(f) || f.startsWith('public/') || CLASSEUR.test(f)
 
 const sh = (cmd, cwd, voir = false) =>
   voir ? (execSync(cmd, { cwd, stdio: 'inherit' }), '') : execSync(cmd, { cwd, encoding: 'utf8' }).trim()

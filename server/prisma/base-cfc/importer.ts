@@ -213,13 +213,28 @@ async function importerPostes(postes: Awaited<ReturnType<typeof assemblerPostes>
 
 type LigneCorrespondance = Correspondance & { ancienNom: string; releves: number };
 
+/**
+ * La clé de rapprochement d'un ancien article : son nom, sans accents, casse
+ * ni espaces doublés.
+ *
+ * Pas son numéro d'ordre. La correspondance a été établie sur la base locale,
+ * renumérotée depuis ; la production a gardé l'ancienne numérotation. Par le
+ * numéro, seuls 2 articles sur 123 de la production tombaient sur le bon nom,
+ * et l'import aurait rangé une façade ventilée métallique parmi les crépis.
+ * Le nom, lui, est le même d'une base à l'autre.
+ */
+function cleDeNom(nom: string | null | undefined): string {
+  return (nom ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
 async function migrerReleves(
   liens: { articleId: string; etapeNumero: number }[],
   etapes: { numero: number; zone: string }[],
 ) {
   const chemin = resolve(ICI, "..", "correspondance", "correspondance.json");
   const table = JSON.parse(readFileSync(chemin, "utf8")).lignes as LigneCorrespondance[];
-  const parOrdre = new Map(table.map((l) => [l.ancienOrdre, l]));
+  const parNom = new Map<string, LigneCorrespondance[]>();
+  for (const l of table) parNom.set(cleDeNom(l.ancienNom), [...(parNom.get(cleDeNom(l.ancienNom)) ?? []), l]);
 
   const anciens = new Map(
     (await prisma.catalogItem.findMany({ select: { id: true, displayOrder: true, description: true } }))
@@ -240,7 +255,12 @@ async function migrerReleves(
 
   for (const r of releves) {
     const ancien = r.catalogItemId ? anciens.get(r.catalogItemId) : null;
-    const correspondance = ancien ? parOrdre.get(ancien.displayOrder) : undefined;
+    // Deux anciens articles du même nom qui ne mènent pas au même article v3 :
+    // on ne choisit pas au hasard, le relevé garde son article.
+    const candidats = ancien ? parNom.get(cleDeNom(ancien.description)) ?? [] : [];
+    const cibles = new Set(candidats.map((c) => c.nouveauId));
+    if (cibles.size > 1) rapport.aTrancher.push(`${ancien?.description} : plusieurs repreneurs possibles (${[...cibles].join(", ")})`);
+    const correspondance = cibles.size === 1 ? candidats[0] : undefined;
 
     const { articleId: nouveau, aTrancher } = redirection(correspondance);
     if (aTrancher) rapport.aTrancher.push(`${ancien?.description} (${correspondance?.releves} relevé(s))`);
