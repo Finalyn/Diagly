@@ -45,9 +45,9 @@ export function ConnexionNative({ onCompte, onDoubleAuth, onErreur }: {
     }
   }
 
-  const bouton = 'flex h-11 w-full items-center justify-center gap-2.5 rounded-lg text-sm font-medium transition-all active:scale-[0.99] disabled:opacity-60'
+  const bouton = 'flex h-12 w-full items-center justify-center gap-2.5 rounded-[0.875rem] text-[15px] font-medium transition-all active:scale-[0.99] disabled:opacity-60'
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-3">
       <button type="button" onClick={() => lancer('apple')} disabled={!!enCours} className={`${bouton} bg-black text-white`}>
         {enCours === 'apple' ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogoApple />}
         Continuer avec Apple

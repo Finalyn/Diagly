@@ -59,11 +59,14 @@ export function AppLayout() {
     || location.pathname === '/app/cfc'
   const mainRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
-  // Téléphone : l'éditeur du relevé prend l'écran entier, sans barre du bas, et
-  // défile dans ses propres colonnes.
+  // Téléphone : l'éditeur du relevé ne défile pas d'un bloc, il défile dans ses
+  // propres colonnes, au-dessus de la barre du dossier.
   const editeurMobile = isMobile && (
     /^\/app\/diagnostic\/[^/]+$/.test(location.pathname) || /^\/app\/projects\/[^/]+\/diagnostic$/.test(location.pathname)
   )
+  // Téléphone : la liste des diagnostics. Le titre, la recherche et les filtres
+  // restent en place ; seule la liste défile, jusque sous la barre du bas.
+  const listeMobile = isMobile && location.pathname === '/app/projects'
   // Téléphone : la barre du haut est en verre, posée sur le contenu, qui glisse
   // dessous comme dans une app iOS. Sa hauteur varie (bandeau hors-ligne,
   // retour au dossier) : on la mesure pour que la page commence sous elle.
@@ -142,8 +145,13 @@ export function AppLayout() {
                 // s'arrête au-dessus de celle du bas, barre d'accueil de l'iPhone
                 // comprise. L'éditeur, lui, ne défile pas d'un bloc.
                 ? editeurMobile
-                  ? 'min-h-0 overflow-hidden pb-[calc(var(--safe-bottom)+0.75rem)]'
-                  : `overflow-y-auto ${editeurPleinEcran ? 'pb-[calc(var(--safe-bottom)+1.5rem)]' : 'pb-[calc(var(--safe-bottom)+7rem)]'}`
+                  // L'éditeur s'arrête au-dessus de la barre du dossier.
+                  ? 'min-h-0 overflow-hidden pb-[calc(var(--safe-bottom)+4.75rem)]'
+                  : listeMobile
+                    // La liste descend jusqu'en bas de l'écran, sous la barre en
+                    // verre ; c'est elle qui garde la marge du bas (ProjectsList).
+                    ? 'min-h-0 overflow-hidden'
+                    : `overflow-y-auto ${editeurPleinEcran ? 'pb-[calc(var(--safe-bottom)+1.5rem)]' : 'pb-[calc(var(--safe-bottom)+7rem)]'}`
                 : `${onDashboard ? 'mt-6 lg:mt-8 short:mt-3' : 'mt-3'} ${
                   pageEncastree ? 'min-h-0 overflow-hidden pb-3' : onDashboard ? 'min-h-0 overflow-y-auto pb-6' : 'overflow-y-auto pb-16'}`
             }`}
@@ -153,10 +161,10 @@ export function AppLayout() {
         </div>
       </div>
 
-      {/* Navigation mobile : masquée dans les écrans de saisie, éditeur du relevé
-          compris. Il occupe l'écran entier ; on en sort par la flèche de son
-          en-tête. */}
-      {!editeurPleinEcran && !editeurMobile && (
+      {/* Navigation mobile : masquée dans les écrans de saisie, sauf l'éditeur du
+          relevé sur téléphone, où elle devient la barre du dossier (relevé,
+          sommaire) : c'est par elle qu'on atteint le reste. */}
+      {(!editeurPleinEcran || /^\/app\/diagnostic\/[^/]+$/.test(location.pathname)) && (
         <div className="js-print-hide">
           <MobileNav />
         </div>

@@ -11,7 +11,9 @@
  *
  * Bump VERSION pour forcer la mise à jour du cache après un déploiement majeur.
  */
-const VERSION = 'v2'
+// v3 : purge des caches où une page HTML avait pu être gardée à la place d'un
+// fichier de code d'une version précédente (page blanche, 13 octobre 2026).
+const VERSION = 'v3'
 const SHELL_CACHE = `diagly-shell-${VERSION}`
 const ASSET_CACHE = `diagly-assets-${VERSION}`
 const API_CACHE = `diagly-api-${VERSION}`
@@ -93,11 +95,18 @@ self.addEventListener('notificationclick', (event) => {
   )
 })
 
+/** Une réponse qu'on peut garder : réussie, et pas une page HTML servie à la place d'un fichier. */
+function gardable(request, res) {
+  if (!res.ok) return false
+  const html = (res.headers.get('content-type') || '').includes('text/html')
+  return !(html && request.destination !== 'document')
+}
+
 async function cacheFirst(request, cacheName, opts) {
   const cached = await caches.match(request, opts)
   if (cached) return cached
   const res = await fetch(request)
-  if (res.ok) (await caches.open(cacheName)).put(request, res.clone())
+  if (gardable(request, res)) (await caches.open(cacheName)).put(request, res.clone())
   return res
 }
 
@@ -120,7 +129,7 @@ async function staleWhileRevalidate(request, cacheName) {
   const cached = await caches.match(request)
   const network = fetch(request)
     .then((res) => {
-      if (res.ok) caches.open(cacheName).then((c) => c.put(request, res.clone()))
+      if (gardable(request, res)) caches.open(cacheName).then((c) => c.put(request, res.clone()))
       return res
     })
     .catch(() => cached)

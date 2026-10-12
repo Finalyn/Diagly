@@ -146,16 +146,19 @@ html.natif :where(img, svg) {
 }
 /* ============ Liquid glass — barre de navigation (réf. iOS 26) ============ */
 /* Pilule gris clair translucide (#EBEBEB), halo bleuté #DBEFFF -> #B9E0FF, reflet spéculaire. */
+/* Plus clair et plus transparent qu'au départ : le gris presque opaque ne se
+   lisait pas comme du verre. Le flou et la saturation font le reste, dès que du
+   contenu passe dessous (la liste des diagnostics, la page). */
 .liquid-nav {
   position: relative;
-  background: rgba(235, 235, 235, 0.5);
-  -webkit-backdrop-filter: blur(20px) saturate(185%);
-  backdrop-filter: blur(20px) saturate(185%);
+  background: rgba(255, 255, 255, 0.42);
+  -webkit-backdrop-filter: blur(24px) saturate(200%) brightness(1.04);
+  backdrop-filter: blur(24px) saturate(200%) brightness(1.04);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.75),
-    inset 0 -1px 1px rgba(255, 255, 255, 0.25),
-    0 12px 30px -10px rgba(70, 120, 200, 0.30),
-    0 2px 10px -4px rgba(0, 0, 0, 0.12);
+    inset 0 1px 1px rgba(255, 255, 255, 0.9),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.35),
+    0 10px 30px -8px rgba(30, 60, 120, 0.22),
+    0 2px 8px -2px rgba(0, 0, 0, 0.10);
 }
 /* liseré 1px : halo bleu clair en haut-gauche + bas-droite */
 .liquid-nav::before {
@@ -181,12 +184,33 @@ html.natif :where(img, svg) {
   pointer-events: none;
 }
 
+/* Écrans d'accès (connexion, inscription, mot de passe) sur téléphone : des
+   champs et des boutons à la taille du pouce, de l'air entre eux, et un texte de
+   16 px, en dessous duquel iOS agrandit la page au toucher d'un champ. Réglé ici
+   pour tous ces écrans d'un coup (AuthCard), plutôt que champ par champ. */
+@media (max-width: 639px) {
+  .ecran-auth input:not([type='checkbox']):not([type='radio']),
+  .ecran-auth select {
+    height: 3rem;
+    font-size: 16px;
+    border-radius: 0.875rem;
+  }
+  .ecran-auth button[type='submit'] {
+    height: 3rem;
+    border-radius: 0.875rem;
+    font-size: 15px;
+  }
+  .ecran-auth form > :not(:last-child) {
+    margin-block-end: 1.25rem;
+  }
+}
+
 /* Barre du haut sur téléphone, en verre : le contenu glisse dessous (AppLayout). */
 .barre-verre {
-  background: rgba(245, 245, 247, 0.72);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+  background: rgba(245, 245, 247, 0.58);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  backdrop-filter: blur(24px) saturate(200%);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.6), 0 1px 0 rgba(0, 0, 0, 0.05);
 }
 
 /* ============ Animation d'entrée (dashboard vitrine) ============ */

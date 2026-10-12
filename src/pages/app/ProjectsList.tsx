@@ -135,8 +135,9 @@ export function ProjectsList() {
   const pageRows = filtered.slice(start, start + pageSize)
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    // Téléphone : la page ne défile pas, la liste si (AppLayout, listeMobile).
+    <div className="space-y-4 md:space-y-6 max-md:flex max-md:h-full max-md:flex-col max-md:space-y-0 max-md:gap-4">
+      <div className="flex shrink-0 flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl md:text-2xl font-bold">Diagnostics</h1>
           <p className="text-muted-foreground text-sm">
@@ -149,7 +150,7 @@ export function ProjectsList() {
       </div>
 
       {/* Recherche + filtres */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+      <div className="flex shrink-0 flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Rechercher un diagnostic..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10" />
@@ -164,7 +165,7 @@ export function ProjectsList() {
       </div>
 
       {/* Onglets */}
-      <div className="flex gap-1 bg-muted p-1 rounded-lg overflow-x-auto w-fit max-w-full">
+      <div className="flex shrink-0 gap-1 bg-muted p-1 rounded-lg overflow-x-auto w-fit max-w-full">
         {TABS.map(tab => (
           <button
             key={tab}
@@ -187,7 +188,9 @@ export function ProjectsList() {
       )}
 
       {!isLoading && !isError && total > 0 && (
-        <Card data-visite="liste">
+        // Téléphone : la carte est la zone qui défile. Elle descend sous la barre du
+        // bas, en verre, et sa marge intérieure laisse la dernière ligne au-dessus.
+        <Card data-visite="liste" className="max-md:min-h-0 max-md:flex-1 max-md:overflow-y-auto max-md:overscroll-contain max-md:rounded-b-none max-md:pb-[calc(var(--safe-bottom)+6rem)]">
           <CardContent className="p-0">
             {/* Mobile : liste en cartes (tap → éditeur) */}
             <div className="md:hidden divide-y">

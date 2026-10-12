@@ -8,6 +8,8 @@ import { useIsMobile } from '@/lib/use-mobile'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { estAppNative } from '@/lib/plateforme'
 import { masquerEcranDeLancement } from '@/lib/natif'
+import { FiletDeSecurite } from '@/components/FiletDeSecurite'
+import { rechargerUneFois } from '@/lib/rechargement'
 // Entrée : chargée immédiatement pour un premier affichage rapide.
 import { Soon } from '@/pages/marketing/Soon'
 import { Login } from '@/pages/auth/Login'
@@ -15,7 +17,7 @@ import { OAuthCallback } from '@/pages/auth/OAuthCallback'
 
 // Pages chargées à la demande (code-splitting) -> bundle initial léger, meilleur en 3G.
 const named = <M extends Record<string, unknown>, K extends keyof M>(p: Promise<M>, k: K) =>
-  p.then((m) => ({ default: m[k] as ComponentType }))
+  p.then((m) => ({ default: m[k] as ComponentType })).catch((err) => rechargerUneFois(err))
 
 const Register = lazy(() => named(import('@/pages/auth/Register'), 'Register'))
 const ForgotPassword = lazy(() => named(import('@/pages/auth/ForgotPassword'), 'ForgotPassword'))
@@ -94,6 +96,7 @@ function App() {
 
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
+      <FiletDeSecurite>
       <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Racine : la vitrine est publiée. La page « bientôt disponible »
@@ -194,6 +197,7 @@ function App() {
           </Route>
         </Routes>
       </Suspense>
+      </FiletDeSecurite>
     </BrowserRouter>
   )
 }

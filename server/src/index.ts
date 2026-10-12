@@ -179,8 +179,14 @@ if (STATIC_DIR && existsSync(STATIC_DIR)) {
     }),
   );
   // Fallback SPA : toute route non-API/-uploads renvoie l'index du site web.
+  // Sauf un fichier (un chemin qui a une extension) : un fichier de code d'une
+  // version précédente, effacé à la mise en ligne, recevait la page d'accueil
+  // avec un statut 200. Le navigateur ne pouvait pas l'exécuter, la page restait
+  // blanche, et le service worker gardait cette réponse en cache comme si
+  // c'était le fichier. Un 404 franc laisse l'app se recharger.
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api/") || req.path.startsWith("/uploads/") || req.path === "/health") return next();
+    if (req.path.startsWith("/assets/") || /\.[a-z0-9]{1,8}$/i.test(req.path)) return res.status(404).end();
     res.sendFile(join(STATIC_DIR, "index.html"));
   });
   logger.info(`Serving static frontend from ${STATIC_DIR}`);
