@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { DiagnosticStatus, ElementState, Localisation, Priority } from "@prisma/client";
+import { DiagnosticStatus, ElementState, Localisation, Prisma, Priority } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { notifierSansAttendre } from "../lib/notifications.js";
 import { requireAuth } from "../middlewares/auth.js";
@@ -157,7 +157,10 @@ const itemBaseSchema = z.object({
   normsCost: z.number().min(0).nullable().optional(),
 });
 
-const createItemSchema = itemBaseSchema;
+// L'identifiant d'un relevé peut venir de l'appareil (UUID) : une saisie faite
+// hors-ligne a ainsi son identifiant définitif dès le terrain, et un renvoi
+// après une coupure ne crée pas de doublon (voir src/lib/hors-ligne).
+const createItemSchema = itemBaseSchema.extend({ id: z.string().uuid().optional() });
 const updateItemSchema = itemBaseSchema.partial();
 
 router.get("/:id/items", async (req, res) => {
@@ -172,36 +175,62 @@ router.get("/:id/items", async (req, res) => {
 router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
   const diag = await loadOwnedDiagnostic(req.params.id, req.auth!.sub);
   const data = req.body as z.infer<typeof createItemSchema>;
-  const item = await prisma.diagnosticItem.create({
-    data: {
-      diagnosticId: req.params.id,
-      cfcCode: data.cfcCode,
-      cfcLabel: data.cfcLabel,
-      catalogItemId: data.catalogItemId,
-      // L'article de la base v3 et l'etape : ensemble, ils identifient le releve.
-      articleId: data.articleId,
-      etapeNumero: data.etapeNumero,
-      localisation: data.localisation,
-      state: data.state,
-      priority: data.priority,
-      notes: data.notes,
-      works: data.works ?? [],
-      photos: data.photos ?? [],
-      area: data.area,
-      sharePct: data.sharePct,
-      quantityManual: data.quantityManual ?? false,
-      costManual: data.costManual ?? false,
-      unit: data.unit,
-      yearInstalled: data.yearInstalled,
-      interventionYear: data.interventionYear,
-      estimatedCost: data.estimatedCost,
-      costIndex: data.costIndex,
-      improvement: data.improvement,
-      improvementCost: data.improvementCost,
-      norms: data.norms,
-      normsCost: data.normsCost,
-    },
-  });
+
+  // Renvoi d'une création déjà reçue (la réponse s'était perdue en route) : on
+  // rend le relevé tel qu'il est, sans en créer un second. Le même identifiant
+  // dans un autre diagnostic n'est pas un renvoi, c'est un conflit.
+  const dejaRecu = async () => {
+    if (!data.id) return false;
+    const existant = await prisma.diagnosticItem.findUnique({ where: { id: data.id } });
+    if (!existant) return false;
+    if (existant.diagnosticId !== req.params.id) {
+      res.status(409).json({ error: "Cet identifiant de relevé est déjà utilisé." });
+    } else {
+      res.status(200).json({ item: existant });
+    }
+    return true;
+  };
+  if (await dejaRecu()) return;
+
+  let item;
+  try {
+    item = await prisma.diagnosticItem.create({
+      data: {
+        ...(data.id ? { id: data.id } : {}),
+        diagnosticId: req.params.id,
+        cfcCode: data.cfcCode,
+        cfcLabel: data.cfcLabel,
+        catalogItemId: data.catalogItemId,
+        // L'article de la base v3 et l'etape : ensemble, ils identifient le releve.
+        articleId: data.articleId,
+        etapeNumero: data.etapeNumero,
+        localisation: data.localisation,
+        state: data.state,
+        priority: data.priority,
+        notes: data.notes,
+        works: data.works ?? [],
+        photos: data.photos ?? [],
+        area: data.area,
+        sharePct: data.sharePct,
+        quantityManual: data.quantityManual ?? false,
+        costManual: data.costManual ?? false,
+        unit: data.unit,
+        yearInstalled: data.yearInstalled,
+        interventionYear: data.interventionYear,
+        estimatedCost: data.estimatedCost,
+        costIndex: data.costIndex,
+        improvement: data.improvement,
+        improvementCost: data.improvementCost,
+        norms: data.norms,
+        normsCost: data.normsCost,
+      },
+    });
+  } catch (e) {
+    // Deux envois simultanés du même relevé : le second bute sur la clé, il
+    // rend ce que le premier a créé.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002" && (await dejaRecu())) return;
+    throw e;
+  }
   fireItemEvents(req.auth!.sub, diag.id, diag.project.egid ?? null);
   res.status(201).json({ item });
 });

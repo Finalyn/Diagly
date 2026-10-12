@@ -1,5 +1,6 @@
 import { useAuth } from '@/stores/auth'
 import { estAppNative } from '@/lib/plateforme'
+import { avecSaisiesEnAttente } from '@/lib/hors-ligne/etat'
 import type {
   ApiCatalogItem, ApiCfcEntry, ApiDiagnostic, ApiDiagnosticItem,
   ApiProject, ApiOperation, ApiPlan, ApiEvent, AuthResponse,
@@ -545,14 +546,21 @@ export const api = {
 
 
   diagnostics: {
-    get: (id: string) =>
-      request<{ diagnostic: ApiDiagnostic; items: ApiDiagnosticItem[] }>(`/api/diagnostics/${id}`),
+    // Les deux lectures des relevés montrent aussi les saisies pas encore
+    // envoyées (lib/hors-ligne) : un rafraîchissement ne les fait pas disparaître.
+    get: async (id: string) => {
+      const r = await request<{ diagnostic: ApiDiagnostic; items: ApiDiagnosticItem[] }>(`/api/diagnostics/${id}`)
+      return Array.isArray(r.items) ? { ...r, items: avecSaisiesEnAttente(r.items, id) } : r
+    },
     update: (id: string, body: Partial<ApiDiagnostic>) =>
       request<{ diagnostic: ApiDiagnostic }>(`/api/diagnostics/${id}`, { method: 'PUT', body }),
     delete: (id: string) => request<void>(`/api/diagnostics/${id}`, { method: 'DELETE' }),
 
-    listItems: (id: string) =>
-      request<{ items: ApiDiagnosticItem[]; count: number }>(`/api/diagnostics/${id}/items`),
+    listItems: async (id: string) => {
+      const r = await request<{ items: ApiDiagnosticItem[]; count: number }>(`/api/diagnostics/${id}/items`)
+      const items = avecSaisiesEnAttente(r.items, id)
+      return { ...r, items, count: items.length }
+    },
     recentItems: () =>
       request<{ items: import('./api-types').RecentDiagnosticItem[] }>('/api/diagnostics/recent-items'),
     createItem: (diagId: string, body: Partial<ApiDiagnosticItem>) =>

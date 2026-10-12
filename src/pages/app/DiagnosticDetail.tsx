@@ -40,6 +40,7 @@ import type { DonneesBatiment } from '@/lib/base-cfc/quantites'
 // Les relevés d'avant la bascule portent encore une localisation au lieu d'une étape.
 import { LIBELLE_LOCALISATION } from '@/lib/localisation'
 import { api, ApiError } from '@/lib/api'
+import { nouvelIdentifiant, saisir } from '@/lib/hors-ligne/file-envoi'
 import { ProjectSectionsMenu } from '@/components/ProjectSectionsMenu'
 import { CameraCapture } from '@/components/CameraCapture'
 import { PanneauGlissant } from '@/components/PanneauGlissant'
@@ -138,9 +139,6 @@ function deriveInterventionYearClient(priority: Priority | null): number {
 /** Coût numérique à partir d'un champ Decimal stocké en string (ou null). */
 const toNum = (v: string | null | undefined): number => (v ? Number(v) : 0)
 
-/** Forme du cache de la liste d'éléments (queryKey ['diagnostic-items', id]). */
-type ItemsData = { items: ApiDiagnosticItem[]; count: number }
-
 // ---------- Component ----------
 
 /**
@@ -204,24 +202,18 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   const [search, setSearch] = useState('')
   const [guideMode, setGuideMode] = useGuideMode()
 
-  // ----- mutations -----
-  const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: ['diagnostic', id] })
-    queryClient.invalidateQueries({ queryKey: ['diagnostic-items', id] })
-    queryClient.invalidateQueries({ queryKey: ['project'] }) // garde le compteur du résumé à jour
+  // ----- saisies -----
+  // Les relevés passent par la file d'envoi (lib/hors-ligne) : chaque saisie
+  // s'affiche tout de suite, est écrite sur l'appareil, et part au serveur dès
+  // que le réseau le permet, même si l'app a été fermée entre-temps.
+  const signalerEchec = () => {
+    window.alert("La saisie n'a pas pu être enregistrée sur cet appareil. Réessayez ; si cela se répète, redémarrez l'app.")
   }
-
-  // Cache de la liste affichée : mis à jour de façon optimiste pour que la saisie
-  // apparaisse instantanément (et fonctionne hors-ligne, la mutation partant en file).
-  const itemsKey = ['diagnostic-items', id] as const
-  const setItemsCache = (fn: (d: ItemsData) => ItemsData) =>
-    queryClient.setQueryData<ItemsData>(itemsKey, (old) => (old ? fn(old) : old))
-  const snapshotItems = () => queryClient.getQueryData<ItemsData>(itemsKey)
 
   /**
    * Part proposée pour un type qu'on ajoute à un groupe de surface.
    *
-   * Calculée ici et passée à la mutation : lue depuis `mutationFn`, elle faisait
+   * Calculée ici et passée à l'ajout : lue depuis l'ajout lui-même, elle faisait
    * renoncer le compilateur React à mémoriser le relevé entier.
    */
   const partPourUnAjout = (ligne: LigneDeVisite) => {
@@ -235,15 +227,21 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     return partALAjout(dejaLa)
   }
 
-  const addItem = useMutation({
-    mutationFn: (input: { ligne: LigneDeVisite; state?: ElementState | null; sharePct?: number | null }) => {
-      const { ligne, state } = input
-      const catalog = ouvrageDeLArticle(ligne.article, ligne.etapeNumero)
-      const quantity = resolutionDeQuantite(catalog, batiment).quantity
-      // Ajout « non évalué » par défaut : ni état, ni coût tant que le diagnostiqueur n'a pas choisi.
-      const cost = state ? computeCost(catalog, state, quantity) : undefined
-      const work = state ? workForState(catalog, state) : null
-      return api.diagnostics.createItem(id!, {
+  const ajouterReleve = (input: { ligne: LigneDeVisite; state?: ElementState | null; sharePct?: number | null }) => {
+    const { ligne, state } = input
+    const catalog = ouvrageDeLArticle(ligne.article, ligne.etapeNumero)
+    const quantity = resolutionDeQuantite(catalog, batiment).quantity
+    // Ajout « non évalué » par défaut : ni état, ni coût tant que le diagnostiqueur n'a pas choisi.
+    const cost = state ? computeCost(catalog, state, quantity) : undefined
+    const work = state ? workForState(catalog, state) : null
+    // L'identifiant vient de l'appareil : le relevé a son identifiant définitif
+    // dès maintenant, réseau ou pas.
+    const releveId = nouvelIdentifiant()
+    void saisir({
+      type: 'creer',
+      diagnosticId: id!,
+      releveId,
+      corps: {
         cfcCode: catalog.cfcCode,
         cfcLabel: catalog.description,
         // L'article et l'étape identifient le relevé : la peinture de la cage
@@ -259,88 +257,22 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
         // suivants arrivent sans part, parce que la répartition est une
         // observation de terrain, pas une valeur à inventer.
         sharePct: input.sharePct ?? null,
-        area: quantity,                              // quantité auto (surfaces) conservée
+        area: quantity ?? null,                      // quantité auto (surfaces) conservée
         unit: catalog.unit,
         estimatedCost: (cost ?? undefined) as unknown as string | undefined,
-      })
-    },
-    onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: itemsKey })
-      const prev = snapshotItems()
-      const { ligne, state } = input
-      const catalog = ouvrageDeLArticle(ligne.article, ligne.etapeNumero)
-      const quantity = resolutionDeQuantite(catalog, batiment).quantity
-      const cost = state ? computeCost(catalog, state, quantity) : undefined
-      const work = state ? workForState(catalog, state) : null
-      const now = new Date().toISOString()
-      const temp: ApiDiagnosticItem = {
-        id: `temp-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
-        diagnosticId: id!,
-        cfcCode: catalog.cfcCode,
-        cfcLabel: catalog.description,
-        catalogItemId: null,
-        articleId: catalog.articleId,
-        etapeNumero: ligne.etapeNumero,
-        localisation: localisationDeLaZone(ligne.zone),
-        state: state ?? null,
-        priority: state ? STATE_PRIORITY[state] : null,
-        notes: null,
-        works: work && work !== 'Néant' ? [work] : [],
-        photos: [],
-        area: quantity ?? null,
-        unit: catalog.unit,
-        yearInstalled: null,
-        interventionYear: null,
-        estimatedCost: cost != null ? String(cost) : null,
-        improvement: null,
-        improvementCost: null,
-        norms: null,
-        normsCost: null,
-        createdAt: now,
-        updatedAt: now,
-      }
-      setItemsCache((d) => ({ items: [...d.items, temp], count: d.count + 1 }))
-      setSelectedItemId(temp.id)
-      return { prev }
-    },
-    onError: (_e, _v, ctx) => { if (ctx?.prev) queryClient.setQueryData(itemsKey, ctx.prev) },
-    onSuccess: (res) => {
-      invalidateAll()
-      setSelectedItemId(res.item.id)
-    },
-  })
+      },
+    }).catch(signalerEchec)
+    setSelectedItemId(releveId)
+  }
 
-  const updateItem = useMutation({
-    mutationFn: (input: { itemId: string; data: Partial<ApiDiagnosticItem> }) =>
-      api.diagnostics.updateItem(input.itemId, input.data),
-    onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: itemsKey })
-      const prev = snapshotItems()
-      setItemsCache((d) => ({
-        ...d,
-        items: d.items.map((it) => (it.id === input.itemId ? { ...it, ...input.data } : it)),
-      }))
-      return { prev }
-    },
-    onError: (_e, _v, ctx) => { if (ctx?.prev) queryClient.setQueryData(itemsKey, ctx.prev) },
-    onSuccess: () => invalidateAll(),
-  })
+  const modifierReleve = (itemId: string, data: Partial<ApiDiagnosticItem>) => {
+    void saisir({ type: 'modifier', diagnosticId: id!, releveId: itemId, corps: data }).catch(signalerEchec)
+  }
 
-  const deleteItem = useMutation({
-    mutationFn: (itemId: string) => api.diagnostics.deleteItem(itemId),
-    onMutate: async (itemId) => {
-      await queryClient.cancelQueries({ queryKey: itemsKey })
-      const prev = snapshotItems()
-      setItemsCache((d) => ({ items: d.items.filter((it) => it.id !== itemId), count: Math.max(0, d.count - 1) }))
-      setSelectedItemId(null)
-      return { prev }
-    },
-    onError: (_e, _v, ctx) => { if (ctx?.prev) queryClient.setQueryData(itemsKey, ctx.prev) },
-    onSuccess: () => {
-      invalidateAll()
-      setSelectedItemId(null)
-    },
-  })
+  const supprimerReleve = (itemId: string) => {
+    void saisir({ type: 'supprimer', diagnosticId: id!, releveId: itemId }).catch(signalerEchec)
+    setSelectedItemId(null)
+  }
 
   // Suppression du diagnostic entier (depuis le menu Sections).
   const deleteDiagnostic = useMutation({
@@ -545,8 +477,10 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 categorie={categorie}
                 onCategorie={setCategorie}
                 onOuvrir={setSelectedItemId}
-                onAjouter={(ligne) => addItem.mutate({ ligne, sharePct: partPourUnAjout(ligne) })}
-                ajoutEnCours={addItem.isPending}
+                onAjouter={(ligne) => ajouterReleve({ ligne, sharePct: partPourUnAjout(ligne) })}
+                // Une saisie s'enregistre sur l'appareil, sans attendre le
+                // serveur : rien n'est jamais « en cours », aucun bouton ne se grise.
+                ajoutEnCours={false}
               />
             ) : (
             <>
@@ -601,9 +535,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                       key={ligne.cle}
                       onClick={() => {
                         if (existing) setSelectedItemId(existing.id)
-                        else addItem.mutate({ ligne, sharePct: partPourUnAjout(ligne) })
+                        else ajouterReleve({ ligne, sharePct: partPourUnAjout(ligne) })
                       }}
-                      disabled={addItem.isPending}
                       className={cn(
                         'flex items-start gap-2 w-full text-left rounded hover:bg-muted/50 transition-colors',
                         isMobile ? 'px-3 py-2.5 text-sm' : 'px-2 py-1.5 text-xs',
@@ -673,7 +606,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 projectId={projectId}
                 yearBuilt={projectQuery.data?.project?.yearBuilt ?? null}
                 onBack={() => setSelectedItemId(null)}
-                onUpdate={(data) => updateItem.mutate({ itemId: selectedDiagItem.id, data })}
+                onUpdate={(data) => modifierReleve(selectedDiagItem.id, data)}
                 onDelete={() => {
                   const it = selectedDiagItem
                   const aPerdre = [
@@ -683,10 +616,10 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                     it.costManual && 'un coût forcé',
                   ].filter(Boolean) as string[]
                   if (aPerdre.length > 0 && !window.confirm(`Retirer « ${it.cfcLabel} » ? Vous perdez ${aPerdre.join(', ')}.`)) return
-                  deleteItem.mutate(it.id)
+                  supprimerReleve(it.id)
                 }}
-                isMutating={updateItem.isPending}
-                isDeleting={deleteItem.isPending}
+                isMutating={false}
+                isDeleting={false}
               />
             )}
           </PanneauGlissant>
@@ -711,7 +644,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
               projectId={projectId}
               yearBuilt={projectQuery.data?.project?.yearBuilt ?? null}
               onBack={() => setSelectedItemId(null)}
-              onUpdate={(data) => updateItem.mutate({ itemId: selectedDiagItem.id, data })}
+              onUpdate={(data) => modifierReleve(selectedDiagItem.id, data)}
               onDelete={() => {
                 // L'élément peut porter des photos, des notes de terrain, une quantité
                 // relevée ou un coût forcé : on ne supprime pas tout cela en un clic.
@@ -723,10 +656,10 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                   it.costManual && 'un coût forcé',
                 ].filter(Boolean) as string[]
                 if (aPerdre.length > 0 && !window.confirm(`Retirer « ${it.cfcLabel} » ? Vous perdez ${aPerdre.join(', ')}.`)) return
-                deleteItem.mutate(it.id)
+                supprimerReleve(it.id)
               }}
-              isMutating={updateItem.isPending}
-              isDeleting={deleteItem.isPending}
+              isMutating={false}
+              isDeleting={false}
             />
           ) : (
             /* Le cadre est désormais porté par la colonne : une carte de plus ici

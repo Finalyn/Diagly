@@ -6,7 +6,7 @@ import {
   CircleUser, LogOut, ShieldCheck,
 } from 'lucide-react'
 import { useAuth } from '@/stores/auth'
-import { logout as endSession } from '@/lib/session'
+import { logout as endSession, confirmerDeconnexion } from '@/lib/session'
 import { initiales, nomAffiche } from '@/lib/reglages'
 
 type NavEntry = {
@@ -159,6 +159,7 @@ function EspaceCompte() {
 
   // Révoque la session côté serveur ET efface ce qui est gardé sur l'appareil.
   const seDeconnecter = async () => {
+    if (!confirmerDeconnexion()) return
     setOuvert(false)
     await endSession()
     navigate('/login', { replace: true })

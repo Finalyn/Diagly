@@ -20,6 +20,7 @@ import { cn, formatCHF } from '@/lib/utils'
 import { dateLongue, heure, aAppeler, lienItineraire } from '@/lib/visite-mails'
 import { lettreDeClasse } from '@/lib/demarrage'
 import type { ProjectStatus } from '@/lib/api-types'
+import { PreparerTerrain } from '@/components/PreparerTerrain'
 
 const POINT: Record<ProjectStatus, string> = {
   NON_PLANIFIE: 'bg-gray-400', PLANIFIE: 'bg-blue-400', EN_COURS: 'bg-blue-500',
@@ -125,6 +126,9 @@ export function DossierMobile() {
           </span>
         </Link>
       </div>
+
+      {/* Avant de partir : le dossier sur l'appareil, pour le sous-sol. */}
+      <PreparerTerrain projetId={projet.id} />
 
       {/* Les outils qui tiennent sur un téléphone */}
       {GROUPES.map((g) => (

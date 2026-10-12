@@ -1,0 +1,229 @@
+import { useSyncExternalStore } from 'react'
+import { onlineManager } from '@tanstack/react-query'
+import { api, ApiError } from '@/lib/api'
+import type { ApiDiagnostic, ApiDiagnosticItem } from '@/lib/api-types'
+import { queryClient } from '@/lib/query-client'
+import { useAuth } from '@/stores/auth'
+import { entrer, superposer, type CorpsReleve, type Operation } from './operations'
+import { stockage } from './stockage'
+import { abonner, lireEtat, poserEtat } from './etat'
+
+/**
+ * Le moteur de la file d'envoi : il écrit chaque saisie sur l'appareil avant
+ * toute chose, puis l'envoie dès que le réseau le permet, une à la fois, dans
+ * l'ordre de saisie.
+ *
+ * Il remplace, pour les relevés, les mutations mises en pause de react-query :
+ * celles-ci ne survivaient pas à la fermeture de l'app (aucune n'avait de
+ * fonction par défaut pour repartir après un redémarrage), et une modification
+ * d'un relevé créé hors-ligne partait vers son identifiant provisoire.
+ */
+
+export type Saisie =
+  | { type: 'creer'; diagnosticId: string; releveId: string; corps: CorpsReleve }
+  | { type: 'modifier'; diagnosticId: string; releveId: string; corps: CorpsReleve }
+  | { type: 'supprimer'; diagnosticId: string; releveId: string }
+
+/** Identifiant d'un relevé, choisi par l'appareil (UUID v4). */
+export function nouvelIdentifiant(): string {
+  // randomUUID n'existe que dans un contexte sécurisé ; getRandomValues partout.
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const o = crypto.getRandomValues(new Uint8Array(16))
+  o[6] = (o[6] & 0x0f) | 0x40
+  o[8] = (o[8] & 0x3f) | 0x80
+  const h = Array.from(o, (b) => b.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+}
+
+let rang = 0
+let chargement: Promise<void> | null = null
+let envoiEnCours = false
+let relance: ReturnType<typeof setTimeout> | null = null
+let tentative = 0
+// Une minute au plus : quand l'appareil se croit connecté sans atteindre le
+// serveur, aucun événement réseau ne signale le retour, seul ce minuteur relance.
+const DELAIS = [5_000, 10_000, 20_000, 30_000, 60_000]
+
+// Les écritures sur le disque passent l'une après l'autre : deux saisies
+// rapprochées du même relevé réécrivent la même opération, et la plus ancienne
+// ne doit pas finir par écraser la plus récente.
+let disque: Promise<void> = Promise.resolve()
+function surLeDisque(travail: () => Promise<void>): Promise<void> {
+  disque = disque.then(travail, travail)
+  return disque
+}
+
+/** Relit la file laissée sur l'appareil et branche les déclencheurs d'envoi. Une seule fois. */
+export function chargerFile(): Promise<void> {
+  chargement ??= (async () => {
+    try {
+      const ops = (await stockage.lister()).sort((a, b) => a.rang - b.rang)
+      rang = ops.reduce((m, o) => Math.max(m, o.rang), 0)
+      poserEtat({ file: ops, chargee: true })
+      // Ce qui s'est affiché avant la fin de la lecture ne montrait pas ces
+      // saisies : on relit les diagnostics concernés.
+      for (const d of new Set(ops.map((o) => o.diagnosticId))) rafraichir(d)
+    } catch {
+      poserEtat({ chargee: true })
+    }
+    onlineManager.subscribe((enLigne) => { if (enLigne) void envoyer() })
+    // Une connexion (ou une reconnexion après expiration) libère les saisies du compte.
+    useAuth.subscribe((s, avant) => {
+      if (s.accessToken && s.accessToken !== avant.accessToken) void envoyer()
+    })
+    void envoyer()
+  })()
+  return chargement
+}
+
+function appliquerAuCache(op: Operation): void {
+  const d = op.diagnosticId
+  queryClient.setQueryData<{ items: ApiDiagnosticItem[]; count: number }>(['diagnostic-items', d], (v) => {
+    if (!v) return v
+    const items = superposer(v.items, [op], d)
+    return { ...v, items, count: items.length }
+  })
+  queryClient.setQueryData<{ diagnostic: ApiDiagnostic; items: ApiDiagnosticItem[] }>(['diagnostic', d], (v) =>
+    v && Array.isArray(v.items) ? { ...v, items: superposer(v.items, [op], d) } : v)
+}
+
+function rafraichir(diagnosticId: string): void {
+  void queryClient.invalidateQueries({ queryKey: ['diagnostic', diagnosticId] })
+  void queryClient.invalidateQueries({ queryKey: ['diagnostic-items', diagnosticId] })
+  // Les compteurs et totaux du dossier.
+  void queryClient.invalidateQueries({ queryKey: ['project'] })
+  void queryClient.invalidateQueries({ queryKey: ['projects'] })
+}
+
+/**
+ * Enregistre une saisie : à l'écran tout de suite, sur l'appareil ensuite,
+ * puis envoyée dès que possible. La promesse se résout une fois la saisie à
+ * l'abri sur l'appareil, pas à l'arrivée au serveur.
+ */
+export async function saisir(s: Saisie): Promise<void> {
+  const utilisateurId = useAuth.getState().user?.id
+  if (!utilisateurId) throw new Error('Aucune session ouverte.')
+  rang += 1
+  const op = { ...s, id: nouvelIdentifiant(), rang, utilisateurId, saisieLe: Date.now() } as Operation
+  const { file, enVol } = lireEtat()
+  const changement = entrer(file, op, enVol)
+  poserEtat({ file: changement.file })
+  appliquerAuCache(op)
+  await surLeDisque(async () => {
+    if (changement.ecrites.length) await stockage.ecrire(changement.ecrites)
+    if (changement.effacees.length) await stockage.effacer(changement.effacees)
+  })
+  void envoyer()
+}
+
+type Issue = { type: 'ok' } | { type: 'reessayer' } | { type: 'refus'; raison: string }
+
+function raisonDuRefus(op: Operation, e: ApiError): string {
+  if (e.status === 404) return op.type === 'creer'
+    ? 'Le diagnostic de ce relevé a été supprimé.'
+    : 'Ce relevé a été supprimé entre-temps, depuis un autre appareil.'
+  if (e.status === 403) return 'Votre rôle dans l\'organisation ne permet pas de modifier ce dossier.'
+  if (e.status === 413) return 'Les photos de ce relevé sont trop lourdes pour être envoyées.'
+  return e.message || `Refusé par le serveur (${e.status}).`
+}
+
+async function transmettre(op: Operation): Promise<Issue> {
+  try {
+    if (op.type === 'creer') await api.diagnostics.createItem(op.diagnosticId, { ...op.corps, id: op.releveId })
+    else if (op.type === 'modifier') await api.diagnostics.updateItem(op.releveId, op.corps)
+    else await api.diagnostics.deleteItem(op.releveId)
+    return { type: 'ok' }
+  } catch (e) {
+    // Pas de réponse lisible (réseau coupé, page d'erreur du proxy) : on réessaiera.
+    if (!(e instanceof ApiError)) return { type: 'reessayer' }
+    // Déjà supprimé : c'était le but.
+    if (op.type === 'supprimer' && e.status === 404) return { type: 'ok' }
+    // Session à renouveler, serveur surchargé ou en panne : rien de définitif.
+    if (e.status === 401 || e.status === 408 || e.status === 429 || e.status >= 500) return { type: 'reessayer' }
+    return { type: 'refus', raison: raisonDuRefus(op, e) }
+  }
+}
+
+function programmerRelance(): void {
+  if (relance) clearTimeout(relance)
+  const delai = DELAIS[Math.min(tentative, DELAIS.length - 1)]
+  tentative += 1
+  relance = setTimeout(() => { relance = null; void envoyer() }, delai)
+}
+
+/** Envoie la file, une opération après l'autre. Sans effet si un envoi tourne déjà. */
+export async function envoyer(): Promise<void> {
+  if (envoiEnCours || !lireEtat().chargee) return
+  envoiEnCours = true
+  try {
+    for (;;) {
+      if (!onlineManager.isOnline()) return
+      const { user, accessToken } = useAuth.getState()
+      if (!user || !accessToken) return
+      // Les saisies d'un autre compte (session expirée, appareil partagé)
+      // attendent son retour : elles ne partent jamais sous ce compte-ci.
+      const op = lireEtat().file.find((o) => o.utilisateurId === user.id)
+      if (!op) {
+        tentative = 0
+        if (lireEtat().injoignable) poserEtat({ injoignable: false })
+        return
+      }
+
+      poserEtat({ enVol: op.id })
+      const issue = await transmettre(op)
+      if (issue.type === 'reessayer') { poserEtat({ injoignable: true }); programmerRelance(); return }
+
+      const avant = lireEtat()
+      // Une création refusée emporte la suite du même relevé : ses
+      // modifications viseraient un relevé qui n'existe pas.
+      const parties = avant.file.filter((o) => o.id === op.id
+        || (issue.type === 'refus' && op.type === 'creer' && o.releveId === op.releveId))
+      const file = avant.file.filter((o) => !parties.includes(o))
+      const refus = issue.type === 'refus' ? [...avant.refus, { operation: op, raison: issue.raison, le: Date.now() }] : avant.refus
+      poserEtat({ file, refus, enVol: null, injoignable: false })
+      await surLeDisque(() => stockage.effacer(parties.map((o) => o.id)))
+      tentative = 0
+      // Le dossier est à jour sur le serveur : on reprend sa version (coûts
+      // recalculés, ordre, compteurs). Un refus aussi : la saisie refusée doit
+      // quitter l'écran.
+      if (issue.type === 'refus' || !file.some((o) => o.diagnosticId === op.diagnosticId)) rafraichir(op.diagnosticId)
+    }
+  } finally {
+    envoiEnCours = false
+    if (lireEtat().enVol) poserEtat({ enVol: null })
+  }
+}
+
+/** Oublie les refus affichés. */
+export function ignorerRefus(): void {
+  poserEtat({ refus: [] })
+}
+
+/**
+ * Efface toutes les saisies en attente. Réservé à la déconnexion volontaire,
+ * après que l'utilisateur a accepté de les perdre.
+ */
+export async function viderFile(): Promise<void> {
+  poserEtat({ file: [], refus: [], enVol: null, injoignable: false })
+  await surLeDisque(() => stockage.vider())
+}
+
+/** Le nombre de saisies du compte connecté qui n'ont pas encore atteint le serveur. */
+export function saisiesEnAttente(): number {
+  const moi = useAuth.getState().user?.id
+  return moi ? lireEtat().file.filter((o) => o.utilisateurId === moi).length : 0
+}
+
+/** Pour l'interface : ce qui attend, ce qui part, ce qui a été refusé. */
+export function useFileEnvoi() {
+  const etat = useSyncExternalStore(abonner, lireEtat)
+  const moi = useAuth((s) => s.user?.id)
+  const miennes = moi ? etat.file.filter((o) => o.utilisateurId === moi) : []
+  return {
+    enAttente: miennes.length,
+    parDiagnostic: (diagnosticId: string) => miennes.filter((o) => o.diagnosticId === diagnosticId).length,
+    envoiEnCours: etat.enVol !== null,
+    injoignable: etat.injoignable,
+    refus: etat.refus,
+  }
+}

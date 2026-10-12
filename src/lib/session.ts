@@ -1,6 +1,7 @@
 import { del } from 'idb-keyval'
 import { useAuth } from '@/stores/auth'
 import { queryClient, QUERY_CACHE_KEY } from '@/lib/query-client'
+import { saisiesEnAttente, viderFile } from '@/lib/hors-ligne/file-envoi'
 
 /**
  * Efface TOUTE trace locale de la session. Indispensable sur un appareil partagé
@@ -34,9 +35,23 @@ export async function purgeLocalSession(): Promise<void> {
 }
 
 /**
+ * À demander avant une déconnexion volontaire. La déconnexion efface les
+ * saisies pas encore envoyées : on ne le fait pas sans le dire.
+ *
+ * Une session qui expire ne passe pas par ici et n'efface rien : la file
+ * attend que le même compte se reconnecte.
+ */
+export function confirmerDeconnexion(): boolean {
+  const n = saisiesEnAttente()
+  if (n === 0) return true
+  const quoi = n > 1 ? `${n} saisies n'ont pas encore été envoyées` : "Une saisie n'a pas encore été envoyée"
+  return window.confirm(`${quoi} au serveur. En vous déconnectant, vous ${n > 1 ? 'les' : 'la'} perdez. Se déconnecter quand même ?`)
+}
+
+/**
  * Déconnexion volontaire : révoque le refresh token côté serveur (sinon il reste
- * valide 7 jours) puis purge l'appareil. La purge a lieu même si le serveur est
- * injoignable (chantier hors-ligne).
+ * valide 7 jours) puis purge l'appareil, file d'envoi comprise. La purge a lieu
+ * même si le serveur est injoignable (chantier hors-ligne).
  */
 export async function logout(): Promise<void> {
   const { refreshToken } = useAuth.getState()
@@ -44,5 +59,6 @@ export async function logout(): Promise<void> {
     const { api } = await import('@/lib/api')
     await api.auth.logout(refreshToken).catch(() => undefined)
   }
+  await viderFile().catch(() => undefined)
   await purgeLocalSession()
 }

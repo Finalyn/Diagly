@@ -31,6 +31,31 @@ des semaines après une mise en ligne. L'API doit donc rester compatible avec
 elles : ajouter des champs et des routes, oui ; en retirer ou en changer le
 sens, seulement après une version de l'app qui ne s'en sert plus.
 
+## Le hors-ligne
+
+Sur le terrain, le réseau manque souvent (sous-sol, cage d'escalier) et iOS
+ferme volontiers une app passée en arrière-plan. Les relevés passent donc par
+une **file d'envoi** (`src/lib/hors-ligne/`) :
+
+- chaque saisie (créer, modifier, supprimer un relevé) s'affiche tout de suite,
+  est écrite sur l'appareil (fichiers de l'app sur iOS, IndexedDB sur le web),
+  puis part au serveur dès que possible, dans l'ordre, une à la fois ;
+- l'identifiant d'un relevé est un UUID choisi par l'appareil : une création
+  renvoyée après une coupure ne fait pas de doublon (le serveur rend le relevé
+  existant), et une modification d'un relevé créé hors-ligne vise directement
+  son identifiant définitif ;
+- les lectures de relevés (`api.diagnostics.get` et `listItems`) superposent
+  la file à la réponse du serveur : un rafraîchissement n'efface jamais une
+  saisie pas encore partie ;
+- le bandeau du haut dit ce qui attend, si le serveur est injoignable, et ce
+  qu'il a refusé ; la déconnexion prévient avant d'effacer des saisies ;
+- « Préparer pour le terrain », dans le sommaire du dossier sur téléphone,
+  charge le dossier et la base CFC sur l'appareil avant la visite.
+
+**Règle :** une nouvelle écriture faite sur le terrain passe par `saisir()`
+(`file-envoi.ts`), jamais par un appel direct à l'API ni par une mutation
+react-query, qui ne survivrait pas à la fermeture de l'app.
+
 ## Compiler sans Mac
 
 Xcode n'existe que sur Mac. La compilation se fait sur les machines macOS de
@@ -107,10 +132,9 @@ blanc (icône 1024 px sans transparence, exigée par Apple).
 2. **Sensation native** : caméra native, export PDF/Excel/photos par la
    feuille de partage, retour haptique, liens universels (rapport partagé,
    invitation, mot de passe oublié).
-3. **Hors-ligne robuste** : file d'envoi stockée sur l'appareil, qui survit à
-   la fermeture de l'app (aujourd'hui, une saisie hors-ligne est perdue si iOS
-   ferme l'app avant le retour du réseau), création de relevés hors-ligne,
-   préparation d'un dossier avant la visite.
+3. **Hors-ligne robuste** : fait pour les relevés (voir plus haut). Reste
+   hors file : les autres écritures (fiche du bâtiment, visite), qui se font
+   surtout au bureau.
 4. **Comptes** : « Se connecter avec Apple » et Google natif, suppression du
    compte dans l'app (exigée par Apple, règle 5.1.1).
 5. **Notifications** Apple (APNs), à côté du push web.

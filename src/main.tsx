@@ -8,6 +8,7 @@ import App from './App.tsx'
 import { queryClient, QUERY_CACHE_KEY } from '@/lib/query-client'
 import { estAppNative } from '@/lib/plateforme'
 import { demarrerNatif } from '@/lib/natif'
+import { chargerFile } from '@/lib/hors-ligne/file-envoi'
 
 // Persistance du cache (requêtes + mutations en attente) sur IndexedDB : les données
 // restent disponibles hors-ligne et au redémarrage de l'app (chantier, sous-sol).
@@ -23,18 +24,24 @@ const persister = createAsyncStoragePersister({
 
 demarrerNatif()
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <PersistQueryClientProvider
-      client={queryClient}
-      persistOptions={{ persister, maxAge: 1000 * 60 * 60 * 24 * 7 }}
-      // Au restore du cache : on relance les mutations mises en pause hors-ligne.
-      onSuccess={() => { queryClient.resumePausedMutations() }}
-    >
-      <App />
-    </PersistQueryClientProvider>
-  </StrictMode>,
-)
+// La file d'envoi des relevés (lib/hors-ligne) est relue avant le premier
+// affichage : la première liste montrée contient déjà les saisies pas encore
+// envoyées. La lecture prend quelques millisecondes ; si elle traîne, on
+// n'attend pas plus d'une seconde, et la file rafraîchit les listes à la fin.
+Promise.race([chargerFile(), new Promise((r) => setTimeout(r, 1000))]).finally(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{ persister, maxAge: 1000 * 60 * 60 * 24 * 7 }}
+        // Au restore du cache : on relance les mutations mises en pause hors-ligne.
+        onSuccess={() => { queryClient.resumePausedMutations() }}
+      >
+        <App />
+      </PersistQueryClientProvider>
+    </StrictMode>,
+  )
+})
 
 // PWA : enregistre le service worker (installable + offline). Pas dans l'app
 // iPhone/iPad : elle embarque déjà tout le front, et WebKit n'y autorise pas les

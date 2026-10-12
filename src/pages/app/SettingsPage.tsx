@@ -31,7 +31,7 @@ import { useAuth } from '@/stores/auth'
 import { useIsMobile } from '@/lib/use-mobile'
 import { cn } from '@/lib/utils'
 import { getPushState, subscribePush, unsubscribePush, type PushState } from '@/lib/push-client'
-import { logout as endSession } from '@/lib/session'
+import { logout as endSession, confirmerDeconnexion } from '@/lib/session'
 import { estAppNative } from '@/lib/plateforme'
 import {
   aChange, champsManquantsDuBureau, etatDuProfil, initiales, nomAffiche,
@@ -1337,6 +1337,7 @@ function SectionCompte() {
   // Révoque la session côté serveur ET efface ce qui a été mis en cache sur
   // l'appareil (diagnostics, photos, file d'attente) avant de rendre la main.
   const seDeconnecter = async () => {
+    if (!confirmerDeconnexion()) return
     await endSession()
     navigate('/login', { replace: true })
   }

@@ -5,6 +5,7 @@ import { StatusBar, Style } from '@capacitor/status-bar'
 import { onlineManager } from '@tanstack/react-query'
 import { queryClient } from './query-client'
 import { estAppNative } from './plateforme'
+import { envoyer } from './hors-ligne/file-envoi'
 
 // Ce que l'app iPhone/iPad fait de plus que le site au démarrage. Rien ici ne
 // s'exécute dans un navigateur.
@@ -44,6 +45,7 @@ export function demarrerNatif(): void {
     const etat = await Network.getStatus().catch(() => null)
     if (etat) onlineManager.setOnline(etat.connected)
     if (!onlineManager.isOnline()) return
+    void envoyer()
     void queryClient.resumePausedMutations()
     void queryClient.refetchQueries({ type: 'active', stale: true })
   })
