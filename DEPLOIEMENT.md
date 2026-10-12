@@ -1,99 +1,109 @@
 # Mettre Diagly en ligne
 
-Le dépôt n'écrivait nulle part comment se fait une mise en ligne. Elle tenait dans
-une commande recopiée de mémoire, et cette commande oubliait trois choses qui
-tiennent le site debout. Ce document et `scripts/deploy-serveur.sh` les fixent.
+Écrit après la mise en ligne du 12 octobre 2026, qui a montré que la version
+précédente de ce document décrivait une installation jamais mise en place sur
+le serveur.
 
-## Comment l'application tourne
+## Comment la production tourne
 
-Le dépôt est cloné sur le serveur, dans `~/sites/diagly.ch`. On ne transfère donc
-rien depuis un poste : le serveur va chercher le code sur GitHub lui-même.
+Diagly tourne sur un hébergement Node.js d'Infomaniak, dans `~/sites/diagly.ch`.
 
-Un seul processus Node, lancé par pm2. L'API Express répond sur `/api` et sert
-aussi le front construit, dont le chemin lui est donné par `STATIC_DIR`. Toute
-route inconnue renvoie `index.html`, puisque le routage est côté navigateur. Le
-tout est derrière le reverse proxy Infomaniak, qui termine le TLS.
+Ce dossier **n'est pas un clone de ce dépôt-ci**. C'est un clone du dépôt
+**privé** `Finalyn/diagly-deploy`, branche `main`, qui contient :
 
-Deux paquets npm distincts, et c'est le piège principal :
+- le serveur : un miroir des fichiers suivis de `server/` (à la racine du dépôt
+  de production, et non dans un sous-dossier) ;
+- le front **déjà construit**, dans `public/` : le serveur ne le construit pas ;
+- ce qui n'appartient qu'à lui : `scripts/deploy.sh`, son `.gitignore`,
+  `uploads/`, l'ancienne app mobile sous `public/mobile`, et le classeur de la
+  base CFC (`prisma/base-cfc/*.xlsx`, privé).
 
-- la racine construit **le front** dans `dist/` ;
-- `server/` est un paquet à part, avec ses propres dépendances et sa propre
-  compilation, dans `server/dist/`, qui est ce que pm2 exécute.
+Le `.env` de production vit à la racine de `~/sites/diagly.ch`. Il n'est pas
+versionné et aucune mise en ligne ne l'écrase.
 
-`npm run build` à la racine ne touche pas au second. Le `tsconfig.json` racine ne
-référence que `tsconfig.app.json` et `tsconfig.node.json`, et celui-ci n'inclut
-que `src`.
-
-Le `.env` de production vit dans `server/` sur le serveur. Il n'est pas versionné
-et aucun déploiement ne l'écrase. Les variables attendues sont dans
-`server/.env.example` ; en production `NODE_ENV=production`, `APP_URL` porte le
-vrai domaine, et `STATIC_DIR` pointe sur le `dist/` de la racine.
+`scripts/deploy-serveur.sh`, dans ce dépôt-ci, supposait que le serveur clone
+`Finalyn/Diagly` : il ne sert pas.
 
 ## Mettre en ligne
 
+### 1. Sur le poste : publier dans le dépôt de production
+
 ```bash
-cd ~/sites/diagly.ch
-git fetch origin
-git reset --hard origin/release-2026-10-01
-bash scripts/deploy-serveur.sh
+node scripts/publier-production.mjs            # aperçu, ne change rien
+node scripts/publier-production.mjs --pousser  # construit, recopie, commite, pousse
 ```
 
-La branche par défaut du dépôt est **`master`**, pas `main`. Un `git reset --hard
-origin/main` échoue, et comme tout s'enchaîne en `&&`, la suite ne s'exécute
-jamais : la commande ne fait alors rien, sans le dire.
+Le script refuse un dépôt modifié : seul du code commité part. Il construit le
+front (build web), recopie `server/`, et dit si le schéma Prisma ou les
+dépendances changent. C'est ce qui décide de l'étape suivante.
 
-## Ce que le script fait, et que la commande manuelle oubliait
+### 2. Sur le serveur
 
-1. **Le front.** `npm ci` puis `npm run build`, vers `dist/`.
-2. **L'API.** `npm ci --omit=dev` dans `server/`, `prisma generate`, puis
-   `npm run build` vers `server/dist/`. Sans cette étape, `pm2 restart` relance
-   l'ancien code serveur et la mise en ligne n'a rien changé côté API.
-3. **Une sauvegarde de la base**, dans `sauvegardes/avant-<horodatage>.sql`. Elle
-   est obligatoire : si `mysqldump` échoue, le script s'arrête avant de toucher au
-   schéma. `prisma db push` ne sait pas défaire.
-4. **Le schéma**, avec `prisma db push`, puis la réparation de `users.preferences`.
-5. **Le redémarrage**, et un appel à `/health` pour vérifier que l'API répond.
+Console SSH du Manager Infomaniak. **Coller une seule ligne à la fois, et
+seulement la commande** : le 12 octobre, l'affichage d'une commande précédente
+recollé dans la console y a été exécuté ligne par ligne, et deux de ses lignes
+(`npm audit fix --force`) ont remplacé des dépendances.
+
+**Front seul** (ni schéma ni dépendances changés) : récupérer suffit, les fichiers
+de `public/` sont servis tels quels.
+
+```bash
+cd ~/sites/diagly.ch && git fetch origin && git reset --hard origin/main
+```
+
+**Code serveur, schéma ou dépendances changés** : la même ligne, puis dans le
+Manager, page Node.js, **Build de l'application** (installation avec les
+dépendances de développement, `prisma generate`, compilation, `prisma db push`),
+puis **Redémarrer** une fois le build terminé.
+
+En console, `bash scripts/deploy.sh` fait le même travail, avec en plus une
+sauvegarde de la base avant de toucher au schéma.
+
+Si le schéma a changé, vérifier ensuite que `prisma db push` a bien été
+appliqué :
+
+```bash
+cd ~/sites/diagly.ch && npx prisma db push
+```
+
+Le 12 octobre, il ne l'avait pas été : le nouveau code lisait une colonne
+absente (`users.two_factor_method`) et toute connexion répondait « Internal
+server error », y compris pour un compte inexistant.
 
 ## Le piège de la colonne preferences
 
 `users.preferences` est un JSON `NOT NULL` avec `{}` pour défaut. Selon l'état de
-départ de la table, `prisma db push` laisse des lignes à `NULL`, et la lecture des
-préférences fait alors échouer la connexion des comptes déjà existants. Le site
-répond, la page d'accueil s'affiche, et plus personne ne peut se connecter.
+départ de la table, `prisma db push` laisse des lignes vides ou invalides, et la
+connexion des comptes existants échoue. Après chaque `db push` :
 
-Le script répare avant de redémarrer :
-
-```sql
-UPDATE users SET preferences = '{}' WHERE preferences IS NULL;
+```bash
+cd ~/sites/diagly.ch && echo "UPDATE users SET preferences='{}' WHERE preferences IS NULL OR CAST(preferences AS CHAR)='' OR JSON_VALID(preferences)=0;" | npx prisma db execute --stdin --schema=prisma/schema.prisma
 ```
 
-Ne pas l'oublier si vous déployez à la main.
+## La base CFC
+
+Son import emprunte du code au front ; il est livré assemblé en un fichier,
+`prisma/base-cfc/importer.mjs`. Toujours un aperçu d'abord :
+
+```bash
+cd ~/sites/diagly.ch && node prisma/base-cfc/importer.mjs prisma/base-cfc/DIAGLY_base_CFC_v3.xlsx
+cd ~/sites/diagly.ch && node prisma/base-cfc/importer.mjs prisma/base-cfc/DIAGLY_base_CFC_v3.xlsx --appliquer
+```
+
+Les anciens articles se retrouvent **par leur nom**, jamais par leur numéro
+d'ordre : la numérotation du vieux catalogue n'est pas la même en local et en
+production. Par le numéro, l'aperçu du 12 octobre rattachait des relevés au
+mauvais article.
 
 ## Revenir en arrière
 
-Le code se remet en place en republiant le commit précédent :
+Le code : republier le commit précédent du dépôt de production.
 
 ```bash
-git reset --hard <commit précédent>
-bash scripts/deploy-serveur.sh
+cd ~/sites/diagly.ch && git reset --hard <commit précédent>
 ```
 
-La base, non. Un changement de schéma qui tourne mal se répare depuis le dump pris
-juste avant, pas depuis git :
-
-```bash
-mysql -u <user> -p <base> < sauvegardes/avant-<horodatage>.sql
-```
-
-## Ce que la version du 1er octobre 2026 change dans la base
-
-Elle ajoute l'énumération `Localisation`, la colonne
-`diagnostic_items.localisation`, et les tables `project_variants` et
-`variant_lines`. Ce sont des ajouts : aucune colonne existante n'est supprimée ni
-modifiée, et `prisma db push` refuse de lui-même s'il devait détruire quelque
-chose.
-
-Après la mise en ligne, le catalogue de production doit être renuméroté pour que
-le parcours de visite range les ouvrages dans les six étapes. Sans cela, ils
-tombent tous dans le bloc « Autres ». Le site fonctionne, cet écran est inutilisable.
-Ce point n'est pas automatisé : à voir avec l'auteur de la branche.
+Puis Build et Redémarrer si le serveur avait changé. La base, elle, ne se
+remet pas en place par git : depuis la sauvegarde prise par `deploy.sh`
+(`sauvegardes/avant-<horodatage>.sql`), ou depuis les sauvegardes automatiques
+d'Infomaniak (Manager, Bases de données).
