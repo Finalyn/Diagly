@@ -14,17 +14,17 @@ const SEARCH = 'https://api3.geo.admin.ch/rest/services/api/SearchServer'
 
 export interface RegistryInfo {
   yearBuilt?: number
-  builtArea?: number          // m² — surface au sol (emprise) du bâtiment
-  perimeter?: number          // ml — périmètre du contour du bâtiment
+  builtArea?: number          // m² : surface au sol (emprise) du bâtiment
+  perimeter?: number          // ml : périmètre du contour du bâtiment
   perimeterEstimated?: boolean // true si déduit de l'emprise faute d'un contour fiable
-  floorArea?: number          // m² — surface de plancher (somme logements, EBF ou estimée)
+  floorArea?: number          // m² : surface de plancher (somme logements, EBF ou estimée)
   floorAreaEstimated?: boolean // true si calculée (emprise × étages), false si donnée réelle
   nbFloors?: number
   nbApartments?: number
   buildingType?: string       // type déduit de la classe GWR (LOGEMENT, VILLA, BUREAU…)
   parcelNumber?: string
   egrid?: string
-  terrainArea?: number        // m² — surface de la parcelle
+  terrainArea?: number        // m² : surface de la parcelle
 }
 
 /** Mappe la classe de bâtiment GWR (gklas, classification EUROSTAT) vers nos types. */

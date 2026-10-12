@@ -38,7 +38,7 @@ function normClass(v?: string | null): string | null {
   return 'ABCDEFG'.includes(c) ? c : null
 }
 
-const fmtNum = (v?: number | null, unit?: string) => (v == null ? '—' : `${v}${unit ? ` ${unit}` : ''}`)
+const fmtNum = (v?: number | null, unit?: string) => (v == null ? 'n.c.' : `${v}${unit ? ` ${unit}` : ''}`)
 
 // Champs proposés à la validation : clé extraction → champ bâtiment.
 type Row = { key: keyof CecbExtraction; proj: keyof ApiProject; label: string; unit?: string; isClass?: boolean }
@@ -227,14 +227,14 @@ export function ProjectCECB() {
           <CardHeader><CardTitle>Données énergétiques importées</CardTitle></CardHeader>
           <CardContent className="space-y-5">
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-              <Info l="Classe globale" v={project.energyClassGlobal ?? '—'} />
-              <Info l="Classe enveloppe" v={project.energyClassEnvelope ?? '—'} />
+              <Info l="Classe globale" v={project.energyClassGlobal ?? 'n.c.'} />
+              <Info l="Classe enveloppe" v={project.energyClassEnvelope ?? 'n.c.'} />
               <Info l="SRE" v={fmtNum(project.sre, 'm²')} />
-              <Info l="Agent énergétique" v={project.energyAgent ?? '—'} />
+              <Info l="Agent énergétique" v={project.energyAgent ?? 'n.c.'} />
               <Info l="Consommation chaleur" v={fmtNum(project.energyConsumptionHeat, 'kWh/m²·an')} />
               <Info l="Consommation électricité" v={fmtNum(project.energyConsumptionElec, 'kWh/m²·an')} />
-              <Info l="Année de référence" v={project.energyRefYear ? String(project.energyRefYear) : '—'} />
-              <Info l="Source" v={project.energySource ?? '—'} />
+              <Info l="Année de référence" v={project.energyRefYear ? String(project.energyRefYear) : 'n.c.'} />
+              <Info l="Source" v={project.energySource ?? 'n.c.'} />
             </div>
             {measures.length > 0 && (
               <div>
@@ -258,10 +258,10 @@ export function ProjectCECB() {
         <CardHeader><CardTitle>Données prises en compte</CardTitle></CardHeader>
         <CardContent>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-            <Info l="Année de construction" v={project.yearBuilt ? String(project.yearBuilt) : '—'} />
-            <Info l="Année de rénovation" v={project.renovationYear ? String(project.renovationYear) : '—'} />
+            <Info l="Année de construction" v={project.yearBuilt ? String(project.yearBuilt) : 'n.c.'} />
+            <Info l="Année de rénovation" v={project.renovationYear ? String(project.renovationYear) : 'n.c.'} />
             <Info l="Type" v={buildingTypeLabels[project.buildingType]} />
-            <Info l="Surface de plancher" v={project.floorArea ? `${project.floorArea} m²` : '—'} />
+            <Info l="Surface de plancher" v={project.floorArea ? `${project.floorArea} m²` : 'n.c.'} />
           </div>
         </CardContent>
       </Card>

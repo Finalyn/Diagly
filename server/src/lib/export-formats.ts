@@ -131,8 +131,8 @@ function addVariantsSheet(wb: ExcelJS.Workbook, payload: DiagnosticExport) {
   ws.addRow([`TVA ${payload.costs.tvaPct}%`, ...v.map((x) => x.tva)]);
   ws.addRow(["Total TTC", ...v.map((x) => x.total)]);
   ws.addRow(["Écart vs Maintenance", ...v.map((x) => x.total - v[0].total)]);
-  ws.addRow(["Visée énergétique", ...v.map((x) => (x.energyFocus ? "Oui" : "—"))]);
-  ws.addRow(["Classe énergétique actuelle", ...v.map(() => payload.energy.classGlobal ?? "—")]);
+  ws.addRow(["Visée énergétique", ...v.map((x) => (x.energyFocus ? "Oui" : "Non"))]);
+  ws.addRow(["Classe énergétique actuelle", ...v.map(() => payload.energy.classGlobal ?? "n.c.")]);
 
   for (let c = 2; c <= v.length + 1; c++) ws.getColumn(c).numFmt = CHF_FMT;
   ws.getColumn(1).width = 26;

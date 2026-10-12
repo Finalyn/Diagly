@@ -23,7 +23,7 @@ function getTransport() {
 export async function sendMail(opts: { to: string; subject: string; html: string; text?: string }): Promise<boolean> {
   const t = getTransport();
   if (!t) {
-    logger.info({ to: opts.to, subject: opts.subject }, "SMTP non configuré — email non envoyé (dégradation gracieuse)");
+    logger.info({ to: opts.to, subject: opts.subject }, "SMTP non configuré : email non envoyé (dégradation gracieuse)");
     return false;
   }
   try {

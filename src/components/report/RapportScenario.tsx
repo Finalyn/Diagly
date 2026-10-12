@@ -124,7 +124,7 @@ export function RapportScenario({ projectName, variant, allVariants, items, ener
               <td className="py-1 font-mono">{it.cfcCode}</td>
               <td className="py-1">{it.cfcLabel}</td>
               <td className="py-1">{it.state ? stateLabels[it.state] : 'À évaluer'}</td>
-              <td className="py-1">{it.priority ?? '—'}</td>
+              <td className="py-1">{it.priority ?? 'n.c.'}</td>
               <td className="py-1 text-right font-medium tabular-nums">{formatCHF(amount)}</td>
             </tr>
           ),
@@ -135,13 +135,13 @@ export function RapportScenario({ projectName, variant, allVariants, items, ener
           type: 'lignes', cle: `pack-${pack.label}`, tableauId: 'elements', colonnes: COLONNES, entete: ENTETE,
           lignes: (
             <tr className="border-t align-top">
-              <td className="py-1 text-muted-foreground">—</td>
+              <td className="py-1 text-muted-foreground">n.c.</td>
               <td className="py-1">
                 {pack.label}
                 <div className="text-muted-foreground">{pack.basis}</div>
               </td>
               <td className="py-1 text-muted-foreground">estimé</td>
-              <td className="py-1 text-muted-foreground">—</td>
+              <td className="py-1 text-muted-foreground">n.c.</td>
               <td className="py-1 text-right font-medium tabular-nums">{formatCHF(pack.amount)}</td>
             </tr>
           ),

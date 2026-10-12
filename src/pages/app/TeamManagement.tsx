@@ -124,14 +124,14 @@ function AdminPanel({ myEmail }: { myEmail?: string }) {
           {error && <p className="text-sm text-red-600">{error}</p>}
           {lastLink && (
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
-              <p className="text-sm text-blue-800">{lastLink.sent ? 'Invitation envoyée par email.' : 'Email non configuré — copiez et transmettez ce lien d\'invitation :'}</p>
+              <p className="text-sm text-blue-800">{lastLink.sent ? 'Invitation envoyée par email.' : 'Email non configuré : copiez et transmettez ce lien d\'invitation :'}</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 text-xs bg-white border rounded px-2 py-1.5 break-all">{lastLink.url}</code>
                 <Button size="sm" variant="outline" onClick={() => copy(lastLink.url)}>{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}</Button>
               </div>
             </div>
           )}
-          <p className="text-xs text-muted-foreground">Rôles — <b>Administrateur</b> : gère membres + diagnostics · <b>Membre</b> : édite les diagnostics · <b>Lecture seule</b> : consulte uniquement.</p>
+          <p className="text-xs text-muted-foreground">Rôles. <b>Administrateur</b> : gère membres + diagnostics · <b>Membre</b> : édite les diagnostics · <b>Lecture seule</b> : consulte uniquement.</p>
         </CardContent>
       </Card>
 

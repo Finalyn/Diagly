@@ -110,7 +110,7 @@ export function CorpsEnergie({ project, ouvrages }: {
                 )}
               </td>
               <td className="py-1">{entree.elements[e].etat} · {MOT_ETAT[entree.elements[e].etat]}</td>
-              <td className="py-1">{entree.elements[e].anneeRenovation ?? '—'}</td>
+              <td className="py-1">{entree.elements[e].anneeRenovation ?? 'n.c.'}</td>
             </tr>
           ))}
           <tr className="border-b border-dotted">
@@ -121,7 +121,7 @@ export function CorpsEnergie({ project, ouvrages }: {
               )}
             </td>
             <td className="py-1">{entree.etatProduction} · {MOT_ETAT[entree.etatProduction]}</td>
-            <td className="py-1">—</td>
+            <td className="py-1">n.c.</td>
           </tr>
         </tbody>
       </table>

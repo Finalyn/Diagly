@@ -92,7 +92,7 @@ function ApiKeysCard() {
         <CardContent className="space-y-4">
           {created && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
-              <p className="text-sm font-medium text-amber-800">Copiez cette clé maintenant — elle ne sera plus affichée.</p>
+              <p className="text-sm font-medium text-amber-800">Copiez cette clé maintenant : elle ne sera plus affichée.</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 text-xs bg-white border rounded px-2 py-1.5 break-all">{created}</code>
                 <Button size="sm" variant="outline" onClick={() => copy(created)}>{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}</Button>
@@ -152,7 +152,7 @@ function McpCard() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5" />Assistant IA (serveur MCP)</CardTitle>
-          <p className="text-sm text-muted-foreground">Branchez votre propre assistant IA (Claude, etc.) sur vos diagnostics via le protocole MCP. Il interroge vos diagnostics en langage naturel — « budget fenêtres en 2028 », « bâtiments en priorité I », « écart par canton » — en lecture seule, strictement limité à vos diagnostics.</p>
+          <p className="text-sm text-muted-foreground">Branchez votre propre assistant IA (Claude, etc.) sur vos diagnostics via le protocole MCP. Il interroge vos diagnostics en langage naturel (« budget fenêtres en 2028 », « bâtiments en priorité I », « écart par canton »), en lecture seule, strictement limité à vos diagnostics.</p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>

@@ -78,8 +78,8 @@ router.post("/tickets", validateBody(createTicketSchema), async (req, res) => {
   const emailSent = await sendMail({
     to: env.SUPPORT_EMAIL,
     subject: `[Support Diagly] ${data.subject}`,
-    text: `De : ${name} <${email}>\nCatégorie : ${data.category ?? "—"}\nTicket : ${ticket.id}\nPièces jointes : ${data.attachments?.length ?? 0}\n\n${data.body}`,
-    html: `<div style="font-family:system-ui,sans-serif"><p><b>De :</b> ${name} &lt;${email}&gt;<br><b>Catégorie :</b> ${data.category ?? "—"}<br><b>Ticket :</b> ${ticket.id}</p><hr><p style="white-space:pre-wrap">${data.body.replace(/</g, "&lt;")}</p></div>`,
+    text: `De : ${name} <${email}>\nCatégorie : ${data.category ?? "n.c."}\nTicket : ${ticket.id}\nPièces jointes : ${data.attachments?.length ?? 0}\n\n${data.body}`,
+    html: `<div style="font-family:system-ui,sans-serif"><p><b>De :</b> ${name} &lt;${email}&gt;<br><b>Catégorie :</b> ${data.category ?? "n.c."}<br><b>Ticket :</b> ${ticket.id}</p><hr><p style="white-space:pre-wrap">${data.body.replace(/</g, "&lt;")}</p></div>`,
   });
   res.status(201).json({ ticket: { id: ticket.id, subject: ticket.subject, status: ticket.status, createdAt: ticket.createdAt }, emailSent });
 });

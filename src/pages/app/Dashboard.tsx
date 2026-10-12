@@ -84,7 +84,7 @@ export function Dashboard() {
     { icon: FolderKanban, value: String(inProgress), label: 'Diagnostics en cours', tint: 'bg-violet-100/80 text-violet-600' },
     { icon: CheckCircle2, value: String(completed), label: 'Diagnostics réalisés', tint: 'bg-emerald-100/80 text-emerald-600' },
     { icon: Layers, value: String(totalProjects), label: 'Total diagnostics', tint: 'bg-sky-100/80 text-sky-600' },
-    { icon: Wallet, value: budget ? formatCHF(budget) : '—', label: 'Budget estimé', tint: 'bg-amber-100/80 text-amber-600' },
+    { icon: Wallet, value: budget ? formatCHF(budget) : 'n.c.', label: 'Budget estimé', tint: 'bg-amber-100/80 text-amber-600' },
   ]
 
   return (

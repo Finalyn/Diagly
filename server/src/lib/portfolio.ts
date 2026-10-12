@@ -119,7 +119,7 @@ export async function aggregateCosts(ownerId: string, groupBy: GroupBy, f: Eleme
   const keyOf = (i: RawItem): string => {
     if (groupBy === "canton") return i.diagnostic.project.canton;
     if (groupBy === "year") return String(resolvedYear(i));
-    if (groupBy === "priority") return i.priority ?? "—";
+    if (groupBy === "priority") return i.priority ?? "n.c.";
     return i.diagnostic.project.buildingType;
   };
   const map = new Map<string, { budget: number; count: number }>();

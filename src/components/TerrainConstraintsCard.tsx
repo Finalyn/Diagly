@@ -118,13 +118,13 @@ export function TerrainConstraintsCard({ project }: { project: ApiProject }) {
             )}
 
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-              <Info l="Parcelle" v={g.parcelNumber ?? project.parcelNumber ?? '—'} />
-              <Info l="EGID" v={project.egid ?? '—'} />
-              <Info l="Zone d'affectation" v={g.affectationDetail ?? g.affectation ?? '—'} />
-              <Info l="Degré de sensibilité (bruit)" v={g.noise ?? '—'} />
-              <Info l="Radon (dépassement)" v={g.radonPct != null ? `${g.radonPct} %` : '—'} />
-              <Info l="Classe de sol sismique" v={g.seismic ?? '—'} />
-              <Info l="EGRID" v={project.egrid ?? '—'} />
+              <Info l="Parcelle" v={g.parcelNumber ?? project.parcelNumber ?? 'n.c.'} />
+              <Info l="EGID" v={project.egid ?? 'n.c.'} />
+              <Info l="Zone d'affectation" v={g.affectationDetail ?? g.affectation ?? 'n.c.'} />
+              <Info l="Degré de sensibilité (bruit)" v={g.noise ?? 'n.c.'} />
+              <Info l="Radon (dépassement)" v={g.radonPct != null ? `${g.radonPct} %` : 'n.c.'} />
+              <Info l="Classe de sol sismique" v={g.seismic ?? 'n.c.'} />
+              <Info l="EGRID" v={project.egrid ?? 'n.c.'} />
             </div>
 
             {heritage.length > 0 && (

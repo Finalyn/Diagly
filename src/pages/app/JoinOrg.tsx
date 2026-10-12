@@ -45,7 +45,7 @@ export function JoinOrg() {
                   <p className="text-sm text-muted-foreground mt-1">Vous êtes invité·e à rejoindre cette organisation sur Diagly.</p>
                 </div>
                 <Badge variant="outline">Rôle : {ROLE_LABEL[info.data.role] ?? info.data.role}</Badge>
-                <p className="text-xs text-muted-foreground">Invitation pour <b>{info.data.email}</b> — vous devez être connecté avec cette adresse.</p>
+                <p className="text-xs text-muted-foreground">Invitation pour <b>{info.data.email}</b> : vous devez être connecté avec cette adresse.</p>
                 {error && <p className="text-sm text-red-600">{error}</p>}
                 <Button className="w-full" onClick={join} disabled={joining}>
                   {joining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}Rejoindre l'organisation

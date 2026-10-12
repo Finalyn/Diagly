@@ -73,8 +73,8 @@ export interface ExportVariant extends CostCascade {
 const MARKET_COEFF = marketCoeff();
 
 export interface ScenarioPacks {
-  improvementPack: number; // rénovation intérieure estimée (finitions, confort) — depuis la surface de plancher
-  energyPack: number; // isolation de l'enveloppe estimée — depuis façade / fenêtres / toiture
+  improvementPack: number; // rénovation intérieure estimée (finitions, confort), depuis la surface de plancher
+  energyPack: number; // isolation de l'enveloppe estimée, depuis façade / fenêtres / toiture
 }
 
 interface GeomLike {
@@ -117,7 +117,7 @@ export function computeVariants(c: CostTotals, packs: ScenarioPacks): ExportVari
     {
       id: "maintenance",
       name: "Maintenance",
-      scope: "Réparation des éléments dégradés — maintien en état, strict minimum.",
+      scope: "Réparation des éléments dégradés : maintien en état, strict minimum.",
       envelopes: ["Réparation"],
       energyFocus: false,
       ...cascade(base, h, r),

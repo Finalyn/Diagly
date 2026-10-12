@@ -103,9 +103,9 @@ export function PublicReport() {
             <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Bâtiment</h2>
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
               <Info l="Type" v={buildingTypeLabels[project.buildingType]} />
-              <Info l="Année de construction" v={project.yearBuilt ? String(project.yearBuilt) : '—'} />
-              <Info l="Logements / étages" v={`${project.nbApartments ?? '—'} / ${project.nbFloors ?? '—'}`} />
-              <Info l="Parcelle" v={project.parcelNumber ?? '—'} />
+              <Info l="Année de construction" v={project.yearBuilt ? String(project.yearBuilt) : 'n.c.'} />
+              <Info l="Logements / étages" v={`${project.nbApartments ?? 'n.c.'} / ${project.nbFloors ?? 'n.c.'}`} />
+              <Info l="Parcelle" v={project.parcelNumber ?? 'n.c.'} />
             </div>
           </section>
 
@@ -158,7 +158,7 @@ export function PublicReport() {
                             </td>
                             <td className="py-1">{stateLabels[it.state]}</td>
                             <td className="py-1">{it.priority}</td>
-                            <td className="py-1 text-right font-medium">{it.estimatedCost ? formatCHF(toNum(it.estimatedCost)) : '—'}</td>
+                            <td className="py-1 text-right font-medium">{it.estimatedCost ? formatCHF(toNum(it.estimatedCost)) : 'n.c.'}</td>
                           </tr>
                         ))}
                       </tbody>

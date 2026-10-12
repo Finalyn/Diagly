@@ -1238,7 +1238,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                     <button
                       key={n}
                       onClick={() => setPageNum(n)}
-                      title={`Page ${n}${sansEchelle ? ' — non étalonnée' : ''}`}
+                      title={`Page ${n}${sansEchelle ? ' (non étalonnée)' : ''}`}
                       className={cn('relative w-16 shrink-0 overflow-hidden rounded-lg border bg-white transition-colors',
                         n === pageNum ? 'border-foreground ring-1 ring-foreground' : 'hover:border-foreground/40')}
                     >
@@ -1389,7 +1389,7 @@ function BoutonOutil({ outil, actif, bloque, onChoisir, compact }: {
       onClick={() => onChoisir(outil.key)}
       data-outil={outil.key}
       disabled={bloque}
-      title={bloque ? `${outil.label} — étalonnez d’abord la page` : outil.label}
+      title={bloque ? `${outil.label} (étalonnez d’abord la page)` : outil.label}
       aria-pressed={actif}
       className={cn('flex shrink-0 items-center rounded-lg transition-colors',
         compact ? 'gap-1.5 px-3 py-2' : 'flex-col gap-1 px-1 py-2',
@@ -1604,7 +1604,7 @@ function ListeDesZones({ zones, selection, mesure, lie, onChoisir }: {
                   aria-hidden
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium tabular-nums">{mesure(z) ?? '—'}</span>
+                  <span className="block text-sm font-medium tabular-nums">{mesure(z) ?? 'n.c.'}</span>
                   <span className={cn('block truncate text-xs', nom ? 'text-muted-foreground' : 'text-amber-600')}>
                     {nom ?? 'Rattacher à un ouvrage'}
                   </span>

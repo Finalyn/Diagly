@@ -63,7 +63,7 @@ function toProjectRow(p: ApiProject): Omit<Row, 'seq' | 'ref'> {
   return {
     id: p.id, kind: 'project', name: p.name, status: p.status, createdAt: p.createdAt, updatedAt: p.updatedAt,
     buildingLabel: buildingTypeLabels[p.buildingType],
-    subLabel: n > 0 ? `${n} appartement${n > 1 ? 's' : ''}` : '—',
+    subLabel: n > 0 ? `${n} appartement${n > 1 ? 's' : ''}` : '',
     street: p.address,
     place: `${p.postalCode ? `${p.postalCode} ` : ''}${p.city}${p.canton ? ` (${p.canton})` : ''}`,
     typeLabel: buildingTypeLabels[p.buildingType],
@@ -77,7 +77,7 @@ function toOperationRow(o: ApiOperation): Omit<Row, 'seq' | 'ref'> {
   return {
     id: o.id, kind: 'operation', name: o.name, status: o.status, createdAt: o.createdAt, updatedAt: o.updatedAt,
     buildingLabel: 'Multi-bâtiments', subLabel: `${n} bâtiment${n > 1 ? 's' : ''}`,
-    street: o.clientName ?? '—', place: '', typeLabel: 'Multi', surface: null,
+    street: o.clientName ?? 'n.c.', place: '', typeLabel: 'Multi', surface: null,
     detailPath: `/app/diagnostics-multi/${o.id}`,
   }
 }
@@ -248,7 +248,7 @@ export function ProjectsList() {
                       {r.place && <p className="text-xs text-muted-foreground">{r.place}</p>}
                     </TableCell>
                     {cols.type && <TableCell className="text-sm text-muted-foreground">{r.typeLabel}</TableCell>}
-                    {cols.surface && <TableCell className="text-sm">{r.surface != null ? `${r.surface} m²` : '—'}</TableCell>}
+                    {cols.surface && <TableCell className="text-sm">{r.surface != null ? `${r.surface} m²` : 'n.c.'}</TableCell>}
                     {cols.created && <TableCell><DateCell iso={r.createdAt} /></TableCell>}
                     {cols.modified && <TableCell><DateCell iso={r.updatedAt} /></TableCell>}
                     <TableCell className="text-right">

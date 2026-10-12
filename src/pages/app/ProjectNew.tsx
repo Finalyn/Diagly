@@ -477,7 +477,7 @@ export function ProjectNew() {
               <div>
                 <label className="text-sm font-medium mb-1 block">Nombre d'etages</label>
                 <Input id="champ-nbFloors" type="number" value={form.nbFloors} onChange={e => updateNum('nbFloors', e.target.value)} placeholder="Ex: 4" className={errCls('nbFloors')} />
-                <p className="text-[11px] text-muted-foreground mt-1">Valeur du registre fédéral — combles/sous-sol parfois comptés, ajustez si besoin.</p>
+                <p className="text-[11px] text-muted-foreground mt-1">Valeur du registre fédéral : combles ou sous-sol parfois comptés, ajustez si besoin.</p>
               </div>
               <div>
                 <label className="text-sm font-medium mb-1 block">Hauteur d'etage (m)</label>
@@ -595,7 +595,7 @@ export function ProjectNew() {
                   <div key={m.label} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <span className="text-sm">{m.label}</span>
                     <span className={cn('text-sm font-semibold', m.value > 0 ? '' : 'text-muted-foreground font-normal')}>
-                      {m.value > 0 ? `${m.value.toFixed(0)} ${m.unit}` : '—'}
+                      {m.value > 0 ? `${m.value.toFixed(0)} ${m.unit}` : 'n.c.'}
                     </span>
                   </div>
                 ))}

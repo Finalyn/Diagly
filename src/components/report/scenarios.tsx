@@ -45,7 +45,7 @@ export function VariantsCompare({ variants, energyClass }: { variants: RVariant[
           <tr className="border-b"><td className="py-1 text-muted-foreground">Périmètre</td>{variants.map(v => <td key={v.id} className="py-1 text-right text-muted-foreground">{v.envelopes.join(' + ')}</td>)}</tr>
           <tr className="border-b"><td className="py-1">Travaux (HT)</td>{variants.map(v => <td key={v.id} className="py-1 text-right tabular-nums">{formatCHF(v.ht)}</td>)}</tr>
           <tr className="border-t-2 font-bold"><td className="py-2">Total TTC</td>{variants.map(v => <td key={v.id} className="py-2 text-right tabular-nums">{formatCHF(v.total)}</td>)}</tr>
-          <tr className="text-muted-foreground"><td className="py-1">Écart vs Maintenance</td>{variants.map(v => <td key={v.id} className="py-1 text-right tabular-nums">{v.total === v0.total ? '—' : `+${formatCHF(v.total - v0.total)}`}</td>)}</tr>
+          <tr className="text-muted-foreground"><td className="py-1">Écart vs Maintenance</td>{variants.map(v => <td key={v.id} className="py-1 text-right tabular-nums">{v.total === v0.total ? '0' : `+${formatCHF(v.total - v0.total)}`}</td>)}</tr>
         </tbody>
       </table>
       <p className="mt-2 flex items-center gap-1 text-muted-foreground">

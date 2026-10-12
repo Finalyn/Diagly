@@ -138,7 +138,7 @@ export function ProjectMetres() {
                             {item.area != null && <span>· {item.area} {item.unit?.replace(/^CHF\s*\/?\s*/i, '') ?? ''}</span>}
                           </p>
                         </div>
-                        <span className="font-semibold shrink-0">{item.estimatedCost ? formatCHF(toNum(item.estimatedCost)) : '—'}</span>
+                        <span className="font-semibold shrink-0">{item.estimatedCost ? formatCHF(toNum(item.estimatedCost)) : 'n.c.'}</span>
                       </div>
                     ))}
                   </div>

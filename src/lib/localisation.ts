@@ -69,5 +69,5 @@ export function cleReleve(catalogItemId: number, localisation?: Localisation | n
 
 /** Suffixe à accoler à un libellé pour le situer, vide si l'ouvrage n'est ni l'un ni l'autre. */
 export function suffixeLocalisation(localisation?: Localisation | null): string {
-  return localisation ? ` — ${LIBELLE_LOCALISATION[localisation].toLowerCase()}` : ''
+  return localisation ? ` (${LIBELLE_LOCALISATION[localisation].toLowerCase()})` : ''
 }

@@ -168,7 +168,7 @@ export function PlanningPage() {
               <div>
                 <label className="text-sm font-medium mb-1 block">Bâtiment / projet</label>
                 <Select value={draft.projectId} onChange={(e) => setDraft({ ...draft, projectId: e.target.value })}>
-                  <option value="">— Aucun —</option>
+                  <option value="">Aucun</option>
                   {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </Select>
               </div>

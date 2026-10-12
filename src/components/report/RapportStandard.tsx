@@ -29,7 +29,7 @@ import type { ApiDiagnosticItem, ApiProject, ElementState } from '@/lib/api-type
  */
 function prixUnitaire(it: { area: number | null; estimatedCost: string | null }): string {
   const cost = toNum(it.estimatedCost)
-  if (!it.area || it.area <= 0 || cost <= 0) return '—'
+  if (!it.area || it.area <= 0 || cost <= 0) return 'n.c.'
   return formatCHF(Math.round(cost / it.area))
 }
 
@@ -119,11 +119,11 @@ export function RapportStandard({
         <div className="grid grid-cols-2 gap-x-8 gap-y-1">
           <Info l="Adresse" v={`${project.address}, ${project.postalCode ?? ''} ${project.city} (${project.canton})`} />
           <Info l="Type" v={buildingTypeLabels[project.buildingType]} />
-          <Info l="Année de construction" v={project.yearBuilt ? String(project.yearBuilt) : '—'} />
-          <Info l="Année de rénovation" v={project.renovationYear ? String(project.renovationYear) : '—'} />
-          <Info l="Parcelle" v={project.parcelNumber ?? '—'} />
-          <Info l="Logements / étages" v={`${project.nbApartments ?? '—'} / ${project.nbFloors ?? '—'}`} />
-          <Info l="Surface plancher / bâtie" v={`${project.floorArea ?? '—'} / ${project.builtArea ?? '—'} m²`} />
+          <Info l="Année de construction" v={project.yearBuilt ? String(project.yearBuilt) : 'n.c.'} />
+          <Info l="Année de rénovation" v={project.renovationYear ? String(project.renovationYear) : 'n.c.'} />
+          <Info l="Parcelle" v={project.parcelNumber ?? 'n.c.'} />
+          <Info l="Logements / étages" v={`${project.nbApartments ?? 'n.c.'} / ${project.nbFloors ?? 'n.c.'}`} />
+          <Info l="Surface plancher / bâtie" v={`${project.floorArea ?? 'n.c.'} / ${project.builtArea ?? 'n.c.'} m²`} />
           <Info l="Façade / Toiture" v={`${metrics.facade.toFixed(0)} m² / ${roof != null ? roof + ' m²' : 'à préciser'}`} />
         </div>
       </section>
@@ -241,13 +241,13 @@ export function RapportStandard({
                     </span>
                   ) : 'À évaluer'}
                 </td>
-                <td className="py-1">{it.priority ?? '—'}</td>
+                <td className="py-1">{it.priority ?? 'n.c.'}</td>
                 <td className="py-1 text-right tabular-nums">
-                  {it.area != null ? `${it.area}${it.unit ? ` ${it.unit.replace(/^CHF\s*\/?\s*/i, '')}` : ''}` : '—'}
+                  {it.area != null ? `${it.area}${it.unit ? ` ${it.unit.replace(/^CHF\s*\/?\s*/i, '')}` : ''}` : 'n.c.'}
                   {it.quantityManual && <span className="ml-1 text-muted-foreground" title="Quantité relevée sur place">·</span>}
                 </td>
                 <td className="py-1 text-right tabular-nums">{prixUnitaire(it)}</td>
-                <td className="py-1 text-right font-medium tabular-nums">{it.estimatedCost ? formatCHF(toNum(it.estimatedCost)) : '—'}</td>
+                <td className="py-1 text-right font-medium tabular-nums">{it.estimatedCost ? formatCHF(toNum(it.estimatedCost)) : 'n.c.'}</td>
               </tr>
             ),
           })

@@ -114,7 +114,7 @@ export function StatistiquesDiagnostic({ diagnosticId }: { diagnosticId: string 
                 >
                   <span className="w-5 text-sm font-bold text-muted-foreground">{i + 1}</span>
                   <div className={`h-7 w-7 shrink-0 rounded-full ${pc.bg} ring-2 ${pc.ring} flex items-center justify-center`}>
-                    <span className="text-[10px] font-bold text-white">{item.priority ?? '—'}</span>
+                    <span className="text-[10px] font-bold text-white">{item.priority ?? '?'}</span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{item.cfcLabel}</p>
@@ -185,7 +185,7 @@ export function StatistiquesDiagnostic({ diagnosticId }: { diagnosticId: string 
                   <TableCell>
                     {item.priority
                       ? <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${priorityColors[item.priority]}`}>{item.priority}</span>
-                      : <span className="text-xs text-muted-foreground">—</span>}
+                      : <span className="text-xs text-muted-foreground">n.c.</span>}
                   </TableCell>
                   <TableCell>{item.area ? `${item.area} ${item.unit ?? ''}` : '-'}</TableCell>
                   <TableCell className="text-right font-medium">{formatCHF(toNum(item.estimatedCost))}</TableCell>

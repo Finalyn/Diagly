@@ -246,7 +246,7 @@ function Comparaison({ base, variantes }: { base: { ht: number; cascade: { total
         <tbody>
           <tr className="border-t">
             <td className="py-1.5 font-medium">Diagnostic de base</td>
-            <td className="py-1.5 text-right text-muted-foreground">—</td>
+            <td className="py-1.5 text-right text-muted-foreground">0</td>
             <td className="py-1.5 text-right tabular-nums">{formatCHF(base.ht)}</td>
             <td className="py-1.5 text-right font-medium tabular-nums">{formatCHF(base.cascade.total)}</td>
             <td className="py-1.5 text-right text-muted-foreground">référence</td>
@@ -264,7 +264,7 @@ function Comparaison({ base, variantes }: { base: { ht: number; cascade: { total
               <td className="py-1.5 text-right font-medium tabular-nums">{formatCHF(v.cascade.total)}</td>
               <td className={cn('py-1.5 text-right font-medium tabular-nums',
                 v.ecartHt < 0 ? 'text-emerald-700' : v.ecartHt > 0 ? 'text-red-700' : 'text-muted-foreground')}>
-                {v.ecartHt === 0 ? '—' : `${v.ecartHt > 0 ? '+' : '−'}${formatCHF(Math.abs(v.ecartHt))}`}
+                {v.ecartHt === 0 ? '0' : `${v.ecartHt > 0 ? '+' : '−'}${formatCHF(Math.abs(v.ecartHt))}`}
               </td>
             </tr>
           ))}
@@ -545,7 +545,7 @@ function LigneArbitrageLigne({ a, catalogue, ouverte, onChange, onSupprimer }: {
               }}
               className="h-8 w-full rounded border bg-background px-1.5 text-xs"
             >
-              <option value="">Aucun article — montant saisi</option>
+              <option value="">Aucun article, montant saisi</option>
               {catalogue.map((c) => (
                 <option key={c.id} value={c.id}>{c.cfcCode ? `${c.cfcCode} · ` : ''}{c.description}</option>
               ))}
@@ -573,7 +573,7 @@ function LigneArbitrageLigne({ a, catalogue, ouverte, onChange, onSupprimer }: {
       <td className="py-1.5 text-right tabular-nums">{formatCHF(a.montant)}</td>
       <td className={cn('py-1.5 text-right font-medium tabular-nums',
         a.ecart < 0 ? 'text-emerald-700' : a.ecart > 0 ? 'text-red-700' : 'text-muted-foreground')}>
-        {a.ecart === 0 ? '—' : `${a.ecart > 0 ? '+' : '−'}${formatCHF(Math.abs(a.ecart))}`}
+        {a.ecart === 0 ? '0' : `${a.ecart > 0 ? '+' : '−'}${formatCHF(Math.abs(a.ecart))}`}
       </td>
       {ouverte && (
         <td className="py-1.5 text-right">
@@ -706,7 +706,7 @@ function NouvelArbitrage({ variantId, items, dejaArbitres, nomenclature, catalog
             value={remplace} onChange={(e) => choisirOuvrage(e.target.value)}
             className="h-9 w-full rounded-lg border bg-background px-2 text-sm"
           >
-            <option value="">Rien — c'est un travail nouveau</option>
+            <option value="">Rien, c'est un travail nouveau</option>
             {disponibles.map((it) => (
               <option key={it.id} value={it.id}>
                 {it.cfcCode} · {it.cfcLabel}{suffixeLocalisation(it.localisation)}
@@ -787,7 +787,7 @@ function NouvelArbitrage({ variantId, items, dejaArbitres, nomenclature, catalog
               {quantite !== ''
                 ? 'Quantité reprise à la main.'
                 : quantiteAuto != null
-                  ? `${quantiteAuto} ${uniteArticle ?? ''} déduits du bâtiment — ${origineQuantite}.`
+                  ? `${quantiteAuto} ${uniteArticle ?? ''} déduits du bâtiment, ${origineQuantite}.`
                   : `Ne se déduit pas des dimensions du bâtiment${origineQuantite ? ` : ${origineQuantite}` : ''}. À saisir.`}
             </p>
           )}
@@ -808,7 +808,7 @@ function NouvelArbitrage({ variantId, items, dejaArbitres, nomenclature, catalog
             <span className="text-xs text-muted-foreground">Plus-value</span>
             {montant == null ? (
               <p className="text-muted-foreground">
-                Choisissez l'article, l'état et la quantité — ou reprenez le montant à la main.
+                Choisissez l'article, l'état et la quantité, ou reprenez le montant à la main.
               </p>
             ) : (
               <p className="flex flex-wrap items-center gap-2">

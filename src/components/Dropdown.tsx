@@ -47,7 +47,7 @@ export function Dropdown({ value, options, onChange, disabled, placeholder, alig
         )}
       >
         {current?.color && <span className={cn('h-2 w-2 rounded-full shrink-0', current.color)} />}
-        <span className="truncate">{current?.label ?? placeholder ?? '—'}</span>
+        <span className="truncate">{current?.label ?? placeholder ?? 'Choisir'}</span>
         <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform shrink-0', open && 'rotate-180')} />
       </button>
 

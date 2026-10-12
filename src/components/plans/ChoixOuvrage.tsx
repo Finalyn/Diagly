@@ -158,7 +158,7 @@ export function ChoixOuvrage({ projectId, nature, choisi, onChoisir, onFermer }:
                   <Section>
                     Dans le catalogue
                     <span className="ml-1.5 font-normal normal-case tracking-normal">
-                      — l’article choisi est ajouté au relevé
+                      · l’article choisi est ajouté au relevé
                     </span>
                   </Section>
                   {articles.map((c) => (

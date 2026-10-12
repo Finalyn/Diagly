@@ -237,13 +237,13 @@ export function RapportComplet({ project, items, etatExistant, cfcEntries, base,
       { nouvellePage: true, avecSuivant: true })
     bloc('c2-identite', (
       <div className="grid grid-cols-2 gap-x-8 gap-y-1">
-        <Info l="Adresse" v={`${adresse || '—'} (${project.canton})`} />
+        <Info l="Adresse" v={`${adresse || 'n.c.'} (${project.canton})`} />
         <Info l="Type" v={buildingTypeLabels[project.buildingType] ?? project.buildingType} />
-        <Info l="Année de construction" v={project.yearBuilt ? String(project.yearBuilt) : '—'} />
-        <Info l="Année de rénovation" v={project.renovationYear ? String(project.renovationYear) : '—'} />
-        <Info l="Parcelle" v={project.parcelNumber ?? '—'} />
-        <Info l="Logements / étages" v={`${project.nbApartments ?? '—'} / ${project.nbFloors ?? '—'}`} />
-        <Info l="Surface plancher / bâtie" v={`${project.floorArea ?? '—'} / ${project.builtArea ?? '—'} m²`} />
+        <Info l="Année de construction" v={project.yearBuilt ? String(project.yearBuilt) : 'n.c.'} />
+        <Info l="Année de rénovation" v={project.renovationYear ? String(project.renovationYear) : 'n.c.'} />
+        <Info l="Parcelle" v={project.parcelNumber ?? 'n.c.'} />
+        <Info l="Logements / étages" v={`${project.nbApartments ?? 'n.c.'} / ${project.nbFloors ?? 'n.c.'}`} />
+        <Info l="Surface plancher / bâtie" v={`${project.floorArea ?? 'n.c.'} / ${project.builtArea ?? 'n.c.'} m²`} />
         <Info l="Façade / toiture" v={`${metrics.facade.toFixed(0)} m² / ${metrics.roof != null ? `${metrics.roof} m²` : 'à préciser'}`} />
         {project.energyClassGlobal && <Info l="Classe énergétique" v={project.energyClassGlobal} />}
         {project.sre != null && <Info l="SRE (certificat)" v={`${project.sre} m²`} />}
@@ -537,7 +537,7 @@ function LigneSommaire({ chapitre }: { chapitre: Chapitre }) {
       <span className="font-medium">{chapitre.titre}</span>
       {/* Ligne de points : l'œil suit le titre jusqu'à son numéro. */}
       <span className="min-w-6 flex-1 self-end border-b border-dotted border-muted-foreground/50" aria-hidden />
-      <span className="shrink-0 tabular-nums">{page ?? '—'}</span>
+      <span className="shrink-0 tabular-nums">{page ?? ''}</span>
     </li>
   )
 }
@@ -556,7 +556,7 @@ function ChapitreTitre({ n, titre }: { n: number; titre: string }) {
 function AnnexeTitre({ lettre, titre }: { lettre: string; titre: string }) {
   return (
     <h2 className="mb-4 border-b-2 border-foreground pb-2 text-2xl font-bold">
-      <span className="text-muted-foreground">Annexe {lettre}</span> — {titre}
+      <span className="text-muted-foreground">Annexe {lettre}</span> · {titre}
     </h2>
   )
 }
@@ -758,15 +758,15 @@ function blocCadreNormatif(): ReactNode {
       <table className="w-full">
         <tbody>
           {[
-            ['SN 506 500 — CFC',
+            ['SN 506 500 · CFC',
               "Code des frais de construction. Il donne l'arborescence qui structure le devis du chapitre 4 : chapitre, groupe, puis position à 3 chiffres."],
-            ['SIA 469 — Conservation des ouvrages',
+            ['SIA 469 · Conservation des ouvrages',
               "Cadre de la maintenance et de la remise en état du bâti existant. C'est d'elle que relève la notion de durée d'utilisation, sur laquelle repose la durée de vie résiduelle."],
-            ['SIA 269 — Maintenance des structures porteuses',
+            ['SIA 269 · Maintenance des structures porteuses',
               "Référence pour l'appréciation des ouvrages porteurs existants. Le diagnostic en reste au constat visuel : toute vérification de capacité portante relève d'un ingénieur."],
-            ['SIA 380/1 — Énergie thermique dans le bâtiment',
+            ['SIA 380/1 · Énergie thermique dans le bâtiment',
               "Valeurs limites de déperdition qui servent de repère pour juger l'isolation d'une paroi, d'une toiture ou d'une fenêtre."],
-            ['SIA 358 — Garde-corps et allèges',
+            ['SIA 358 · Garde-corps et allèges',
               "Hauteurs et écartements exigés. C'est la référence des remises aux normes de garde-corps relevées au chapitre 3."],
             ['CECB / CECB+',
               "Certificat énergétique cantonal des bâtiments. Lorsqu'il existe, ses étiquettes et ses variantes sont reprises et non recalculées."],
@@ -793,12 +793,12 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
     <>
       <p className="mb-3">
         Le bâtiment est parcouru ouvrage par ouvrage, sur place et à vue, en suivant le
-        référentiel du bureau : une liste fermée d'ouvrages types, rangés par domaine —
-        structure, façade, fenêtres, portes extérieures, stores et volets, toiture, électricité,
+        référentiel du bureau : une liste fermée d'ouvrages types, rangés par domaine
+        (structure, façade, fenêtres, portes extérieures, stores et volets, toiture, électricité,
         chauffage, ventilation, sanitaires, revêtements de murs, de plafonds et de sols,
-        serrurerie, menuiserie, aménagements extérieurs. Pour chacun, le diagnostiqueur ne
-        saisit qu'une chose : l'état constaté. Tout le reste — les travaux qui en découlent, la
-        priorité, la quantité, le prix — est déduit de ce référentiel, puis corrigé à la main si
+        serrurerie, menuiserie, aménagements extérieurs). Pour chacun, le diagnostiqueur ne
+        saisit qu'une chose : l'état constaté. Tout le reste, les travaux qui en découlent, la
+        priorité, la quantité et le prix, est déduit de ce référentiel, puis corrigé à la main si
         la visite l'impose.
       </p>
       <p>
@@ -817,7 +817,7 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
         Quatre états, et quatre seulement. L'état décrit ce qui a été vu, jamais ce qu'il faut
         faire : c'est ce qui permet de séparer le constat, qui engage le diagnostiqueur, de la
         décision de travaux, qui appartient au propriétaire. À chaque état, le référentiel
-        associe d'avance une description type et les travaux correspondants — de « néant » pour
+        associe d'avance une description type et les travaux correspondants, de « néant » pour
         un ouvrage sain jusqu'au remplacement complet en fin de vie.
       </p>
       <table className="w-full">
@@ -825,7 +825,7 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
           {([
             ['TRES_BON', "Aucune dégradation. L'ouvrage remplit sa fonction et n'appelle aucune dépense : le référentiel prévoit « néant »."],
             ['BON', "Usure normale, sans conséquence sur la fonction. L'entretien courant suffit ; aucun travail n'est chiffré, ou seulement un entretien léger."],
-            ['MOYEN', "Dégradation visible et qui progresse. Une intervention partielle maintenant — réparation, reprise, traitement de surface — évite un remplacement complet ensuite."],
+            ['MOYEN', "Dégradation visible et qui progresse. Une intervention partielle maintenant (réparation, reprise, traitement de surface) évite un remplacement complet ensuite."],
             ['MAUVAIS', "Fin de vie, fonction compromise ou sécurité en jeu. Le référentiel bascule sur la dépose et le remplacement complet de l'ouvrage."],
           ] as [ElementState, string][]).map(([e, texte]) => (
             <tr key={e} className="border-t align-top">
@@ -850,7 +850,7 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
           {[
             ['Réparation', "Remettre l'ouvrage dans l'état où il devrait être. C'est la seule enveloppe imposée par la dégradation constatée."],
             ['Amélioration', "Aller au-delà de l'état d'origine : meilleure performance, meilleur confort, valeur d'usage supérieure. Facultative, elle relève d'un choix."],
-            ['Mise aux normes', "Rattraper un écart avec une norme en vigueur — hauteur de garde-corps, résistance au feu d'une porte palière, sécurité électrique. Elle ne dépend pas de l'état : un ouvrage en bon état peut être non conforme."],
+            ['Mise aux normes', "Rattraper un écart avec une norme en vigueur : hauteur de garde-corps, résistance au feu d'une porte palière, sécurité électrique. Elle ne dépend pas de l'état : un ouvrage en bon état peut être non conforme."],
           ].map(([l, note]) => (
             <tr key={l} className="border-t align-top">
               <td className="w-40 py-1.5 font-medium">{l}</td>
@@ -866,8 +866,8 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
     <div className="mt-5">
       <SousTitre>La priorité d'intervention</SousTitre>
       <p className="mb-2">
-        La priorité est proposée d'après l'état — un ouvrage en fin de vie est urgent, un ouvrage
-        dégradé est à planifier — puis arbitrée par le diagnostiqueur, qui seul voit le contexte :
+        La priorité est proposée d'après l'état (un ouvrage en fin de vie est urgent, un ouvrage
+        dégradé est à planifier), puis arbitrée par le diagnostiqueur, qui seul voit le contexte :
         un ouvrage en état moyen devient urgent s'il en met un autre en péril, et une réfection
         sans enjeu peut attendre le prochain chantier pour mutualiser l'échafaudage. C'est la
         priorité, et non l'état, qui structure le devis du chapitre 4.
@@ -900,8 +900,8 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
         durée résiduelle = (année de pose + durée de vie de référence) − année courante
       </p>
       <p>
-        La durée de vie de référence dépend du type d'ouvrage — une peinture intérieure ne dure
-        pas ce que dure une charpente — et suit les durées d'utilisation retenues par le bureau
+        La durée de vie de référence dépend du type d'ouvrage (une peinture intérieure ne dure
+        pas ce que dure une charpente) et suit les durées d'utilisation retenues par le bureau
         dans le cadre de la SIA 469. Lorsque l'année de pose n'a pas pu être relevée, l'année de
         construction du bâtiment est utilisée et la mention « à confirmer » l'indique. Un ouvrage
         dont la durée de vie est dépassée est signalé comme tel : il peut encore fonctionner,
@@ -914,15 +914,15 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
     <div className="mt-5">
       <SousTitre>Les quantités</SousTitre>
       <p className="mb-2">
-        Chaque ouvrage du référentiel porte son unité de métré — m² de façade, m² de toiture,
-        mètre linéaire, pièce, forfait — et la règle qui donne la quantité à partir des
+        Chaque ouvrage du référentiel porte son unité de métré (m² de façade, m² de toiture,
+        mètre linéaire, pièce, forfait) et la règle qui donne la quantité à partir des
         dimensions du bâtiment : surface bâtie, périmètre, nombre d'étages, nombre de logements,
         nombre de cages d'escalier. Les dimensions retenues sont listées au chapitre 2, et les
         quantités en découlent automatiquement.
       </p>
       <p>
         Une quantité peut être reprise à la main lorsque le relevé sur place contredit le calcul.
-        Elle est alors figée : elle ne suit plus les corrections du dossier, et c'est voulu — une
+        Elle est alors figée : elle ne suit plus les corrections du dossier, et c'est voulu, car une
         mesure prise au mètre vaut mieux qu'une déduction. Le chapitre 4 affiche la quantité
         retenue et le prix unitaire appliqué, de sorte que chaque montant se recalcule de tête.
       </p>
@@ -934,8 +934,8 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
       <SousTitre>Les prix et leur indexation</SousTitre>
       <p className="mb-2">
         Les prix ne sont pas négociés au cas par cas : ils viennent du catalogue du bureau, qui
-        fixe pour chaque ouvrage un prix unitaire par état — le prix d'une réparation en état
-        moyen n'est pas celui d'un remplacement en fin de vie — ainsi qu'un prix propre à
+        fixe pour chaque ouvrage un prix unitaire par état (le prix d'une réparation en état
+        moyen n'est pas celui d'un remplacement en fin de vie) ainsi qu'un prix propre à
         l'amélioration et à la remise aux normes. Ces prix sont ensuite indexés, puis majorés
         dans cet ordre :
       </p>
@@ -983,8 +983,8 @@ function blocsMethode(project: ApiProject, devis: Devis): [string, ReactNode][] 
         L'estimation est donnée à <b>±15 %</b>. Cette fourchette n'est pas une précaution de
         style : elle recouvre l'écart normal entre un métré déduit et un métré d'exécution, la
         dispersion des offres d'entreprises, et ce qu'une visite sans sondage ne peut pas voir.
-        Le total du chapitre 4 est donc à lire comme une enveloppe de décision — savoir s'il
-        faut prévoir trois cent mille ou huit cent mille francs — et non comme un prix
+        Le total du chapitre 4 est donc à lire comme une enveloppe de décision (savoir s'il
+        faut prévoir trois cent mille ou huit cent mille francs), et non comme un prix
         d'adjudication. Un devis d'entreprise reste nécessaire avant d'engager les travaux.
       </p>
     </div>
@@ -1170,7 +1170,7 @@ function TitreBlocDevis({ bloc }: { bloc: DevisBloc }) {
   return (
     <h3 className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 border-b-2 border-foreground pb-1">
       <span className={cn('font-bold uppercase tracking-wide', couleurDeBloc(bloc.cle))}>
-        {bloc.titre} <span className="font-normal normal-case text-muted-foreground">— {bloc.horizon}</span>
+        {bloc.titre} <span className="font-normal normal-case text-muted-foreground">· {bloc.horizon}</span>
       </span>
       <span className="font-bold tabular-nums">{formatCHF(bloc.ht)} HT</span>
     </h3>
@@ -1282,7 +1282,7 @@ function ComparaisonVariantes({ base, variantes }: { base: Devis; variantes: Var
       <tbody>
         <tr className="border-t">
           <td className="py-1 font-medium">Diagnostic de base (chapitre 4)</td>
-          <td className="py-1 text-right text-muted-foreground">—</td>
+          <td className="py-1 text-right text-muted-foreground">0</td>
           <td className="py-1 text-right tabular-nums">{formatCHF(base.ht)}</td>
           <td className="py-1 text-right font-medium tabular-nums">{formatCHF(base.cascade.total)}</td>
           <td className="py-1 text-right text-muted-foreground">référence</td>
@@ -1313,7 +1313,7 @@ function couleurEcart(ecart: number): string {
   return ecart < 0 ? 'text-emerald-700' : ecart > 0 ? 'text-red-700' : 'text-muted-foreground'
 }
 function ecartLisible(ecart: number): string {
-  if (ecart === 0) return '—'
+  if (ecart === 0) return '0'
   return `${ecart > 0 ? '+' : '−'}${formatCHF(Math.abs(ecart))}`
 }
 
