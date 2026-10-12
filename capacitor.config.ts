@@ -18,6 +18,10 @@ const config: CapacitorConfig = {
     backgroundColor: '#ffffff',
     // Les liens vers d'autres sites s'ouvrent hors de l'app, jamais dans sa vue.
     limitsNavigationsToAppBoundDomains: false,
+    // La vue web elle-même ne défile pas : sans cela, un glissement faisait
+    // bouger toute la page, en-tête et barre du bas compris, comme une page
+    // de Safari. Seules les zones de contenu défilent (index.css, html.natif).
+    scrollEnabled: false,
   },
   plugins: {
     SplashScreen: {

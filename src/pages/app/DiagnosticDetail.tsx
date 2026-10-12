@@ -199,6 +199,14 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     document.documentElement.classList.toggle('releve-ouvert', !!selectedItemId)
     return () => document.documentElement.classList.remove('releve-ouvert')
   }, [isMobile, selectedItemId])
+  // L'éditeur travaille en bleu Diagly plutôt qu'en noir : la couleur
+  // principale y est redéfinie (index.css, .editeur-diagnostic). Posée sur
+  // <html> et non sur la page, parce que la caméra, la visionneuse et les
+  // dialogues s'affichent hors de la page et doivent suivre.
+  useEffect(() => {
+    document.documentElement.classList.add('editeur-diagnostic')
+    return () => document.documentElement.classList.remove('editeur-diagnostic')
+  }, [])
   const [search, setSearch] = useState('')
   const [guideMode, setGuideMode] = useGuideMode()
 
@@ -445,7 +453,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
           isMobile ? (selectedItemId ? 'hidden' : 'flex-1 min-h-0') : 'lg:w-96 shrink-0',
         )}>
           <CardHeader className="py-3 px-4 shrink-0 border-b">
-            <CardTitle className="text-sm">Catalogue CFC</CardTitle>
+            <CardTitle className="text-sm">Éléments à évaluer</CardTitle>
             <div className="relative mt-2">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input

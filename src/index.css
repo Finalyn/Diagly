@@ -97,6 +97,19 @@ body {
 html.natif {
   -webkit-tap-highlight-color: transparent;
 }
+/* La vue web ne défile pas (capacitor.config.ts, scrollEnabled) : les pages qui
+   défilaient d'un bloc (connexion, inscription, rapport partagé) défilent dans
+   #root. L'app elle-même a déjà ses zones de défilement (AppLayout). */
+html.natif,
+html.natif body {
+  height: 100%;
+  overflow: hidden;
+}
+html.natif #root {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 html.natif :where(button, a, nav, label, summary, [role='button'], [role='tab'], [role='menuitem'], [role='option']) {
   -webkit-user-select: none;
   user-select: none;
@@ -499,3 +512,10 @@ body {
 
 /* Téléphone : la barre du dossier s'efface pendant qu'une fiche de relevé est ouverte. */
 .releve-ouvert .nav-dossier { display: none; }
+
+/* L'éditeur de diagnostic en bleu Diagly (la coche du logo) : ses boutons et
+   ses sélections étaient noirs, la couleur principale de l'app. */
+html.editeur-diagnostic {
+  --color-primary: #0167ea;
+  --color-ring: #0167ea;
+}
