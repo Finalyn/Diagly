@@ -64,7 +64,7 @@ const LIBELLES_CONTROLES: Record<RaisonControle, string> = {
 }
 
 export function CFCManager() {
-  const base = useBaseCfc()
+  const base = useBaseCfc({ toujoursRelire: true })
   const nomenclature = useNomenclatureCfc()
   const [onglet, setOnglet] = useState<'articles' | 'postes' | 'valeurs'>('articles')
 

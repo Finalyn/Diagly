@@ -11,11 +11,16 @@ import { api } from '../api'
  */
 const STABLE = 60 * 60 * 1000
 
-export function useBaseCfc() {
+export function useBaseCfc({ toujoursRelire = false }: { toujoursRelire?: boolean } = {}) {
   return useQuery({
     queryKey: ['base-cfc'],
     queryFn: () => api.cfc.base(),
-    staleTime: STABLE,
+    // Une base vide n'est jamais tenue pour fraîche : gardée telle quelle une
+    // heure, elle laissait la page vide après l'import de la base en production.
+    staleTime: (q) => (q.state.data?.articles?.length ? STABLE : 0),
+    // La page qui édite la base la relit à chaque arrivée : une correction faite
+    // depuis un autre poste doit s'y voir. Hors réseau, la copie gardée reste.
+    refetchOnMount: toujoursRelire ? 'always' : true,
   })
 }
 
