@@ -10,6 +10,7 @@ class DiaglyViewController: CAPBridgeViewController {
         // Les plugins écrits dans ce projet (et non livrés par un paquet npm)
         // s'enregistrent à la main.
         bridge?.registerPluginInstance(ImpressionPlugin())
+        bridge?.registerPluginInstance(ConnexionPlugin())
     }
 
     override func viewDidLoad() {

@@ -36,32 +36,41 @@ enum OrgRole {
 }
 
 model User {
-  id               String   @id @default(cuid())
-  email            String   @unique
-  passwordHash     String   @map("password_hash") @db.VarChar(255)
-  firstName        String?  @map("first_name") @db.VarChar(100)
-  lastName         String?  @map("last_name") @db.VarChar(100)
-  role             UserRole @default(PARTICULIER)
-  companyName      String?  @map("company_name") @db.VarChar(150)
-  phone            String?  @db.VarChar(50)
-  twoFactorEnabled Boolean  @default(false) @map("two_factor_enabled")
-  twoFactorSecret  String?  @map("two_factor_secret") @db.VarChar(255)
+  id                String   @id @default(cuid())
+  email             String   @unique
+  passwordHash      String   @map("password_hash") @db.VarChar(255)
+  firstName         String?  @map("first_name") @db.VarChar(100)
+  lastName          String?  @map("last_name") @db.VarChar(100)
+  role              UserRole @default(PARTICULIER)
+  companyName       String?  @map("company_name") @db.VarChar(150)
+  phone             String?  @db.VarChar(50)
+  twoFactorEnabled  Boolean  @default(false) @map("two_factor_enabled")
+  twoFactorSecret   String?  @map("two_factor_secret") @db.VarChar(255)
   /// Méthode de la double authentification : TOTP (application) ou EMAIL (code envoyé).
   /// null sur un compte activé avant l'email : il a un secret, c'est donc l'application.
-  twoFactorMethod  String?  @map("two_factor_method") @db.VarChar(10)
+  twoFactorMethod   String?  @map("two_factor_method") @db.VarChar(10)
+  /// « Se connecter avec Apple » : l'identifiant stable de la personne pour l'app.
+  /// Unique en pratique (la connexion le cherche avant d'en poser un), mais sans
+  /// contrainte UNIQUE : l'ajouter fait poser une question à prisma db push, et
+  /// le build d'Infomaniak, qui ne peut pas y répondre, échoue.
+  appleSub          String?  @map("apple_sub") @db.VarChar(100)
+  /// Jeton de rafraîchissement Apple, gardé pour révoquer l'accès quand le compte
+  /// est supprimé (exigence d'Apple). null sans connexion Apple.
+  appleRefreshToken String?  @map("apple_refresh_token") @db.VarChar(512)
   /// Appartenance à une organisation (partage du parc entre membres). null = compte solo.
-  organizationId   String?  @map("organization_id")
-  orgRole          OrgRole? @map("org_role")
+  organizationId    String?  @map("organization_id")
+  orgRole           OrgRole? @map("org_role")
   /// Préférences (entreprise, défauts métier, notifications, apparence…) en JSON.
-  preferences      Json     @default("{}")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  preferences       Json     @default("{}")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   projects          Project[]
   operations        Operation[]
   refreshTokens     RefreshToken[]
   events            Event[]
   pushSubscriptions PushSubscription[]
+  appareilsPush     AppareilPush[]
   notifications     Notification[]
   apiKeys           ApiKey[]
   webhookEndpoints  WebhookEndpoint[]
@@ -69,6 +78,7 @@ model User {
   organization      Organization?      @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
+  @@index([appleSub])
   @@map("users")
 }
 
@@ -235,6 +245,22 @@ model ApiAccessLog {
   @@index([userId])
   @@index([createdAt])
   @@map("api_access_logs")
+}
+
+/// Un iPhone ou un iPad qui reçoit les notifications de l'app (APNs). Le jeton
+/// change rarement, mais il change : l'app le renvoie à chaque démarrage.
+model AppareilPush {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  jeton      String   @unique @db.VarChar(200)
+  plateforme String   @default("ios") @db.VarChar(10)
+  creeLe     DateTime @default(now()) @map("cree_le")
+  vuLe       DateTime @default(now()) @map("vu_le")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("appareils_push")
 }
 
 /// Abonnement Web Push (un par appareil/navigateur).

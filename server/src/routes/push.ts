@@ -5,12 +5,14 @@ import { requireAuth } from "../middlewares/auth.js";
 import { validateBody } from "../middlewares/validate.js";
 import { env } from "../lib/env.js";
 import { pushEnabled, sendPushToUser } from "../lib/push.js";
+import { cleAppleConfiguree } from "../lib/apple.js";
 
 const router = Router();
 
 // Cle publique VAPID pour l'abonnement cote navigateur. PUBLIC.
 router.get("/vapid", (_req, res) => {
-  res.json({ publicKey: env.VAPID_PUBLIC_KEY ?? null, enabled: pushEnabled });
+  // `ios` : l'app iPhone/iPad peut recevoir des notifications (clé APNs configurée).
+  res.json({ publicKey: env.VAPID_PUBLIC_KEY ?? null, enabled: pushEnabled, ios: cleAppleConfiguree() });
 });
 
 router.use(requireAuth);
@@ -34,6 +36,26 @@ const unsubSchema = z.object({ endpoint: z.string().min(1).max(500) });
 router.post("/unsubscribe", validateBody(unsubSchema), async (req, res) => {
   const { endpoint } = req.body as z.infer<typeof unsubSchema>;
   await prisma.pushSubscription.deleteMany({ where: { endpoint, userId: req.auth!.sub } });
+  res.status(204).end();
+});
+
+// L'app iPhone/iPad enregistre son jeton APNs (à chaque démarrage : il peut changer).
+const appareilSchema = z.object({ jeton: z.string().regex(/^[0-9a-fA-F]{32,200}$/) });
+router.post("/appareil", validateBody(appareilSchema), async (req, res) => {
+  const { jeton } = req.body as z.infer<typeof appareilSchema>;
+  // Un même téléphone passé à un autre compte : le jeton change de propriétaire.
+  await prisma.appareilPush.upsert({
+    where: { jeton },
+    create: { userId: req.auth!.sub, jeton },
+    update: { userId: req.auth!.sub, vuLe: new Date() },
+  });
+  res.status(204).end();
+});
+
+// Déconnexion, ou notifications coupées dans l'app : l'appareil ne reçoit plus rien.
+router.post("/appareil/retirer", validateBody(appareilSchema), async (req, res) => {
+  const { jeton } = req.body as z.infer<typeof appareilSchema>;
+  await prisma.appareilPush.deleteMany({ where: { jeton, userId: req.auth!.sub } });
   res.status(204).end();
 });
 

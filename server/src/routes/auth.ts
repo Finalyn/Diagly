@@ -19,6 +19,10 @@ import { logger } from "../lib/logger.js";
 import jwt from "jsonwebtoken";
 import { authenticator } from "otplib";
 import QRCode from "qrcode";
+import { jetonDeRevocation, revoquerApple, verifierJetonApple } from "../lib/apple.js";
+import { UPLOAD_DIR } from "./plans.js";
+import { unlink } from "node:fs/promises";
+import { join } from "node:path";
 
 const router = Router();
 
@@ -46,9 +50,10 @@ const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
 
-function publicUser<T extends { passwordHash: string; twoFactorSecret?: string | null }>(u: T) {
-  // On ne renvoie jamais le hash du mot de passe ni le secret 2FA au client.
-  const { passwordHash: _p, twoFactorSecret: _s, ...rest } = u;
+function publicUser<T extends { passwordHash: string; twoFactorSecret?: string | null; appleRefreshToken?: string | null }>(u: T) {
+  // On ne renvoie jamais le hash du mot de passe ni le secret 2FA au client, ni
+  // le jeton Apple, qui sert à révoquer l'accès à la suppression du compte.
+  const { passwordHash: _p, twoFactorSecret: _s, appleRefreshToken: _a, ...rest } = u;
   return rest;
 }
 
@@ -551,17 +556,25 @@ function readCookie(header: string | undefined, name: string): string | undefine
 }
 const googleRedirectUri = () => `${env.APP_URL}/api/auth/google/callback`;
 
+// L'app iPhone/iPad ouvre ce même flux dans la fenêtre de connexion sécurisée
+// d'iOS (ASWebAuthenticationSession), avec ?app=1. Le retour se fait alors vers
+// ch.diagly.app://oauth-callback, que seule cette fenêtre intercepte, et rend la
+// main à l'app avec le même fragment que le site (jetons, ou étape 2FA).
+const RETOUR_APP = `${env.APPLE_BUNDLE_ID}://oauth-callback`;
+
 // Démarre le flux : redirige vers l'écran de consentement Google.
-router.get("/google", (_req, res) => {
+router.get("/google", (req, res) => {
+  const depuisApp = req.query.app === "1";
   if (!googleConfigured()) {
-    return res.redirect(`${env.APP_URL}/login?error=${encodeURIComponent("Connexion Google non disponible pour le moment")}`);
+    const msg = encodeURIComponent("Connexion Google non disponible pour le moment");
+    return res.redirect(depuisApp ? `${RETOUR_APP}#error=${msg}` : `${env.APP_URL}/login?error=${msg}`);
   }
   // L'etat est lie au NAVIGATEUR qui a lance la connexion, via un cookie httpOnly.
   // Sans ce lien, un attaquant peut faire visiter a la victime une URL de retour portant
   // SON code d'autorisation : la victime se retrouve connectee au compte de l'attaquant
   // et travaille dedans sans le voir (CSRF de connexion).
   const nonce = crypto.randomUUID();
-  const state = jwt.sign({ n: nonce, purpose: "oauth" }, env.JWT_ACCESS_SECRET, { expiresIn: "10m" });
+  const state = jwt.sign({ n: nonce, purpose: "oauth", ...(depuisApp ? { app: true } : {}) }, env.JWT_ACCESS_SECRET, { expiresIn: "10m" });
   res.cookie(OAUTH_STATE_COOKIE, nonce, {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
@@ -584,7 +597,15 @@ router.get("/google", (_req, res) => {
 // Retour de Google : échange le code, trouve/crée l'utilisateur, renvoie au front avec les tokens.
 router.get("/google/callback", async (req, res) => {
   const { code, state } = req.query as { code?: string; state?: string };
-  const fail = (msg: string) => res.redirect(`${env.APP_URL}/login?error=${encodeURIComponent(msg)}`);
+  // Retour vers l'app ou vers le site, selon l'endroit où la connexion est partie.
+  // L'état n'est pas encore vérifié ici : il ne décide que de l'adresse de retour.
+  const depuisApp = (() => {
+    try { return !!(state && (jwt.decode(state) as { app?: boolean } | null)?.app); } catch { return false; }
+  })();
+  const retour = depuisApp ? RETOUR_APP : `${env.APP_URL}/oauth-callback`;
+  const fail = (msg: string) => res.redirect(depuisApp
+    ? `${RETOUR_APP}#error=${encodeURIComponent(msg)}`
+    : `${env.APP_URL}/login?error=${encodeURIComponent(msg)}`);
 
   if (!googleConfigured()) return fail("Google non configuré");
   if (!code || !state) return fail("Réponse Google invalide");
@@ -650,12 +671,114 @@ router.get("/google/callback", async (req, res) => {
     const frag = new URLSearchParams({
       twoFactorRequired: "1", ticket: etape.ticket, method: etape.method, ...("email" in etape ? { email: etape.email } : {}),
     });
-    return res.redirect(`${env.APP_URL}/oauth-callback#${frag.toString()}`);
+    return res.redirect(`${retour}#${frag.toString()}`);
   }
 
   const tokens = await issueTokens(user);
   const frag = new URLSearchParams({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
-  res.redirect(`${env.APP_URL}/oauth-callback#${frag.toString()}`);
+  res.redirect(`${retour}#${frag.toString()}`);
+});
+
+// ----------------------------------------------------- Se connecter avec Apple
+
+const appleSchema = z.object({
+  identityToken: z.string().min(20).max(5000),
+  authorizationCode: z.string().max(1000).optional(),
+  // Apple ne donne le nom qu'à la toute première connexion.
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
+});
+
+/**
+ * Connexion depuis l'app iPhone/iPad avec « Se connecter avec Apple ». L'app
+ * envoie le jeton d'identité qu'iOS lui a remis ; on le vérifie auprès d'Apple.
+ *
+ * Le compte se retrouve par l'identifiant Apple, puis par l'adresse si Apple
+ * l'a vérifiée (une personne déjà inscrite avec cette adresse retrouve son
+ * compte), sinon il est créé. Une adresse relais (@privaterelay.appleid.com)
+ * fait un compte à part : c'est le choix de la personne de masquer son adresse.
+ */
+router.post("/apple", loginLimiter, validateBody(appleSchema), async (req, res) => {
+  const corps = req.body as z.infer<typeof appleSchema>;
+  let identite;
+  try {
+    identite = await verifierJetonApple(corps.identityToken);
+  } catch (err) {
+    logger.warn({ err }, "jeton Apple refusé");
+    throw unauthorized("Connexion Apple refusée.");
+  }
+
+  let user = await prisma.user.findFirst({ where: { appleSub: identite.sub } });
+  if (!user && identite.email && identite.emailVerifie) {
+    user = await prisma.user.findUnique({ where: { email: identite.email } });
+  }
+  if (!user) {
+    if (!identite.email) throw badRequest("Apple n'a pas transmis d'adresse email : autorisez-la dans la fenêtre de connexion.");
+    user = await prisma.user.create({
+      data: {
+        email: identite.email,
+        passwordHash: await hashPassword(crypto.randomUUID() + crypto.randomUUID()), // inutilisable
+        firstName: corps.firstName || undefined,
+        lastName: corps.lastName || undefined,
+        role: "PARTICULIER",
+        appleSub: identite.sub,
+      },
+    });
+  } else if (user.appleSub !== identite.sub) {
+    user = await prisma.user.update({ where: { id: user.id }, data: { appleSub: identite.sub } });
+  }
+
+  // De quoi révoquer l'accès à la suppression du compte, comme Apple l'exige.
+  if (corps.authorizationCode) {
+    const jeton = await jetonDeRevocation(corps.authorizationCode).catch(() => null);
+    if (jeton) await prisma.user.update({ where: { id: user.id }, data: { appleRefreshToken: jeton } });
+  }
+
+  // La 2FA s'applique aussi ici, comme pour Google.
+  if (aLaDoubleAuth(user)) return res.json(await ouvrirDoubleAuth(user));
+  const tokens = await issueTokens(user);
+  res.json({ user: publicUser(user), ...tokens });
+});
+
+// ------------------------------------------------------- Supprimer son compte
+
+const suppressionSchema = z.object({ confirmation: z.literal("SUPPRIMER") });
+
+/**
+ * Suppression du compte par son titulaire, depuis l'app ou le site (exigée par
+ * Apple pour toute app où l'on peut créer un compte, et due au titre de la
+ * nLPD). Tout ce qui appartient au compte part avec lui : dossiers, relevés,
+ * photos, plans (fichiers compris), notifications, appareils.
+ */
+router.post("/compte/supprimer", requireAuth, validateBody(suppressionSchema), async (req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { id: req.auth!.sub },
+    select: { id: true, organizationId: true, orgRole: true, appleRefreshToken: true },
+  });
+  if (!user) throw unauthorized("Compte introuvable.");
+
+  // Le propriétaire d'une équipe qui a d'autres membres : supprimer son compte
+  // emporterait les dossiers que l'équipe partage. Il confie d'abord l'équipe.
+  if (user.organizationId && user.orgRole === "OWNER") {
+    const autres = await prisma.user.count({ where: { organizationId: user.organizationId, id: { not: user.id } } });
+    if (autres > 0) {
+      throw conflict("Vous êtes propriétaire d'une équipe qui a d'autres membres. Retirez-les ou confiez-leur l'équipe (Paramètres, Membres), puis supprimez votre compte.");
+    }
+  }
+
+  // Les fichiers des plans ne sont pas en base : on les efface du disque.
+  const plans = await prisma.plan.findMany({ where: { project: { ownerId: user.id } }, select: { fileName: true } });
+  await Promise.all(plans.map((p) => unlink(join(UPLOAD_DIR, p.fileName)).catch(() => undefined)));
+
+  if (user.appleRefreshToken) await revoquerApple(user.appleRefreshToken).catch(() => undefined);
+  await prisma.user.delete({ where: { id: user.id } });
+  // Une équipe dont le seul membre vient de partir n'a plus de raison d'être.
+  if (user.organizationId) {
+    const restants = await prisma.user.count({ where: { organizationId: user.organizationId } });
+    if (restants === 0) await prisma.organization.delete({ where: { id: user.organizationId } }).catch(() => undefined);
+  }
+  logger.info({ userId: user.id }, "compte supprimé par son titulaire");
+  res.status(204).end();
 });
 
 export default router;

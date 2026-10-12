@@ -35,6 +35,17 @@ const schema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().default("mailto:contact@diagly.ch"),
+  // App iPhone/iPad (lib/apple.ts). Une seule clé .p8 sert aux notifications
+  // (APNs) et à « Se connecter avec Apple » ; APPLE_PRIVATE_KEY est son contenu
+  // en base64, pour tenir sur une ligne. Sans elle : pas de notifications sur
+  // l'iPhone ni de révocation Apple, la connexion Apple marche quand même.
+  APPLE_BUNDLE_ID: z.string().default("ch.diagly.app"),
+  APPLE_TEAM_ID: z.string().optional(),
+  APPLE_KEY_ID: z.string().optional(),
+  APPLE_PRIVATE_KEY: z.string().optional(),
+  // Bac à sable d'APNs : seulement pour une app compilée en développement.
+  // TestFlight et l'App Store utilisent l'APNs de production.
+  APNS_SANDBOX: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
 });
 
 /**

@@ -188,6 +188,13 @@ export const api = {
     // Login : renvoie soit les tokens, soit une demande de code 2FA (ticket).
     login: (body: { email: string; password: string }) =>
       request<AuthResponse | EtapeDoubleAuth>('/api/auth/login', { method: 'POST', body, withAuth: false }),
+    // « Se connecter avec Apple » depuis l'app iPhone/iPad : le jeton d'identité
+    // remis par iOS, vérifié par le serveur auprès d'Apple.
+    apple: (body: { identityToken: string; authorizationCode?: string; firstName?: string; lastName?: string }) =>
+      request<AuthResponse | EtapeDoubleAuth>('/api/auth/apple', { method: 'POST', body, withAuth: false }),
+    // Suppression du compte par son titulaire (exigée par Apple, et due au titre de la nLPD).
+    supprimerCompte: () =>
+      request<void>('/api/auth/compte/supprimer', { method: 'POST', body: { confirmation: 'SUPPRIMER' } }),
     // Étape 2 : vérifie le code de l'app d'authentification.
     twoFactorVerify: (body: { ticket: string; code: string }) =>
       request<AuthResponse>('/api/auth/2fa/verify', { method: 'POST', body, withAuth: false }),
@@ -290,7 +297,10 @@ export const api = {
   },
 
   push: {
-    vapid: () => request<{ publicKey: string | null; enabled: boolean }>('/api/push/vapid', { withAuth: false }),
+    vapid: () => request<{ publicKey: string | null; enabled: boolean; ios?: boolean }>('/api/push/vapid', { withAuth: false }),
+    // App iPhone/iPad : le jeton APNs de l'appareil.
+    appareil: (jeton: string) => request<void>('/api/push/appareil', { method: 'POST', body: { jeton } }),
+    retirerAppareil: (jeton: string) => request<void>('/api/push/appareil/retirer', { method: 'POST', body: { jeton } }),
     subscribe: (sub: PushSubscriptionJSON) => request<{ id: string }>('/api/push/subscribe', { method: 'POST', body: sub }),
     unsubscribe: (endpoint: string) => request<void>('/api/push/unsubscribe', { method: 'POST', body: { endpoint } }),
     test: () => request<{ sent: number }>('/api/push/test', { method: 'POST' }),

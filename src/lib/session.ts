@@ -2,6 +2,7 @@ import { del } from 'idb-keyval'
 import { useAuth } from '@/stores/auth'
 import { queryClient, QUERY_CACHE_KEY } from '@/lib/query-client'
 import { saisiesEnAttente, viderFile } from '@/lib/hors-ligne/file-envoi'
+import { oublierCetAppareil } from '@/lib/push-client'
 
 /**
  * Efface TOUTE trace locale de la session. Indispensable sur un appareil partagé
@@ -35,6 +36,15 @@ export async function purgeLocalSession(): Promise<void> {
 }
 
 /**
+ * Après la suppression du compte : il n'y a plus de session à révoquer côté
+ * serveur (le compte n'existe plus), on efface tout ce que l'appareil en garde.
+ */
+export async function apresSuppressionDuCompte(): Promise<void> {
+  await viderFile().catch(() => undefined)
+  await purgeLocalSession()
+}
+
+/**
  * À demander avant une déconnexion volontaire. La déconnexion efface les
  * saisies pas encore envoyées : on ne le fait pas sans le dire.
  *
@@ -55,6 +65,9 @@ export function confirmerDeconnexion(): boolean {
  */
 export async function logout(): Promise<void> {
   const { refreshToken } = useAuth.getState()
+  // L'iPhone cesse de recevoir les notifications de ce compte : à faire tant que
+  // la session est encore valide.
+  await oublierCetAppareil().catch(() => undefined)
   if (refreshToken) {
     const { api } = await import('@/lib/api')
     await api.auth.logout(refreshToken).catch(() => undefined)

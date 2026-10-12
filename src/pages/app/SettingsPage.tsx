@@ -31,7 +31,7 @@ import { useAuth } from '@/stores/auth'
 import { useIsMobile } from '@/lib/use-mobile'
 import { cn } from '@/lib/utils'
 import { getPushState, subscribePush, unsubscribePush, type PushState } from '@/lib/push-client'
-import { logout as endSession, confirmerDeconnexion } from '@/lib/session'
+import { logout as endSession, confirmerDeconnexion, apresSuppressionDuCompte } from '@/lib/session'
 import { estAppNative } from '@/lib/plateforme'
 import {
   aChange, champsManquantsDuBureau, etatDuProfil, initiales, nomAffiche,
@@ -812,7 +812,8 @@ function NotificationsPoussees() {
 
   useEffect(() => {
     (async () => {
-      try { const v = await api.push.vapid(); setServeur(v.enabled); setCle(v.publicKey) } catch { setServeur(false) }
+      // Dans l'app, ce sont les notifications d'Apple : le serveur doit avoir sa clé APNs.
+      try { const v = await api.push.vapid(); setServeur(estAppNative ? !!v.ios : v.enabled); setCle(v.publicKey) } catch { setServeur(false) }
       try { setEtat(await getPushState()) } catch { setEtat('unsupported') }
     })()
   }, [])
@@ -822,8 +823,12 @@ function NotificationsPoussees() {
     setOccupe(true); setMessage(null)
     try {
       if (etat === 'subscribed') { await unsubscribePush(); setEtat('unsubscribed') }
-      else if (cle) { await subscribePush(cle); setEtat('subscribed') }
-    } catch { setMessage('Le navigateur a refusé la permission.') } finally { setOccupe(false) }
+      else if (cle || estAppNative) { await subscribePush(cle); setEtat('subscribed') }
+    } catch {
+      setMessage(estAppNative
+        ? "iOS a refusé : autorisez Diagly dans Réglages > Notifications de l'iPhone."
+        : 'Le navigateur a refusé la permission.')
+    } finally { setOccupe(false) }
   }
 
   const essai = async () => {
@@ -837,7 +842,7 @@ function NotificationsPoussees() {
   const indisponible = etat === 'unsupported' || serveur === false || etat === 'denied'
   const aide = etat === 'unsupported' ? 'Ce navigateur ne les gère pas.'
     : serveur === false ? 'Le serveur ne les a pas configurées.'
-      : etat === 'denied' ? 'Bloquées dans les réglages du navigateur.'
+      : etat === 'denied' ? (estAppNative ? "Bloquées dans Réglages > Notifications de l'iPhone." : 'Bloquées dans les réglages du navigateur.')
         : 'Rappels et urgences, même quand Diagly est fermé.'
 
   return (
@@ -1384,22 +1389,84 @@ function SectionCompte() {
         </Button>
       </Bloc>
 
-      <section className="max-w-2xl rounded-2xl border border-red-200 bg-red-50/40 p-4">
-        <h3 className="text-sm font-semibold text-red-800">Fermer le compte</h3>
-        <p className="mt-0.5 text-sm text-red-700">
-          La fermeture supprime vos diagnostics, vos photos et vos rapports, sans retour possible.
-        </p>
-        <div className="mt-3">
-          <p className="mb-3 text-sm text-muted-foreground">
-            Elle passe par le support, qui vérifie d'abord qu'aucun dossier partagé n'en dépend et vous
-            laisse exporter ce que vous voulez garder.
-          </p>
-          <Button variant="outline" size="sm" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => navigate('/app/support/new')}>
-            Demander la fermeture
-          </Button>
-        </div>
-      </section>
+      <SuppressionDuCompte />
     </>
+  )
+}
+
+/**
+ * Supprimer son compte, depuis l'app comme depuis le site. Apple l'exige de
+ * toute app où l'on peut créer un compte, et la nLPD le doit à chacun. Avant,
+ * la fermeture passait par une demande au support : Apple ne l'accepte pas.
+ *
+ * On tape SUPPRIMER pour confirmer : un toucher de trop ne doit pas effacer des
+ * années de diagnostics.
+ */
+function SuppressionDuCompte() {
+  const navigate = useNavigate()
+  const [ouvert, setOuvert] = useState(false)
+  const [saisie, setSaisie] = useState('')
+  const [enCours, setEnCours] = useState(false)
+  const [erreur, setErreur] = useState<string | null>(null)
+  const confirme = saisie.trim().toUpperCase() === 'SUPPRIMER'
+
+  const supprimer = async () => {
+    if (!confirme || enCours) return
+    setEnCours(true); setErreur(null)
+    try {
+      await api.auth.supprimerCompte()
+      await apresSuppressionDuCompte()
+      navigate('/login', { replace: true })
+    } catch (e) {
+      setErreur(e instanceof ApiError ? e.message : 'La suppression a échoué. Réessayez.')
+      setEnCours(false)
+    }
+  }
+
+  return (
+    <section className="max-w-2xl rounded-2xl border border-red-200 bg-red-50/40 p-4">
+      <h3 className="text-sm font-semibold text-red-800">Supprimer le compte</h3>
+      <p className="mt-0.5 text-sm text-red-700">
+        Vos diagnostics, relevés, photos, plans et rapports sont effacés définitivement, sans retour possible.
+      </p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Exportez d'abord ce que vous voulez garder. Si vous êtes propriétaire d'une équipe, retirez d'abord ses membres.
+      </p>
+      {!ouvert ? (
+        <Button variant="outline" size="sm" className="mt-3 border-red-200 text-red-700 hover:bg-red-50" onClick={() => setOuvert(true)}>
+          Supprimer mon compte
+        </Button>
+      ) : (
+        <div className="mt-3 space-y-2">
+          <label htmlFor="confirmer-suppression" className="block text-sm">
+            Tapez <strong>SUPPRIMER</strong> pour confirmer
+          </label>
+          <Input
+            id="confirmer-suppression"
+            value={saisie}
+            onChange={(e) => setSaisie(e.target.value)}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            autoComplete="off"
+            className="max-w-xs"
+          />
+          {erreur && <p className="text-sm text-red-700">{erreur}</p>}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              onClick={supprimer}
+              disabled={!confirme || enCours}
+              className="border-red-600 bg-red-600 text-white hover:bg-red-700 hover:border-red-700"
+            >
+              {enCours && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Supprimer définitivement
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { setOuvert(false); setSaisie(''); setErreur(null) }}>
+              Annuler
+            </Button>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 

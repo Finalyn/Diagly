@@ -19,7 +19,7 @@ import { prisma } from "./prisma.js";
 import {
   canauxVoulus, type Canaux, type ReglagesNotification, type TypeNotification,
 } from "./notifications-regles.js";
-import { sendPushToUser, pushEnabled } from "./push.js";
+import { sendPushToUser, pushDisponible } from "./push.js";
 import { mailConfigured, sendMail, notificationEmail } from "./mail.js";
 import { logger } from "./logger.js";
 
@@ -104,5 +104,5 @@ export function notifierSansAttendre(userId: string, type: TypeNotification, n: 
 
 /** Ce que le serveur sait faire, pour que l'écran des réglages le dise. */
 export function canauxDisponibles() {
-  return { push: pushEnabled, email: mailConfigured() };
+  return { push: pushDisponible(), email: mailConfigured() };
 }

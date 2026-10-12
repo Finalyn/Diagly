@@ -5,6 +5,7 @@ import { Button, Input, Select } from '@/components/ui'
 import { AuthCard } from '@/components/auth/AuthCard'
 import { GoogleButton, OrDivider } from '@/components/auth/Social'
 import { estAppNative } from '@/lib/plateforme'
+import { ConnexionNative } from '@/components/auth/ConnexionNative'
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 
@@ -84,12 +85,20 @@ export function Register() {
         </Button>
       </form>
 
-      {/* Dans l'app, Google passera par sa connexion native (avec « Se connecter
-          avec Apple ») : le flux web ci-dessous n'y fonctionne pas. */}
-      {!estAppNative && (<>
-        <OrDivider label="ou continuer avec" />
+      {/* Dans l'app, Apple et Google passent par les fenêtres d'iOS ; le compte
+          se crée au premier passage. */}
+      <OrDivider label="ou continuer avec" />
+      {estAppNative ? (
+        <ConnexionNative
+          onCompte={(r) => { setAuth(r.user, r.accessToken, r.refreshToken); navigate('/app/dashboard', { replace: true }) }}
+          // Un compte déjà existant, protégé par la 2FA : le code se saisit sur
+          // l'écran de connexion.
+          onDoubleAuth={(etape) => navigate('/login', { replace: true, state: { ticket: etape.ticket, method: etape.method, email: etape.email } })}
+          onErreur={setError}
+        />
+      ) : (
         <GoogleButton label="S’inscrire avec Google" />
-      </>)}
+      )}
 
       <p className="text-center text-sm text-muted-foreground mt-6">
         Déjà un compte ? <Link to="/login" className="text-primary font-medium hover:underline">Se connecter</Link>

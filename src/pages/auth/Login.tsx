@@ -5,6 +5,7 @@ import { Button, Input } from '@/components/ui'
 import { AuthCard } from '@/components/auth/AuthCard'
 import { GoogleButton, OrDivider } from '@/components/auth/Social'
 import { estAppNative } from '@/lib/plateforme'
+import { ConnexionNative } from '@/components/auth/ConnexionNative'
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import type { AuthResponse } from '@/lib/api-types'
@@ -158,12 +159,21 @@ export function Login() {
         </Button>
       </form>
 
-      {/* Dans l'app, Google passera par sa connexion native (avec « Se connecter
-          avec Apple ») : le flux web ci-dessous n'y fonctionne pas. */}
-      {!estAppNative && (<>
-        <OrDivider label="ou continuer avec" />
+      {/* Dans l'app, Apple et Google passent par les fenêtres d'iOS : le flux web
+          de Google ne fonctionne pas dans la vue d'une app. */}
+      <OrDivider label="ou continuer avec" />
+      {estAppNative ? (
+        <ConnexionNative
+          onCompte={finishAuth}
+          onDoubleAuth={(etape) => {
+            setTicket(etape.ticket)
+            setParEmail(etape.method === 'email' ? etape.email ?? 'votre adresse' : null)
+          }}
+          onErreur={setError}
+        />
+      ) : (
         <GoogleButton />
-      </>)}
+      )}
 
       <p className="text-center text-sm text-muted-foreground mt-6">
         Pas encore de compte ? <Link to="/register" className="text-neutral-900 font-medium hover:underline">Créer un compte</Link>

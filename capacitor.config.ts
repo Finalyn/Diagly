@@ -31,6 +31,11 @@ const config: CapacitorConfig = {
       backgroundColor: '#ffffff',
       showSpinner: false,
     },
+    PushNotifications: {
+      // Une notification arrivée pendant qu'on est dans l'app s'affiche quand
+      // même, en bandeau, avec son son.
+      presentationOptions: ['banner', 'list', 'sound', 'badge'],
+    },
     Keyboard: {
       // La vue rétrécit au-dessus du clavier : les champs fixés en bas (assistant,
       // notes) restent visibles pendant la frappe.
