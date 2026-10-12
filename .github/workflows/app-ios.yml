@@ -1,9 +1,12 @@
 # L'app iPhone/iPad se compile ici, sur une machine macOS de GitHub : le poste
-# de développement est sous Windows et Xcode n'existe que sur Mac. Le dépôt
-# étant public, ces machines ne coûtent rien.
+# de développement est sous Windows et Xcode n'existe que sur Mac. Dépôt
+# privé : une minute macOS en compte dix sur le forfait d'Actions, d'où des
+# déclenchements automatiques limités au code natif. Le front, lui, se vérifie
+# sur le poste (tsc, vitest) avant d'être poussé.
 #
-# - À chaque push qui touche l'app : compilation pour le simulateur, sans
-#   signature ni secret. Elle dit seulement si le projet compile.
+# - À chaque push qui touche le code natif (ios/, plugins, configuration) :
+#   compilation pour le simulateur, sans signature ni secret. Elle dit
+#   seulement si le projet compile.
 # - À la demande (onglet Actions > App iOS > Run workflow) : archive signée,
 #   envoyée sur App Store Connect, où elle apparaît dans TestFlight une
 #   quinzaine de minutes plus tard.
@@ -22,13 +25,8 @@ on:
     branches: [app-ios, master]
     paths:
       - 'ios/**'
-      - 'src/**'
-      - 'public/**'
-      - 'index.html'
       - 'package.json'
-      - 'package-lock.json'
       - 'capacitor.config.ts'
-      - 'vite.config.ts'
       - '.github/workflows/app-ios.yml'
   workflow_dispatch:
     inputs:

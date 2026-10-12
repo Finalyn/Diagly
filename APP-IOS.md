@@ -59,11 +59,15 @@ react-query, qui ne survivrait pas à la fermeture de l'app.
 ## Compiler sans Mac
 
 Xcode n'existe que sur Mac. La compilation se fait sur les machines macOS de
-GitHub Actions (`.github/workflows/app-ios.yml`), gratuites puisque le dépôt
-est public.
+GitHub Actions (`.github/workflows/app-ios.yml`). Le dépôt est destiné à
+rester sur GitHub **en privé** (les données, elles, restent chez Infomaniak) :
+une minute macOS y compte pour dix sur le forfait d'Actions, soit une
+trentaine d'envois TestFlight par mois dans les 2'000 minutes du forfait
+gratuit.
 
-- **À chaque push** sur `app-ios` ou `master` qui touche l'app : compilation
-  pour le simulateur, sans signature. Elle dit si le projet compile.
+- **À chaque push** sur `app-ios` ou `master` qui touche le code natif
+  (`ios/`, `package.json`, `capacitor.config.ts`) : compilation pour le
+  simulateur, sans signature. Elle dit si le projet compile.
 - **À la demande** : onglet *Actions* > *App iOS* > *Run workflow*. La version
   est signée, envoyée sur App Store Connect, et apparaît dans TestFlight une
   quinzaine de minutes plus tard. Le numéro de build est l'heure UTC
