@@ -91,13 +91,36 @@ struct BoutonDeBarre {
 }
 
 /// La barre : une pilule de verre au centre, un bouton rond de chaque côté.
+///
+/// Comme la barre d'onglets d'iOS 26, la pilule se balaie du doigt : une
+/// pastille, grossie comme une loupe, suit le doigt d'un bouton à l'autre,
+/// avec un petit clic à chaque bouton franchi, et se pose sur celui où l'on
+/// relâche. Un simple toucher fait glisser la pastille jusqu'au bouton.
 final class BarreOnglets: UIView {
     var toucher: ((String) -> Void)?
 
+    private struct Bouton {
+        let id: String
+        let symbole: String
+        let vue: UIButton
+        let rond: Bool
+    }
+
     private let pilule = BarreOnglets.verre()
     private let pile = UIStackView()
+    /// La pastille du bouton actif, sous les icônes.
+    private let pastille = UIView()
+    private var centre: [Bouton] = []
+    private var ronds: [Bouton] = []
     private var rondGauche: UIVisualEffectView?
     private var rondDroit: UIVisualEffectView?
+    private var actif: String?
+    /// Les boutons affichés : tant qu'ils ne changent pas, une autre page ne
+    /// fait que déplacer la pastille, sans redessiner la barre.
+    private var signature = ""
+    /// Le bouton sous le doigt pendant un balayage, nil sinon.
+    private var survole: String?
+    private let selection = UISelectionFeedbackGenerator()
     private let bleu = UIColor(red: 1 / 255, green: 103 / 255, blue: 234 / 255, alpha: 1)
 
     override init(frame: CGRect) {
@@ -108,6 +131,11 @@ final class BarreOnglets: UIView {
         pile.alignment = .center
         pile.translatesAutoresizingMaskIntoConstraints = false
         pilule.translatesAutoresizingMaskIntoConstraints = false
+        pastille.isUserInteractionEnabled = false
+        pastille.layer.cornerCurve = .continuous
+        pastille.backgroundColor = bleu.withAlphaComponent(0.12)
+        pastille.alpha = 0
+        pilule.contentView.addSubview(pastille)
         pilule.contentView.addSubview(pile)
         addSubview(pilule)
         NSLayoutConstraint.activate([
@@ -118,6 +146,8 @@ final class BarreOnglets: UIView {
             pile.trailingAnchor.constraint(equalTo: pilule.contentView.trailingAnchor, constant: -10),
             pile.centerYAnchor.constraint(equalTo: pilule.contentView.centerYAnchor)
         ])
+        let balayage = UIPanGestureRecognizer(target: self, action: #selector(balayer(_:)))
+        pilule.addGestureRecognizer(balayage)
     }
 
     required init?(coder: NSCoder) {
@@ -145,6 +175,8 @@ final class BarreOnglets: UIView {
         for v in [pilule, rondGauche, rondDroit].compactMap({ $0 }) {
             v.layer.cornerRadius = v.bounds.height / 2
         }
+        // Pendant un balayage, c'est le doigt qui place la pastille.
+        if survole == nil { placerPastille() }
     }
 
     /// Les touchers à côté des boutons passent à la page en dessous.
@@ -155,23 +187,149 @@ final class BarreOnglets: UIView {
         return false
     }
 
-    func configurer(gauche: BoutonDeBarre?, centre: [BoutonDeBarre], droite: BoutonDeBarre?, actif: String?) {
+    func configurer(gauche: BoutonDeBarre?, centre boutons: [BoutonDeBarre], droite: BoutonDeBarre?, actif nouveau: String?) {
+        let nouvelle = ([gauche, droite].map { $0.map { "\($0.id):\($0.symbole)" } ?? "-" }
+            + boutons.map { "\($0.id):\($0.symbole)" }).joined(separator: "|")
+        if nouvelle == signature {
+            // Même barre, autre page : la pastille glisse jusqu'au nouveau bouton.
+            changerActif(nouveau, anime: true)
+            return
+        }
+        signature = nouvelle
         pile.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for b in centre {
-            pile.addArrangedSubview(bouton(b, actif: b.id == actif, cote: 44))
+        centre = boutons.map { (b: BoutonDeBarre) -> Bouton in
+            let vue = bouton(b, cote: 44, dansLaPilule: true)
+            pile.addArrangedSubview(vue)
+            return Bouton(id: b.id, symbole: b.symbole, vue: vue, rond: false)
         }
         rondGauche?.removeFromSuperview()
         rondDroit?.removeFromSuperview()
-        rondGauche = gauche.map { rond($0, actif: $0.id == actif, aGauche: true) }
-        rondDroit = droite.map { rond($0, actif: $0.id == actif, aGauche: false) }
-        setNeedsLayout()
+        ronds = []
+        rondGauche = gauche.map { rond($0, aGauche: true) }
+        rondDroit = droite.map { rond($0, aGauche: false) }
+        changerActif(nouveau, anime: false)
     }
 
-    private func rond(_ b: BoutonDeBarre, actif: Bool, aGauche: Bool) -> UIVisualEffectView {
+    // MARK: Le bouton actif et sa pastille
+
+    private func changerActif(_ id: String?, anime: Bool) {
+        actif = id
+        styler(actif: id)
+        guard anime, window != nil else {
+            setNeedsLayout()
+            return
+        }
+        UIView.animate(withDuration: 0.45, delay: 0, usingSpringWithDamping: 0.78, initialSpringVelocity: 0.3,
+                       options: [.beginFromCurrentState, .allowUserInteraction]) {
+            self.placerPastille()
+        }
+    }
+
+    /// Icône pleine et bleue pour le bouton allumé, contour gris pour les autres.
+    private func styler(actif id: String?) {
+        for b in centre + ronds {
+            let allume = b.id == id
+            b.vue.setImage(BarreOnglets.image(b.symbole, plein: allume), for: .normal)
+            b.vue.tintColor = allume ? bleu : UIColor.label.withAlphaComponent(0.72)
+            b.vue.accessibilityTraits = allume ? [.button, .selected] : .button
+            if b.rond { b.vue.backgroundColor = allume ? bleu.withAlphaComponent(0.12) : .clear }
+        }
+    }
+
+    /// Le symbole d'Apple, en version pleine quand il en a une.
+    static func image(_ symbole: String, plein: Bool) -> UIImage? {
+        let reglage = UIImage.SymbolConfiguration(pointSize: 19, weight: plein ? .semibold : .medium)
+        if plein, let image = UIImage(systemName: "\(symbole).fill", withConfiguration: reglage) { return image }
+        return UIImage(systemName: symbole, withConfiguration: reglage) ?? UIImage(systemName: "circle", withConfiguration: reglage)
+    }
+
+    private func cadre(de bouton: UIButton) -> CGRect {
+        pile.layoutIfNeeded()
+        return pile.convert(bouton.frame, to: pilule.contentView)
+    }
+
+    private func placerPastille() {
+        guard let b = centre.first(where: { $0.id == actif }) else {
+            pastille.alpha = 0
+            return
+        }
+        let f = cadre(de: b.vue)
+        pastille.transform = .identity
+        pastille.bounds = CGRect(origin: .zero, size: f.size)
+        pastille.center = CGPoint(x: f.midX, y: f.midY)
+        pastille.layer.cornerRadius = f.height / 2
+        pastille.alpha = 1
+    }
+
+    private func lePlusProche(de x: CGFloat) -> Bouton? {
+        centre.min { abs(cadre(de: $0.vue).midX - x) < abs(cadre(de: $1.vue).midX - x) }
+    }
+
+    // MARK: Le balayage
+
+    @objc private func balayer(_ geste: UIPanGestureRecognizer) {
+        guard let premier = centre.first, let dernier = centre.last else { return }
+        let x = min(max(geste.location(in: pilule.contentView).x, cadre(de: premier.vue).midX), cadre(de: dernier.vue).midX)
+        switch geste.state {
+        case .began:
+            selection.prepare()
+            survole = actif ?? ""
+            if pastille.alpha == 0, let proche = lePlusProche(de: x) {
+                // Aucun bouton allumé ici : la pastille naît sous le doigt.
+                let f = cadre(de: proche.vue)
+                pastille.bounds = CGRect(origin: .zero, size: f.size)
+                pastille.center = CGPoint(x: x, y: f.midY)
+                pastille.layer.cornerRadius = f.height / 2
+            }
+            UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0.6,
+                           options: [.beginFromCurrentState, .allowUserInteraction]) {
+                self.pastille.alpha = 1
+                self.pastille.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
+                self.pastille.backgroundColor = UIColor.white.withAlphaComponent(0.6)
+                self.pastille.layer.shadowColor = UIColor.black.cgColor
+                self.pastille.layer.shadowOpacity = 0.12
+                self.pastille.layer.shadowRadius = 8
+                self.pastille.layer.shadowOffset = CGSize(width: 0, height: 2)
+            }
+            suivre(x)
+        case .changed:
+            suivre(x)
+        default:
+            let cible = geste.state == .ended ? lePlusProche(de: x)?.id : nil
+            survole = nil
+            actif = cible ?? actif
+            styler(actif: actif)
+            UIView.animate(withDuration: 0.45, delay: 0, usingSpringWithDamping: 0.72, initialSpringVelocity: 0.3,
+                           options: [.beginFromCurrentState, .allowUserInteraction]) {
+                self.pastille.backgroundColor = self.bleu.withAlphaComponent(0.12)
+                self.pastille.layer.shadowOpacity = 0
+                self.placerPastille()
+            }
+            if let cible {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                toucher?(cible)
+            }
+        }
+    }
+
+    /// La pastille suit le doigt ; le bouton dessous s'allume, avec un clic.
+    private func suivre(_ x: CGFloat) {
+        pastille.center.x = x
+        guard let proche = lePlusProche(de: x), proche.id != survole else { return }
+        survole = proche.id
+        styler(actif: proche.id)
+        selection.selectionChanged()
+        selection.prepare()
+    }
+
+    // MARK: Les boutons
+
+    private func rond(_ b: BoutonDeBarre, aGauche: Bool) -> UIVisualEffectView {
         let rond = BarreOnglets.verre()
         rond.translatesAutoresizingMaskIntoConstraints = false
         addSubview(rond)
-        let contenu = bouton(b, actif: actif, cote: 52)
+        let contenu = bouton(b, cote: 52, dansLaPilule: false)
+        contenu.layer.cornerRadius = 26
         rond.contentView.addSubview(contenu)
         NSLayoutConstraint.activate([
             rond.widthAnchor.constraint(equalToConstant: 52),
@@ -181,20 +339,14 @@ final class BarreOnglets: UIView {
             contenu.centerXAnchor.constraint(equalTo: rond.contentView.centerXAnchor),
             contenu.centerYAnchor.constraint(equalTo: rond.contentView.centerYAnchor)
         ])
+        ronds.append(Bouton(id: b.id, symbole: b.symbole, vue: contenu, rond: true))
         return rond
     }
 
-    private func bouton(_ b: BoutonDeBarre, actif: Bool, cote: CGFloat) -> UIButton {
+    private func bouton(_ b: BoutonDeBarre, cote: CGFloat, dansLaPilule: Bool) -> UIButton {
         let bouton = UIButton(type: .system)
-        let reglage = UIImage.SymbolConfiguration(pointSize: 20, weight: actif ? .semibold : .regular)
-        let image = UIImage(systemName: b.symbole, withConfiguration: reglage) ?? UIImage(systemName: "circle", withConfiguration: reglage)
-        bouton.setImage(image, for: .normal)
-        bouton.tintColor = actif ? bleu : UIColor.label.withAlphaComponent(0.75)
+        bouton.setImage(BarreOnglets.image(b.symbole, plein: false), for: .normal)
         bouton.accessibilityLabel = b.libelle
-        if actif {
-            bouton.backgroundColor = bleu.withAlphaComponent(0.12)
-            bouton.layer.cornerRadius = cote / 2
-        }
         bouton.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             bouton.widthAnchor.constraint(equalToConstant: cote),
@@ -203,6 +355,8 @@ final class BarreOnglets: UIView {
         let id = b.id
         bouton.addAction(UIAction { [weak self] _ in
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            // La pastille part tout de suite, sans attendre que la page change.
+            if dansLaPilule { self?.changerActif(id, anime: true) }
             self?.toucher?(id)
         }, for: .touchUpInside)
         return bouton

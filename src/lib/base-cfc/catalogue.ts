@@ -247,3 +247,32 @@ export function filtrerLeParcours(etapes: EtapeDuDiagnostic[], recherche: string
     })
     .filter((e) => e.domaines.length > 0)
 }
+
+/**
+ * Ce qui vient après une ligne dans le tour du bâtiment : la ligne d'après
+ * dans le même ouvrage, sinon le premier type de l'ouvrage suivant de l'étape.
+ * null en fin d'étape : la liste propose alors l'étape suivante.
+ *
+ * Sert au bouton « Suivant » de la fiche d'un relevé, qui enchaîne sur
+ * l'élément d'après au lieu de ramener à la liste qu'on vient de quitter.
+ */
+export type SuiteDeLaVisite =
+  | { ligne: LigneDeVisite }
+  | { ouvrageSuivant: string; etapeNumero: number }
+
+export function suiteDeLaLigne(
+  etapes: EtapeDuDiagnostic[],
+  estLaLigne: (l: LigneDeVisite) => boolean,
+): SuiteDeLaVisite | null {
+  for (const etape of etapes) {
+    for (const [rang, domaine] of etape.domaines.entries()) {
+      const i = domaine.lignes.findIndex(estLaLigne)
+      if (i < 0) continue
+      const ligne = domaine.lignes[i + 1]
+      if (ligne) return { ligne }
+      const suivant = etape.domaines[rang + 1]
+      return suivant ? { ouvrageSuivant: suivant.nom, etapeNumero: etape.numero } : null
+    }
+  }
+  return null
+}

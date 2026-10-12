@@ -28,8 +28,8 @@ import {
 // états et les prix viennent d'elle, et le relevé est le couple article et étape.
 import { useBaseCfc } from '@/lib/base-cfc/requete'
 import {
-  filtrerLeParcours, localisationDeLaZone, parcoursDuDiagnostic,
-  type EtapeDuDiagnostic, type LigneDeVisite,
+  filtrerLeParcours, localisationDeLaZone, parcoursDuDiagnostic, suiteDeLaLigne,
+  type EtapeDuDiagnostic, type LigneDeVisite, type SuiteDeLaVisite,
 } from '@/lib/base-cfc/catalogue'
 import {
   ouvrageDeLArticle, ouvrageDuReleve, resolutionDeQuantite, type OuvrageSaisi,
@@ -196,6 +196,11 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   // ?item=<id> : l'activité récente du tableau de bord ouvre directement ce relevé.
   const [searchParams] = useSearchParams()
   const [selectedItemId, setSelectedItemId] = useState<string | null>(() => searchParams.get('item'))
+  // Ligne proposée par « Suivant » et pas encore relevée : on demande si
+  // l'élément est présent avant de créer quoi que ce soit (QuestionPresence).
+  const [aConfirmer, setAConfirmer] = useState<string | null>(null)
+  /** Ouvre un relevé (ou ramène à la liste) : une question en cours tombe. */
+  const ouvrirReleve = (itemId: string | null) => { setAConfirmer(null); setSelectedItemId(itemId) }
   // L'éditeur travaille en bleu Diagly plutôt qu'en noir : la couleur
   // principale y est redéfinie (index.css, .editeur-diagnostic). Posée sur
   // <html> et non sur la page, parce que la caméra, la visionneuse et les
@@ -267,7 +272,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
         estimatedCost: (cost ?? undefined) as unknown as string | undefined,
       },
     }).catch(signalerEchec)
-    setSelectedItemId(releveId)
+    ouvrirReleve(releveId)
   }
 
   const modifierReleve = (itemId: string, data: Partial<ApiDiagnosticItem>) => {
@@ -400,36 +405,37 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     )
   }
 
-  // « Suivant » ouvre la ligne d'après dans la liste où l'on a pris l'élément,
-  // comme un toucher sur cette ligne (elle est ajoutée si elle n'est pas encore
-  // relevée). En bout de liste, il ramène à la liste de l'ouvrage suivant de
-  // l'étape ; en bout d'étape, à la liste, qui propose l'étape suivante.
-  // Avant, il ramenait toujours à la liste qu'on venait de quitter.
-  const suivant = (() => {
-    if (!selectedItemId) return null
-    for (const g of grouped) {
-      for (const [rangDomaine, d] of g.domaines.entries()) {
-        const rangLigne = d.lignes.findIndex((l) => l.releve?.id === selectedItemId)
-        if (rangLigne < 0) continue
-        const ligne = d.lignes[rangLigne + 1]
-        if (ligne) {
-          return {
-            libelle: ligne.article.nom,
-            aller: () => (ligne.releve
-              ? setSelectedItemId(ligne.releve.id)
-              : ajouterReleve({ ligne, sharePct: partPourUnAjout(ligne) })),
-          }
-        }
-        const domaine = g.domaines[rangDomaine + 1]
-        if (!domaine) return null
-        return {
-          libelle: nomCategorie(domaine.nom),
-          aller: () => { setEtape(g.numero); setCategorie(domaine.nom); setSelectedItemId(null) },
-        }
-      }
+  // « Suivant » enchaîne sur l'élément d'après dans la liste où l'on a pris
+  // celui-ci (suiteDeLaLigne). Déjà relevé, il s'ouvre ; pas encore, on demande
+  // d'abord s'il est présent dans le bâtiment, pour ne pas remplir le dossier
+  // de relevés d'éléments absents. En bout d'ouvrage, la liste de l'ouvrage
+  // suivant ; en bout d'étape, la liste, qui propose l'étape suivante.
+  const allerA = (suite: SuiteDeLaVisite | null) => {
+    if (suite && 'ligne' in suite) {
+      if (suite.ligne.releve) ouvrirReleve(suite.ligne.releve.id)
+      else { setSelectedItemId(null); setAConfirmer(suite.ligne.cle) }
+      return
     }
-    return null
-  })()
+    if (suite) { setEtape(suite.etapeNumero); setCategorie(suite.ouvrageSuivant) }
+    ouvrirReleve(null)
+  }
+  const libelleDeLaSuite = (suite: SuiteDeLaVisite) =>
+    'ligne' in suite ? suite.ligne.article.nom : nomCategorie(suite.ouvrageSuivant)
+  const suiteDuReleve = selectedItemId ? suiteDeLaLigne(grouped, (l) => l.releve?.id === selectedItemId) : null
+  const suivant = suiteDuReleve ? { libelle: libelleDeLaSuite(suiteDuReleve), aller: () => allerA(suiteDuReleve) } : null
+  const ligneAConfirmer = aConfirmer
+    ? grouped.flatMap((e) => e.domaines.flatMap((d) => d.lignes)).find((l) => l.cle === aConfirmer) ?? null
+    : null
+  const suiteSiAbsent = ligneAConfirmer ? suiteDeLaLigne(grouped, (l) => l.cle === ligneAConfirmer.cle) : null
+  const question = ligneAConfirmer && (
+    <QuestionPresence
+      ligne={ligneAConfirmer}
+      ensuite={suiteSiAbsent ? libelleDeLaSuite(suiteSiAbsent) : null}
+      onPresent={() => ajouterReleve({ ligne: ligneAConfirmer, sharePct: partPourUnAjout(ligneAConfirmer) })}
+      onAbsent={() => allerA(suiteSiAbsent)}
+      onRetour={() => ouvrirReleve(null)}
+    />
+  )
 
   return (
     // Encastré, l'éditeur prend la hauteur que son conteneur lui laisse : la barre
@@ -443,7 +449,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     <div className="flex h-full flex-col gap-4">
       {/* Header (masqué sur mobile pendant l'édition d'un élément) */}
       {/* Sur iPad, l'en-tête s'aligne sur la liste, centrée elle aussi. */}
-      <div className={cn('space-y-3 shrink-0', unPanneau && selectedItemId && 'hidden', unPanneau && !isMobile && 'md:mx-auto md:w-full md:max-w-2xl')}>
+      <div className={cn('space-y-3 shrink-0', unPanneau && (selectedItemId || ligneAConfirmer) && 'hidden', unPanneau && !isMobile && 'md:mx-auto md:w-full md:max-w-2xl')}>
         {/* Dans le dossier, sur grand écran : le même en-tête que les autres
             pages du dossier (Photos, Coûts, Rapports). Sur téléphone, la barre
             du dossier dit déjà où l'on est, et la place manque. */}
@@ -498,7 +504,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
           'w-full overflow-hidden flex flex-col',
           // Sur iPad, la liste seule, centrée : en pleine largeur, ses lignes
           // s'étiraient sur tout l'écran.
-          unPanneau ? (selectedItemId ? 'hidden' : 'flex-1 min-h-0 md:mx-auto md:max-w-2xl') : 'lg:w-96 shrink-0',
+          unPanneau ? (selectedItemId || ligneAConfirmer ? 'hidden' : 'flex-1 min-h-0 md:mx-auto md:max-w-2xl') : 'lg:w-96 shrink-0',
         )}>
           <CardHeader className="py-3 px-4 shrink-0 border-b">
             <CardTitle className="text-sm">Éléments à évaluer</CardTitle>
@@ -532,7 +538,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 onEtape={(n) => { setEtape(n); setCategorie(null) }}
                 categorie={categorie}
                 onCategorie={setCategorie}
-                onOuvrir={setSelectedItemId}
+                onOuvrir={ouvrirReleve}
                 onAjouter={(ligne) => ajouterReleve({ ligne, sharePct: partPourUnAjout(ligne) })}
                 // Une saisie s'enregistre sur l'appareil, sans attendre le
                 // serveur : rien n'est jamais « en cours », aucun bouton ne se grise.
@@ -590,7 +596,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                     <button
                       key={ligne.cle}
                       onClick={() => {
-                        if (existing) setSelectedItemId(existing.id)
+                        if (existing) ouvrirReleve(existing.id)
                         else ajouterReleve({ ligne, sharePct: partPourUnAjout(ligne) })
                       }}
                       className={cn(
@@ -644,14 +650,14 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
             Sur grand écran : colonne fixe, aucun mouvement n'aurait de sens. */}
         {unPanneau ? (
           <PanneauGlissant
-            ouvert={!!selectedItemId}
-            onFermer={() => setSelectedItemId(null)}
+            ouvert={!!selectedItemId || !!ligneAConfirmer}
+            onFermer={() => ouvrirReleve(null)}
             // L'editeur gere son propre defilement et son propre degagement du bas :
             // une marge ici raccourcirait le panneau et laisserait une bande vide.
             // Sur iPad, la fiche garde la largeur de la liste (42rem), centrée.
             className="absolute inset-0 z-30 overflow-hidden bg-background md:px-[max(1.5rem,calc((100%-42rem)/2))]"
           >
-            {selectedDiagItem && (
+            {selectedDiagItem ? (
               <ItemEditor
                 item={selectedDiagItem}
                 catalog={selectedCatalog}
@@ -679,7 +685,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 isMutating={false}
                 isDeleting={false}
               />
-            )}
+            ) : question}
           </PanneauGlissant>
         ) : (
         /* Un cadre fixe, dont le contenu defile a l'interieur, comme la colonne du
@@ -719,6 +725,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
               isMutating={false}
               isDeleting={false}
             />
+          ) : question ? (
+            <div className="h-full p-6">{question}</div>
           ) : (
             /* Le cadre est désormais porté par la colonne : une carte de plus ici
                dessinerait une bordure dans une bordure. */
@@ -738,7 +746,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
           incomplets={relevesIncomplets(items)}
           restants={Math.max(0, avancementVisite.total - avancementVisite.faits)}
           groupesMalRepartis={groupesIncomplets(groupesSurface)}
-          onOuvrir={(itemId) => { setSelectedItemId(itemId); setRecap(false) }}
+          onOuvrir={(itemId) => { ouvrirReleve(itemId); setRecap(false) }}
           onFermer={() => setRecap(false)}
         />
       )}
@@ -1254,6 +1262,60 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
           </span>
         </button>
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * La question que pose « Suivant » devant un élément pas encore relevé : est-il
+ * présent dans le bâtiment ? Présent, on le relève ; absent, on passe au
+ * suivant sans rien créer. Sans elle, « Suivant » créait un relevé pour chaque
+ * type de la liste, y compris ceux que le bâtiment n'a pas.
+ */
+function QuestionPresence({ ligne, ensuite, onPresent, onAbsent, onRetour }: {
+  ligne: LigneDeVisite
+  /** Ce que « Absent » ouvrira ensuite, ou null en fin d'étape (retour à la liste). */
+  ensuite: string | null
+  onPresent: () => void
+  onAbsent: () => void
+  onRetour: () => void
+}) {
+  return (
+    <div className="flex h-full flex-col">
+      <div className="mb-3 flex shrink-0 items-center">
+        <button type="button" onClick={onRetour} className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-5 w-5" />Liste
+        </button>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4 pb-6 text-center">
+        <div>
+          <p className="font-mono text-xs text-muted-foreground">{ligne.article.cfcCode}</p>
+          <p className="mt-1 text-xl font-semibold leading-snug text-balance">{ligne.article.nom}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{ligne.article.domaineRapport}</p>
+        </div>
+        <p className="text-sm text-muted-foreground">Cet élément est-il présent dans le bâtiment ?</p>
+        <div className="flex w-full max-w-sm flex-col gap-3">
+          <button
+            type="button"
+            onClick={() => { vibrer('succes'); onPresent() }}
+            className="flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-3.5 text-sm font-semibold text-primary-foreground shadow-lg transition-transform active:scale-95"
+          >
+            <Check className="h-5 w-5" />Présent, je le relève
+          </button>
+          <button
+            type="button"
+            onClick={onAbsent}
+            className="flex items-center justify-center gap-2 rounded-full border px-5 py-3.5 text-sm font-semibold transition-transform hover:bg-muted/50 active:scale-95"
+          >
+            Absent, passer<ArrowRight className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {ensuite
+            ? <>Absent : on passe à <span className="font-medium text-foreground">{ensuite}</span></>
+            : 'Absent : retour à la liste'}
+        </p>
+      </div>
     </div>
   )
 }

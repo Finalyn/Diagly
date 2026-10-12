@@ -83,12 +83,15 @@ export function ProjectMetres() {
 
   return (
     <div className="space-y-4 md:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
+      {/* Les boutons passent sous le titre tant que la place manque (iPad debout,
+          menu de gauche ouvert) : à côté, ils s'empilaient sur deux lignes en
+          haut à droite, serrés contre la recherche. */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-xl md:text-2xl font-bold">Coûts</h1>
           <p className="text-muted-foreground text-sm">{items.length} élément{items.length !== 1 ? 's' : ''} chiffré{items.length !== 1 ? 's' : ''} depuis le diagnostic</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex shrink-0 flex-wrap gap-2">
           {items.length > 0 && (
             <>
               <Button variant="outline" onClick={() => setExportOpen(true)}><Download className="mr-2 h-4 w-4" />Exporter</Button>

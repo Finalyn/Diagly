@@ -42,3 +42,21 @@ export function useEstTablette() {
     () => false,
   )
 }
+
+// Écran étroit = sous 1024 px : téléphone et iPad à la verticale. Les pages à
+// menu de sections (Prestataires) y passent à une colonne : à côté du menu de
+// gauche de l'app, une deuxième colonne de menu ne laissait au contenu que
+// quelques centaines de pixels, voire rien.
+const ETROIT = 'screen and (max-width: 1023px)'
+
+export function useEcranEtroit() {
+  return useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia(ETROIT)
+      m.addEventListener('change', cb)
+      return () => m.removeEventListener('change', cb)
+    },
+    () => window.matchMedia(ETROIT).matches,
+    () => false,
+  )
+}

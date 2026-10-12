@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   etatDeLArticle, etatsRenseignes, nomDeLEtapePourLeBatiment, parcoursDuDiagnostic, prixMauvaisDe,
+  suiteDeLaLigne, type EtapeDuDiagnostic, type LigneDeVisite,
 } from './catalogue'
 import type { ApiArticle, ApiDiagnosticItem, ApiEtapeVisite } from '../api-types'
 
@@ -157,5 +158,35 @@ describe('les états d’un article', () => {
 
   it('ne retient que les états que le catalogue décrit ou chiffre', () => {
     expect(etatsRenseignes(article({})).map((e) => e.etat)).toEqual(['mauvais', 'moyen', 'tres_bon'])
+  })
+})
+
+describe('suiteDeLaLigne', () => {
+  const ligne = (c: string): LigneDeVisite => ({
+    cle: c, article: article({ id: c }), etapeNumero: 1, zone: 'Extérieur', ordreDansEtape: 0, releve: null,
+  })
+  const domaine = (nom: string, cles: string[]) => ({ nom, lignes: cles.map(ligne), attendus: cles.length, faits: 0 })
+  const etapes: EtapeDuDiagnostic[] = [
+    { numero: 1, nom: 'Façade', zone: 'Extérieur', attendus: 5, faits: 0,
+      domaines: [domaine('Structure', ['A@1', 'B@1']), domaine('Façades', ['C@1', 'D@1']), domaine('Toiture', ['E@1'])] },
+    { numero: 2, nom: "Cage d'escalier", zone: 'Communs', attendus: 1, faits: 0,
+      domaines: [domaine('Murs', ['F@2'])] },
+  ]
+  const apres = (c: string) => suiteDeLaLigne(etapes, (l) => l.cle === c)
+
+  it('donne la ligne suivante du même ouvrage', () => {
+    expect(apres('A@1')).toEqual({ ligne: expect.objectContaining({ cle: 'B@1' }) })
+  })
+
+  it("passe à l'ouvrage suivant en fin d'ouvrage", () => {
+    expect(apres('B@1')).toEqual({ ouvrageSuivant: 'Façades', etapeNumero: 1 })
+  })
+
+  it("s'arrête en fin d'étape : l'étape suivante se choisit dans la liste", () => {
+    expect(apres('E@1')).toBeNull()
+  })
+
+  it('ne trouve rien pour une ligne absente', () => {
+    expect(apres('Z@9')).toBeNull()
   })
 })

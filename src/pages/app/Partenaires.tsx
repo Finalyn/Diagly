@@ -25,7 +25,7 @@ import { Card, CardHeader, CardTitle, CardContent, Input, Button, Select, Textar
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import { nomAffiche } from '@/lib/reglages'
-import { useIsMobile } from '@/lib/use-mobile'
+import { useEcranEtroit } from '@/lib/use-mobile'
 import { cn, formatDate } from '@/lib/utils'
 import {
   METIERS, LIBELLE_METIER, CANTONS, LANGUES, LIBELLE_LANGUE, STATUT_DEMANDE, BESOINS,
@@ -40,7 +40,11 @@ const EN_COURS: DemandePartenaire['statut'][] = ['ENVOYEE', 'MESSAGERIE', 'ECHEC
 const pluriel = (n: number, un: string, plusieurs: string) => `${n} ${n > 1 ? plusieurs : un}`
 
 export function Partenaires() {
-  const isMobile = useIsMobile()
+  // Sous 1024 px (téléphone, iPad debout), le menu et le contenu s'empilent :
+  // en deux colonnes, le menu gardait toute la largeur et le contenu tombait à
+  // zéro sur iPad. Entre 768 et 1023 px, la zone principale ne défile pas
+  // (AppLayout la traite en page encastrée) : la page défile donc elle-même.
+  const empile = useEcranEtroit()
   const qc = useQueryClient()
   const config = useQuery({ queryKey: ['partenaires', 'config'], queryFn: () => api.partenaires.config() })
   const annuaire = useQuery({ queryKey: ['partenaires', 'annuaire'], queryFn: () => api.partenaires.list() })
@@ -82,13 +86,13 @@ export function Partenaires() {
   )
 
   return (
-    <div className={cn('space-y-4', !isMobile && 'flex h-full min-h-0 flex-col space-y-0 gap-4')}>
+    <div className={cn('space-y-4', empile ? 'md:h-full md:overflow-y-auto md:pb-4' : 'flex h-full min-h-0 flex-col space-y-0 gap-4')}>
       <div className="shrink-0">
         <h1 className="text-xl font-bold">Prestataires</h1>
         <p className="text-sm text-muted-foreground">L’expert, l’architecte ou l’outil qui prendra la suite de votre diagnostic, choisis par Finalyn.</p>
       </div>
 
-      <div className={cn('flex gap-4', isMobile ? 'flex-col' : 'min-h-0 flex-1 items-start')}>
+      <div className={cn('flex gap-4', empile ? 'flex-col' : 'min-h-0 flex-1 items-start')}>
         {/* ----- Le menu, à gauche ----- */}
         <div className="w-full shrink-0 space-y-4 lg:w-72">
           <Card className="overflow-hidden">
@@ -114,12 +118,12 @@ export function Partenaires() {
         </div>
 
         {/* ----- Le contenu, à droite ----- */}
-        <Card className={cn('min-w-0 flex-1 overflow-hidden', !isMobile && 'flex max-h-full flex-col')}>
+        <Card className={cn('min-w-0 flex-1 overflow-hidden', !empile && 'flex max-h-full flex-col')}>
           <CardHeader className="shrink-0 space-y-0 border-b border-black/[0.06] px-5 py-3.5">
             <CardTitle className="text-base">{section.label}</CardTitle>
             <p className="mt-0.5 text-sm text-muted-foreground">{section.aide}</p>
           </CardHeader>
-          <CardContent key={choisie} className={cn('space-y-5 p-5', !isMobile && 'min-h-0 flex-1 overflow-y-auto overscroll-contain')}>
+          <CardContent key={choisie} className={cn('space-y-5 p-5', !empile && 'min-h-0 flex-1 overflow-y-auto overscroll-contain')}>
             {choisie === 'annuaire' && (
               <SectionAnnuaire
                 partenaires={annuaire.isLoading ? null : partenaires}

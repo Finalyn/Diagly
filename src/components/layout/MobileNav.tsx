@@ -49,19 +49,19 @@ export function MobileNav() {
   // ----- Ce que porte la barre -----
   const base = projectId ? `/app/projects/${projectId}` : null
   const actifSi = (to: string) => pathname === to || pathname.startsWith(`${to}/`)
-  const assistant: Entree = { id: 'assistant', to: '/app/assistant', label: 'Assistant IA', icone: MessageCircle, symbole: 'message', actif: actifSi('/app/assistant') }
+  const assistant: Entree = { id: 'assistant', to: '/app/assistant', label: 'Assistant IA', icone: MessageCircle, symbole: 'bubble.left', actif: actifSi('/app/assistant') }
   const retour: Entree | null = dansUnDossier
     ? { id: 'retour', to: '/app/projects', label: 'Tous les diagnostics', icone: ChevronLeft, symbole: 'chevron.left', actif: false }
     : null
   // Deux onglets seulement dans un dossier : le relevé, et le dossier (sommaire avec tout le reste).
   const centre: Entree[] = dansUnDossier
     ? [
-        { id: 'releve', to: base && `${base}/diagnostic`, label: 'Relevé', icone: ClipboardCheck, symbole: 'checklist', actif: !!diagnosticId || pathname.endsWith('/diagnostic') },
+        { id: 'releve', to: base && `${base}/diagnostic`, label: 'Relevé', icone: ClipboardCheck, symbole: 'list.bullet.clipboard', actif: !!diagnosticId || pathname.endsWith('/diagnostic') },
         { id: 'dossier', to: base && `${base}/sommaire`, label: 'Dossier', icone: LayoutGrid, symbole: 'square.grid.2x2', actif: /\/(sommaire|fiche|visite|photos|couts|cecb|rapports)$/.test(pathname) },
       ]
     : [
-        { id: 'diagnostics', to: '/app/projects', label: 'Diagnostics', icone: ClipboardCheck, symbole: 'checklist', actif: actifSi('/app/projects') },
-        { id: 'base', to: '/app/cfc', label: 'Base de données', icone: Database, symbole: 'cylinder', actif: actifSi('/app/cfc') },
+        { id: 'diagnostics', to: '/app/projects', label: 'Diagnostics', icone: ClipboardCheck, symbole: 'list.bullet.clipboard', actif: actifSi('/app/projects') },
+        { id: 'base', to: '/app/cfc', label: 'Base de données', icone: Database, symbole: 'cylinder.split.1x2', actif: actifSi('/app/cfc') },
         { id: 'parametres', to: '/app/settings', label: 'Paramètres', icone: Settings, symbole: 'gearshape', actif: actifSi('/app/settings') },
       ]
 
