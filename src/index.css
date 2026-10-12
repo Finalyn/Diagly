@@ -181,6 +181,14 @@ html.natif :where(img, svg) {
   pointer-events: none;
 }
 
+/* Barre du haut sur téléphone, en verre : le contenu glisse dessous (AppLayout). */
+.barre-verre {
+  background: rgba(245, 245, 247, 0.72);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+}
+
 /* ============ Animation d'entrée (dashboard vitrine) ============ */
 @keyframes dp-rise {
   from { opacity: 0; transform: translateY(16px); }

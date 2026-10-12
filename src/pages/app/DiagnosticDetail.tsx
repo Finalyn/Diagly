@@ -408,7 +408,10 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     // d'onglets occupe déjà une place qu'un calcul en hauteur de fenêtre ignorerait,
     // et les colonnes sortiraient par le bas en faisant défiler la page entière.
     // Téléphone : la barre du dossier occupe le bas de l'écran, l'éditeur s'arrête au-dessus.
-    <div className={cn('flex flex-col gap-4', encastre ? 'h-full' : 'h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-7rem)]')}>
+    // Sur téléphone, l'éditeur remplit la zone que lui laisse la mise en page
+    // (AppLayout le traite en écran entier) : une hauteur calculée à la main
+    // ignorait la barre d'état et la barre d'accueil de l'iPhone.
+    <div className={cn('flex flex-col gap-4', encastre || isMobile ? 'h-full' : 'h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-7rem)]')}>
       {/* Header (masqué sur mobile pendant l'édition d'un élément) */}
       <div className={cn('space-y-3 shrink-0', isMobile && selectedItemId && 'hidden')}>
         {!encastre && (

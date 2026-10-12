@@ -8,7 +8,8 @@ import { OfflineIndicator } from '@/components/OfflineIndicator'
 import { VisiteGuidee } from '@/components/visite/VisiteGuidee'
 import { useVisiteAuto } from '@/components/visite/useVisiteAuto'
 import { useIsMobile } from '@/lib/use-mobile'
-import { useEffect, useRef } from 'react'
+import { cn } from '@/lib/utils'
+import { useEffect, useRef, useState } from 'react'
 
 // Fond villa (dashboard uniquement) — fondu sur les bords gauche + bas, aucune ligne de coupure
 const DASH_MASK = 'linear-gradient(to right, transparent 40%, #000 66%), linear-gradient(to bottom, #000 36%, transparent 52%)'
@@ -58,6 +59,25 @@ export function AppLayout() {
     || location.pathname === '/app/cfc'
   const mainRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
+  // Téléphone : l'éditeur du relevé prend l'écran entier, sans barre du bas, et
+  // défile dans ses propres colonnes.
+  const editeurMobile = isMobile && (
+    /^\/app\/diagnostic\/[^/]+$/.test(location.pathname) || /^\/app\/projects\/[^/]+\/diagnostic$/.test(location.pathname)
+  )
+  // Téléphone : la barre du haut est en verre, posée sur le contenu, qui glisse
+  // dessous comme dans une app iOS. Sa hauteur varie (bandeau hors-ligne,
+  // retour au dossier) : on la mesure pour que la page commence sous elle.
+  const enteteRef = useRef<HTMLDivElement>(null)
+  const [hauteurEntete, setHauteurEntete] = useState(0)
+  useEffect(() => {
+    const el = enteteRef.current
+    if (!el || !isMobile) return
+    const observer = new ResizeObserver(() => setHauteurEntete(el.offsetHeight))
+    // border-box : la marge de la barre d'état est un padding, que la mesure par
+    // défaut (content-box) ne voit pas changer.
+    observer.observe(el, { box: 'border-box' })
+    return () => observer.disconnect()
+  }, [isMobile])
 
   useEffect(() => {
     mainRef.current?.scrollTo(0, 0)
@@ -72,7 +92,9 @@ export function AppLayout() {
   }
 
   return (
-    <div className="js-print-shell safe-top safe-sides flex h-dvh overflow-hidden bg-muted">
+    // Sur téléphone, la marge de la barre d'état passe dans la barre du haut,
+    // pour que le verre monte jusqu'en haut de l'écran.
+    <div className="js-print-shell safe-sides flex h-dvh overflow-hidden bg-muted md:pt-[var(--safe-top)]">
       {/* Colonne gauche : panneau unique (desktop) */}
       <div className="js-print-hide hidden md:flex md:flex-col gap-3 pl-3 py-3 w-[15rem] lg:w-[17.5rem] shrink-0">
         {/* Dans un dossier, la barre de gauche devient la sienne. */}
@@ -80,7 +102,7 @@ export function AppLayout() {
       </div>
 
       {/* Zone principale */}
-      <div className="js-print-column relative flex flex-1 flex-col min-w-0 overflow-hidden p-3">
+      <div className="js-print-column relative flex flex-1 flex-col min-w-0 overflow-hidden p-3 max-md:py-0">
         {onDashboard && (
           <div
             className="js-print-hide pointer-events-none absolute inset-0 z-0 bg-no-repeat"
@@ -96,24 +118,34 @@ export function AppLayout() {
           />
         )}
         <div className={`js-print-column relative z-10 flex min-h-0 flex-1 flex-col ${onDashboard ? 'px-2 pt-1 sm:px-4 lg:px-8 lg:pt-4' : ''}`}>
-          <div className="js-print-hide"><TopBar /></div>
-          <OfflineIndicator />
-          {/* Téléphone : en tête d'un outil du dossier, le retour au sommaire. */}
-          {isMobile && diagProjectId && /\/(fiche|visite|photos|couts|cecb|rapports)$/.test(location.pathname) && (
-            <div className="js-print-hide"><DossierMobileBar projectId={diagProjectId} /></div>
-          )}
+          <div
+            ref={enteteRef}
+            className={cn('js-print-hide',
+              isMobile && 'barre-verre absolute inset-x-0 top-0 z-30 -mx-3 px-3 pb-2 pt-[calc(var(--safe-top)+0.5rem)]')}
+          >
+            <TopBar />
+            <OfflineIndicator />
+            {/* Téléphone : en tête d'un outil du dossier, le retour au sommaire. */}
+            {isMobile && diagProjectId && /\/(fiche|visite|photos|couts|cecb|rapports)$/.test(location.pathname) && (
+              <DossierMobileBar projectId={diagProjectId} />
+            )}
+          </div>
           {/* L'éditeur encastré se cale sur la hauteur restante et fait défiler ses
               propres colonnes : c'est ici que la zone cesse de défiler, sinon la page
               entière glisse sous les panneaux et le catalogue sort par le bas. */}
           <main
             ref={mainRef}
-            className={`js-print-main flex-1 overscroll-none ${onDashboard ? 'mt-6 lg:mt-8 short:mt-3' : 'mt-3'} ${
-              // Sur téléphone, rien n'est encastré : la page défile, c'est le geste attendu.
-              pageEncastree && !isMobile
-                ? 'min-h-0 overflow-hidden pb-3'
-                : onDashboard
-                ? 'min-h-0 overflow-y-auto pb-24 md:pb-6'
-                : `overflow-y-auto md:pb-16 ${editeurPleinEcran ? 'pb-6' : 'pb-24'}`
+            style={isMobile ? { paddingTop: hauteurEntete + (editeurMobile ? 8 : 12) } : undefined}
+            className={`js-print-main flex-1 overscroll-none ${
+              isMobile
+                // Téléphone : la page défile sous les deux barres en verre, et
+                // s'arrête au-dessus de celle du bas, barre d'accueil de l'iPhone
+                // comprise. L'éditeur, lui, ne défile pas d'un bloc.
+                ? editeurMobile
+                  ? 'min-h-0 overflow-hidden pb-[calc(var(--safe-bottom)+0.75rem)]'
+                  : `overflow-y-auto ${editeurPleinEcran ? 'pb-[calc(var(--safe-bottom)+1.5rem)]' : 'pb-[calc(var(--safe-bottom)+7rem)]'}`
+                : `${onDashboard ? 'mt-6 lg:mt-8 short:mt-3' : 'mt-3'} ${
+                  pageEncastree ? 'min-h-0 overflow-hidden pb-3' : onDashboard ? 'min-h-0 overflow-y-auto pb-6' : 'overflow-y-auto pb-16'}`
             }`}
           >
             <Outlet />
@@ -121,11 +153,10 @@ export function AppLayout() {
         </div>
       </div>
 
-      {/* Navigation mobile épurée (masquée dans l'éditeur) */}
-      {/* Masquée dans les écrans de saisie, sauf l'éditeur du relevé sur téléphone :
-          dans un dossier, elle devient la barre du dossier (relevé, visite, photos,
-          sommaire) et c'est par elle qu'on atteint le reste. */}
-      {(!editeurPleinEcran || /^\/app\/diagnostic\/[^/]+$/.test(location.pathname)) && (
+      {/* Navigation mobile : masquée dans les écrans de saisie, éditeur du relevé
+          compris. Il occupe l'écran entier ; on en sort par la flèche de son
+          en-tête. */}
+      {!editeurPleinEcran && !editeurMobile && (
         <div className="js-print-hide">
           <MobileNav />
         </div>
