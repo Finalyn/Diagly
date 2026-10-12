@@ -51,8 +51,11 @@ export function AppLayout() {
   // regarde, et non au bord de la fenêtre.
   // Intégrations aussi : le menu reste en place, seul le panneau de la section
   // défile.
+  // La base de données aussi : son en-tête et ses filtres restent en place,
+  // seules la liste des articles et l'arborescence défilent.
   const pageEncastree = /^\/app\/projects\/[^/]+\/(diagnostic|rapports)$/.test(location.pathname)
     || location.pathname === '/app/integrations' || location.pathname === '/app/prestataires'
+    || location.pathname === '/app/cfc'
   const mainRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
 

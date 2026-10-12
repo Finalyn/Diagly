@@ -63,6 +63,15 @@ const LIBELLES_CONTROLES: Record<RaisonControle, string> = {
   doublon_probable: 'Doublon probable',
 }
 
+/** Le contrôle d'un article, en deux ou trois mots, pour la liste. */
+const LIBELLE_CONTROLE: Record<RaisonControle, string> = {
+  travaux_sans_prix: 'prix manquant',
+  neant_avec_prix: 'prix sur « Néant »',
+  code_inconnu: 'code CFC inconnu',
+  sans_etape: 'aucune étape',
+  doublon_probable: 'doublon probable',
+}
+
 export function CFCManager() {
   const base = useBaseCfc({ toujoursRelire: true })
   const nomenclature = useNomenclatureCfc()
@@ -120,8 +129,11 @@ export function CFCManager() {
 
   return (
     // Sur téléphone, la page défile d'un bloc : une hauteur fixe coinçait la
-    // liste sous la barre du bas, avec ses filtres à moitié cachés.
-    <div className="flex flex-col gap-4 md:h-[calc(100dvh-7rem)]">
+    // liste sous la barre du bas, avec ses filtres à moitié cachés. Au-dessus,
+    // elle prend la hauteur que lui laisse la mise en page (page encastrée,
+    // AppLayout) : une hauteur calculée à la main (100dvh - 7rem) dépassait
+    // l'écran et faisait glisser la page entière.
+    <div className="flex flex-col gap-4 md:h-full md:min-h-0">
       <div className="shrink-0 space-y-3">
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1">
@@ -153,10 +165,13 @@ export function CFCManager() {
           noeuds={nomenclature.data?.noeuds ?? []}
         />
       )}
-      {onglet === 'postes' && <PostesAutomatiques postes={base.data.postes} />}
+      {/* La page ne défile plus : ces deux vues défilent dans leur zone. */}
+      {onglet === 'postes' && (
+        <div className="min-h-0 flex-1 overflow-y-auto"><PostesAutomatiques postes={base.data.postes} /></div>
+      )}
       {/* Les honoraires, la réserve et la TVA sont des règles de chiffrage :
           leur place est avec les prix, pas dans les réglages du compte. */}
-      {onglet === 'valeurs' && <ValeursParDefaut />}
+      {onglet === 'valeurs' && <div className="min-h-0 flex-1 overflow-y-auto"><ValeursParDefaut /></div>}
     </div>
   )
 }
@@ -274,7 +289,10 @@ function Articles({ articles, etapes, noeuds }: {
   const poser = (p: Partial<FiltresDeLaBase>) => setFiltres((f) => ({ ...f, ...p }))
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+    // Colonnes côte à côte à partir de 1024 px, chacune défilant à l'intérieur.
+    // En dessous (iPad en portrait), elles s'empilent : c'est alors la zone sous
+    // l'en-tête qui défile, l'en-tête et les onglets restant en place.
+    <div className="flex min-h-0 flex-1 flex-col gap-4 md:max-lg:overflow-y-auto lg:flex-row">
       {/* ----- Arborescence ----- */}
       <Card className="flex w-full shrink-0 flex-col overflow-hidden lg:w-72">
         <CardHeader className="shrink-0 border-b px-4 py-3">
@@ -309,7 +327,7 @@ function Articles({ articles, etapes, noeuds }: {
             </label>
           )}
         </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto px-2 py-2 max-md:max-h-80">
+        <CardContent className="flex-1 overflow-y-auto px-2 py-2 max-lg:max-h-80">
           {parEtape ? (
             <ListeDesEtapes
               etapes={etapes}
@@ -330,7 +348,7 @@ function Articles({ articles, etapes, noeuds }: {
       </Card>
 
       {/* ----- Tableau ----- */}
-      <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <Card className="flex min-w-0 flex-1 flex-col overflow-hidden max-lg:flex-none">
         <CardHeader className="shrink-0 space-y-2 border-b px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-48 flex-1">
@@ -558,11 +576,24 @@ function TableauArticles({ articles, etapes, controles, choisi, onChoisir }: {
             >
               <td className="px-3 py-1.5 font-mono text-[11px]">{a.cfcCode}</td>
               <td className="px-2 py-1.5">
-                <span className="flex items-center gap-1.5">
-                  {a.echafaudage && <span title="Échafaudage nécessaire" className="text-amber-600">▲</span>}
+                {/* En mots, pas en signes : un triangle orange devant le nom
+                    (échafaudage) et un autre derrière (contrôle) ne se lisaient
+                    pas, et leur explication n'existait qu'au survol, invisible
+                    au doigt. */}
+                <span className="flex flex-wrap items-center gap-1.5">
                   <span className={cn(!a.actif && 'line-through')}>{a.nom}</span>
+                  {a.echafaudage && (
+                    <span className="rounded border border-neutral-200 bg-neutral-50 px-1 text-[10px] text-neutral-600">échafaudage</span>
+                  )}
                   {siens.length > 0 && (
-                    <AlertTriangle className={cn('h-3 w-3 shrink-0', grave ? 'text-red-500' : 'text-amber-500')} />
+                    <span
+                      title={siens.map((c) => c.message).join('\n')}
+                      className={cn('inline-flex items-center gap-1 rounded px-1 text-[10px] font-medium',
+                        grave ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800')}
+                    >
+                      <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
+                      {LIBELLE_CONTROLE[siens[0].raison]}{siens.length > 1 ? ` +${siens.length - 1}` : ''}
+                    </span>
                   )}
                 </span>
               </td>
