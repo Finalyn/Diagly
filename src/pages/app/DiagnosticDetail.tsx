@@ -1147,6 +1147,11 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
   // --- Niveau 3 : les types de l'ouvrage choisi ---
   const a = avancement(choisie.lignes)
   const seulOuvrage = courante.domaines.length === 1
+  // L'ouvrage d'après, dans l'ordre de l'étape : on sort des fenêtres pour
+  // entrer dans les portes extérieures sans remonter à la liste. Quand il n'y
+  // en a plus, c'est l'étape suivante qui attend, comme au niveau au-dessus.
+  const rangOuvrage = courante.domaines.findIndex((d) => d.nom === choisie.nom)
+  const ouvrageSuivant = seulOuvrage ? null : courante.domaines[rangOuvrage + 1] ?? null
   return (
     <div className="px-2 py-2">
       <Retour
@@ -1214,6 +1219,30 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
           </button>
         )
       })}
+
+      {/* Le pas suivant, au bas de la liste : c'est là qu'on arrive quand on a
+          fini de relever l'ouvrage, et c'est là qu'on cherche la suite. */}
+      {ouvrageSuivant ? (
+        <button
+          onClick={() => { vibrer('succes'); onCategorie(ouvrageSuivant.nom) }}
+          className="mt-3 flex w-full items-center justify-between rounded-lg border px-3 py-3 text-sm hover:bg-muted/50"
+        >
+          <span className="text-muted-foreground">Ouvrage suivant</span>
+          <span className="flex items-center gap-1 font-medium">
+            {nomCategorie(ouvrageSuivant.nom)}<ArrowRight className="h-4 w-4" />
+          </span>
+        </button>
+      ) : suivante ? (
+        <button
+          onClick={() => { vibrer('succes'); onEtape(suivante.numero); onCategorie(null) }}
+          className="mt-3 flex w-full items-center justify-between rounded-lg border px-3 py-3 text-sm hover:bg-muted/50"
+        >
+          <span className="text-muted-foreground">Étape suivante</span>
+          <span className="flex items-center gap-1 font-medium">
+            {titreEtape(suivante)}<ArrowRight className="h-4 w-4" />
+          </span>
+        </button>
+      ) : null}
     </div>
   )
 }
