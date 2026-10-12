@@ -19,6 +19,7 @@ import { dureeVieDeReference, dureeVieResiduelle } from '@/lib/duree-vie'
 import { aUnOubliImportant, bilanDesOublis, oublisDUnReleve, phraseDAlerte, relevesIncomplets } from '@/lib/oublis'
 import { circonference, decalageAnneau, partRemplie } from '@/lib/anneau'
 import { RecapOublis } from '@/components/diagnostic/RecapOublis'
+import { Visionneuse } from '@/components/Visionneuse'
 import {
   STATE_PRIORITY, workForState, priceForState, computeCost, computeCostFromPrice,
   appliedUnitPrice, getMarketCoeff, priceBasisNote, priceToNumber, type PrixCatalogue,
@@ -1679,6 +1680,9 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
     onUpdate({ photos: [...item.photos, ...urls] })
   }
   const removePhoto = (i: number) => onUpdate({ photos: item.photos.filter((_, idx) => idx !== i) })
+  // La photo ouverte en grand, par son rang. On ne garde rien d'autre : la
+  // liste, elle, vit dans l'ouvrage.
+  const [photoOuverte, setPhotoOuverte] = useState<number | null>(null)
 
   // Panneau du guide IA (rendu identique mobile / desktop), masqué si mode "off".
   const guide = guideMode !== 'off'
@@ -1926,9 +1930,16 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
           <div className="flex flex-wrap gap-2">
             {item.photos.map((src, i) => (
               <div key={i} className="relative h-20 w-20 rounded-lg overflow-hidden border group">
-                <img src={src} alt="" className="h-full w-full object-cover" />
+                <button
+                  onClick={() => setPhotoOuverte(i)}
+                  title="Voir en grand"
+                  className="block h-full w-full"
+                >
+                  <img src={src} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
+                </button>
                 <button
                   onClick={() => removePhoto(i)}
+                  title="Retirer cette photo"
                   className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <X className="h-3 w-3" />
@@ -1942,6 +1953,16 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
                 onChange={(e) => { addPhotos(e.target.files); e.target.value = '' }} />
             </label>
           </div>
+          {photoOuverte != null && item.photos.length > 0 && (
+            <Visionneuse
+              photos={item.photos}
+              index={Math.min(photoOuverte, item.photos.length - 1)}
+              onIndex={setPhotoOuverte}
+              onFermer={() => setPhotoOuverte(null)}
+              titre={item.cfcLabel}
+              sousTitre={item.cfcCode}
+            />
+          )}
         </div>
 
         {/* Guide IA */}

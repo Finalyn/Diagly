@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle, Download, X, Camera, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Loader2, AlertCircle, Download, Camera } from 'lucide-react'
 import { Button, Card, CardContent } from '@/components/ui'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { stateLabels, stateColors } from '@/data/mock'
 import { vibrer } from '@/lib/motion'
 import { creerZip, octetsDeDataUrl } from '@/lib/zip'
+import { Visionneuse } from '@/components/Visionneuse'
 import type { ElementState } from '@/lib/api-types'
 
 /**
@@ -205,51 +206,26 @@ export function ProjectPhotos() {
         </div>
       )}
 
-      {/* Visionneuse : l'image en grand, avec de quoi passer à la suivante et l'enregistrer. */}
-      {active && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/92 backdrop-blur-sm">
-          <div className="safe-top flex items-center justify-between gap-3 px-4 py-3 text-white">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{active.cfcLabel}</p>
-              <p className="text-xs text-white/70">
-                <span className="font-mono">{active.cfcCode}</span> · photo {ouverte! + 1} sur {photos.length}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                onClick={() => enregistrer(nomFichier(project.name, active), active.src)}
-                className="rounded-lg bg-white/15 p-2 transition-colors hover:bg-white/25"
-                title="Enregistrer"
-              >
-                <Download className="h-5 w-5" />
-              </button>
-              <button onClick={() => setOuverte(null)} className="rounded-lg bg-white/15 p-2 transition-colors hover:bg-white/25" title="Fermer">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-
-          <div className="flex min-h-0 flex-1 items-center justify-center px-2">
-            <img src={active.src} alt="" className="max-h-full max-w-full object-contain" />
-          </div>
-
-          <div className="safe-bottom flex items-center justify-center gap-6 py-4 text-white">
+      {/* La même visionneuse que dans l'éditeur : une photo s'ouvre et se fait
+          suivre des autres, au doigt comme au clavier. */}
+      {active && ouverte != null && (
+        <Visionneuse
+          photos={photos.map((p) => p.src)}
+          index={ouverte}
+          onIndex={setOuverte}
+          onFermer={() => setOuverte(null)}
+          titre={active.cfcLabel}
+          sousTitre={<span className="font-mono">{active.cfcCode}</span>}
+          action={(
             <button
-              onClick={() => setOuverte((n) => (n! - 1 + photos.length) % photos.length)}
-              disabled={photos.length < 2}
-              className="rounded-full bg-white/15 p-3 transition-colors hover:bg-white/25 disabled:opacity-40"
+              onClick={() => enregistrer(nomFichier(project.name, active), active.src)}
+              className="rounded-lg bg-white/15 p-2 transition-colors hover:bg-white/25"
+              title="Enregistrer"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <Download className="h-5 w-5" />
             </button>
-            <button
-              onClick={() => setOuverte((n) => (n! + 1) % photos.length)}
-              disabled={photos.length < 2}
-              className="rounded-full bg-white/15 p-3 transition-colors hover:bg-white/25 disabled:opacity-40"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
+          )}
+        />
       )}
     </div>
   )
