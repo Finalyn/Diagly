@@ -54,9 +54,12 @@ export function AppLayout() {
   // défile.
   // La base de données aussi : son en-tête et ses filtres restent en place,
   // seules la liste des articles et l'arborescence défilent.
+  // Les diagnostics aussi, liste et éditeur, sur toutes les plateformes : c'est
+  // la liste qui défile, jamais la page.
   const pageEncastree = /^\/app\/projects\/[^/]+\/(diagnostic|rapports)$/.test(location.pathname)
     || location.pathname === '/app/integrations' || location.pathname === '/app/prestataires'
-    || location.pathname === '/app/cfc'
+    || location.pathname === '/app/cfc' || location.pathname === '/app/projects'
+    || /^\/app\/diagnostic\/[^/]+$/.test(location.pathname)
   const mainRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
   // Téléphone : l'éditeur du relevé ne défile pas d'un bloc, il défile dans ses

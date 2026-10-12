@@ -135,8 +135,8 @@ export function ProjectsList() {
   const pageRows = filtered.slice(start, start + pageSize)
 
   return (
-    // Téléphone : la page ne défile pas, la liste si (AppLayout, listeMobile).
-    <div className="space-y-4 md:space-y-6 max-md:flex max-md:h-full max-md:flex-col max-md:space-y-0 max-md:gap-4">
+    // La page ne défile pas, la liste si, sur toutes les plateformes (AppLayout).
+    <div className="flex h-full flex-col gap-4 md:gap-6">
       <div className="flex shrink-0 flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl md:text-2xl font-bold">Diagnostics</h1>
@@ -190,8 +190,9 @@ export function ProjectsList() {
       {!isLoading && !isError && total > 0 && (
         // Téléphone : la carte est la zone qui défile. Elle descend sous la barre du
         // bas, en verre, et sa marge intérieure laisse la dernière ligne au-dessus.
-        <Card data-visite="liste" className="max-md:min-h-0 max-md:flex-1 max-md:overflow-y-auto max-md:overscroll-contain max-md:rounded-b-none max-md:pb-[calc(var(--safe-bottom)+6rem)]">
-          <CardContent className="p-0">
+        // Au-dessus, la liste défile dans la carte et la pagination reste au pied.
+        <Card data-visite="liste" className="max-md:min-h-0 max-md:flex-1 max-md:overflow-y-auto max-md:overscroll-contain max-md:rounded-b-none max-md:pb-[calc(var(--safe-bottom)+6rem)] md:flex md:min-h-0 md:flex-1 md:flex-col md:overflow-hidden">
+          <CardContent className="p-0 md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain">
             {/* Mobile : liste en cartes (tap → éditeur) */}
             <div className="md:hidden divide-y">
               {pageRows.map(r => (
@@ -276,7 +277,7 @@ export function ProjectsList() {
           </CardContent>
 
           {/* Pagination */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+          <div className="flex shrink-0 flex-col sm:flex-row items-center justify-between gap-3 border-t px-4 py-3 text-sm">
             <p className="text-muted-foreground">
               Affichage de {total === 0 ? 0 : start + 1} à {Math.min(start + pageSize, total)} sur {total} diagnostic{total > 1 ? 's' : ''}
             </p>

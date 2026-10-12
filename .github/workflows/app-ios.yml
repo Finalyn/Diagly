@@ -58,6 +58,10 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Front de l'app, copié dans le projet iOS
+        env:
+          # Clé publique des fonds de carte : elle est inscrite dans le front au
+          # build. Sans elle, les tuiles portent « API KEY REQUIRED ».
+          VITE_CARTO_KEY: ${{ secrets.VITE_CARTO_KEY }}
         run: npm run build:app
       - name: Compiler pour le simulateur
         run: |
@@ -94,6 +98,10 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Front de l'app, copié dans le projet iOS
+        env:
+          # Clé publique des fonds de carte : elle est inscrite dans le front au
+          # build. Sans elle, les tuiles portent « API KEY REQUIRED ».
+          VITE_CARTO_KEY: ${{ secrets.VITE_CARTO_KEY }}
         run: npm run build:app
 
       - name: Clé d'API App Store Connect

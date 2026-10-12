@@ -408,10 +408,11 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     // d'onglets occupe déjà une place qu'un calcul en hauteur de fenêtre ignorerait,
     // et les colonnes sortiraient par le bas en faisant défiler la page entière.
     // Téléphone : la barre du dossier occupe le bas de l'écran, l'éditeur s'arrête au-dessus.
-    // Sur téléphone, l'éditeur remplit la zone que lui laisse la mise en page
-    // (AppLayout le traite en écran entier) : une hauteur calculée à la main
-    // ignorait la barre d'état et la barre d'accueil de l'iPhone.
-    <div className={cn('flex flex-col gap-4', encastre || isMobile ? 'h-full' : 'h-[calc(100dvh-11.5rem)] md:h-[calc(100dvh-7rem)]')}>
+    // L'éditeur remplit la zone que lui laisse la mise en page (AppLayout le
+    // traite en page encastrée, partout) et défile dans ses colonnes. Une
+    // hauteur calculée à la main (100dvh moins un forfait) dépassait de 40 px
+    // sur ordinateur, et la page entière glissait.
+    <div className="flex h-full flex-col gap-4">
       {/* Header (masqué sur mobile pendant l'édition d'un élément) */}
       <div className={cn('space-y-3 shrink-0', isMobile && selectedItemId && 'hidden')}>
         {!encastre && (
@@ -943,7 +944,9 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte }: {
   const part = total > 0 ? Math.round((faits / total) * 100) : 0
 
   return (
-    <div className="space-y-1.5" data-visite="releve-avancement">
+    // Sur grand écran, elle s'arrête au bord de la colonne « Éléments à évaluer »
+    // (lg:w-96) au lieu de traverser tout l'écran.
+    <div className="space-y-1.5 lg:max-w-96" data-visite="releve-avancement">
       <div className="flex items-baseline justify-between gap-3">
         <p className="min-w-0 truncate text-sm font-medium">{titre}</p>
         <p className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{part} %</p>
