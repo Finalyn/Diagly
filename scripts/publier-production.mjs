@@ -87,24 +87,30 @@ dire('3/3  Front construit vers public/ (public/mobile conservé)')
 const PUBLIC = join(CIBLE, 'public')
 const ASSETS = join(PUBLIC, 'assets')
 mkdirSync(PUBLIC, { recursive: true })
-// Les fichiers de code de la version précédente restent une version de plus :
-// un onglet ouvert avant la mise en ligne charge encore ses écrans, au lieu
-// de tomber sur des fichiers disparus (« Failed to fetch dynamically imported
-// module »). La liste de chaque version est gardée à côté, pour n'en
-// conserver qu'une, sans accumuler. Le serveur ne sert pas ce fichier caché.
+// Les fichiers de code des trois dernières versions publiées restent sur le
+// serveur : un onglet ouvert avant une mise en ligne charge encore ses écrans
+// au lieu de tomber sur des fichiers disparus (« Failed to fetch dynamically
+// imported module »). Trois, et non une : on publie parfois plusieurs fois
+// avant de mettre le serveur à jour, et c'est la version qui tourne qui
+// compte. La liste de chaque version est gardée à côté, dans un fichier caché
+// que le serveur ne sert pas.
 const LISTE = join(PUBLIC, '.fichiers-de-la-version.json')
-const precedents = new Set(existsSync(LISTE)
-  ? JSON.parse(readFileSync(LISTE, 'utf8'))
-  : existsSync(ASSETS) ? readdirSync(ASSETS) : [])
+const GARDEES = 3
+const lu = existsSync(LISTE) ? JSON.parse(readFileSync(LISTE, 'utf8')) : null
+// Ancien format (une seule liste) ou première fois : ce qui est en place compte pour une version.
+const historique = Array.isArray(lu?.[0]) ? lu : [lu ?? (existsSync(ASSETS) ? readdirSync(ASSETS) : [])]
 for (const e of readdirSync(PUBLIC)) if (e !== 'mobile' && e !== 'assets') rmSync(join(PUBLIC, e), { recursive: true, force: true })
 cpSync(join(SOURCE, 'dist'), PUBLIC, { recursive: true })
 const nouveaux = readdirSync(join(SOURCE, 'dist', 'assets'))
+const versions = [nouveaux, ...historique].slice(0, GARDEES)
+const gardes = new Set(versions.flat())
 let anciens = 0
 for (const f of readdirSync(ASSETS)) {
-  if (!nouveaux.includes(f) && !precedents.has(f)) { rmSync(join(ASSETS, f)); anciens++ }
+  if (!gardes.has(f)) { rmSync(join(ASSETS, f)); anciens++ }
 }
-writeFileSync(LISTE, JSON.stringify(nouveaux))
-console.log(`fichiers de code : ${nouveaux.length} de cette version, ${precedents.size} de la précédente gardés, ${anciens} plus anciens retirés`)
+writeFileSync(LISTE, JSON.stringify(versions))
+const precedents = new Set(versions.slice(1).flat().filter((f) => !nouveaux.includes(f)))
+console.log(`fichiers de code : ${nouveaux.length} de cette version, ${precedents.size} des ${versions.length - 1} précédentes gardés, ${anciens} plus anciens retirés`)
 
 // ------------------------------------------------------------------- résultat
 sh('git add -A', CIBLE)
