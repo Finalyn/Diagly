@@ -10,10 +10,9 @@ export function TopBar() {
     <header className="flex shrink-0 items-center gap-3 justify-between">
       {/* Logo Diagly : visible sur mobile (pas de sidebar) */}
       <Link to="/app/projects" aria-label="Diagly" className="flex items-center gap-2 shrink-0 md:hidden">
-        <img src="/diagly-mark.svg" alt="" className="h-8 w-auto" />
-        {/* Décalé de 2 px : centré sur sa boîte, jambages du g et du y compris,
-            le mot remontait au-dessus du milieu du picto. */}
-        <span className="relative top-[2px] text-xl font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
+        {/* La même taille que dans le menu de gauche de l'accueil (Sidebar.tsx). */}
+        <img src="/diagly-mark.svg" alt="" className="h-10 w-auto" />
+        <span className="text-[27px] font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
       </Link>
       <div className="hidden shrink-0 items-center gap-3 md:flex">
         {/* Replier ou rouvrir le menu de gauche (stores/menu-lateral.ts) : sur
@@ -27,10 +26,12 @@ export function TopBar() {
         >
           <PanelLeft className="h-5 w-5" strokeWidth={1.8} />
         </button>
-        {/* Menu replié, le logo qu'il portait reste en vue. */}
+        {/* Menu replié, le logo qu'il portait reste en vue, à la même taille
+            (Sidebar.tsx) : picto et nom. */}
         {!menu.visible && (
-          <Link to="/app/dashboard" aria-label="Diagly, accueil" className="shrink-0">
-            <img src="/diagly-mark.svg" alt="" className="h-8 w-auto" />
+          <Link to="/app/dashboard" aria-label="Diagly, accueil" className="flex shrink-0 items-center gap-2.5 rounded-xl px-1 py-1 transition-colors hover:bg-muted/50">
+            <img src="/diagly-mark.svg" alt="" className="h-10 w-auto" />
+            <span className="text-[27px] font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
           </Link>
         )}
       </div>

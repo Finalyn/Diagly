@@ -426,7 +426,24 @@ const GLISSEMENT = `transform ${DUREE_VOLET}ms ${COURBE_VOLET}, border-radius ${
 const DUREE_FONDU = 150
 
 /** Rend à l'application sa place, une fois le volet refermé. */
+/**
+ * Ce que le volet pousse, et d'où il part. Sur iPad debout, menu de gauche
+ * ouvert, le volet s'ouvre au bord droit du menu et ne pousse que la zone de
+ * la conversation : le menu reste en place. Sans menu (téléphone, menu
+ * replié), toute l'application glisse, barre du haut comprise.
+ */
+interface CibleDuVolet { element: HTMLElement; gauche: number }
+
+function cibleDuVolet(): CibleDuVolet | null {
+  const zone = document.querySelector<HTMLElement>('[data-zone-principale]')
+  const gauche = zone ? Math.round(zone.getBoundingClientRect().left) : 0
+  if (zone && gauche > 1) return { element: zone, gauche }
+  const racine = document.getElementById('root')
+  return racine ? { element: racine, gauche: 0 } : null
+}
+
 function lacherApp(racine: HTMLElement) {
+  delete racine.dataset.pousseParVolet
   racine.style.transform = ''
   racine.style.transition = ''
   racine.style.borderRadius = ''
@@ -497,6 +514,9 @@ function VoletConversations({ ouvert, onFermer, conversations, courante, onOuvri
   /** Un glissement ou un appui long vient de finir : le clic qui suit ne compte pas. */
   const ignorerClic = useRef(false)
   const dejaPlace = useRef(false)
+  /** Choisie à l'ouverture, gardée jusqu'à la fermeture (voir cibleDuVolet). */
+  const cible = useRef<CibleDuVolet | null>(null)
+  const bordRef = useRef<HTMLDivElement>(null)
 
   /**
    * Pose le volet et l'application ouverts ou fermés.
@@ -507,10 +527,17 @@ function VoletConversations({ ouvert, onFermer, conversations, courante, onOuvri
    */
   const placer = useCallback((ouvrir: boolean, anime: boolean) => {
     const panneau = panneauRef.current
-    const racine = document.getElementById('root')
+    if (ouvrir && !cible.current) cible.current = cibleDuVolet()
+    const racine = cible.current?.element
     if (!panneau || !racine) return
     window.clearTimeout(rangement.current)
     const reduit = mouvementReduit()
+    // Le volet part du bord de ce qu'il pousse (0, ou le bord droit du menu).
+    const gauche = cible.current?.gauche ?? 0
+    // Marqué pour que le suivi du doigt le retrouve dans la page.
+    racine.dataset.pousseParVolet = ''
+    panneau.style.left = `${gauche}px`
+    if (bordRef.current) bordRef.current.style.left = `calc(${gauche}px + ${LARGEUR_VOLET})`
     const glisse = anime && !reduit
 
     if (ouvrir) {
@@ -557,7 +584,7 @@ function VoletConversations({ ouvert, onFermer, conversations, courante, onOuvri
     // Une transformation laissée sur #root, même nulle, ferait d'elle le repère
     // de tout ce qui est fixe dans l'application : on la retire une fois
     // l'application revenue en place.
-    rangement.current = window.setTimeout(() => lacherApp(racine), duree + 50)
+    rangement.current = window.setTimeout(() => { lacherApp(racine); cible.current = null }, duree + 50)
   }, [])
 
   useLayoutEffect(() => {
@@ -567,10 +594,13 @@ function VoletConversations({ ouvert, onFermer, conversations, courante, onOuvri
   }, [ouvert, placer])
 
   useEffect(() => {
-    const racine = document.getElementById('root')
     return () => {
       window.clearTimeout(rangement.current)
-      if (racine) lacherApp(racine)
+      // Le volet peut se démonter ouvert (un lien du menu de gauche, resté
+      // utilisable sur iPad) : ce qu'il poussait revient en place.
+      const poussee = cible.current?.element ?? document.getElementById('root')
+      if (poussee) lacherApp(poussee)
+      cible.current = null
     }
   }, [])
 
@@ -665,7 +695,7 @@ function VoletConversations({ ouvert, onFermer, conversations, courante, onOuvri
     // Le volet et l'application suivent le doigt, sans transition : une
     // transition ici ferait courir l'image derrière le geste.
     const panneau = panneauRef.current
-    const racine = document.getElementById('root')
+    const racine = document.querySelector<HTMLElement>('[data-pousse-par-volet]')
     if (!panneau || !racine) return
     panneau.style.transition = 'none'
     panneau.style.transform = `translateX(${g.decalage}px)`
@@ -873,7 +903,9 @@ function VoletConversations({ ouvert, onFermer, conversations, courante, onOuvri
           aria-hidden
           {...gestes}
           onClick={onFermer}
+          ref={bordRef}
           className="fixed inset-y-0 right-0 z-50 touch-none lg:hidden"
+          // Position exacte posée par placer() : le bord droit du menu, sur iPad.
           style={{ left: LARGEUR_VOLET }}
         />
       )}

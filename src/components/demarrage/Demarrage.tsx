@@ -45,7 +45,9 @@ const CHOIX: { id: Depart; icone: typeof PenLine; titre: string; texte: string; 
 export function ChoixDepart({ onChoisir }: { onChoisir: (d: Depart) => void }) {
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-3" data-visite="creation-departs">
+      {/* Sur iPad debout (« tablette »), les trois départs s'empilent : côte à
+          côte, à côté du menu, leurs textes tenaient sur des colonnes étroites. */}
+      <div className="grid gap-3 md:grid-cols-3 tablette:grid-cols-1" data-visite="creation-departs">
         {CHOIX.map((c) => (
           <button
             key={c.id}

@@ -47,6 +47,9 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return // mutations gérées par la file react-query
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return // externe (polices, etc.)
+  // Le contrôle de santé dit si le serveur répond (lib/rechargement.ts) : une
+  // copie gardée répondrait à sa place pendant une mise en ligne.
+  if (url.pathname === '/health') return
 
   if (request.mode === 'navigate') {
     event.respondWith(naviguer(event, url))

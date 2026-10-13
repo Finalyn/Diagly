@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { estHorsLigne, rechargerProprement, rechargerUneFois } from './rechargement'
+import { estHorsLigne, rechargerDesQuePermis, rechargerProprement, rechargerUneFois } from './rechargement'
 
 /** Un navigateur factice : réseau, service worker, caches et stockage observables. */
-function navigateur(enLigne: boolean) {
+function navigateur(enLigne: boolean, serveur: 'repond' | 'muet' = 'repond') {
   const desinscrire = vi.fn(async () => true)
   const espions = {
     getRegistrations: vi.fn(async () => [{ unregister: desinscrire }]),
@@ -16,6 +16,11 @@ function navigateur(enLigne: boolean) {
   vi.stubGlobal('caches', { keys: espions.keys, delete: espions.supprimer })
   vi.stubGlobal('window', { location: { reload: espions.recharger } })
   vi.stubGlobal('sessionStorage', { getItem: () => null, setItem: espions.noter })
+  // /health : 200 quand le serveur répond, coupure pendant une mise en ligne.
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    if (serveur === 'muet') throw new TypeError('Failed to fetch')
+    return { ok: true } as Response
+  }))
   return espions
 }
 
@@ -54,7 +59,24 @@ describe('le rechargement propre', () => {
   it('recharge une fois, en ligne, quand un fichier de code manque', async () => {
     const e = navigateur(true)
     expect(() => rechargerUneFois(MODULE_MANQUANT)).toThrow(MODULE_MANQUANT)
-    expect(e.noter).toHaveBeenCalled()
+    // La garde est notée après avoir vérifié que le serveur répond.
+    await vi.waitFor(() => expect(e.noter).toHaveBeenCalled())
     await vi.waitFor(() => expect(e.recharger).toHaveBeenCalled())
+  })
+
+  it('ne recharge pas pendant une mise en ligne (serveur muet), sans consommer la minute de garde', async () => {
+    const e = navigateur(true, 'muet')
+    expect(await rechargerDesQuePermis()).toBe(false)
+    await rechargerProprement()
+    expect(e.noter).not.toHaveBeenCalled()
+    expect(e.getRegistrations).not.toHaveBeenCalled()
+    expect(e.recharger).not.toHaveBeenCalled()
+  })
+
+  it('recharge dès que le serveur répond de nouveau', async () => {
+    const e = navigateur(true, 'repond')
+    expect(await rechargerDesQuePermis()).toBe(true)
+    expect(e.noter).toHaveBeenCalled()
+    expect(e.recharger).toHaveBeenCalled()
   })
 })

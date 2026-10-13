@@ -3,10 +3,12 @@
 // garde une mauvaise version. Voir components/FiletDeSecurite.tsx. Hors
 // connexion, rien de tout cela : voir estHorsLigne.
 
+import { estAppNative } from './plateforme'
+
 const CLE = 'diagly.rechargement'
 
 /** Un fichier de code introuvable ou illisible (version précédente, cache abîmé). */
-function fichierDeCodeIntrouvable(err: unknown): boolean {
+export function fichierDeCodeIntrouvable(err: unknown): boolean {
   const m = err instanceof Error ? err.message : String(err)
   return /dynamically imported module|Importing a module script failed|error loading dynamically imported|Unable to preload|Failed to fetch|MIME type/i.test(m)
 }
@@ -18,6 +20,25 @@ function fichierDeCodeIntrouvable(err: unknown): boolean {
  */
 export function estHorsLigne(): boolean {
   return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
+/**
+ * Le serveur répond-il ? Pendant une mise en ligne (Build, redémarrage), il
+ * se tait de quelques secondes à quelques minutes : recharger à ce moment-là
+ * remplaçait l'app par la page d'erreur du navigateur. /health n'est jamais
+ * servi par le cache du service worker (sw.js).
+ *
+ * Dans l'app iPhone/iPad, le code est embarqué : il ne dépend pas du serveur,
+ * la question ne se pose pas.
+ */
+export async function serveurJoignable(): Promise<boolean> {
+  if (estAppNative) return true
+  try {
+    const r = await fetch('/health', { cache: 'no-store' })
+    return r.ok
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -33,6 +54,9 @@ export function estHorsLigne(): boolean {
  */
 export async function rechargerProprement(): Promise<void> {
   if (estHorsLigne()) return
+  // Serveur muet (mise en ligne en cours) : on ne touche à rien, le filet de
+  // sécurité réessaie tout seul (FiletDeSecurite).
+  if (!(await serveurJoignable())) return
   try {
     const enregistrements = await navigator.serviceWorker?.getRegistrations?.() ?? []
     await Promise.all(enregistrements.map((r) => r.unregister()))
@@ -57,15 +81,24 @@ export async function rechargerProprement(): Promise<void> {
  * FiletDeSecurite propose alors de revenir à la liste des diagnostics.
  */
 export function rechargerUneFois(err: unknown): never {
-  if (fichierDeCodeIntrouvable(err) && !estHorsLigne()) {
-    let dernier = 0
-    try { dernier = Number(sessionStorage.getItem(CLE) ?? 0) } catch { /* stockage indisponible */ }
-    if (Date.now() - dernier > 60_000) {
-      try { sessionStorage.setItem(CLE, String(Date.now())) } catch { /* idem */ }
-      void rechargerProprement()
-    }
-  }
+  if (fichierDeCodeIntrouvable(err) && !estHorsLigne()) void rechargerDesQuePermis()
   throw err
+}
+
+/**
+ * Recharge proprement, une fois par minute au plus, et seulement si le
+ * serveur répond. Serveur muet, la minute de garde n'est pas consommée : le
+ * rechargement partira dès son retour (FiletDeSecurite réessaie).
+ */
+export async function rechargerDesQuePermis(): Promise<boolean> {
+  if (estHorsLigne()) return false
+  let dernier = 0
+  try { dernier = Number(sessionStorage.getItem(CLE) ?? 0) } catch { /* stockage indisponible */ }
+  if (Date.now() - dernier <= 60_000) return false
+  if (!(await serveurJoignable())) return false
+  try { sessionStorage.setItem(CLE, String(Date.now())) } catch { /* idem */ }
+  await rechargerProprement()
+  return true
 }
 
 // Vite signale aussi l'échec d'un préchargement. Pour un fichier de code, on

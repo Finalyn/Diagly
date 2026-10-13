@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ClipboardCheck, RefreshCw } from 'lucide-react'
-import { estHorsLigne, rechargerProprement } from '@/lib/rechargement'
+import { estHorsLigne, fichierDeCodeIntrouvable, rechargerDesQuePermis, rechargerProprement } from '@/lib/rechargement'
 
 /**
  * Le dernier rempart : une erreur de rendu affichait une page entièrement
@@ -12,6 +12,11 @@ import { estHorsLigne, rechargerProprement } from '@/lib/rechargement'
  * l'appareil rendrait tout l'outil inutilisable) : l'écran qui manque n'a
  * simplement jamais été ouvert en ligne. On le dit, et on ramène à la liste
  * des diagnostics, qui elle fonctionne sans réseau.
+ *
+ * Un fichier de code qui ne se charge pas, en ligne, c'est presque toujours une
+ * mise en ligne en cours : le serveur se tait le temps du Build et du
+ * redémarrage. On le dit, et on réessaie tout seul toutes les quelques
+ * secondes : la page revient d'elle-même dès que le serveur répond.
  *
  * Placé dans le routeur (App.tsx) : le retour à la liste passe par lui.
  */
@@ -24,6 +29,24 @@ export class FiletDeSecurite extends Component<{ children: ReactNode }, { erreur
 
   componentDidCatch(erreur: Error, info: ErrorInfo) {
     console.error('Diagly : erreur d’affichage', erreur, info.componentStack)
+    if (fichierDeCodeIntrouvable(erreur)) this.reessayer()
+  }
+
+  private minuterie: number | null = null
+
+  /** Toutes les 4 s pendant 10 minutes : recharge dès que le serveur répond. */
+  reessayer() {
+    if (this.minuterie != null) return
+    const debut = Date.now()
+    this.minuterie = window.setInterval(() => {
+      if (Date.now() - debut > 10 * 60_000) { this.arreter(); return }
+      void rechargerDesQuePermis().then((parti) => { if (parti) this.arreter() })
+    }, 4000)
+  }
+
+  arreter() {
+    if (this.minuterie != null) window.clearInterval(this.minuterie)
+    this.minuterie = null
   }
 
   componentDidMount() {
@@ -32,6 +55,7 @@ export class FiletDeSecurite extends Component<{ children: ReactNode }, { erreur
   }
 
   componentWillUnmount() {
+    this.arreter()
     window.removeEventListener('online', this.suivreLeReseau)
     window.removeEventListener('offline', this.suivreLeReseau)
   }
@@ -45,6 +69,7 @@ export class FiletDeSecurite extends Component<{ children: ReactNode }, { erreur
     const { erreur } = this.state
     if (!erreur) return this.props.children
     const horsLigne = estHorsLigne()
+    const miseAJour = !horsLigne && fichierDeCodeIntrouvable(erreur)
     return (
       <div className="safe-top flex min-h-dvh flex-col items-center justify-center gap-4 bg-white px-6 text-center">
         <img src="/diagly-mark.svg" alt="" className="h-10 w-auto" />
@@ -52,6 +77,11 @@ export class FiletDeSecurite extends Component<{ children: ReactNode }, { erreur
           <div>
             <p className="text-base font-semibold text-neutral-900">Cet écran n&apos;est pas disponible hors connexion</p>
             <p className="mt-1 text-sm text-neutral-500">Il s&apos;ouvrira au retour du réseau. Vos saisies en attente sont gardées sur l&apos;appareil.</p>
+          </div>
+        ) : miseAJour ? (
+          <div>
+            <p className="text-base font-semibold text-neutral-900">Diagly se met à jour</p>
+            <p className="mt-1 text-sm text-neutral-500">La page revient d&apos;elle-même dans quelques instants. Vos saisies en attente sont gardées sur l&apos;appareil.</p>
           </div>
         ) : (
           <div>

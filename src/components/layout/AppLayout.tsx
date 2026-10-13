@@ -137,7 +137,10 @@ export function AppLayout() {
           // « cover » remplit le cadre quelle que soit sa forme ; la villa
           // reste dans le cadre (position à 80 % de la largeur).
           <div
-            className="js-print-hide pointer-events-none absolute right-0 top-0 z-0 h-[var(--hauteur-image,26rem)] w-[70%] bg-cover bg-no-repeat"
+            // iPad couché : le cadre est presque à la forme de l'image, qui
+            // tenait donc en entier, villa comprise, et paraissait petite. On
+            // la grossit deux fois, toujours centrée sur la villa.
+            className="js-print-hide pointer-events-none absolute right-0 top-0 z-0 h-[var(--hauteur-image,26rem)] w-[70%] bg-cover bg-no-repeat lg:[@media(pointer:coarse)]:bg-[length:auto_200%]"
             style={{
               backgroundImage: 'url(/preview-bg.webp)',
               backgroundPosition: '80% 20%',

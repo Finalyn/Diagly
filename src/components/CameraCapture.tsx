@@ -165,8 +165,10 @@ export function CameraCapture({ onCapture }: { onCapture: (dataUrl: string) => v
           <Maximize2 className="h-4 w-4" />
         </button>
 
+        {/* Sur iPad, le déclencheur passe à droite, à mi-hauteur : là où tombe
+            le pouce quand on tient la tablette à deux mains. */}
         <button type="button" onClick={() => shoot(inlineRef.current)} disabled={!ready} aria-label="Prendre la photo"
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 h-16 w-16 rounded-full bg-white/95 border-4 border-white/60 shadow-lg active:scale-90 transition-transform disabled:opacity-50 flex items-center justify-center">
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 h-16 w-16 rounded-full bg-white/95 border-4 border-white/60 shadow-lg active:scale-90 transition-transform disabled:opacity-50 flex items-center justify-center md:bottom-auto md:left-auto md:right-4 md:top-1/2 md:translate-x-0 md:-translate-y-1/2">
           <span className="h-11 w-11 rounded-full border-2 border-gray-400" />
         </button>
 
@@ -183,7 +185,7 @@ export function CameraCapture({ onCapture }: { onCapture: (dataUrl: string) => v
 
       {/* Plein écran (portal sur body -> couvre vraiment tout l'écran) */}
       {fullscreen && createPortal(
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col" style={{ height: '100dvh', width: '100vw' }}>
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col md:flex-row" style={{ height: '100dvh', width: '100vw' }}>
           <div className="relative flex-1 overflow-hidden touch-none"
             onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
             <video ref={fsRef} autoPlay playsInline muted
@@ -200,8 +202,10 @@ export function CameraCapture({ onCapture }: { onCapture: (dataUrl: string) => v
           </div>
 
           {/* Le déclencheur garde au moins sa marge d'origine, et passe au-dessus
-              de la barre d'accueil quand elle est plus haute. */}
-          <div className="shrink-0 px-6 pb-[max(2.5rem,calc(var(--safe-bottom)+1rem))] pt-3 flex flex-col items-center gap-4 bg-black">
+              de la barre d'accueil quand elle est plus haute. Sur iPad, il se
+              range dans une colonne à droite, à mi-hauteur, comme l'appareil
+              photo d'iOS sur une tablette. */}
+          <div className="shrink-0 px-6 pb-[max(2.5rem,calc(var(--safe-bottom)+1rem))] pt-3 flex flex-col items-center gap-4 bg-black md:w-36 md:justify-center md:pb-0 md:pt-0 md:pl-4 md:pr-[calc(var(--safe-right)+1rem)]">
             {canZoom && (
               <div className="w-full max-w-xs flex items-center gap-3 text-white/80">
                 <ZoomIn className="h-4 w-4 shrink-0" />

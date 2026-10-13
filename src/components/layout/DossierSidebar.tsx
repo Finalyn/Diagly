@@ -55,8 +55,8 @@ export function DossierSidebar({ projectId }: { projectId: string }) {
       {/* Le logo reste, même sur écran bas (iPad couché) : on reconnaît l'app
           en entrant dans un dossier. Le menu en dessous défile s'il manque de place. */}
       <Link to="/app/dashboard" className="flex shrink-0 items-center gap-2.5 rounded-xl px-2 py-2 transition-colors hover:bg-muted/50 short:py-1">
-        <img src="/diagly-mark.svg" alt="" className="h-8 w-auto" />
-        <span className="text-[22px] font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
+        <img src="/diagly-mark.svg" alt="" className="h-10 w-auto" />
+        <span className="text-[27px] font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
       </Link>
 
       <Link to="/app/projects" className="mt-2 flex items-center gap-1.5 rounded-xl px-2 py-1.5 short:mt-0 text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.03] hover:text-foreground">
