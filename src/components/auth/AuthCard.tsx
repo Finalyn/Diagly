@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 /**
- * Coquille d'authentification — style "liquid glass" épuré (blanc / noir / gris) :
+ * Coquille d'authentification, style « liquid glass » épuré (blanc, noir, gris) :
  * fond neutre avec halos flous, panneau translucide en verre dépoli.
  */
 export function AuthCard({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
@@ -12,9 +12,11 @@ export function AuthCard({ title, subtitle, children }: { title: string; subtitl
     // elles étaient annulées, et sur iPhone le formulaire touchait les bords.
     <div className="safe-sides relative flex min-h-dvh items-center justify-center overflow-x-hidden bg-gradient-to-b from-white to-[#eef0f3]">
       <div className="ecran-auth relative w-full max-w-md px-6 pb-10 pt-[calc(var(--safe-top)+2.5rem)] sm:px-4">
-        <Link to="/" className="mb-10 flex items-center justify-center gap-2 sm:mb-8">
-          <img src="/diagly-logo.svg" alt="Diagly" className="h-9 w-auto" />
-          <span className="text-[10px] font-semibold uppercase tracking-wider bg-foreground text-white px-1.5 py-0.5 rounded-md">Pro</span>
+        {/* Le logo de l'app, comme dans le menu de gauche (Sidebar.tsx). Le badge
+            « Pro » d'une ancienne offre a disparu : il n'y a qu'un Diagly. */}
+        <Link to="/" aria-label="Diagly" className="mb-10 flex items-center justify-center gap-2.5 sm:mb-8">
+          <img src="/diagly-mark.svg" alt="" className="h-10 w-auto" />
+          <span className="text-[27px] font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
         </Link>
 
         {/* Panneau verre dépoli. Sur téléphone, pas de cadre : le formulaire

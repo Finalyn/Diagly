@@ -5,9 +5,9 @@
 export function Soon() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-gray-50 to-white px-6 text-center">
-      <div className="flex items-center gap-1.5 mb-8">
-        <span className="text-3xl font-bold tracking-tight">Diagly</span>
-        <span className="text-[11px] font-semibold uppercase tracking-wider bg-primary text-white px-2 py-0.5 rounded">Pro</span>
+      <div className="flex items-center gap-2.5 mb-8">
+        <img src="/diagly-mark.svg" alt="" className="h-10 w-auto" />
+        <span className="text-[27px] font-semibold leading-none tracking-tight">Diagly</span>
       </div>
 
       <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Bientôt disponible</h1>
