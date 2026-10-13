@@ -41,6 +41,15 @@ function noterPreparation(projetId: string): void {
   try { localStorage.setItem(CLE, JSON.stringify({ ...lireDates(), [projetId]: new Date().toISOString() })) } catch { /* stockage indisponible */ }
 }
 
+/**
+ * Oublie les dates de préparation, à la fin d'une session : le cache qu'elles
+ * annonçaient part avec elle, et le compte suivant n'a pas à savoir quels
+ * dossiers le précédent a préparés.
+ */
+export function oublierPreparations(): void {
+  try { localStorage.removeItem(CLE) } catch { /* stockage indisponible */ }
+}
+
 /** Quand ce dossier a été préparé sur cet appareil, ou null. */
 export function datePreparation(projetId: string): Date | null {
   const d = lireDates()[projetId]

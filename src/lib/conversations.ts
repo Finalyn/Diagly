@@ -6,7 +6,9 @@
  * serveur demanderait une table, des routes et une politique de conservation
  * pour une matière que personne ne relit deux semaines plus tard. La
  * contrepartie est réelle et il faut la connaître : l'historique ne suit pas
- * d'un appareil à l'autre.
+ * d'un appareil à l'autre. Il ne survit pas non plus à la fin de la session
+ * (session.ts) : sur une tablette partagée, le compte suivant ne doit pas lire
+ * les questions du précédent.
  *
  * Les photos jointes ne sont pas gardées. Une image en base64 pèse plus que
  * tout le texte d'une conversation, et le quota du navigateur se compte en
@@ -67,6 +69,15 @@ export function lireConversations(): Conversation[] {
       .sort((a, b) => b.modifieeLe - a.modifieeLe)
   } catch {
     return []
+  }
+}
+
+/** Efface les conversations de l'appareil, à la fin d'une session. */
+export function oublierConversations(): void {
+  try {
+    localStorage.removeItem(CLE)
+  } catch {
+    /* stockage indisponible : il n'y a rien à effacer */
   }
 }
 

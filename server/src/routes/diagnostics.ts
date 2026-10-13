@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { DiagnosticStatus, ElementState, Localisation, Prisma, Priority } from "@prisma/client";
+import { DiagnosticStatus, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { notifierSansAttendre } from "../lib/notifications.js";
 import { requireAuth } from "../middlewares/auth.js";
@@ -10,6 +10,7 @@ import { fireEvent } from "../lib/webhook.js";
 import { ownerScopeFor } from "../lib/org-context.js";
 import { blockViewerWrites } from "../middlewares/org.js";
 import { marketCoeff, LEGACY_COST_INDEX, marketInfo } from "../lib/market.js";
+import { createItemSchema, updateItemSchema, modificationDuRenvoi, type ModificationReleve } from "../lib/releves.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -118,50 +119,26 @@ router.delete("/:id", async (req, res) => {
 
 // ---------- DiagnosticItems (observations) ----------
 
-const itemBaseSchema = z.object({
-  cfcCode: z.string().min(1).max(10),
-  cfcLabel: z.string().min(1).max(255),
-  catalogItemId: z.number().int().positive().optional(),
-  /// Article de la base v3 et etape de visite. Ensemble, ils identifient le
-  /// releve : le meme article releve dans deux etapes fait deux releves
-  /// independants, avec deux etats et deux series de photos.
-  articleId: z.string().min(1).max(8).nullable().optional(),
-  etapeNumero: z.number().int().min(1).max(20).nullable().optional(),
-  /// Communs / logements : la note generale du classeur veut que les articles du
-  /// chapitre interieur se relevent des deux cotes, avec des choix differents.
-  localisation: z.nativeEnum(Localisation).nullable().optional(),
-  state: z.nativeEnum(ElementState).nullable().optional(),
-  priority: z.nativeEnum(Priority).nullable().optional(),
-  notes: z.string().max(10_000).optional(),
-  /// Pas de .default([]) ici : `updateItemSchema` est ce schema rendu partiel, et un
-  /// defaut survit a .partial(). Une mise a jour qui ne renvoyait pas ces deux champs
-  /// les recevait donc a vide et ecrasait le contenu : poser une priorite depuis
-  /// l'editeur effacait les travaux et les photos de la visite. Le defaut est applique
-  /// a la creation seulement, la ou il a un sens.
-  works: z.array(z.string().min(1)).optional(),
-  photos: z.array(z.string().min(1)).optional(),
-  area: z.number().positive().nullable().optional(),
-  sharePct: z.number().min(0).max(100).nullable().optional(),
-  /// Verrous de saisie : une valeur reprise a la main ne doit plus etre recalculee.
-  quantityManual: z.boolean().optional(),
-  costManual: z.boolean().optional(),
-  unit: z.string().max(50).optional(),
-  yearInstalled: z.number().int().min(1500).max(2100).optional(),
-  interventionYear: z.number().int().min(1900).max(2200).nullable().optional(),
-  estimatedCost: z.number().min(0).nullable().optional(),
-  /// Coefficient marche en vigueur au moment ou le cout a ete calcule.
-  costIndex: z.number().positive().max(10).nullable().optional(),
-  improvement: z.string().max(2000).nullable().optional(),
-  improvementCost: z.number().min(0).nullable().optional(),
-  norms: z.string().max(2000).nullable().optional(),
-  normsCost: z.number().min(0).nullable().optional(),
-});
+// Les schémas d'un relevé vivent dans lib/releves.ts, avec leurs tests.
 
-// L'identifiant d'un relevé peut venir de l'appareil (UUID) : une saisie faite
-// hors-ligne a ainsi son identifiant définitif dès le terrain, et un renvoi
-// après une coupure ne crée pas de doublon (voir src/lib/hors-ligne).
-const createItemSchema = itemBaseSchema.extend({ id: z.string().uuid().optional() });
-const updateItemSchema = itemBaseSchema.partial();
+/**
+ * Enregistre la modification d'un relevé. La route de modification et le
+ * renvoi d'une création déjà reçue passent tous deux par ici : mêmes champs
+ * écrits, mêmes événements.
+ */
+async function modifierReleve(
+  ownerId: string,
+  releve: { id: string; diagnosticId: string },
+  egid: string | null,
+  data: ModificationReleve,
+) {
+  const item = await prisma.diagnosticItem.update({
+    where: { id: releve.id },
+    data,
+  });
+  fireItemEvents(ownerId, releve.diagnosticId, egid);
+  return item;
+}
 
 router.get("/:id/items", async (req, res) => {
   await loadOwnedDiagnostic(req.params.id, req.auth!.sub);
@@ -177,8 +154,9 @@ router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
   const data = req.body as z.infer<typeof createItemSchema>;
 
   // Renvoi d'une création déjà reçue (la réponse s'était perdue en route) : on
-  // rend le relevé tel qu'il est, sans en créer un second. Le même identifiant
-  // dans un autre diagnostic n'est pas un renvoi, c'est un conflit.
+  // n'en crée pas un second, on applique le corps reçu comme une modification
+  // (voir modificationDuRenvoi), et l'on rend le relevé à jour. Le même
+  // identifiant dans un autre diagnostic n'est pas un renvoi, c'est un conflit.
   const dejaRecu = async () => {
     if (!data.id) return false;
     const existant = await prisma.diagnosticItem.findUnique({ where: { id: data.id } });
@@ -186,7 +164,8 @@ router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
     if (existant.diagnosticId !== req.params.id) {
       res.status(409).json({ error: "Cet identifiant de relevé est déjà utilisé." });
     } else {
-      res.status(200).json({ item: existant });
+      const item = await modifierReleve(req.auth!.sub, existant, diag.project.egid ?? null, modificationDuRenvoi(data));
+      res.status(200).json({ item });
     }
     return true;
   };
@@ -325,12 +304,8 @@ router.get("/items/:itemId", async (req, res) => {
 
 router.put("/items/:itemId", validateBody(updateItemSchema), async (req, res) => {
   const existing = await loadOwnedItem(req.params.itemId, req.auth!.sub);
-  const data = req.body as z.infer<typeof updateItemSchema>;
-  const item = await prisma.diagnosticItem.update({
-    where: { id: req.params.itemId },
-    data,
-  });
-  fireItemEvents(req.auth!.sub, existing.diagnosticId, existing.diagnostic.project.egid ?? null);
+  const data = req.body as ModificationReleve;
+  const item = await modifierReleve(req.auth!.sub, existing, existing.diagnostic.project.egid ?? null, data);
   res.json({ item });
 });
 

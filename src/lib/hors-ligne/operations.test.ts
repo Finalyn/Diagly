@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { ApiDiagnosticItem } from '@/lib/api-types'
-import { entrer, superposer, enAttenteParDiagnostic, type Operation } from './operations'
+import { entrer, superposer, enAttenteParDiagnostic, fusionnerRelecture, type Operation } from './operations'
 
 let rang = 0
 function op<T extends Operation['type']>(type: T, releveId: string, extra: Partial<Operation> = {}): Operation {
@@ -95,41 +95,143 @@ describe('entrer une saisie dans la file', () => {
   })
 })
 
+describe('une création déjà tentée (la réponse a pu se perdre)', () => {
+  it('ne reçoit plus rien : la modification part en opération à elle', () => {
+    const c = op('creer', 'r1', { corps: { cfcCode: '211', state: null }, tentee: true } as Partial<Operation>)
+    const m = op('modifier', 'r1', { corps: { state: 'MAUVAIS', notes: 'fissure', photos: ['data:a'] } } as Partial<Operation>)
+    const r = entrer([c], m)
+    expect(r.file.map((o) => o.type)).toEqual(['creer', 'modifier'])
+    expect(r.file[0]).toBe(c)
+    expect(r.file[0].type !== 'supprimer' && r.file[0].corps).toEqual({ cfcCode: '211', state: null })
+    expect(r.ecrites).toEqual([m])
+  })
+
+  it('les modifications suivantes se fondent entre elles, pas dans la création', () => {
+    const c = op('creer', 'r1', { corps: { cfcCode: '211' }, tentee: true } as Partial<Operation>)
+    const m1 = op('modifier', 'r1', { corps: { state: 'MOYEN' } } as Partial<Operation>)
+    const m2 = op('modifier', 'r1', { corps: { notes: 'humidité' } } as Partial<Operation>)
+    const r = entrer(entrer([c], m1).file, m2)
+    expect(r.file.map((o) => o.type)).toEqual(['creer', 'modifier'])
+    expect(r.file[1].type !== 'supprimer' && r.file[1].corps).toEqual({ state: 'MOYEN', notes: 'humidité' })
+    expect(r.ecrites.map((o) => o.id)).toEqual([m1.id])
+  })
+
+  it('envoie toujours la suppression du relevé, et retire ce qui attendait', () => {
+    const c = op('creer', 'r1', { tentee: true } as Partial<Operation>)
+    const m = op('modifier', 'r1', { corps: { state: 'BON' } } as Partial<Operation>)
+    const s = op('supprimer', 'r1')
+    const r = entrer([c, m], s)
+    expect(r.file).toEqual([s])
+    expect(r.ecrites).toEqual([s])
+    expect(r.effacees.sort()).toEqual([c.id, m.id].sort())
+  })
+
+  it('une modification tentée accepte encore la suite : la renvoyer entière ne perd rien', () => {
+    const m1 = op('modifier', 'r1', { corps: { state: 'MOYEN' }, tentee: true } as Partial<Operation>)
+    const m2 = op('modifier', 'r1', { corps: { notes: 'fissure' } } as Partial<Operation>)
+    const r = entrer([m1], m2)
+    expect(r.file).toHaveLength(1)
+    expect(r.file[0].type !== 'supprimer' && r.file[0].corps).toEqual({ state: 'MOYEN', notes: 'fissure' })
+  })
+})
+
+describe('deux comptes sur le même appareil', () => {
+  it('ne fond pas la saisie d’un compte dans celle d’un autre', () => {
+    const c = op('creer', 'r1', { corps: { cfcCode: '211' } } as Partial<Operation>)
+    const m = op('modifier', 'r1', { utilisateurId: 'u2', corps: { state: 'BON' } } as Partial<Operation>)
+    const r = entrer([c], m)
+    expect(r.file).toEqual([c, m])
+    expect(r.file[0].type !== 'supprimer' && r.file[0].corps).toEqual({ cfcCode: '211' })
+  })
+
+  it('une suppression laisse en place les saisies de l’autre compte', () => {
+    const autre = op('creer', 'r1', { utilisateurId: 'u2' } as Partial<Operation>)
+    const mien = op('modifier', 'r1', { corps: { state: 'BON' } } as Partial<Operation>)
+    const s = op('supprimer', 'r1')
+    const r = entrer([autre, mien], s)
+    expect(r.file).toEqual([autre, s])
+    expect(r.effacees).toEqual([mien.id])
+  })
+
+  it('ne montre que les saisies du compte connecté', () => {
+    const mienne = op('creer', 'r8', { corps: { cfcCode: '221' } } as Partial<Operation>)
+    const autre = op('creer', 'r9', { utilisateurId: 'u2', corps: { cfcCode: '222' } } as Partial<Operation>)
+    const modifAutre = op('modifier', 'r1', { utilisateurId: 'u2', corps: { state: 'MAUVAIS' } } as Partial<Operation>)
+    const suppAutre = op('supprimer', 'r2', { utilisateurId: 'u2' } as Partial<Operation>)
+    const vus = superposer([serveur('r1'), serveur('r2')], [mienne, autre, modifAutre, suppAutre], 'd1', 'u1')
+    expect(vus.map((r) => r.id)).toEqual(['r1', 'r2', 'r8'])
+    expect(vus[0].state).toBe('BON')
+  })
+
+  it('sans compte connecté, rien de la file ne se montre', () => {
+    expect(superposer([], [op('creer', 'r1')], 'd1', null)).toEqual([])
+  })
+})
+
+describe('relire la file au démarrage', () => {
+  it('rend la file lue, triée, sans rien à réécrire quand rien n’est entré entre-temps', () => {
+    const a = op('creer', 'a')
+    const b = op('modifier', 'b')
+    const r = fusionnerRelecture([b, a], [])
+    expect(r.file).toEqual([a, b])
+    expect(r.renumerotees).toEqual([])
+  })
+
+  it('garde ce qui est entré pendant la lecture, après la file lue et avec un rang qui suit', () => {
+    const a = op('creer', 'a', { rang: 7 } as Partial<Operation>)
+    const b = op('modifier', 'b', { rang: 9 } as Partial<Operation>)
+    // Entrée avant la fin de la lecture : elle a pris le rang 1.
+    const pendant = op('creer', 'c', { rang: 1 } as Partial<Operation>)
+    const r = fusionnerRelecture([a, b], [pendant])
+    expect(r.file.map((o) => o.id)).toEqual([a.id, b.id, pendant.id])
+    expect(r.file[2].rang).toBe(10)
+    expect(r.renumerotees).toEqual([{ ...pendant, rang: 10 }])
+  })
+
+  it('préfère la version en mémoire d’une opération connue des deux côtés', () => {
+    const lue = op('creer', 'a', { corps: { state: null } } as Partial<Operation>)
+    const enMemoire = { ...lue, corps: { state: 'MAUVAIS' } } as Operation
+    const r = fusionnerRelecture([lue], [enMemoire])
+    expect(r.file).toHaveLength(1)
+    expect(r.file[0].type !== 'supprimer' && r.file[0].corps).toEqual({ state: 'MAUVAIS' })
+  })
+})
+
 describe('superposer la file aux relevés du serveur', () => {
   it('montre un relevé créé hors-ligne, complété des valeurs par défaut', () => {
     const c = op('creer', 'r9', { corps: { cfcCode: '221', cfcLabel: 'Fenêtres', state: 'MOYEN' } } as Partial<Operation>)
-    const vus = superposer([serveur('r1')], [c], 'd1')
+    const vus = superposer([serveur('r1')], [c], 'd1', 'u1')
     expect(vus.map((r) => r.id)).toEqual(['r1', 'r9'])
     expect(vus[1]).toMatchObject({ cfcCode: '221', state: 'MOYEN', photos: [], works: [], diagnosticId: 'd1' })
   })
 
   it('applique une modification en attente sur la donnée fraîche du serveur', () => {
     const m = op('modifier', 'r1', { corps: { state: 'MAUVAIS', photos: ['data:x'] } } as Partial<Operation>)
-    const [r] = superposer([serveur('r1', { notes: 'vu par un collègue' })], [m], 'd1')
+    const [r] = superposer([serveur('r1', { notes: 'vu par un collègue' })], [m], 'd1', 'u1')
     expect(r.state).toBe('MAUVAIS')
     expect(r.photos).toEqual(['data:x'])
     expect(r.notes).toBe('vu par un collègue')
   })
 
   it('retire un relevé dont la suppression attend', () => {
-    expect(superposer([serveur('r1'), serveur('r2')], [op('supprimer', 'r1')], 'd1').map((r) => r.id)).toEqual(['r2'])
+    expect(superposer([serveur('r1'), serveur('r2')], [op('supprimer', 'r1')], 'd1', 'u1').map((r) => r.id)).toEqual(['r2'])
   })
 
   it("ne double pas un relevé que le serveur a reçu avant que la file ne l'oublie", () => {
     const c = op('creer', 'r1', { corps: { state: 'MOYEN' } } as Partial<Operation>)
-    const vus = superposer([serveur('r1', { state: 'BON' })], [c], 'd1')
+    const vus = superposer([serveur('r1', { state: 'BON' })], [c], 'd1', 'u1')
     expect(vus).toHaveLength(1)
     expect(vus[0].state).toBe('MOYEN')
   })
 
   it("ignore les saisies d'un autre diagnostic", () => {
     const c = op('creer', 'r1', { diagnosticId: 'd2' } as Partial<Operation>)
-    expect(superposer([], [c], 'd1')).toEqual([])
+    expect(superposer([], [c], 'd1', 'u1')).toEqual([])
   })
 
   it('ne modifie pas la liste reçue', () => {
     const liste = [serveur('r1')]
-    superposer(liste, [op('modifier', 'r1', { corps: { state: 'MAUVAIS' } } as Partial<Operation>)], 'd1')
+    superposer(liste, [op('modifier', 'r1', { corps: { state: 'MAUVAIS' } } as Partial<Operation>)], 'd1', 'u1')
     expect(liste[0].state).toBe('BON')
   })
 })

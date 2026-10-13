@@ -1,8 +1,10 @@
 import { del } from 'idb-keyval'
 import { useAuth } from '@/stores/auth'
 import { queryClient, QUERY_CACHE_KEY } from '@/lib/query-client'
-import { saisiesEnAttente, viderFile } from '@/lib/hors-ligne/file-envoi'
-import { oublierCetAppareil } from '@/lib/push-client'
+import { saisiesEnAttente, oublierSaisiesDuCompte } from '@/lib/hors-ligne/file-envoi'
+import { oublierPreparations } from '@/lib/hors-ligne/preparer'
+import { oublierConversations } from '@/lib/conversations'
+import { unsubscribePush } from '@/lib/push-client'
 
 /**
  * Efface TOUTE trace locale de la session. Indispensable sur un appareil partagé
@@ -10,9 +12,14 @@ import { oublierCetAppareil } from '@/lib/push-client'
  * adresses et photos du précédent dans le cache hors-ligne.
  *
  * Couvre : jetons (store persisté), cache react-query en mémoire ET sur IndexedDB
- * (avec les mutations hors-ligne en attente), caches du service worker contenant
- * des données (`/api` et `/uploads`). Le cache du shell et des assets est conservé :
+ * (avec les mutations hors-ligne en attente), conversations de l'assistant et
+ * dates de préparation des dossiers, caches du service worker contenant des
+ * données (`/api` et `/uploads`). Le cache du shell et des assets est conservé :
  * il ne contient rien de personnel et l'app reste installable hors-ligne.
+ *
+ * La file d'envoi des relevés n'en fait pas partie : une session qui expire
+ * passe aussi par ici, et ses saisies attendent le retour du même compte. La
+ * déconnexion volontaire efface celles du compte qui part (logout).
  */
 export async function purgeLocalSession(): Promise<void> {
   useAuth.getState().clearAuth()
@@ -24,6 +31,12 @@ export async function purgeLocalSession(): Promise<void> {
   try {
     await del(QUERY_CACHE_KEY)
   } catch { /* IndexedDB indisponible (mode privé) */ }
+
+  // Hors du cache des requêtes, mais tout aussi personnels : les conversations
+  // citent adresses et diagnostics, et une date de préparation promettrait un
+  // dossier dont le cache vient de partir.
+  oublierConversations()
+  oublierPreparations()
 
   if ('caches' in window) {
     try {
@@ -38,9 +51,13 @@ export async function purgeLocalSession(): Promise<void> {
 /**
  * Après la suppression du compte : il n'y a plus de session à révoquer côté
  * serveur (le compte n'existe plus), on efface tout ce que l'appareil en garde.
+ * Les saisies d'un autre compte de l'appareil, elles, restent.
  */
 export async function apresSuppressionDuCompte(): Promise<void> {
-  await viderFile().catch(() => undefined)
+  const utilisateurId = useAuth.getState().user?.id
+  // Plus de compte à prévenir : l'abonnement est retiré de l'appareil seulement.
+  await unsubscribePush(false).catch(() => undefined)
+  if (utilisateurId) await oublierSaisiesDuCompte(utilisateurId).catch(() => undefined)
   await purgeLocalSession()
 }
 
@@ -60,18 +77,22 @@ export function confirmerDeconnexion(): boolean {
 
 /**
  * Déconnexion volontaire : révoque le refresh token côté serveur (sinon il reste
- * valide 7 jours) puis purge l'appareil, file d'envoi comprise. La purge a lieu
- * même si le serveur est injoignable (chantier hors-ligne).
+ * valide 7 jours) puis purge l'appareil, saisies en attente de ce compte
+ * comprises. La purge a lieu même si le serveur est injoignable (chantier
+ * hors-ligne). Les saisies qu'un autre compte a laissées sur l'appareil
+ * (tablette partagée) restent : elles attendent son retour.
  */
 export async function logout(): Promise<void> {
-  const { refreshToken } = useAuth.getState()
-  // L'iPhone cesse de recevoir les notifications de ce compte : à faire tant que
-  // la session est encore valide.
-  await oublierCetAppareil().catch(() => undefined)
+  const { refreshToken, user } = useAuth.getState()
+  // L'appareil cesse de recevoir les notifications de ce compte. Le serveur est
+  // prévenu tant que la session est encore valide ; l'abonnement est retiré de
+  // l'appareil même s'il ne répond pas (hors-ligne), sans quoi le compte
+  // suivant recevrait celles du précédent.
+  await unsubscribePush().catch(() => undefined)
   if (refreshToken) {
     const { api } = await import('@/lib/api')
     await api.auth.logout(refreshToken).catch(() => undefined)
   }
-  await viderFile().catch(() => undefined)
+  if (user) await oublierSaisiesDuCompte(user.id).catch(() => undefined)
   await purgeLocalSession()
 }

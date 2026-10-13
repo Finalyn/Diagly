@@ -4,9 +4,9 @@ import { api, ApiError } from '@/lib/api'
 import type { ApiDiagnostic, ApiDiagnosticItem } from '@/lib/api-types'
 import { queryClient } from '@/lib/query-client'
 import { useAuth } from '@/stores/auth'
-import { entrer, superposer, type CorpsReleve, type Operation } from './operations'
+import { entrer, fusionnerRelecture, superposer, type CorpsReleve, type Operation } from './operations'
 import { stockage } from './stockage'
-import { abonner, lireEtat, poserEtat } from './etat'
+import { abonner, lireEtat, poserEtat, type Refus } from './etat'
 
 /**
  * Le moteur de la file d'envoi : il écrit chaque saisie sur l'appareil avant
@@ -53,16 +53,30 @@ function surLeDisque(travail: () => Promise<void>): Promise<void> {
   return disque
 }
 
-/** Relit la file laissée sur l'appareil et branche les déclencheurs d'envoi. Une seule fois. */
+/**
+ * Relit la file et les refus laissés sur l'appareil, et branche les
+ * déclencheurs d'envoi. Une seule fois : la promesse est gardée, et tout ce
+ * qui touche à la file l'attend (saisir).
+ */
 export function chargerFile(): Promise<void> {
   chargement ??= (async () => {
     try {
-      const ops = (await stockage.lister()).sort((a, b) => a.rang - b.rang)
-      rang = ops.reduce((m, o) => Math.max(m, o.rang), 0)
-      poserEtat({ file: ops, chargee: true })
+      const [lues, refusLus] = await Promise.all([
+        stockage.lister(),
+        // Des refus illisibles n'empêchent pas la file de repartir.
+        stockage.lireRefus().catch((): Refus[] => []),
+      ])
+      // On fusionne avec ce qui serait déjà en mémoire au lieu de l'écraser
+      // (voir fusionnerRelecture).
+      const { file, renumerotees } = fusionnerRelecture(lues, lireEtat().file)
+      rang = file.reduce((m, o) => Math.max(m, o.rang), 0)
+      const connus = new Set(refusLus.map((r) => r.operation.id))
+      const refus = [...refusLus, ...lireEtat().refus.filter((r) => !connus.has(r.operation.id))]
+      poserEtat({ file, refus, chargee: true })
+      if (renumerotees.length) await surLeDisque(() => stockage.ecrire(renumerotees))
       // Ce qui s'est affiché avant la fin de la lecture ne montrait pas ces
       // saisies : on relit les diagnostics concernés.
-      for (const d of new Set(ops.map((o) => o.diagnosticId))) rafraichir(d)
+      for (const d of new Set(file.map((o) => o.diagnosticId))) rafraichir(d)
     } catch {
       poserEtat({ chargee: true })
     }
@@ -80,11 +94,11 @@ function appliquerAuCache(op: Operation): void {
   const d = op.diagnosticId
   queryClient.setQueryData<{ items: ApiDiagnosticItem[]; count: number }>(['diagnostic-items', d], (v) => {
     if (!v) return v
-    const items = superposer(v.items, [op], d)
+    const items = superposer(v.items, [op], d, op.utilisateurId)
     return { ...v, items, count: items.length }
   })
   queryClient.setQueryData<{ diagnostic: ApiDiagnostic; items: ApiDiagnosticItem[] }>(['diagnostic', d], (v) =>
-    v && Array.isArray(v.items) ? { ...v, items: superposer(v.items, [op], d) } : v)
+    v && Array.isArray(v.items) ? { ...v, items: superposer(v.items, [op], d, op.utilisateurId) } : v)
 }
 
 function rafraichir(diagnosticId: string): void {
@@ -103,6 +117,11 @@ function rafraichir(diagnosticId: string): void {
 export async function saisir(s: Saisie): Promise<void> {
   const utilisateurId = useAuth.getState().user?.id
   if (!utilisateurId) throw new Error('Aucune session ouverte.')
+  // La file laissée sur l'appareil d'abord : lue en quelques millisecondes,
+  // elle est presque toujours prête. Entrée avant, la saisie recevait le
+  // rang 1, puis la liste relue l'écrasait : elle quittait l'écran, et
+  // repartait dans le désordre au lancement suivant.
+  await chargerFile()
   rang += 1
   const op = { ...s, id: nouvelIdentifiant(), rang, utilisateurId, saisieLe: Date.now() } as Operation
   const { file, enVol } = lireEtat()
@@ -144,6 +163,28 @@ async function transmettre(op: Operation): Promise<Issue> {
   }
 }
 
+/**
+ * Marque une opération comme tentée, sur le disque puis en mémoire, juste
+ * avant sa première requête. Sans cette trace, une création reçue par le
+ * serveur dont la réponse s'était perdue passait pour jamais envoyée : on y
+ * fondait la suite, que le renvoi ne transmettait pas, ou on l'effaçait à la
+ * suppression du relevé, qui revenait alors du serveur.
+ *
+ * Null si le disque refuse l'écriture : l'opération ne part pas sans sa trace.
+ */
+async function marquerTentee(op: Operation): Promise<Operation | null> {
+  const marquee: Operation = { ...op, tentee: true }
+  try {
+    await surLeDisque(() => stockage.ecrire([marquee]))
+  } catch {
+    return null
+  }
+  // Pendant l'écriture, l'opération était déjà `enVol` : aucune saisie ne l'a
+  // modifiée, la remplacer ne perd rien.
+  poserEtat({ file: lireEtat().file.map((o) => (o.id === op.id ? marquee : o)) })
+  return marquee
+}
+
 function programmerRelance(): void {
   if (relance) clearTimeout(relance)
   const delai = DELAIS[Math.min(tentative, DELAIS.length - 1)]
@@ -162,26 +203,36 @@ export async function envoyer(): Promise<void> {
       if (!user || !accessToken) return
       // Les saisies d'un autre compte (session expirée, appareil partagé)
       // attendent son retour : elles ne partent jamais sous ce compte-ci.
-      const op = lireEtat().file.find((o) => o.utilisateurId === user.id)
-      if (!op) {
+      const suivante = lireEtat().file.find((o) => o.utilisateurId === user.id)
+      if (!suivante) {
         tentative = 0
         if (lireEtat().injoignable) poserEtat({ injoignable: false })
         return
       }
 
-      poserEtat({ enVol: op.id })
+      poserEtat({ enVol: suivante.id })
+      const op = suivante.tentee ? suivante : await marquerTentee(suivante)
+      if (!op) { programmerRelance(); return }
+      // Effacée pendant l'écriture de la marque (déconnexion) : plus rien à envoyer.
+      if (!lireEtat().file.some((o) => o.id === op.id)) continue
       const issue = await transmettre(op)
       if (issue.type === 'reessayer') { poserEtat({ injoignable: true }); programmerRelance(); return }
 
       const avant = lireEtat()
-      // Une création refusée emporte la suite du même relevé : ses
-      // modifications viseraient un relevé qui n'existe pas.
+      // Une création refusée emporte la suite du même relevé, saisie par le
+      // même compte : ses modifications viseraient un relevé qui n'existe pas.
       const parties = avant.file.filter((o) => o.id === op.id
-        || (issue.type === 'refus' && op.type === 'creer' && o.releveId === op.releveId))
+        || (issue.type === 'refus' && op.type === 'creer' && o.releveId === op.releveId && o.utilisateurId === op.utilisateurId))
       const file = avant.file.filter((o) => !parties.includes(o))
       const refus = issue.type === 'refus' ? [...avant.refus, { operation: op, raison: issue.raison, le: Date.now() }] : avant.refus
       poserEtat({ file, refus, enVol: null, injoignable: false })
-      await surLeDisque(() => stockage.effacer(parties.map((o) => o.id)))
+      await surLeDisque(async () => {
+        // Le refus d'abord : une coupure entre les deux laisse la saisie dans
+        // la file (elle repartira, et sera refusée de nouveau), jamais
+        // effacée sans que le refus soit gardé.
+        if (issue.type === 'refus') await stockage.ecrireRefus(lireEtat().refus)
+        await stockage.effacer(parties.map((o) => o.id))
+      })
       tentative = 0
       // Le dossier est à jour sur le serveur : on reprend sa version (coûts
       // recalculés, ordre, compteurs). Un refus aussi : la saisie refusée doit
@@ -194,18 +245,34 @@ export async function envoyer(): Promise<void> {
   }
 }
 
-/** Oublie les refus affichés. */
+/** Oublie les refus affichés, ceux du compte connecté seulement. */
 export function ignorerRefus(): void {
-  poserEtat({ refus: [] })
+  const moi = useAuth.getState().user?.id
+  poserEtat({ refus: lireEtat().refus.filter((r) => r.operation.utilisateurId !== moi) })
+  void surLeDisque(() => stockage.ecrireRefus(lireEtat().refus)).catch(() => undefined)
 }
 
 /**
- * Efface toutes les saisies en attente. Réservé à la déconnexion volontaire,
- * après que l'utilisateur a accepté de les perdre.
+ * Efface les saisies en attente et les refus d'un compte, et eux seuls.
+ * Réservé à la déconnexion volontaire, après que l'utilisateur a accepté de
+ * perdre les siennes. Ce qu'un autre compte a laissé sur l'appareil (tablette
+ * partagée, session expirée) reste : il le retrouvera à sa reconnexion.
  */
-export async function viderFile(): Promise<void> {
-  poserEtat({ file: [], refus: [], enVol: null, injoignable: false })
-  await surLeDisque(() => stockage.vider())
+export async function oublierSaisiesDuCompte(utilisateurId: string): Promise<void> {
+  // Relue d'abord : on n'efface pas à moitié une file pas encore lue.
+  await chargerFile()
+  const { file, refus, enVol } = lireEtat()
+  const siennes = file.filter((o) => o.utilisateurId === utilisateurId)
+  poserEtat({
+    file: file.filter((o) => o.utilisateurId !== utilisateurId),
+    refus: refus.filter((r) => r.operation.utilisateurId !== utilisateurId),
+    enVol: siennes.some((o) => o.id === enVol) ? null : enVol,
+    injoignable: false,
+  })
+  await surLeDisque(async () => {
+    await stockage.effacer(siennes.map((o) => o.id))
+    await stockage.ecrireRefus(lireEtat().refus)
+  })
 }
 
 /** Le nombre de saisies du compte connecté qui n'ont pas encore atteint le serveur. */
@@ -224,6 +291,6 @@ export function useFileEnvoi() {
     parDiagnostic: (diagnosticId: string) => miennes.filter((o) => o.diagnosticId === diagnosticId).length,
     envoiEnCours: etat.enVol !== null,
     injoignable: etat.injoignable,
-    refus: etat.refus,
+    refus: moi ? etat.refus.filter((r) => r.operation.utilisateurId === moi) : [],
   }
 }

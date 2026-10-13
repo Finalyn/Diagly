@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  titreDepuis, nouvelleConversation, lireConversations, ecrireConversations,
+  titreDepuis, nouvelleConversation, lireConversations, ecrireConversations, oublierConversations,
   type Conversation,
 } from './conversations'
 
@@ -96,5 +96,21 @@ describe('lecture et écriture', () => {
       configurable: true,
     })
     expect(() => ecrireConversations([conv()])).not.toThrow()
+  })
+})
+
+describe('fin de session', () => {
+  it('efface les conversations : le compte suivant ne les retrouve pas', () => {
+    ecrireConversations([conv({ id: 'a', titre: 'Toiture rue du Lac' })])
+    oublierConversations()
+    expect(lireConversations()).toEqual([])
+  })
+
+  it('ne jette pas quand le stockage est indisponible', () => {
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: { removeItem: () => { throw new Error('refusé') } },
+      configurable: true,
+    })
+    expect(() => oublierConversations()).not.toThrow()
   })
 })

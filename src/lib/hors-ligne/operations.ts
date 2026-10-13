@@ -29,6 +29,13 @@ interface Commun {
   releveId: string
   /** Horodatage de la saisie (ms). */
   saisieLe: number
+  /**
+   * Vrai dès le premier envoi, écrit sur l'appareil avant que la requête ne
+   * parte. Une opération tentée a peut-être atteint le serveur même sans
+   * réponse (coupure au retour) : une création tentée ne se traite donc plus
+   * comme inconnue du serveur. Absent sur les opérations jamais parties.
+   */
+  tentee?: boolean
 }
 
 export type Operation =
@@ -53,15 +60,25 @@ export interface Changement {
  * relevé jamais envoyé efface tout simplement sa création. Une opération déjà
  * partie (`enVol`) n'est jamais touchée : sa requête est sur le réseau avec
  * l'ancien contenu, la suite doit donc venir après elle.
+ *
+ * Une création déjà tentée ne reçoit plus rien non plus. Le serveur l'a
+ * peut-être enregistrée sans que la réponse revienne ; un serveur qui ne
+ * relirait pas le corps d'une création renvoyée perdrait ce qu'on y aurait
+ * fondu (état, note, photos), et la supprimer en silence laisserait le relevé
+ * sur le serveur. La suite part donc en opérations à elle.
+ *
+ * Seules les saisies du même compte se mêlent : sur une tablette partagée, ce
+ * qu'un autre compte a laissé en attente reste tel qu'il l'a saisi.
  */
 export function entrer(file: Operation[], saisie: Operation, enVol: string | null = null): Changement {
-  const attente = (op: Operation) => op.releveId === saisie.releveId && op.id !== enVol
+  const attente = (op: Operation) =>
+    op.releveId === saisie.releveId && op.utilisateurId === saisie.utilisateurId && op.id !== enVol
 
   if (saisie.type === 'modifier') {
     const cible = [...file].reverse().find(attente)
     // Le relevé attend d'être supprimé : le modifier n'a plus d'objet.
     if (cible?.type === 'supprimer') return { file, ecrites: [], effacees: [] }
-    if (cible) {
+    if (cible && !(cible.type === 'creer' && cible.tentee)) {
       const completee: Operation = { ...cible, corps: { ...cible.corps, ...saisie.corps } }
       return {
         file: file.map((op) => (op.id === cible.id ? completee : op)),
@@ -76,8 +93,10 @@ export function entrer(file: Operation[], saisie: Operation, enVol: string | nul
     const retirees = file.filter(attente)
     const reste = file.filter((op) => !attente(op))
     // Créé ici et jamais parti : le serveur n'en a jamais entendu parler, il
-    // n'y a rien à lui demander de supprimer.
-    const jamaisEnvoye = retirees.some((op) => op.type === 'creer')
+    // n'y a rien à lui demander de supprimer. Une création tentée, elle, a pu
+    // arriver : la suppression part toujours (un relevé introuvable compte
+    // comme supprimé, file-envoi.ts).
+    const jamaisEnvoye = retirees.some((op) => op.type === 'creer' && !op.tentee)
     if (jamaisEnvoye) return { file: reste, ecrites: [], effacees: retirees.map((op) => op.id) }
     return { file: [...reste, saisie], ecrites: [saisie], effacees: retirees.map((op) => op.id) }
   }
@@ -120,15 +139,20 @@ function releveVierge(op: Operation & { type: 'creer' }): ApiDiagnosticItem {
  * Toute lecture de la liste passe par ici. Sans cela, un rafraîchissement
  * venu du serveur effaçait de l'écran une saisie pas encore envoyée, qui
  * réapparaissait à l'envoi : l'utilisateur la croyait perdue et la ressaisissait.
+ *
+ * Seules les saisies du compte connecté s'y montrent : celles qu'un autre
+ * compte a laissées sur l'appareil ne partiront pas sous celui-ci, et ne sont
+ * pas les siennes à voir.
  */
 export function superposer(
   releves: ApiDiagnosticItem[],
   file: Operation[],
   diagnosticId: string,
+  utilisateurId: string | null,
 ): ApiDiagnosticItem[] {
   let resultat = releves
   for (const op of file) {
-    if (op.diagnosticId !== diagnosticId) continue
+    if (op.diagnosticId !== diagnosticId || op.utilisateurId !== utilisateurId) continue
     const present = resultat.some((r) => r.id === op.releveId)
     if (op.type === 'supprimer') {
       resultat = resultat.filter((r) => r.id !== op.releveId)
@@ -142,6 +166,26 @@ export function superposer(
     // Une modification d'un relevé absent (supprimé ailleurs) n'a rien à montrer.
   }
   return resultat
+}
+
+/**
+ * La file relue au démarrage, avec ce qui y serait entré pendant la lecture.
+ *
+ * Une saisie entrée avant la fin de la lecture recevait le rang 1, puis la
+ * liste lue la remplaçait : elle quittait l'écran, et repartait dans le
+ * désordre au lancement suivant. Elle passe ici après ce qui l'attendait déjà
+ * sur l'appareil, avec un rang qui le dit ; ces opérations renumérotées sont
+ * à réécrire. Une opération connue des deux côtés garde sa version en
+ * mémoire, la plus récente.
+ */
+export function fusionnerRelecture(lues: Operation[], entrees: Operation[]): { file: Operation[]; renumerotees: Operation[] } {
+  const enMemoire = new Set(entrees.map((o) => o.id))
+  const anciennes = lues.filter((o) => !enMemoire.has(o.id)).sort((a, b) => a.rang - b.rang)
+  const dernier = anciennes.reduce((m, o) => Math.max(m, o.rang), 0)
+  const renumerotees = [...entrees]
+    .sort((a, b) => a.rang - b.rang)
+    .map((o, i) => ({ ...o, rang: dernier + i + 1 }))
+  return { file: [...anciennes, ...renumerotees], renumerotees }
 }
 
 /** Le nombre de saisies en attente, par diagnostic. */

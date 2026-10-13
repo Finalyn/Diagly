@@ -1,4 +1,5 @@
 import type { ApiDiagnosticItem } from '@/lib/api-types'
+import { useAuth } from '@/stores/auth'
 import { superposer, type Operation } from './operations'
 
 /**
@@ -10,7 +11,11 @@ import { superposer, type Operation } from './operations'
  * sans cycle d'import entre les deux.
  */
 
-/** Une saisie que le serveur a refusée pour de bon (relevé supprimé ailleurs, donnée invalide). */
+/**
+ * Une saisie que le serveur a refusée pour de bon (relevé supprimé ailleurs,
+ * donnée invalide). Gardée sur l'appareil comme la file, avec l'opération et
+ * donc son compte : seul ce compte-là la voit.
+ */
 export interface Refus {
   operation: Operation
   raison: string
@@ -50,7 +55,8 @@ export function abonner(f: () => void): () => void {
   return () => { abonnes.delete(f) }
 }
 
-/** Les relevés d'un diagnostic, avec ce qui attend encore d'être envoyé. */
+/** Les relevés d'un diagnostic, avec ce que le compte connecté a encore à envoyer. */
 export function avecSaisiesEnAttente(releves: ApiDiagnosticItem[], diagnosticId: string): ApiDiagnosticItem[] {
-  return etat.file.length ? superposer(releves, etat.file, diagnosticId) : releves
+  if (!etat.file.length) return releves
+  return superposer(releves, etat.file, diagnosticId, useAuth.getState().user?.id ?? null)
 }

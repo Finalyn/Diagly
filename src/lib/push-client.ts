@@ -54,13 +54,6 @@ export async function reprendreNotificationsNatives(): Promise<void> {
   await PushNotifications.register()
 }
 
-/** Retire cet appareil du compte (déconnexion) : il ne reçoit plus rien pour lui. */
-export async function oublierCetAppareil(): Promise<void> {
-  if (!estAppNative) return
-  const j = jetonConnu()
-  if (j) await api.push.retirerAppareil(j).catch(() => undefined)
-}
-
 // ------------------------------------------------------------------- commun
 
 export function pushSupported(): boolean {
@@ -101,17 +94,31 @@ export async function subscribePush(publicKey?: string | null): Promise<void> {
   await api.push.subscribe(sub.toJSON() as PushSubscriptionJSON)
 }
 
-export async function unsubscribePush(): Promise<void> {
+/**
+ * Coupe les notifications sur cet appareil (réglage, déconnexion). L'abonnement
+ * est retiré de l'appareil d'abord, puis du serveur : hors-ligne ou face à un
+ * serveur muet, la coupure locale a donc lieu quand même, et le compte suivant
+ * de l'appareil ne reçoit pas les notifications du précédent.
+ *
+ * `prevenirLeServeur` à faux quand il n'y a plus de compte à prévenir (compte
+ * supprimé).
+ */
+export async function unsubscribePush(prevenirLeServeur = true): Promise<void> {
   if (estAppNative) {
-    await oublierCetAppareil()
+    const jeton = jetonConnu()
     noterJeton(null)
     await PushNotifications.unregister().catch(() => undefined)
+    if (jeton && prevenirLeServeur) await api.push.retirerAppareil(jeton).catch(() => undefined)
     return
   }
-  const reg = await navigator.serviceWorker.ready
-  const sub = await reg.pushManager.getSubscription()
-  if (sub) {
-    await api.push.unsubscribe(sub.endpoint).catch(() => undefined)
-    await sub.unsubscribe().catch(() => undefined)
-  }
+  if (!pushSupported()) return
+  // getRegistration et non ready : sans service worker enregistré (refusé, pas
+  // encore installé), ready ne se résout jamais, et la déconnexion attendrait
+  // sans fin.
+  const reg = await navigator.serviceWorker.getRegistration()
+  const sub = await reg?.pushManager.getSubscription()
+  if (!sub) return
+  const { endpoint } = sub
+  await sub.unsubscribe().catch(() => undefined)
+  if (prevenirLeServeur) await api.push.unsubscribe(endpoint).catch(() => undefined)
 }
