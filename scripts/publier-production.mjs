@@ -23,7 +23,7 @@
  * Seul du code commité part : le script refuse un dépôt source modifié.
  */
 import { execSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -85,9 +85,26 @@ console.log('import de la base CFC assemblé : prisma/base-cfc/importer.mjs')
 // -------------------------------------------------------------- front publié
 dire('3/3  Front construit vers public/ (public/mobile conservé)')
 const PUBLIC = join(CIBLE, 'public')
+const ASSETS = join(PUBLIC, 'assets')
 mkdirSync(PUBLIC, { recursive: true })
-for (const e of readdirSync(PUBLIC)) if (e !== 'mobile') rmSync(join(PUBLIC, e), { recursive: true, force: true })
+// Les fichiers de code de la version précédente restent une version de plus :
+// un onglet ouvert avant la mise en ligne charge encore ses écrans, au lieu
+// de tomber sur des fichiers disparus (« Failed to fetch dynamically imported
+// module »). La liste de chaque version est gardée à côté, pour n'en
+// conserver qu'une, sans accumuler. Le serveur ne sert pas ce fichier caché.
+const LISTE = join(PUBLIC, '.fichiers-de-la-version.json')
+const precedents = new Set(existsSync(LISTE)
+  ? JSON.parse(readFileSync(LISTE, 'utf8'))
+  : existsSync(ASSETS) ? readdirSync(ASSETS) : [])
+for (const e of readdirSync(PUBLIC)) if (e !== 'mobile' && e !== 'assets') rmSync(join(PUBLIC, e), { recursive: true, force: true })
 cpSync(join(SOURCE, 'dist'), PUBLIC, { recursive: true })
+const nouveaux = readdirSync(join(SOURCE, 'dist', 'assets'))
+let anciens = 0
+for (const f of readdirSync(ASSETS)) {
+  if (!nouveaux.includes(f) && !precedents.has(f)) { rmSync(join(ASSETS, f)); anciens++ }
+}
+writeFileSync(LISTE, JSON.stringify(nouveaux))
+console.log(`fichiers de code : ${nouveaux.length} de cette version, ${precedents.size} de la précédente gardés, ${anciens} plus anciens retirés`)
 
 // ------------------------------------------------------------------- résultat
 sh('git add -A', CIBLE)

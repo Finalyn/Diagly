@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ClipboardCheck, RefreshCw } from 'lucide-react'
-import { estHorsLigne, fichierDeCodeIntrouvable, rechargerDesQuePermis, rechargerProprement } from '@/lib/rechargement'
+import { estHorsLigne, fichierDeCodeIntrouvable, rechargerProprement, reprendreApres } from '@/lib/rechargement'
 
 /**
  * Le dernier rempart : une erreur de rendu affichait une page entièrement
@@ -29,18 +29,18 @@ export class FiletDeSecurite extends Component<{ children: ReactNode }, { erreur
 
   componentDidCatch(erreur: Error, info: ErrorInfo) {
     console.error('Diagly : erreur d’affichage', erreur, info.componentStack)
-    if (fichierDeCodeIntrouvable(erreur)) this.reessayer()
+    if (fichierDeCodeIntrouvable(erreur)) this.reessayer(erreur)
   }
 
   private minuterie: number | null = null
 
-  /** Toutes les 4 s pendant 10 minutes : recharge dès que le serveur répond. */
-  reessayer() {
+  /** Toutes les 4 s pendant 10 minutes : recharge dès que le fichier en cause répond. */
+  reessayer(erreur: Error) {
     if (this.minuterie != null) return
     const debut = Date.now()
     this.minuterie = window.setInterval(() => {
       if (Date.now() - debut > 10 * 60_000) { this.arreter(); return }
-      void rechargerDesQuePermis().then((parti) => { if (parti) this.arreter() })
+      void reprendreApres(erreur).then((parti) => { if (parti) this.arreter() })
     }, 4000)
   }
 

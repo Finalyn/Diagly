@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { estHorsLigne, rechargerDesQuePermis, rechargerProprement, rechargerUneFois } from './rechargement'
+import { estHorsLigne, fichierEnCause, rechargerDesQuePermis, rechargerProprement, rechargerUneFois, reprendreApres } from './rechargement'
 
 /** Un navigateur factice : réseau, service worker, caches et stockage observables. */
 function navigateur(enLigne: boolean, serveur: 'repond' | 'muet' = 'repond') {
@@ -78,5 +78,29 @@ describe('le rechargement propre', () => {
     expect(await rechargerDesQuePermis()).toBe(true)
     expect(e.noter).toHaveBeenCalled()
     expect(e.recharger).toHaveBeenCalled()
+  })
+})
+
+describe('la reprise après une mise en ligne', () => {
+  it('lit le fichier en cause dans le message', () => {
+    expect(fichierEnCause(MODULE_MANQUANT)).toBe('https://diagly.ch/assets/ProjectVisite-abc.js')
+    expect(fichierEnCause(new Error('autre chose'))).toBeNull()
+  })
+
+  it('recharge tout de suite quand le fichier répond de nouveau, malgré la minute de garde', async () => {
+    const e = navigateur(true, 'repond')
+    // La minute de garde vient d'être consommée par un premier rechargement.
+    vi.stubGlobal('sessionStorage', {
+      getItem: (k: string) => (k === 'diagly.rechargement' ? String(Date.now()) : null),
+      setItem: e.noter,
+    })
+    expect(await reprendreApres(MODULE_MANQUANT)).toBe(true)
+    expect(e.recharger).toHaveBeenCalled()
+  })
+
+  it('attend tant que le serveur se tait', async () => {
+    const e = navigateur(true, 'muet')
+    expect(await reprendreApres(MODULE_MANQUANT)).toBe(false)
+    expect(e.recharger).not.toHaveBeenCalled()
   })
 })

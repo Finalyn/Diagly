@@ -85,6 +85,50 @@ export function rechargerUneFois(err: unknown): never {
   throw err
 }
 
+/** L'adresse du fichier de code qui a échoué, lue dans le message d'erreur. */
+export function fichierEnCause(err: unknown): string | null {
+  const m = (err instanceof Error ? err.message : String(err)).match(/https?:\/\/\S+?\.(?:m?js|css)\b/)
+  return m ? m[0] : null
+}
+
+/** Le fichier répond-il de nouveau ? (HEAD : le service worker ne s'en mêle pas.) */
+async function fichierDeNouveauLa(url: string): Promise<boolean> {
+  try {
+    const r = await fetch(url, { method: 'HEAD', cache: 'no-store' })
+    return r.ok
+  } catch {
+    return false
+  }
+}
+
+const CLE_REPRISES = 'diagly.reprises'
+
+/** Trois reprises immédiates au plus en cinq minutes : au-delà, une panne qui dure doit se voir. */
+function reprisePermise(): boolean {
+  let liste: number[] = []
+  try { liste = JSON.parse(sessionStorage.getItem(CLE_REPRISES) ?? '[]') as number[] } catch { /* stockage indisponible */ }
+  const recentes = liste.filter((t) => Date.now() - t < 5 * 60_000)
+  if (recentes.length >= 3) return false
+  try { sessionStorage.setItem(CLE_REPRISES, JSON.stringify([...recentes, Date.now()])) } catch { /* idem */ }
+  return true
+}
+
+/**
+ * Pour le filet de sécurité, qui réessaie toutes les quelques secondes. Si le
+ * fichier qui a échoué répond de nouveau (le serveur redémarrait), on
+ * recharge sans attendre la minute de garde : le rechargement ne peut pas
+ * boucler sur un fichier présent. Sinon, la règle habituelle.
+ */
+export async function reprendreApres(err: unknown): Promise<boolean> {
+  if (estHorsLigne()) return false
+  const url = fichierEnCause(err)
+  if (url && await serveurJoignable() && await fichierDeNouveauLa(url) && reprisePermise()) {
+    await rechargerProprement()
+    return true
+  }
+  return rechargerDesQuePermis()
+}
+
 /**
  * Recharge proprement, une fois par minute au plus, et seulement si le
  * serveur répond. Serveur muet, la minute de garde n'est pas consommée : le
