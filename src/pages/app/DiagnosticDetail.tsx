@@ -505,6 +505,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
           // Sur iPad, la liste seule, centrée : en pleine largeur, ses lignes
           // s'étiraient sur tout l'écran.
           unPanneau ? (selectedItemId || ligneAConfirmer ? 'hidden' : 'flex-1 min-h-0 md:mx-auto md:max-w-2xl') : 'lg:w-96 shrink-0',
+          // Téléphone : la carte descend sous la barre du bas, ouverte en bas.
+          'max-md:rounded-b-none max-md:border-b-0',
         )}>
           <CardHeader className="py-3 px-4 shrink-0 border-b">
             <CardTitle className="text-sm">Éléments à évaluer</CardTitle>
@@ -518,7 +520,9 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
               />
             </div>
           </CardHeader>
-          <CardContent className="px-2 py-0 pb-4 overflow-y-auto flex-1">
+          {/* Téléphone : la liste défile jusque sous la barre du bas ; sa marge
+              laisse remonter la dernière ligne au-dessus. */}
+          <CardContent className="px-2 py-0 pb-4 overflow-y-auto flex-1 max-md:pb-[calc(var(--safe-bottom)+6rem)]">
             {grouped.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-4">Aucun résultat</p>
             )}
@@ -655,7 +659,9 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
             // L'editeur gere son propre defilement et son propre degagement du bas :
             // une marge ici raccourcirait le panneau et laisserait une bande vide.
             // Sur iPad, la fiche garde la largeur de la liste (42rem), centrée.
-            className="absolute inset-0 z-30 overflow-hidden bg-background md:px-[max(1.5rem,calc((100%-42rem)/2))]"
+            // Le fond est celui de la page : une feuille blanche, posée entre
+            // les deux barres, se lisait comme un écran coupé en haut et en bas.
+            className="absolute inset-0 z-30 overflow-hidden bg-muted md:px-[max(1.5rem,calc((100%-42rem)/2))]"
           >
             {selectedDiagItem ? (
               <ItemEditor
@@ -1281,7 +1287,7 @@ function QuestionPresence({ ligne, ensuite, onPresent, onAbsent, onRetour }: {
   onRetour: () => void
 }) {
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col max-md:pb-[calc(var(--safe-bottom)+5rem)]">
       <div className="mb-3 flex shrink-0 items-center">
         <button type="button" onClick={onRetour} className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-5 w-5" />Liste
@@ -1835,7 +1841,9 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-6 pb-4 px-0.5">
+        {/* Le contenu s'efface en fondu au-dessus du pied « Suivant » au lieu
+            d'y être tranché net. */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-6 pb-8 px-0.5 [mask-image:linear-gradient(to_bottom,black_calc(100%_-_32px),transparent)]">
           {/* Étape 1 — photo */}
           <section className="space-y-3">
             <StepHeader n={1} label="Prendre une photo" />
@@ -1957,7 +1965,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
         {/* Le pas suivant, dans un pied fixe au-dessus de la barre du bas : en
             bulle, il recouvrait la fiche (le Guide IA passait dessous). Il dit
             où il mène, puisqu'il n'y ramène plus à la liste. */}
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t pt-3">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t pt-3 max-md:pb-[calc(var(--safe-bottom)+5.25rem)] md:pb-3">
           <p className="min-w-0 truncate text-xs text-muted-foreground">
             {suivant ? <>Ensuite : <span className="font-medium text-foreground">{suivant.libelle}</span></> : 'Dernier élément de la liste'}
           </p>

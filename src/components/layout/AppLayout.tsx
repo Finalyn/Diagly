@@ -158,8 +158,11 @@ export function AppLayout() {
                 // s'arrête au-dessus de celle du bas, barre d'accueil de l'iPhone
                 // comprise. L'éditeur, lui, ne défile pas d'un bloc.
                 ? editeurMobile
-                  // L'éditeur s'arrête au-dessus de la barre du dossier.
-                  ? 'min-h-0 overflow-hidden pb-[calc(var(--safe-bottom)+4.75rem)]'
+                  // L'éditeur descend jusqu'en bas de l'écran, sous la barre du
+                  // dossier : arrêté au-dessus, sa liste et sa fiche tombaient
+                  // net sur une bande vide. Ce sont elles qui gardent la marge
+                  // du bas (DiagnosticDetail).
+                  ? 'min-h-0 overflow-hidden'
                   : listeMobile
                     // La liste descend jusqu'en bas de l'écran, sous la barre en
                     // verre ; c'est elle qui garde la marge du bas (ProjectsList).
