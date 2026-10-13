@@ -17,6 +17,9 @@
  *                  n'est pas une durée : le ressort n'en a pas.
  */
 
+import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics'
+import { estAppNative } from './plateforme'
+
 /** Réglages tirés des valeurs qu'Apple utilise dans ses propres interfaces. */
 export const RESSORTS = {
   /** Déplacement, repositionnement : rien ne dépasse. */
@@ -181,7 +184,17 @@ export function suiviVitesse(fenetreMs = 100) {
  * terminée, une erreur. En mettre partout apprend à l'ignorer.
  */
 export function vibrer(motif: 'leger' | 'succes' | 'erreur' = 'leger') {
-  if (typeof navigator === 'undefined' || !navigator.vibrate) return
   if (mouvementReduit()) return
+  // Sur iPhone, navigator.vibrate n'existe pas : dans l'app, le retour passe
+  // par le moteur haptique d'iOS. Sans cela, aucun de ces retours ne se
+  // ressentait sur l'appareil où ils comptent le plus.
+  if (estAppNative) {
+    const retour = motif === 'succes' ? Haptics.notification({ type: NotificationType.Success })
+      : motif === 'erreur' ? Haptics.notification({ type: NotificationType.Error })
+        : Haptics.impact({ style: ImpactStyle.Light })
+    void retour.catch(() => undefined)
+    return
+  }
+  if (typeof navigator === 'undefined' || !navigator.vibrate) return
   navigator.vibrate(motif === 'succes' ? [12, 40, 18] : motif === 'erreur' ? [30, 60, 30] : 10)
 }
