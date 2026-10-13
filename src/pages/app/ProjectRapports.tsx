@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useState, type CSSProperties } from 'react'
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type TouchEvent } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle, BookOpen, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf } from 'lucide-react'
+import { Loader2, AlertCircle, BookOpen, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf, Minus, Plus } from 'lucide-react'
 import { Button, Card, CardContent } from '@/components/ui'
 import { ExportDialog } from '@/components/ExportDialog'
 import { cn } from '@/lib/utils'
@@ -40,6 +40,29 @@ const KINDS_RAPPORTS = [['complet', 'Complet', BookOpen], ['rapport', 'Rapport',
 /** Les quatre types qui partagent le corps du rapport standard. */
 const STANDARDS: ReportKind[] = ['sommaire', 'detaille', 'documente', 'rapport']
 
+/**
+ * Imprimer, exporter et partager passent dans la colonne de gauche sur iPad
+ * couché et sur les écrans de moins de 1280 px : le document récupère la place
+ * de la colonne de droite. Sous 1024 px, les colonnes sont empilées et la
+ * question ne se pose pas.
+ */
+const ACTIONS_A_GAUCHE = 'screen and (min-width: 1024px) and (pointer: coarse), screen and (min-width: 1024px) and (max-width: 1279px)'
+
+function useActionsAGauche() {
+  return useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia(ACTIONS_A_GAUCHE)
+      m.addEventListener('change', cb)
+      return () => m.removeEventListener('change', cb)
+    },
+    () => window.matchMedia(ACTIONS_A_GAUCHE).matches,
+    () => false,
+  )
+}
+
+const distanceDesDoigts = (t: TouchEvent['touches']) =>
+  Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+
 export function ProjectRapports() {
   const { id } = useParams<{ id: string }>()
   const { pathname } = useLocation()
@@ -61,15 +84,42 @@ export function ProjectRapports() {
   // couché (~420 px, entre les réglages et les actions), où la feuille
   // défilait en largeur ; sur téléphone, cela revient au même qu'avant.
   const [largeurDoc, setLargeurDoc] = useState<number | null>(null)
+  const colonneDoc = useRef<HTMLDivElement | null>(null)
   const mesurerDoc = useCallback((el: HTMLDivElement | null) => {
+    colonneDoc.current = el
     if (!el) return
     const o = new ResizeObserver(([e]) => setLargeurDoc(e.contentRect.width))
     o.observe(el)
     return () => o.disconnect()
   }, [])
-  const zoomFeuille = largeurDoc && largeurDoc < 800
-    ? ({ '--zoom-feuille': String(Math.max(0.3, largeurDoc / 800)) } as CSSProperties)
-    : undefined
+  // Le zoom : la feuille ajustée à la colonne, multipliée par la loupe choisie
+  // (boutons ou pincement à deux doigts). Au-delà de l'ajustement, la feuille
+  // déborde de sa colonne, qui défile alors dans les deux sens.
+  const [loupe, setLoupe] = useState(1)
+  const ajuste = largeurDoc ? Math.min(1, largeurDoc / 800) : 1
+  const zoomDe = (l: number) => Math.min(3, Math.max(0.3, ajuste * l))
+  const zoom = zoomDe(loupe)
+  const zoomFeuille = zoom !== 1 ? ({ '--zoom-feuille': String(zoom) } as CSSProperties) : undefined
+  const changerLoupe = (facteur: number) => setLoupe((l) => Math.min(4, Math.max(0.5, l * facteur)))
+  // Pendant le pincement, le zoom est posé directement sur la colonne : un
+  // rendu de React à chaque mouvement de doigt ferait saccader le document.
+  const pincement = useRef<{ distance: number; loupe: number; actuelle: number } | null>(null)
+  const debutPincement = (e: TouchEvent) => {
+    if (e.touches.length === 2) pincement.current = { distance: distanceDesDoigts(e.touches), loupe, actuelle: loupe }
+  }
+  const suitePincement = (e: TouchEvent) => {
+    const p = pincement.current
+    if (!p || e.touches.length !== 2) return
+    p.actuelle = Math.min(4, Math.max(0.5, p.loupe * distanceDesDoigts(e.touches) / p.distance))
+    colonneDoc.current?.style.setProperty('--zoom-feuille', String(zoomDe(p.actuelle)))
+  }
+  const finPincement = (e: TouchEvent) => {
+    const p = pincement.current
+    if (!p || e.touches.length >= 2) return
+    pincement.current = null
+    setLoupe(p.actuelle)
+  }
+  const actionsAGauche = useActionsAGauche()
   const [report, setReport] = useState<ReportKind>(mode === 'rapports' ? 'complet' : 'detaille')
   const [scenario, setScenario] = useState<ScenarioId>('energetique')
   const [exportOpen, setExportOpen] = useState(false)
@@ -185,6 +235,18 @@ export function ProjectRapports() {
   const currentVariant = variants.find(v => v.id === scenario) ?? variants[2]
   const classeEnergie = project.energyClassGlobal ?? project.energyClassEnvelope ?? null
 
+  const actions = (
+    <>
+      <Button onClick={() => { void imprimerLaPage(`${REPORT_TITLES[report]} - ${project.name}`).catch(() => undefined) }} className="w-full justify-start">
+        <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
+      </Button>
+      <Button variant="outline" onClick={() => setExportOpen(true)} className="w-full justify-start">
+        <Download className="mr-2 h-4 w-4" />Exporter
+      </Button>
+      <ShareControl projectId={id!} initialToken={project.shareToken ?? null} />
+    </>
+  )
+
   return (
     /* Une colonne à gauche, le document à droite.
        Les types de rapport tenaient dans une pilule horizontale au-dessus du
@@ -259,6 +321,8 @@ export function ProjectRapports() {
           </div>
         )}
 
+        {actionsAGauche && <div className="space-y-2 border-t pt-4">{actions}</div>}
+
         <PersonnaliserLeRapport
           projectId={id!}
           dossier={project.reportBranding}
@@ -284,9 +348,13 @@ export function ProjectRapports() {
           se ranger au bord de la fenêtre. */}
       {/* Les feuilles A4 sont réduites à la largeur de la colonne (zoom sur
           chaque feuille, voir index.css) plutôt que de défiler en largeur. */}
+      <div className={cn('js-print-column relative min-w-0 flex-1 max-lg:order-3 lg:h-full', !actionsAGauche && 'lg:max-w-[calc(210mm+1rem)]')}>
       <div
         ref={mesurerDoc}
-        className="js-print-column min-w-0 flex-1 space-y-4 overflow-x-auto print:overflow-visible max-lg:order-3 lg:h-full lg:max-w-[calc(210mm+1rem)] lg:overflow-auto lg:[scrollbar-width:thin]"
+        onTouchStart={debutPincement}
+        onTouchMove={suitePincement}
+        onTouchEnd={finPincement}
+        className="js-print-column h-full space-y-4 overflow-x-auto [touch-action:pan-x_pan-y] print:overflow-visible lg:overflow-auto lg:[scrollbar-width:thin]"
         style={zoomFeuille}
       >
       {/* Au-dessus de la feuille, et non dans les réglages : c'est en voyant
@@ -350,20 +418,31 @@ export function ProjectRapports() {
         />
       )}
       </div>
+      {/* Le zoom, posé sur le document : réduire pour voir la page entière,
+          agrandir pour lire un détail. Le pourcentage revient à l'ajustement. */}
+      <div className="absolute bottom-3 right-3 z-10 hidden items-center gap-0.5 rounded-full border border-black/[0.06] bg-white/90 p-1 shadow-md backdrop-blur print:hidden md:flex">
+        <button type="button" onClick={() => changerLoupe(1 / 1.25)} aria-label="Réduire" className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-muted">
+          <Minus className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={() => setLoupe(1)} aria-label="Ajuster à la largeur" className="min-w-14 rounded-full px-2 text-xs font-semibold tabular-nums hover:bg-muted">
+          {Math.round(zoom * 100)} %
+        </button>
+        <button type="button" onClick={() => changerLoupe(1.25)} aria-label="Agrandir" className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-muted">
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+      </div>
       </MarqueDuRapport>
 
       {/* Ce qui sort du document. À droite parce que c'est la fin du geste :
-          on choisit à gauche, on relit au milieu, on édite à droite. */}
+          on choisit à gauche, on relit au milieu, on édite à droite. Sur iPad
+          couché, ces actions passent à gauche (useActionsAGauche). */}
       {/* Téléphone : imprimer, exporter, partager montent avant le document. */}
-      <aside className="shrink-0 space-y-2 print:hidden max-lg:order-2 lg:h-full lg:w-52 lg:overflow-y-auto">
-        <Button onClick={() => { void imprimerLaPage(`${REPORT_TITLES[report]} - ${project.name}`).catch(() => undefined) }} className="w-full justify-start">
-          <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
-        </Button>
-        <Button variant="outline" onClick={() => setExportOpen(true)} className="w-full justify-start">
-          <Download className="mr-2 h-4 w-4" />Exporter
-        </Button>
-        <ShareControl projectId={id!} initialToken={project.shareToken ?? null} />
-      </aside>
+      {!actionsAGauche && (
+        <aside className="shrink-0 space-y-2 print:hidden max-lg:order-2 lg:h-full lg:w-52 lg:overflow-y-auto">
+          {actions}
+        </aside>
+      )}
     </div>
     </div>
   )
@@ -402,7 +481,9 @@ function ShareControl({ projectId, initialToken }: { projectId: string; initialT
       {open && token && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-2 w-80 z-50 rounded-xl border bg-background shadow-lg p-4 space-y-3">
+          {/* À la largeur de la colonne : plus large (w-80), elle débordait de
+              la colonne qui défile et s'y faisait couper. */}
+          <div className="absolute inset-x-0 mt-2 z-50 rounded-xl border bg-background shadow-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold">Partager au client</p>
               <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
