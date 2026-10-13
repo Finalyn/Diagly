@@ -454,6 +454,26 @@ export interface GuideAnalysis {
   confidence?: GuideConfidence
 }
 
+// ---- Assistant : questions à choix ----
+export interface OptionQuestionAssistant {
+  libelle: string
+  description: string
+  /** Marquée « (recommandé) » par le modèle ; le serveur la place alors en premier. */
+  recommande?: boolean
+}
+
+/**
+ * Une question à choix posée par l'assistant (outil `poser_question`).
+ * Le serveur l'a validée : 2 à 4 options aux libellés distincts, une étiquette
+ * de 12 caractères au plus.
+ */
+export interface QuestionAssistant {
+  question: string
+  etiquette: string
+  options: OptionQuestionAssistant[]
+  choixMultiple: boolean
+}
+
 export interface RecentDiagnosticItem {
   id: string
   cfcCode: string

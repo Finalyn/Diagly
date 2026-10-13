@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -11,7 +11,8 @@ import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import {
   lireConversations, ecrireConversations, nouvelleConversation, titreDepuis,
-  type Conversation, type MessageChat,
+  repondreDerniereQuestion, texteDeReponse, questionPourApi,
+  type Conversation, type MessageChat, type QuestionPosee, type ReponseQuestion,
 } from '@/lib/conversations'
 import { mouvementReduit } from '@/lib/motion'
 import { analyser, type Bloc, type Segment } from '@/lib/texte-riche'
@@ -130,30 +131,46 @@ export function AssistantPage() {
     })
   }
 
-  const envoyer = async (texte: string) => {
+  /**
+   * Envoie un message. `reponse` est donnée quand il vient d'une carte de
+   * question ; tapé dans le champ du bas, il répond aussi à la question restée
+   * ouverte, et la carte se ferme pareil (voir repondreDerniereQuestion).
+   */
+  const envoyer = async (texte: string, reponse?: ReponseQuestion) => {
     const contenu = texte.trim()
-    if ((!contenu && photos.length === 0) || enCours) return
+    // Une réponse touchée sur la carte part seule : le texte en cours de
+    // frappe et les photos du champ du bas attendent leur propre envoi.
+    const jointes = reponse ? [] : photos
+    if ((!contenu && jointes.length === 0) || enCours) return
     setErreur(null)
-    const message: MessageChat = { role: 'user', content: contenu || 'Que montre cette photo ?', images: photos.length ? photos : undefined }
+    const message: MessageChat = { role: 'user', content: contenu || 'Que montre cette photo ?', images: jointes.length ? jointes : undefined }
     const avecQuestion: Conversation = {
       ...courante,
       titre: courante.messages.length === 0 ? titreDepuis(message.content) : courante.titre,
       modifieeLe: Date.now(),
-      messages: [...courante.messages, message],
+      messages: [...repondreDerniereQuestion(courante.messages, message.content, reponse), message],
     }
     enregistrer(avecQuestion)
-    setSaisie('')
-    setPhotos([])
+    if (!reponse) {
+      setSaisie('')
+      setPhotos([])
+    }
     setEnCours(true)
     try {
       const r = await api.assistant.chat({
-        messages: avecQuestion.messages.map((m) => ({ role: m.role, content: m.content, images: m.images })),
+        messages: avecQuestion.messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+          images: m.images,
+          question: m.question ? questionPourApi(m.question) : undefined,
+        })),
         projectIds: avecQuestion.diagnostics,
+        questionsAChoix: true,
       })
       enregistrer({
         ...avecQuestion,
         modifieeLe: Date.now(),
-        messages: [...avecQuestion.messages, { role: 'assistant', content: r.reply }],
+        messages: [...avecQuestion.messages, { role: 'assistant', content: r.reply, ...(r.question ? { question: r.question } : {}) }],
       })
     } catch (e) {
       setErreur(e instanceof ApiError ? e.message : 'L’assistant est momentanément indisponible.')
@@ -273,7 +290,23 @@ export function AssistantPage() {
             <Accueil prenom={prenom ?? undefined} onChoisir={(s) => { setSaisie(s); saisieRef.current?.focus() }} />
           ) : (
             <div className="mx-auto max-w-3xl space-y-4">
-              {courante.messages.map((m, i) => <Bulle key={i} message={m} />)}
+              {courante.messages.map((m, i) => (
+                // La clé porte la conversation : sans elle, une carte à moitié
+                // remplie garderait ses cases cochées en passant à une autre
+                // conversation qui a une carte au même rang.
+                <div key={`${courante.id}-${i}`} className="space-y-2">
+                  {/* L'assistant peut n'avoir rien écrit avant sa question : pas de bulle vide. */}
+                  {(m.content.trim() || !m.question) && <Bulle message={m} />}
+                  {m.question && (
+                    <CarteQuestion
+                      question={m.question}
+                      // Seule la dernière question encore sans réponse se touche.
+                      active={i === courante.messages.length - 1 && !m.question.reponse && !enCours}
+                      onRepondre={(r) => void envoyer(texteDeReponse(r), r)}
+                    />
+                  )}
+                </div>
+              ))}
               {enCours && (
                 <div className="flex items-center gap-2 rounded-2xl border border-black/[0.06] bg-white px-4 py-3 text-sm text-muted-foreground shadow-sm">
                   <Loader2 className="h-4 w-4 animate-spin" />L’assistant réfléchit…
@@ -959,6 +992,173 @@ function Bulle({ message }: { message: MessageChat }) {
         {deMoi
           ? <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{message.content}</p>
           : <Reponse texte={message.content} />}
+      </div>
+    </div>
+  )
+}
+
+/** Le focus du clavier, en bleu Diagly et détaché du bord : visible sur une option déjà teintée. */
+const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0167EA] focus-visible:ring-offset-2'
+/**
+ * Les bordures bleues de la carte sont posées en style et non par classe : la
+ * règle `* { border-color }` d'index.css, hors des couches de Tailwind,
+ * l'emporte sur toute couleur de bordure donnée par une classe.
+ */
+const BORD_BLEU = { borderColor: '#0167EA' }
+
+/**
+ * Une question à choix posée par l'assistant.
+ *
+ * Quand une demande peut se comprendre de deux façons, taper la précision au
+ * pouce, sur le chantier, coûte plus que la question elle-même : les réponses
+ * probables sont donc proposées, et un toucher suffit. Le champ « Autre
+ * réponse » reste toujours là, parce que l'assistant ne devine pas tout.
+ *
+ * Une fois la question répondue, la carte reste dans le fil, figée, avec le
+ * choix en évidence : relue plus tard, la conversation dit encore ce qui a été
+ * décidé et pourquoi la suite a pris ce chemin.
+ */
+function CarteQuestion({ question, active, onRepondre }: {
+  question: QuestionPosee
+  /** La dernière question encore sans réponse : la seule qui se touche. */
+  active: boolean
+  onRepondre: (reponse: ReponseQuestion) => void
+}) {
+  const id = useId()
+  const [coches, setCoches] = useState<string[]>([])
+  const [autre, setAutre] = useState('')
+  const { reponse, choixMultiple } = question
+  const choisi = (libelle: string) => (reponse ? reponse.choix.includes(libelle) : coches.includes(libelle))
+  // Les choix partent dans l'ordre des options, pas dans celui des touchers.
+  const selection = question.options.map((o) => o.libelle).filter((l) => coches.includes(l))
+
+  const toucher = (libelle: string) => {
+    if (!active) return
+    if (!choixMultiple) { onRepondre({ choix: [libelle] }); return }
+    setCoches((c) => (c.includes(libelle) ? c.filter((x) => x !== libelle) : [...c, libelle]))
+  }
+
+  const soumettre = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!active) return
+    const texte = autre.trim()
+    // En choix multiple, ce qui est écrit s'ajoute aux cases cochées ; sinon,
+    // c'est une réponse à part entière.
+    if (choixMultiple) {
+      if (selection.length === 0 && !texte) return
+      onRepondre(texte ? { choix: selection, autre: texte } : { choix: selection })
+    } else if (texte) {
+      onRepondre({ choix: [], autre: texte })
+    }
+  }
+
+  return (
+    <div className="flex justify-start">
+      <div
+        role="group"
+        aria-labelledby={`${id}-q`}
+        className="w-full max-w-[90%] rounded-2xl border bg-white p-4 shadow-sm sm:max-w-[85%]"
+        // La question qui attend une réponse se détache à peine des autres.
+        style={active ? { borderColor: 'rgba(1, 103, 234, 0.3)' } : undefined}
+      >
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-[#0167EA]/10 px-2.5 py-1 text-[11px] font-semibold uppercase leading-none tracking-wider text-[#0167EA]">
+            {question.etiquette}
+          </span>
+          {active && choixMultiple && <span className="text-[12px] text-muted-foreground">Plusieurs choix possibles</span>}
+          {reponse && (
+            <span className="ml-auto flex items-center gap-1 text-[12px] text-muted-foreground">
+              <Check className="h-3.5 w-3.5" aria-hidden />Répondu
+            </span>
+          )}
+        </div>
+        <p id={`${id}-q`} className="mt-2.5 text-[15px] font-semibold leading-snug text-neutral-900">{question.question}</p>
+
+        <div className="mt-3 space-y-2">
+          {question.options.map((o, i) => {
+            const pris = choisi(o.libelle)
+            return (
+              <button
+                key={o.libelle}
+                type="button"
+                disabled={!active}
+                onClick={() => toucher(o.libelle)}
+                role={choixMultiple ? 'checkbox' : undefined}
+                aria-checked={choixMultiple ? pris : undefined}
+                aria-labelledby={`${id}-l${i}`}
+                aria-describedby={`${id}-d${i}`}
+                style={pris ? BORD_BLEU : undefined}
+                className={cn('flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors', FOCUS,
+                  pris ? 'bg-[#0167EA]/[0.06]' : 'bg-white',
+                  active && !pris && 'hover:bg-[#0167EA]/[0.04] active:bg-[#0167EA]/[0.08]',
+                  !active && !pris && 'opacity-60')}
+              >
+                {choixMultiple && (
+                  <span
+                    aria-hidden
+                    style={pris ? BORD_BLEU : { borderColor: '#d4d4d4' }}
+                    className={cn('mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border',
+                      pris ? 'bg-[#0167EA] text-white' : 'bg-white')}
+                  >
+                    {pris && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                  </span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span id={`${id}-l${i}`} className="block text-[15px] font-medium leading-snug text-neutral-900">
+                    {o.libelle}
+                    {o.recommande && <span className="ml-1.5 text-[12px] font-normal text-[#0167EA]/80">(recommandé)</span>}
+                    {!active && pris && <span className="sr-only"> (votre choix)</span>}
+                  </span>
+                  <span id={`${id}-d${i}`} className="mt-0.5 block text-[13px] leading-snug text-neutral-500">{o.description}</span>
+                </span>
+                {!choixMultiple && pris && <Check className="mt-0.5 h-5 w-5 shrink-0 text-[#0167EA]" aria-hidden />}
+              </button>
+            )
+          })}
+        </div>
+
+        {reponse?.autre && (
+          <p style={BORD_BLEU} className="mt-2 rounded-xl border bg-[#0167EA]/[0.06] px-3.5 py-2.5 text-[14px] leading-snug text-neutral-800">
+            <span className="font-medium text-[#0167EA]">Autre réponse : </span>{reponse.autre}
+          </p>
+        )}
+
+        {active && (
+          <form onSubmit={soumettre} className="mt-3">
+            {/* 16 px : en dessous, Safari zoome sur le champ dès qu'on y tape. */}
+            <div className="flex items-center gap-1 rounded-xl border bg-neutral-50 pl-3.5 pr-1 transition-colors focus-within:bg-white focus-within:ring-2 focus-within:ring-[#0167EA]">
+              <input
+                value={autre}
+                onChange={(e) => setAutre(e.target.value)}
+                placeholder="Autre réponse…"
+                aria-label={choixMultiple ? 'Autre réponse, ajoutée aux choix cochés' : 'Autre réponse'}
+                enterKeyHint="send"
+                maxLength={2000}
+                className="h-11 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-neutral-400"
+              />
+              {!choixMultiple && (
+                <button
+                  type="submit"
+                  disabled={!autre.trim()}
+                  aria-label="Envoyer cette réponse"
+                  title="Envoyer cette réponse"
+                  className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0167EA] text-white transition-colors hover:bg-[#0154c4] disabled:opacity-30', FOCUS)}
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {choixMultiple && (
+              <button
+                type="submit"
+                disabled={selection.length === 0 && !autre.trim()}
+                className={cn('mt-2 h-11 w-full rounded-xl bg-[#0167EA] text-[15px] font-semibold text-white transition-colors hover:bg-[#0154c4] disabled:opacity-40', FOCUS)}
+              >
+                Valider{selection.length > 0 ? ` (${selection.length})` : ''}
+              </button>
+            )}
+          </form>
+        )}
       </div>
     </div>
   )

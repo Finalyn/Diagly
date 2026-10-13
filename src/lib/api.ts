@@ -211,6 +211,9 @@ export const api = {
     // secret que l'app a gardé (PKCE). Rend la session, ou l'étape du code 2FA.
     echangeApp: (body: { code: string; verifier: string }) =>
       request<AuthResponse | EtapeDoubleAuth>('/api/auth/app/echange', { method: 'POST', body, withAuth: false }),
+    // Les connexions que le site peut proposer (Apple, Google), selon la configuration du serveur.
+    fournisseurs: () =>
+      request<{ google: boolean; apple: boolean }>('/api/auth/fournisseurs', { withAuth: false }),
     // Suppression du compte par son titulaire (exigée par Apple, et due au titre de la nLPD).
     supprimerCompte: () =>
       request<void>('/api/auth/compte/supprimer', { method: 'POST', body: { confirmation: 'SUPPRIMER' } }),
@@ -365,12 +368,26 @@ export const api = {
 
   assistant: {
     chat: (body: {
-      messages: { role: 'user' | 'assistant'; content: string; images?: string[] }[]
+      messages: {
+        role: 'user' | 'assistant'
+        /** Vide seulement pour un tour de l'assistant réduit à sa question à choix. */
+        content: string
+        images?: string[]
+        /** La question posée à ce tour : le serveur la rappelle au modèle avec la réponse qui suit. */
+        question?: import('./api-types').QuestionAssistant
+      }[]
       projectId?: string
       /** Diagnostics rattachés : le premier est lu en détail, les suivants en résumé. */
       projectIds?: string[]
+      /** Ce client sait afficher les questions à choix : sans ce drapeau, l'assistant n'en pose pas. */
+      questionsAChoix?: boolean
     }) =>
-      request<{ reply: string; configured: boolean }>('/api/assistant/chat', { method: 'POST', body }),
+      request<{
+        /** Le texte de la réponse. Vide quand l'assistant n'a fait que poser sa question. */
+        reply: string
+        configured: boolean
+        question?: import('./api-types').QuestionAssistant
+      }>('/api/assistant/chat', { method: 'POST', body }),
     vision: (body: { images: string[]; cfcCode?: string; cfcLabel?: string; projectId?: string }) =>
       request<{ configured: boolean; analysis: import('./api-types').GuideAnalysis | null }>('/api/assistant/vision', { method: 'POST', body }),
     // Répondre à l'analyse : conversation de suivi (photos + analyse + contexte) → réponse texte.

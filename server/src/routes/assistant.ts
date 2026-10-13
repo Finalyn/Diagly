@@ -10,7 +10,17 @@ import { logger } from "../lib/logger.js";
 import { badRequest } from "../lib/http-error.js";
 import { ownerScopeFor } from "../lib/org-context.js";
 import { buildProjectContext, buildProjectBrief, buildPortfolioBrief } from "../lib/ai-context.js";
+import { sansTiretCadratin } from "../lib/sans-tiret.js";
 import { normaliserAnalysePhoto } from "../lib/analyse-photo.js";
+import {
+  CONSIGNE_QUESTIONS,
+  OUTIL_POSER_QUESTION,
+  extraireQuestion,
+  questionHistorique,
+  texteAssistantPourApi,
+  texteUtilisateurPourApi,
+  type BlocReponse,
+} from "../lib/question-assistant.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -19,13 +29,27 @@ router.use(aiLimiter); // quota par utilisateur : protege la facture Anthropic
 const chatSchema = z.object({
   messages: z
     .array(
-      z.object({
-        role: z.enum(["user", "assistant"]),
-        content: z.string().min(1).max(8000),
-        // Photos jointes au message, en data URL base64. Bornees: chaque image
-        // coute cher en jetons, et la facture est au prorata.
-        images: z.array(z.string().max(8_000_000)).max(4).optional(),
-      }),
+      z
+        .object({
+          role: z.enum(["user", "assistant"]),
+          // Vide seulement pour un tour de l'assistant reduit a sa question a
+          // choix: le modele peut appeler l'outil sans rien ecrire avant.
+          content: z.string().max(8000),
+          // Photos jointes au message, en data URL base64. Bornees: chaque image
+          // coute cher en jetons, et la facture est au prorata.
+          images: z.array(z.string().max(8_000_000)).max(4).optional(),
+          // La question a choix posee a ce tour, renvoyee par le client avec
+          // l'historique. Mal formee, elle est ignoree plutot que de faire
+          // echouer toute la conversation.
+          question: questionHistorique.optional().catch(undefined),
+        })
+        // Un tour de l'assistant peut arriver vide, sa question ecartee a la
+        // relecture: texteAssistantPourApi le remplit, et la conversation
+        // continue plutot que d'echouer en entier. Un message vide de
+        // l'utilisateur, lui, n'a pas de sens.
+        .refine((m) => m.role === "assistant" || m.content.trim().length > 0, {
+          message: "Message vide.",
+        }),
     )
     .min(1)
     .max(30),
@@ -34,6 +58,11 @@ const chatSchema = z.object({
   // detaille, les suivants un resume: trois dossiers complets depasseraient
   // la fenetre du modele.
   projectIds: z.array(z.string()).max(5).optional(),
+  // Le client sait afficher les questions a choix. Sans ce drapeau, l'outil
+  // n'est pas propose au modele: l'app iPhone embarque son front, et une
+  // version ancienne, qui ignore le champ « question » de la reponse, perdrait
+  // la question et ne garderait que la phrase qui l'introduit.
+  questionsAChoix: z.boolean().optional(),
 });
 
 /** Transforme une data URL en bloc image pour l'API Anthropic. */
@@ -42,8 +71,17 @@ function blocImage(dataUrl: string) {
   return m ? { type: "image" as const, source: { type: "base64" as const, media_type: m[1], data: m[2] } } : null;
 }
 
-const SYSTEM = `Tu es l'assistant de Diagly, logiciel suisse de diagnostic de batiment et de planification de renovation (directions de travaux, regies, architectes).
-Reponds COURT, clair et direct: droit au but, 1 a 3 phrases en general. Pas d'introduction ni de conclusion superflue, pas de blabla. Une liste seulement si c'est vraiment plus clair. Si la question est vague, pose une question breve plutot que de deviner.
+/**
+ * Le prompt systeme. La consigne sur les demandes vagues change quand le client
+ * sait afficher les questions a choix: « pose une question breve » poussait le
+ * modele a ecrire sa question en texte, en plus de la carte.
+ */
+const systeme = (questionsAChoix: boolean) => `Tu es l'assistant de Diagly, logiciel suisse de diagnostic de batiment et de planification de renovation (directions de travaux, regies, architectes).
+Reponds COURT, clair et direct: droit au but, 1 a 3 phrases en general. Pas d'introduction ni de conclusion superflue, pas de blabla. Une liste seulement si c'est vraiment plus clair. ${
+  questionsAChoix
+    ? "Si la demande est vague, pose UNE question avec l'outil poser_question plutot que de deviner."
+    : "Si la question est vague, pose une question breve plutot que de deviner."
+}
 Domaine: interpretation de diagnostic, codes CFC, estimation de couts, priorisation des travaux (I = urgent/securite, II = moyen terme, III = confort), redaction de rapport. Contexte suisse: CHF au format 1'234'567, TVA 8.1%, normes SIA. Estimations indicatives, a verifier sur place. N'utilise jamais le tiret cadratin.`;
 
 router.post("/chat", validateBody(chatSchema), async (req, res) => {
@@ -56,10 +94,10 @@ router.post("/chat", validateBody(chatSchema), async (req, res) => {
     return;
   }
 
-  const { messages, projectId, projectIds } = req.body as z.infer<typeof chatSchema>;
+  const { messages, projectId, projectIds, questionsAChoix } = req.body as z.infer<typeof chatSchema>;
 
   const scope = await ownerScopeFor(req.auth!.sub);
-  let system = SYSTEM;
+  let system = questionsAChoix ? `${systeme(true)}\n\n${CONSIGNE_QUESTIONS}` : systeme(false);
 
   // Les dossiers rattaches a la conversation: le premier en detail, les
   // autres en resume. Trois contextes complets depasseraient la fenetre.
@@ -87,16 +125,31 @@ router.post("/chat", validateBody(chatSchema), async (req, res) => {
       },
       body: JSON.stringify({
         model: env.ANTHROPIC_MODEL,
-        max_tokens: 1000,
+        // Un peu de marge pour l'appel d'outil: une question tronquee par la
+        // limite serait rejetee a la validation, et la carte perdue.
+        max_tokens: 1200,
         system,
         // Une photo jointe devient un bloc image place avant le texte: le
-        // modele lit mieux l'image quand la question la suit.
-        messages: messages.map((m) => {
+        // modele lit mieux l'image quand la question la suit. Les questions a
+        // choix des tours precedents repartent en texte (voir
+        // question-assistant.ts, « le tour suivant »).
+        messages: messages.map((m, i) => {
+          const precedent = i > 0 ? messages[i - 1] : undefined;
+          const texte =
+            m.role === "assistant"
+              ? texteAssistantPourApi(m.content, m.question)
+              : texteUtilisateurPourApi(m.content, precedent?.role === "assistant" ? precedent.question : undefined);
           const blocs = (m.images ?? []).map(blocImage).filter((b): b is NonNullable<typeof b> => b !== null);
           return blocs.length > 0
-            ? { role: m.role, content: [...blocs, { type: "text" as const, text: m.content }] }
-            : { role: m.role, content: m.content };
+            ? { role: m.role, content: [...blocs, { type: "text" as const, text: texte }] }
+            : { role: m.role, content: texte };
         }),
+        // Le modele reste libre (auto): la plupart des tours n'appellent pas
+        // de question, et il ne doit en poser que si elle sert. Les appels
+        // paralleles sont coupes: une question a la fois.
+        ...(questionsAChoix
+          ? { tools: [OUTIL_POSER_QUESTION], tool_choice: { type: "auto", disable_parallel_tool_use: true } }
+          : {}),
       }),
     });
   } catch {
@@ -109,14 +162,37 @@ router.post("/chat", validateBody(chatSchema), async (req, res) => {
     throw badRequest("Assistant momentanement indisponible.");
   }
 
-  const data = (await r.json()) as { content?: { type: string; text?: string }[] };
-  const reply =
-    (data.content ?? [])
-      .filter((c) => c.type === "text")
-      .map((c) => c.text ?? "")
-      .join("\n")
-      .trim() || "(reponse vide)";
+  const data = (await r.json()) as { content?: BlocReponse[] };
+  const contenu = data.content ?? [];
+  const texte = contenu
+    .filter((c) => c.type === "text")
+    .map((c) => c.text ?? "")
+    .join("\n")
+    .trim();
 
+  // Quand le modele appelle poser_question, sa reponse s'arrete la (stop_reason
+  // « tool_use »). Personne n'execute l'outil: la question part au client, qui
+  // l'affiche en carte, et c'est la reponse de l'utilisateur, au tour suivant,
+  // qui en tient lieu. Le champ « question » s'ajoute a la reponse habituelle:
+  // un client qui ne le connait pas ne le lit pas.
+  const question = questionsAChoix ? extraireQuestion(contenu) : null;
+  if (question) {
+    // Le texte rédigé par le modèle part sans tiret cadratin (sans-tiret.ts).
+    const propre = {
+      ...question,
+      question: sansTiretCadratin(question.question),
+      options: question.options.map((o) => ({ ...o, libelle: sansTiretCadratin(o.libelle), description: sansTiretCadratin(o.description) })),
+    };
+    res.json({ reply: sansTiretCadratin(texte), question: propre, configured: true });
+    return;
+  }
+
+  // Un appel dont l'entree n'a pas passe la validation est ignore, le texte
+  // garde. S'il n'y avait que lui, la precision se demande en clair plutot
+  // que par une bulle vide.
+  const appelRate = questionsAChoix ? contenu.find((c) => c.type === "tool_use") : undefined;
+  if (appelRate) logger.warn({ input: JSON.stringify(appelRate.input ?? null).slice(0, 500) }, "question assistant invalide");
+  const reply = sansTiretCadratin(texte) || (appelRate ? "Pouvez-vous préciser votre demande ?" : "(réponse vide)");
   res.json({ reply, configured: true });
 });
 
@@ -325,8 +401,8 @@ router.post("/analysis-chat", validateBody(analysisChatSchema), async (req, res)
       .filter((c) => c.type === "text")
       .map((c) => c.text ?? "")
       .join("\n")
-      .trim() || "(reponse vide)";
-  res.json({ configured: true, reply });
+      .trim();
+  res.json({ configured: true, reply: sansTiretCadratin(reply) || "(réponse vide)" });
 });
 
 // ---------- Import d'un certificat énergétique (PDF) : lecture, pas émission ----------
