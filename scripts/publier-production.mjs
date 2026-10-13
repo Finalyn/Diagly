@@ -17,7 +17,8 @@
  *   - l'import de la base CFC assemblé en un fichier (prisma/base-cfc/importer.mjs).
  *
  * Ensuite, sur le serveur :
- *   cd ~/sites/diagly.ch && git fetch origin && git reset --hard origin/main && bash scripts/deploy.sh
+ *   cd ~/sites/diagly.ch && git fetch origin && git reset --hard origin/main
+ *   puis « Build de l'application » et « Redémarrer » dans le Manager Infomaniak.
  *
  * Seul du code commité part : le script refuse un dépôt source modifié.
  */
@@ -108,4 +109,10 @@ if (!POUSSER) {
 execSync('git commit -q -F -', { cwd: CIBLE, input: message })
 sh('git push -q origin main', CIBLE, true)
 dire(`Poussé : ${sh('git log -1 --pretty="%h %s"', CIBLE)}`)
-console.log('\nSur le serveur :\n  cd ~/sites/diagly.ch && git fetch origin && git reset --hard origin/main && bash scripts/deploy.sh')
+console.log([
+  '',
+  'Sur le serveur (voir DEPLOIEMENT.md) :',
+  '  cd ~/sites/diagly.ch && git fetch origin && git reset --hard origin/main',
+  "puis, dans le Manager Infomaniak : « Build de l'application », puis « Redémarrer ».",
+  "Un changement du front seul n'a besoin que de la ligne git.",
+].join('\n'))

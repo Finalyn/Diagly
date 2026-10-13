@@ -12,7 +12,7 @@ import { useSyncExternalStore } from 'react'
 // une notion d'écran ; sur papier elle n'a pas de sens.
 const QUERY = 'screen and (max-width: 767px)'
 
-/** Vrai sur écran mobile/tablette (largeur < lg). Réagit au redimensionnement. */
+/** Vrai sur téléphone (largeur < 768 px). Réagit au redimensionnement. */
 export function useIsMobile() {
   return useSyncExternalStore(
     (cb) => {

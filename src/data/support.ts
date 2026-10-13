@@ -38,7 +38,7 @@ export const FAQ: FaqCategory[] = [
       { q: "Puis-je personnaliser les prix et le catalogue d'éléments ?", a: "Oui, dans Base de données, avec un rôle Administrateur ou Propriétaire : prix unitaires par état, unités, travaux, et vos propres articles. Chaque modification d'un article garde son historique." },
       { q: 'Comment organiser la visite avec la gérance ?', a: "Dans l'outil Visite du dossier : enregistrez les interlocuteurs, fixez le rendez-vous (il entre dans votre calendrier) et envoyez les mails pré-remplis de chaque étape, de la demande de visite aux remerciements. Tout ce qui part est gardé dans l'historique." },
       { q: "Comment ajouter des photos et des observations ?", a: "Dans l'éditeur d'un élément, prenez ou importez des photos et saisissez une observation libre. Elles apparaissent dans le rapport documenté et le reportage photo." },
-      { q: "L'année d'intervention est-elle modifiable ?", a: "Oui. Par défaut elle est déduite de la priorité (P1 = année de la visite, P2 = +3 ans, P3 = +7 ans), mais vous pouvez la fixer manuellement par élément." },
+      { q: "L'année d'intervention est-elle modifiable ?", a: "Oui. Par défaut elle est déduite de la priorité (P1 = année de la visite, P2 = +5 ans, P3 = +10 ans), mais vous pouvez la fixer manuellement par élément." },
     ],
   },
   {

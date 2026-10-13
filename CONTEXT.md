@@ -1,127 +1,92 @@
-# Diagly - Etat du projet
+# Diagly : état du projet
 
 ## Qu'est-ce que c'est
-Maquette frontend (mockup) complete pour **Diagly**, une application SaaS de diagnostic de batiments pour les professionnels en Suisse (directeurs de travaux, regies immobilieres, architectes).
+Application de diagnostic de bâtiment et de planification de rénovation pour la Suisse romande (directeurs de travaux, régies immobilières, architectes, particuliers). En ligne sur https://diagly.ch, en bêta, avec une app iPhone et iPad distribuée par TestFlight.
 
-**Pas de backend, pas de base de donnees** - uniquement du frontend avec des donnees fictives (mock data).
+Ce n'est plus une maquette : front React, API Express + Prisma sur MySQL, données réelles en production chez Infomaniak.
 
-**App mobile** : maquette separee dans le repo Diagly-Mobile (https://github.com/Finalyn/Diagly-Mobile)
+- Installation locale et bêta : `README.md`
+- Produit : `Description.md` ; technique : `DIAGLY_SPEC.md`
+- API : `server/README.md` ; app native : `APP-IOS.md` ; mise en ligne : `DEPLOIEMENT.md`
 
 ## Stack
-- React 19 + TypeScript + Vite
-- Tailwind CSS v4 (avec @theme CSS variables)
-- React Router v7
-- Recharts (graphiques)
-- Lucide React (icones)
-- Zustand (store pour contexte projet actif)
+- Front : React 19 + TypeScript + Vite, Tailwind CSS v4 (variables `@theme`), React Router 7, TanStack Query (cache persisté), Zustand, Recharts, Leaflet, pdf.js, Lucide React
+- Serveur : Node + Express + Prisma + MySQL 8 (`server/`)
+- App iPhone/iPad : Capacitor 8 (`ios/`), compilée par GitHub Actions
+- IA : API d'Anthropic, appelée par le serveur
 
-## Theme
-- Couleur primaire : `#3b82f6` (bleu clair)
-- Badge "Pro" a cote du logo Diagly
-- UI sobre, professionnelle, sans emoji
-- Textes en francais (Suisse romande), montants en CHF
-- **Responsive** : mobile-first, sidebar drawer sur mobile, cards au lieu de tableaux sur petit ecran
+## Thème
+- Couleur principale presque noire (`#1d1d1f`), bleu Diagly (`#0167ea`) dans l'éditeur du relevé
+- Police Inter ; barres en verre sur téléphone
+- UI sobre, professionnelle, sans emoji ni tiret cadratin
+- Textes en français (Suisse romande), montants en CHF
 
 ## Terminologie
-- On dit **Diagnostic** (pas "projet")
-- On dit **Couts** (pas "metres")
-- On dit **Calendrier** (pas "planning")
-- Pas d'appels d'offres (AO) - Diagly = diagnostic uniquement
-- CECB uniquement dans le contexte d'un diagnostic (pas en global)
-- Statuts : Non planifie, Planifie, En cours, En revue, Termine, Archive
+- On dit **Diagnostic** (pas « projet »), **Relevé** pour l'éditeur
+- On dit **Coûts** (pas « métrés »)
+- On dit **Calendrier** (pas « planning »)
+- **Base de données** = la base CFC du bureau ; **Étiquette énergétique** = l'écran CECB
+- Pas d'appels d'offres (module annoncé, non construit)
+- Statuts : Non planifié, Planifié, En cours, En revue, Terminé, Archivé
 
-## Architecture de la sidebar
-La sidebar a 3 etats :
+## Architecture du menu de gauche
+Sur ordinateur et iPad (768 px et plus). Le bouton en haut à gauche le replie ou le rouvre ; le choix est retenu (`src/stores/menu-lateral.ts`).
 
-1. **Vue globale** (dashboard, etc.) : liste scrollable des diagnostics en haut + outils globaux en bas (Tableau de bord, Calendrier, CFC/Prix, Parc immobilier, Parametres)
-2. **Dans un diagnostic** : outils du diagnostic en haut (Resume, Diagnostic, Couts, Plans, Rapports, CECB, Calendrier) + spacer + outils globaux colles en bas
-3. **Version reduite** : icones seulement + bouton "+" pour nouveau diagnostic
+1. **Hors dossier** (`Sidebar.tsx`) : logo, bouton « Nouveau diagnostic », puis Accueil, Diagnostics, Base de données, Intégrations, Parc immobilier, Prestataires, Paramètres, Aide & support ; en bas, le compte et l'Assistant.
+2. **Dans un dossier** (`DossierSidebar.tsx`) : le Relevé en tête, puis Bâtiment (Fiche du bâtiment, Visite, Plans, Étiquette énergétique), Analyse (Coûts, Variantes), Documents (Photos, Rapports).
+3. **Éditeur du relevé sur iPad** : menu replié d'office, un panneau à la fois ; le rouvrir ne vaut que pour la page en cours.
 
-Cliquer sur "Diagly" en haut a gauche ramene au tableau de bord.
-Cliquer sur "Diagnostics" ramene a la liste.
-Cliquer sur un diagnostic dans la liste va directement sur sa page Diagnostic.
-Bouton "Nouveau diagnostic" en bas de la sidebar.
+Cliquer sur le logo ramène à l'accueil.
 
 ## Pages existantes
+La liste complète des routes est dans `DIAGLY_SPEC.md` (ROUTES WEB). En bref :
 
-### Marketing
-- `/` - Landing page (style SaaS moderne : hero + mockup dashboard + stats + features + how it works + pricing + temoignages + CTA + footer)
-- `/tarifs` - Page tarifs (Starter 49 CHF, Pro 129 CHF, Studio 290 CHF)
+### Public
+- `/` vitrine (`LandingV3`), `/share/:token` rapport partagé, `/preview` maquette de démonstration, `/bientot`
 
 ### Auth
-- `/login` - Connexion
-- `/register` - Inscription
-- `/register/payment` - Paiement Stripe
-- `/forgot-password` - Mot de passe oublie
-- `/reset-password/:token` - Reinitialisation
-- `/onboarding` - Setup initial 3 etapes
+- `/login`, `/register`, `/forgot-password`, `/reset-password/:token`, `/oauth-callback`, `/onboarding`
+- `/register/payment` : écran de paiement sans effet, lié de nulle part
 
-### App - Global
-- `/app/dashboard` - Tableau de bord avec selecteur de diagnostic (global ou par diagnostic), stats inline, couts par priorite, elements couteux cliquables, alertes priorite I cliquables, progression, activite recente
-- `/app/projects` - Liste des diagnostics (filtrable, tabs : Tous/En cours/Diagnostic/Rapports/Clotures)
-- `/app/projects/new` - Creation diagnostic 3 etapes
-- `/app/planning` - Calendrier global (3 vues : Mois, Semaine, Gantt) - evenements diagnostic/visite/rapport/travaux
-- `/app/cfc` - Editeur CFC avec prix modifiables (arborescence + tableau inline editable)
-- `/app/buildings` - Liste batiments (CRM)
-- `/app/buildings/new` - Creation batiment
-- `/app/buildings/:id` - Detail batiment (4 tabs)
-- `/app/buildings/:id/apartments/new` - Ajout appartement
-- `/app/buildings/:id/apartments/:aptId` - Detail appartement + timeline travaux
-- `/app/plans` - Liste tous les plans (grille/liste, filtrable)
-- `/app/plans/:id` - Visualisateur plans complet (outils mesure, annotations, calibration, niveaux/facades/coupes)
-- `/app/settings` - Parametres (6 tabs)
+### App
+- `/app/dashboard` Accueil : carte « Reprendre », accès rapides, activité récente
+- `/app/projects` Diagnostics, `/app/projects/new` création (de zéro, depuis un document ou un CECB)
+- Dans un dossier : relevé (`/diagnostic`), fiche, visite, plans, étiquette énergétique (`/cecb`), coûts, variantes, photos, rapports ; `/sommaire` sur téléphone
+- `/app/diagnostic/:id` le relevé ouvert seul
+- `/app/cfc` Base de données, `/app/assistant`, `/app/settings`, `/app/integrations`, `/app/prestataires`, `/app/support`
+- `/app/planning` calendrier global et `/app/projects/:id/calendrier` échéancier : sans entrée dans les menus
 
-### App - Dans un diagnostic
-- `/app/projects/:id` - Resume (surfaces calculees, progression, stats)
-- `/app/projects/:id/edit` - Edition diagnostic
-- `/app/projects/:id/diagnostic` - Page diagnostic (tableau elements CFC, cards sur mobile)
-- `/app/projects/:id/couts` - Couts et devis (CFC + totaux HT/honoraires/reserve/TVA)
-- `/app/projects/:id/plans` - Plans du diagnostic
-- `/app/projects/:id/rapports` - Rapports generes (PDF)
-- `/app/projects/:id/cecb` - CECB du diagnostic
-- `/app/projects/:id/calendrier` - Calendrier diagnostic avec Gantt detaille
-
-### Outils
-- `/app/diagnostic/:id` - Editeur diagnostic (arborescence CFC a gauche + panneau detail a droite)
-- `/app/diagnostic/:id/item/:itemId` - Detail d'un item diagnostic
-- `/app/tenders/:id` - Detail appel d'offres (legacy, peut etre retire)
-- `/app/reports/:id` - Apercu rapport PDF
+### Bientôt disponible
+- Parc immobilier (`/app/buildings` et suivantes), `/app/plans`, `/app/reports/:id`, `/app/tenders/:id`
 
 ## Navigation
-- Bouton retour (fleche) = `window.history.back()` partout (revient a la page precedente, pas toujours au resume)
-- Store Zustand `projectStore` garde le `activeProjectId` pour maintenir le contexte projet meme sur `/app/diagnostic/:id` ou `/app/plans/:id`
-- Changement de route = scroll automatique en haut
-- Notification (cloche) -> Parametres > Notifications
-- Avatar profil -> Parametres
+- Ouvrir un dossier mène au relevé
+- « Suivant » dans le relevé enchaîne les ouvrages ; devant un ouvrage pas encore relevé, il demande s'il est présent ou absent
+- Changement de route : la zone principale revient en haut
+- Cloche : les notifications (rappels de visite, priorités urgentes, résumé du lundi, rappels d'absence)
+- Visites guidées de l'interface qui se proposent d'elles-mêmes, une fois chacune (hors téléphone)
 
-## Mock data (src/data/mock.ts)
-- 15 diagnostics avec statuts varies (NON_PLANIFIE, PLANIFIE, EN_COURS, EN_REVUE, TERMINE, ARCHIVE)
-- 32 codes CFC avec prix CHF realistes
-- 2 diagnostics complets avec items
-- 2 batiments avec 12 et 8 appartements
-- Activites, tenders, budget chart, stats dashboard
-
-## Responsive
-- Sidebar : drawer overlay sur mobile (< lg), bouton hamburger dans la TopBar
-- TopBar : nom utilisateur cache sur mobile, recherche reduite a icone
-- Tableaux : remplaces par des cards sur mobile (< md)
-- Grilles : 1 colonne mobile, 2-4 colonnes desktop
-- Boutons : pleine largeur sur mobile
-- Stats dashboard : grille 2x2 sur mobile, ligne sur desktop
+## Téléphone, iPad, app
+- Téléphone (sous 768 px) : version de terrain. Seuls la liste, le dossier (sauf plans et variantes), le relevé, la base de données, l'assistant, les paramètres et l'aide sont ouverts ; le reste ramène à la liste. Barres en verre, barre du bas (native en Liquid Glass dans l'app iPhone sur iOS 26).
+- iPad : l'app complète ; l'éditeur du relevé passe à un panneau à la fois.
+- Hors ligne : les relevés passent par une file d'envoi sur l'appareil (`src/lib/hors-ligne/`), avec des identifiants créés sur l'appareil et une création idempotente côté serveur.
+- Détails : `APP-IOS.md`.
 
 ## Commandes
 ```bash
 npm install
-npm run dev      # http://localhost:5173
+npm run dev        # http://localhost:5173
 npm run build
+npm run build:app  # front de l'app iPhone/iPad
+npx vitest run
 ```
+Serveur : voir `README.md` et `server/README.md`.
 
-## Ce qui reste a faire
-- [ ] Connecter un vrai backend (Node.js + Express + Prisma + PostgreSQL)
-- [ ] Remplacer les mock data par de vrais appels API
-- [ ] Ajouter Konva.js pour le dessin sur plans
-- [ ] React Native mobile (Expo) - maquette web dispo dans Diagly-Mobile
-- [ ] Generation PDF reelle (pdf-lib)
-- [ ] Auth JWT + Stripe billing
-- [ ] Offline-first mobile
-- [ ] Tests (Playwright)
+## Ce qui reste à faire
+- [ ] Parc immobilier (bâtiments, appartements, historique des travaux)
+- [ ] Appels d'offres
+- [ ] Remettre le calendrier dans les menus ; l'échéancier du dossier n'enregistre rien
+- [ ] Hors ligne pour les autres écritures (fiche du bâtiment, visite)
+- [ ] App : caméra native, partage de fichiers, liens universels, fiche App Store et publication
+- [ ] Paiement en ligne
+- [ ] Tests de bout en bout

@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -18,6 +19,12 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, './src'),
       },
+    },
+    // Les tests portent sur les sources, jamais sur leurs copies compilées
+    // (server/dist, dist) : périmées dès qu'on modifie une source, elles
+    // faisaient tourner d'anciennes versions des tests à côté des nouvelles.
+    test: {
+      exclude: ['**/node_modules/**', '**/.git/**', '**/dist/**', 'ios/**'],
     },
   }
 })

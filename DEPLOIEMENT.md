@@ -28,14 +28,23 @@ versionné et aucune mise en ligne ne l'écrase.
 
 ### 1. Sur le poste : publier dans le dépôt de production
 
+Le dépôt de production doit être cloné à côté de celui-ci (`../diagly-deploy`,
+ou le chemin donné par la variable `DIAGLY_DEPLOY`), sur `main` et sans
+modification.
+
 ```bash
-node scripts/publier-production.mjs            # aperçu, ne change rien
+node scripts/publier-production.mjs            # aperçu : construit et montre ce qui changerait, ne commite rien
 node scripts/publier-production.mjs --pousser  # construit, recopie, commite, pousse
 ```
 
 Le script refuse un dépôt modifié : seul du code commité part. Il construit le
-front (build web), recopie `server/`, et dit si le schéma Prisma ou les
-dépendances changent. C'est ce qui décide de l'étape suivante.
+front (build web), recopie les fichiers suivis de `server/`, assemble l'import
+de la base CFC, et dit si le schéma Prisma ou les dépendances changent. C'est
+ce qui décide de l'étape suivante. L'aperçu remet le dépôt de production dans
+son état de départ.
+
+En fin de course, le script propose une ligne qui enchaîne avec
+`bash scripts/deploy.sh` : c'est la voie par la console, décrite plus bas.
 
 ### 2. Sur le serveur
 
@@ -56,8 +65,10 @@ Manager, page Node.js, **Build de l'application** (installation avec les
 dépendances de développement, `prisma generate`, compilation, `prisma db push`),
 puis **Redémarrer** une fois le build terminé.
 
-En console, `bash scripts/deploy.sh` fait le même travail, avec en plus une
-sauvegarde de la base avant de toucher au schéma.
+En console, `bash scripts/deploy.sh` fait le même travail (`npm ci`,
+`prisma generate`, compilation, `prisma db push`, redémarrage par pm2, puis
+attente de `/health`), avec en plus une sauvegarde de la base avant de toucher
+au schéma.
 
 Si le schéma a changé, vérifier ensuite que `prisma db push` a bien été
 appliqué :
@@ -70,6 +81,15 @@ Le 12 octobre, il ne l'avait pas été : le nouveau code lisait une colonne
 absente (`users.two_factor_method`) et toute connexion répondait « Internal
 server error », y compris pour un compte inexistant.
 
+Une modification de schéma à laquelle `prisma db push` répond par une question
+(une contrainte `UNIQUE` ajoutée, par exemple) fait échouer le build du
+Manager, qui ne peut pas y répondre : c'est pourquoi `users.apple_sub` n'a pas
+de contrainte d'unicité (commentaire dans `prisma/schema.prisma`).
+
+L'app iPhone/iPad parle à cette même production, avec des versions anciennes
+encore installées : une route ou un champ ne se retire pas tant qu'une
+version de l'app s'en sert (`APP-IOS.md`).
+
 ## Le piège de la colonne preferences
 
 `users.preferences` est un JSON `NOT NULL` avec `{}` pour défaut. Selon l'état de
@@ -79,6 +99,30 @@ connexion des comptes existants échoue. Après chaque `db push` :
 ```bash
 cd ~/sites/diagly.ch && echo "UPDATE users SET preferences='{}' WHERE preferences IS NULL OR CAST(preferences AS CHAR)='' OR JSON_VALID(preferences)=0;" | npx prisma db execute --stdin --schema=prisma/schema.prisma
 ```
+
+`deploy.sh` fait aussi cette réparation, mais seulement pour les lignes à
+`NULL` : après un build par le Manager, ou en cas de doute, lancer la commande
+ci-dessus, qui couvre aussi les valeurs vides ou invalides.
+
+## Le .env de production
+
+Il est lu par `src/lib/env.ts` ; le serveur refuse de démarrer si une variable
+obligatoire manque ou est trop courte, et le journal nomme laquelle. La liste
+complète, avec ce que fait chaque variable, est dans `README.md` du serveur
+(section « Variables d'environnement »). En production, au minimum :
+
+- `NODE_ENV=production`, `DATABASE_URL`, `JWT_ACCESS_SECRET` et
+  `JWT_REFRESH_SECRET` (32 caractères au moins) ;
+- `APP_URL=https://diagly.ch` : laissée à localhost, la connexion Google, le
+  lien de mot de passe oublié et les invitations pointent dans le vide (le
+  serveur le signale au démarrage) ;
+- `CORS_ORIGIN` : l'origine du site (`capacitor://localhost`, celle de l'app,
+  est autorisée en dur) ;
+- `STATIC_DIR` : le dossier du front construit (`public/`). Sans lui, le
+  serveur ne répond qu'à l'API et le site ne s'affiche pas.
+
+Les clés facultatives (IA, SMTP, Google, VAPID, Apple) désactivent proprement
+leur fonction quand elles manquent.
 
 ## La base CFC
 

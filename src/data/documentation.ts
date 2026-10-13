@@ -222,7 +222,7 @@ export const ARTICLES: Article[] = [
         id: 'annee',
         titre: 'L’année d’intervention',
         blocs: [
-          { type: 'texte', texte: 'L’année est déduite de la priorité : priorité I l’année de la visite, priorité II trois ans plus tard, priorité III sept ans plus tard. C’est elle qui construit le plan pluriannuel de travaux.' },
+          { type: 'texte', texte: 'L’année est déduite de la priorité : priorité I l’année de la visite, priorité II cinq ans plus tard, priorité III dix ans plus tard. C’est elle qui construit le plan pluriannuel de travaux.' },
           { type: 'astuce', texte: 'Fixez l’année à la main quand plusieurs ouvrages doivent être traités ensemble : regrouper une réfection de façade et un remplacement de fenêtres la même année évite de payer deux fois l’échafaudage.' },
         ],
       },

@@ -8,6 +8,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,19 +18,26 @@ const DATA_PATH = resolve(__dirname, "seed-data.json");
 const prisma = new PrismaClient();
 
 async function main() {
-  // Compte admin (idempotent) — permet de se connecter en production.
+  // Compte admin, créé une seule fois, sur une base vide. Son mot de passe ne
+  // figure plus dans le code (le dépôt est public) : il vient de
+  // SEED_ADMIN_PASSWORD, sinon il est tiré au hasard et affiché une seule fois
+  // dans la console du déploiement.
   if ((await prisma.user.count()) === 0) {
+    const fourni = process.env.SEED_ADMIN_PASSWORD;
+    const motDePasse = fourni && fourni.length >= 12 ? fourni : randomBytes(18).toString("base64url");
     await prisma.user.create({
       data: {
         email: "contact@finalyn.com",
-        passwordHash: await bcrypt.hash("Diagly2026!", 12),
+        passwordHash: await bcrypt.hash(motDePasse, 12),
         firstName: "Finalyn",
         lastName: "Admin",
         companyName: "Finalyn",
         role: "ADMIN",
       },
     });
-    console.log("Compte admin créé : contact@finalyn.com / Diagly2026!");
+    console.log(fourni
+      ? "Compte admin créé : contact@finalyn.com (mot de passe de SEED_ADMIN_PASSWORD)."
+      : `Compte admin créé : contact@finalyn.com, mot de passe provisoire ${motDePasse} (à changer à la première connexion).`);
   }
 
   const existing = await prisma.catalogItem.count();
