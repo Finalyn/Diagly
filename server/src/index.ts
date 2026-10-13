@@ -99,7 +99,7 @@ app.get("/health", async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ ok: true, db: "up" });
-  } catch (e) {
+  } catch {
     res.status(503).json({ ok: false, db: "down" });
   }
 });

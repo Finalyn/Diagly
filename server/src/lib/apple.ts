@@ -131,14 +131,48 @@ export function envoyerApns(jetonAppareil: string, n: NotificationApple): Promis
 
 const EMETTEUR = "https://appleid.apple.com";
 
-let clesPubliques: { cles: (JsonWebKey & { kid?: string })[]; le: number } | null = null;
+/**
+ * Délai maximal d'un appel à Apple. Sans lui, un Apple lent gardait la requête
+ * de connexion (ou de suppression du compte) ouverte aussi longtemps que le
+ * réseau le voulait.
+ */
+const DELAI_APPLE_MS = 10_000;
+const avecDelai = () => ({ signal: AbortSignal.timeout(DELAI_APPLE_MS) });
+
+type CleApple = JsonWebKey & { kid?: string };
+let clesPubliques: { cles: CleApple[]; le: number } | null = null;
+let derniereLecture = 0;
+let lectureEnCours: Promise<void> | null = null;
+
+/** Relit la liste des clés d'Apple ; les appels simultanés attendent la même lecture. */
+function lireClesApple(): Promise<void> {
+  if (lectureEnCours) return lectureEnCours;
+  derniereLecture = Date.now();
+  lectureEnCours = (async () => {
+    try {
+      const r = await fetch(`${EMETTEUR}/auth/keys`, avecDelai());
+      if (!r.ok) throw new Error(`clés publiques d'Apple indisponibles (${r.status})`);
+      clesPubliques = { cles: ((await r.json()) as { keys: CleApple[] }).keys, le: Date.now() };
+    } finally {
+      lectureEnCours = null;
+    }
+  })();
+  return lectureEnCours;
+}
+
 async function clePublique(kid: string): Promise<KeyObject> {
   const chercher = () => clesPubliques?.cles.find((k) => k.kid === kid);
-  // Apple fait tourner ses clés : une clé inconnue fait relire la liste.
-  if (!clesPubliques || Date.now() - clesPubliques.le > 3_600_000 || !chercher()) {
-    const r = await fetch(`${EMETTEUR}/auth/keys`);
-    if (!r.ok) throw new Error(`clés publiques d'Apple indisponibles (${r.status})`);
-    clesPubliques = { cles: ((await r.json()) as { keys: (JsonWebKey & { kid?: string })[] }).keys, le: Date.now() };
+  if (!clesPubliques) {
+    await lireClesApple();
+  } else {
+    // Apple fait tourner ses clés : une clé inconnue, ou une liste vieille d'une
+    // heure, fait relire la liste. Au plus une fois par minute : un jeton forgé
+    // avec un kid inventé ne doit pas faire de chaque connexion un appel à Apple.
+    const aRelire = !chercher() || Date.now() - clesPubliques.le > 3_600_000;
+    if (aRelire && (lectureEnCours || Date.now() - derniereLecture > 60_000)) {
+      // Apple injoignable : on garde la liste qu'on a.
+      await lireClesApple().catch((err) => logger.warn({ err }, "relecture des clés Apple impossible"));
+    }
   }
   const jwk = chercher();
   if (!jwk) throw new Error("clé de signature Apple inconnue");
@@ -196,6 +230,7 @@ export async function jetonDeRevocation(code: string): Promise<string | null> {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: BUNDLE_ID, client_secret: secretClient(), code, grant_type: "authorization_code" }),
+    ...avecDelai(),
   });
   if (!r.ok) {
     logger.warn({ statut: r.status }, "échange du code Apple refusé");
@@ -211,6 +246,7 @@ export async function revoquerApple(jetonRafraichissement: string): Promise<void
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: BUNDLE_ID, client_secret: secretClient(), token: jetonRafraichissement, token_type_hint: "refresh_token" }),
+    ...avecDelai(),
   });
   if (!r.ok) logger.warn({ statut: r.status }, "révocation Apple refusée");
 }

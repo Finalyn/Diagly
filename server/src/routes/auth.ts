@@ -9,7 +9,7 @@ import {
   signRefreshToken,
   verifyRefreshToken,
 } from "../lib/jwt.js";
-import { badRequest, conflict, unauthorized } from "../lib/http-error.js";
+import { badRequest, conflict, tooManyRequests, unauthorized } from "../lib/http-error.js";
 import { validateBody } from "../middlewares/validate.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { loginLimiter, passwordResetLimiter, registerLimiter, twoFaLimiter } from "../middlewares/rate-limit.js";
@@ -20,6 +20,9 @@ import jwt from "jsonwebtoken";
 import { authenticator } from "otplib";
 import QRCode from "qrcode";
 import { jetonDeRevocation, revoquerApple, verifierJetonApple } from "../lib/apple.js";
+import { CodesDeConnexion, challengeValide } from "../lib/pkce.js";
+import { rotationTolerable } from "../lib/rotation-session.js";
+import { EssaisDeCode, type RefusEssai } from "../lib/essais-code.js";
 import { UPLOAD_DIR } from "./plans.js";
 import { unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -53,6 +56,8 @@ const refreshSchema = z.object({
 function publicUser<T extends { passwordHash: string; twoFactorSecret?: string | null; appleRefreshToken?: string | null }>(u: T) {
   // On ne renvoie jamais le hash du mot de passe ni le secret 2FA au client, ni
   // le jeton Apple, qui sert à révoquer l'accès à la suppression du compte.
+  // Les champs retirés sont nommés pour être écartés, pas pour servir.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { passwordHash: _p, twoFactorSecret: _s, appleRefreshToken: _a, ...rest } = u;
   return rest;
 }
@@ -67,23 +72,24 @@ function ttlToMs(ttl: string): number {
   return n * mult;
 }
 
-async function issueTokens(user: { id: string; email: string; role: string }) {
+/** Une paire de jetons, et la ligne à enregistrer pour le jeton de rafraîchissement. */
+function preparerJetons(user: { id: string; email: string; role: string }) {
   const accessToken = signAccessToken({ sub: user.id, email: user.email, role: user.role });
 
   const jti = crypto.randomUUID();
   const refreshToken = signRefreshToken({ sub: user.id, jti });
   const expiresAt = new Date(Date.now() + ttlToMs(env.JWT_REFRESH_TTL));
 
-  await prisma.refreshToken.create({
-    data: {
-      id: jti,
-      userId: user.id,
-      tokenHash: sha256(refreshToken),
-      expiresAt,
-    },
-  });
+  return {
+    jetons: { accessToken, refreshToken },
+    ligne: { id: jti, userId: user.id, tokenHash: sha256(refreshToken), expiresAt },
+  };
+}
 
-  return { accessToken, refreshToken };
+async function issueTokens(user: { id: string; email: string; role: string }) {
+  const { jetons, ligne } = preparerJetons(user);
+  await prisma.refreshToken.create({ data: ligne });
+  return jetons;
 }
 
 router.post("/register", registerLimiter, validateBody(registerSchema), async (req, res) => {
@@ -143,18 +149,39 @@ router.post("/refresh", validateBody(refreshSchema), async (req, res) => {
 
   const stored = await prisma.refreshToken.findUnique({ where: { id: payload.jti } });
   if (!stored) throw unauthorized("Refresh token not recognized");
-  if (stored.revokedAt) throw unauthorized("Refresh token revoked");
-  if (stored.expiresAt < new Date()) throw unauthorized("Refresh token expired");
   if (stored.tokenHash !== sha256(refreshToken)) throw unauthorized("Refresh token mismatch");
+  if (stored.expiresAt < new Date()) throw unauthorized("Refresh token expired");
 
   const user = await prisma.user.findUnique({ where: { id: payload.sub } });
   if (!user) throw unauthorized("User no longer exists");
 
-  // Rotation : on révoque l'ancien et on émet une nouvelle paire.
-  await prisma.refreshToken.update({
-    where: { id: stored.id },
-    data: { revokedAt: new Date() },
-  });
+  // Rotation : l'ancien jeton est révoqué en désignant celui qui le remplace,
+  // dans la même transaction. La condition sur revokedAt fait qu'une seule de
+  // deux requêtes simultanées (deux onglets) le fait tourner ; l'autre passe
+  // par la tolérance ci-dessous.
+  if (!stored.revokedAt) {
+    const nouveau = preparerJetons(user);
+    const tourne = await prisma.$transaction(async (tx) => {
+      const r = await tx.refreshToken.updateMany({
+        where: { id: stored.id, revokedAt: null },
+        data: { revokedAt: new Date(), replacedById: nouveau.ligne.id },
+      });
+      if (r.count === 0) return false;
+      await tx.refreshToken.create({ data: nouveau.ligne });
+      return true;
+    });
+    if (tourne) return res.json({ user: publicUser(user), ...nouveau.jetons });
+  }
+
+  // Jeton déjà remplacé. Si la rotation date de moins d'une minute et que la
+  // session vit encore, la réponse s'est sans doute perdue (réseau du terrain) :
+  // on émet une nouvelle paire plutôt que de couper la session. Au-delà, ou
+  // après une déconnexion ou un changement de mot de passe, refus comme avant.
+  const actuel = stored.revokedAt ? stored : await prisma.refreshToken.findUnique({ where: { id: stored.id } });
+  const charger = (id: string) =>
+    prisma.refreshToken.findUnique({ where: { id }, select: { revokedAt: true, replacedById: true, expiresAt: true } });
+  if (!actuel || !(await rotationTolerable(actuel, charger))) throw unauthorized("Refresh token revoked");
+  logger.info({ userId: user.id }, "jeton de rafraîchissement tout juste remplacé, présenté à nouveau : toléré");
   const tokens = await issueTokens(user);
   res.json({ user: publicUser(user), ...tokens });
 });
@@ -163,10 +190,21 @@ router.post("/logout", validateBody(refreshSchema), async (req, res) => {
   const { refreshToken } = req.body as z.infer<typeof refreshSchema>;
   try {
     const payload = verifyRefreshToken(refreshToken);
-    await prisma.refreshToken.updateMany({
-      where: { id: payload.jti, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    // Le jeton présenté a pu être remplacé sans que l'appareil reçoive le
+    // nouveau (réponse de rotation perdue) : la session continue alors sur ses
+    // remplaçants, révoqués eux aussi. Sans remplaçant noté, aucun ne revit
+    // pendant la minute de tolérance.
+    const maintenant = new Date();
+    let id: string | null = payload.jti;
+    for (let i = 0; i < 5 && id; i++) {
+      const jeton: { revokedAt: Date | null; replacedById: string | null } | null = await prisma.refreshToken.findUnique({
+        where: { id },
+        select: { revokedAt: true, replacedById: true },
+      });
+      if (!jeton) break;
+      await prisma.refreshToken.update({ where: { id }, data: { revokedAt: jeton.revokedAt ?? maintenant, replacedById: null } });
+      id = jeton.replacedById;
+    }
   } catch {
     // si le token est invalide on considère le logout réussi
   }
@@ -385,10 +423,23 @@ async function envoyerCode(user: { id: string; email: string }, usage: "connexio
 function sign2faTicket(userId: string, h?: string): string {
   return jwt.sign({ sub: userId, purpose: "2fa", ...(h ? { h } : {}) }, env.JWT_ACCESS_SECRET, { expiresIn: h ? CODE_TTL : "5m" });
 }
-function verify2faTicket(ticket: string, purpose = "2fa"): { sub: string; h?: string } {
-  const p = jwt.verify(ticket, env.JWT_ACCESS_SECRET) as { sub: string; purpose?: string; h?: string };
+function verify2faTicket(ticket: string, purpose = "2fa"): { sub: string; h?: string; expire: number } {
+  const p = jwt.verify(ticket, env.JWT_ACCESS_SECRET) as { sub: string; purpose?: string; h?: string; exp?: number };
   if (p.purpose !== purpose) throw new Error("bad ticket");
-  return { sub: p.sub, h: p.h };
+  return { sub: p.sub, h: p.h, expire: (p.exp ?? 0) * 1000 };
+}
+
+/**
+ * Les essais de code par ticket et par compte (lib/essais-code.ts) : cinq par
+ * ticket, puis il ne sert plus ; un ticket qui a ouvert la session ne resservira
+ * pas. Le ticket se reconnaît à son empreinte.
+ */
+const essais2fa = new EssaisDeCode();
+const cleDeTicket = (ticket: string) => sha256(ticket);
+function refusDEssai(refus: RefusEssai) {
+  if (refus === "compte") return tooManyRequests("Trop de codes erronés sur ce compte. Réessayez dans un quart d'heure.");
+  if (refus === "utilise") return unauthorized("Ce code a déjà servi, reconnectez-vous.");
+  return unauthorized("Trop d'essais avec ce code, reconnectez-vous.");
 }
 
 /** La réponse de l'étape mot de passe quand un code est demandé (login et Google). */
@@ -410,18 +461,28 @@ router.post(
   validateBody(z.object({ ticket: z.string().min(1), code: z.string().min(6).max(12) })),
   async (req, res) => {
     const { ticket, code } = req.body as { ticket: string; code: string };
-    let t: { sub: string; h?: string };
+    let t: { sub: string; h?: string; expire: number };
     try {
       t = verify2faTicket(ticket);
     } catch {
       throw unauthorized("Code expiré, reconnectez-vous.");
     }
+    // L'essai est compté avant de lire le code, sans attente entre les deux :
+    // des requêtes simultanées ne dépassent pas le compte.
+    const cle = cleDeTicket(ticket);
+    const refus = essais2fa.commencer(cle, t.sub, t.expire);
+    if (refus) throw refusDEssai(refus);
     const user = await prisma.user.findUnique({ where: { id: t.sub } });
     if (!user || !aLaDoubleAuth(user)) throw unauthorized("2FA non configurée");
     const valide = parEmail(user)
       ? !!t.h && memeEmpreinte(empreinte(user.id, cleanCode(code)), t.h)
       : authenticator.verify({ token: cleanCode(code), secret: user.twoFactorSecret! });
-    if (!valide) throw unauthorized("Code invalide");
+    if (!valide) {
+      const restants = essais2fa.echec(cle, user.id);
+      throw unauthorized(restants > 0 ? "Code invalide" : "Code invalide. Trop d'essais avec ce code, reconnectez-vous.");
+    }
+    // Un ticket n'ouvre la session qu'une fois.
+    if (!essais2fa.reussite(cle, user.id, t.expire)) throw refusDEssai("utilise");
     const tokens = await issueTokens(user);
     res.json({ user: publicUser(user), ...tokens });
   },
@@ -433,15 +494,22 @@ router.post(
   twoFaLimiter,
   validateBody(z.object({ ticket: z.string().min(1) })),
   async (req, res) => {
-    let t: { sub: string };
+    const { ticket } = req.body as { ticket: string };
+    let t: { sub: string; expire: number };
     try {
-      t = verify2faTicket((req.body as { ticket: string }).ticket);
+      t = verify2faTicket(ticket);
     } catch {
       throw unauthorized("Code expiré, reconnectez-vous.");
     }
+    // Un ticket épuisé ou déjà utilisé ne rouvre pas cinq essais par ce détour.
+    const cle = cleDeTicket(ticket);
+    if (!essais2fa.utilisable(cle)) throw unauthorized("Ce code n'est plus valable, reconnectez-vous.");
     const user = await prisma.user.findUnique({ where: { id: t.sub } });
     if (!user || !aLaDoubleAuth(user) || !parEmail(user)) throw badRequest("Aucun code à renvoyer.");
-    res.json(await ouvrirDoubleAuth(user));
+    const etape = await ouvrirDoubleAuth(user);
+    // Le nouveau code remplace l'ancien : l'ancien ticket ne sert plus.
+    essais2fa.invalider(cle, t.expire);
+    res.json(etape);
   },
 );
 
@@ -461,15 +529,26 @@ router.post("/2fa/email/code", requireAuth, twoFaLimiter, async (req, res) => {
   res.json({ ticket, email: masquer(user.email) });
 });
 
-/** Le code de confirmation reçu par email, pour le compte connecté. */
+/**
+ * Le code de confirmation reçu par email, pour le compte connecté. Mêmes
+ * limites d'essais que le code de connexion ; un ticket ne confirme qu'une fois.
+ */
 function codeDeConfirmationValide(userId: string, ticket: string | undefined, code: string) {
   if (!ticket) return false;
+  let t: { sub: string; h?: string; expire: number };
   try {
-    const t = verify2faTicket(ticket, "2fa-confirm");
-    return t.sub === userId && !!t.h && memeEmpreinte(empreinte(userId, cleanCode(code)), t.h);
+    t = verify2faTicket(ticket, "2fa-confirm");
   } catch {
     return false;
   }
+  if (t.sub !== userId || !t.h) return false;
+  const cle = cleDeTicket(ticket);
+  if (essais2fa.commencer(cle, userId, t.expire)) return false;
+  if (!memeEmpreinte(empreinte(userId, cleanCode(code)), t.h)) {
+    essais2fa.echec(cle, userId);
+    return false;
+  }
+  return essais2fa.reussite(cle, userId, t.expire);
 }
 
 // Active la 2FA par email, une fois le code de confirmation saisi.
@@ -557,10 +636,13 @@ function readCookie(header: string | undefined, name: string): string | undefine
 const googleRedirectUri = () => `${env.APP_URL}/api/auth/google/callback`;
 
 // L'app iPhone/iPad ouvre ce même flux dans la fenêtre de connexion sécurisée
-// d'iOS (ASWebAuthenticationSession), avec ?app=1. Le retour se fait alors vers
-// ch.diagly.app://oauth-callback, que seule cette fenêtre intercepte, et rend la
-// main à l'app avec le même fragment que le site (jetons, ou étape 2FA).
+// d'iOS (ASWebAuthenticationSession), avec ?app=1 et l'empreinte (challenge)
+// d'un secret qu'elle garde. Le retour se fait vers ch.diagly.app://oauth-callback,
+// une adresse qu'une autre app installée peut déclarer aussi : il ne porte donc
+// ni jetons ni ticket 2FA, seulement un code à usage unique, valable une minute,
+// que l'app échange avec son secret (POST /app/echange, lib/pkce.ts).
 const RETOUR_APP = `${env.APPLE_BUNDLE_ID}://oauth-callback`;
+const codesApp = new CodesDeConnexion();
 
 // Démarre le flux : redirige vers l'écran de consentement Google.
 router.get("/google", (req, res) => {
@@ -569,12 +651,24 @@ router.get("/google", (req, res) => {
     const msg = encodeURIComponent("Connexion Google non disponible pour le moment");
     return res.redirect(depuisApp ? `${RETOUR_APP}#error=${msg}` : `${env.APP_URL}/login?error=${msg}`);
   }
+  // Sans empreinte, le retour ne pourrait pas s'échanger : c'est une version de
+  // l'app d'avant cet échange, qui attendait des jetons dans l'adresse.
+  const challenge = req.query.challenge;
+  if (depuisApp && !challengeValide(challenge)) {
+    const msg = encodeURIComponent("Mettez à jour l'app Diagly pour vous connecter avec Google.");
+    return res.redirect(`${RETOUR_APP}#error=${msg}`);
+  }
   // L'etat est lie au NAVIGATEUR qui a lance la connexion, via un cookie httpOnly.
   // Sans ce lien, un attaquant peut faire visiter a la victime une URL de retour portant
   // SON code d'autorisation : la victime se retrouve connectee au compte de l'attaquant
   // et travaille dedans sans le voir (CSRF de connexion).
+  // L'empreinte de l'app voyage dans l'état signé, jusqu'au retour de Google.
   const nonce = crypto.randomUUID();
-  const state = jwt.sign({ n: nonce, purpose: "oauth", ...(depuisApp ? { app: true } : {}) }, env.JWT_ACCESS_SECRET, { expiresIn: "10m" });
+  const state = jwt.sign(
+    { n: nonce, purpose: "oauth", ...(depuisApp ? { app: true, c: challenge } : {}) },
+    env.JWT_ACCESS_SECRET,
+    { expiresIn: "10m" },
+  );
   res.cookie(OAUTH_STATE_COOKIE, nonce, {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
@@ -602,7 +696,6 @@ router.get("/google/callback", async (req, res) => {
   const depuisApp = (() => {
     try { return !!(state && (jwt.decode(state) as { app?: boolean } | null)?.app); } catch { return false; }
   })();
-  const retour = depuisApp ? RETOUR_APP : `${env.APP_URL}/oauth-callback`;
   const fail = (msg: string) => res.redirect(depuisApp
     ? `${RETOUR_APP}#error=${encodeURIComponent(msg)}`
     : `${env.APP_URL}/login?error=${encodeURIComponent(msg)}`);
@@ -611,10 +704,13 @@ router.get("/google/callback", async (req, res) => {
   if (!code || !state) return fail("Réponse Google invalide");
   const expectedNonce = readCookie(req.headers.cookie, OAUTH_STATE_COOKIE);
   res.clearCookie(OAUTH_STATE_COOKIE, { path: "/api/auth" }); // usage unique
+  let st: { n?: string; purpose?: string; app?: boolean; c?: string };
   try {
-    const st = jwt.verify(state, env.JWT_ACCESS_SECRET) as { n?: string; purpose?: string };
+    st = jwt.verify(state, env.JWT_ACCESS_SECRET) as typeof st;
     // Le retour doit correspondre a la demande partie de CE navigateur.
     if (st.purpose !== "oauth" || !st.n || !expectedNonce || st.n !== expectedNonce) throw new Error("state mismatch");
+    // Une connexion partie de l'app porte l'empreinte du secret de l'app.
+    if (st.app && !challengeValide(st.c)) throw new Error("challenge manquant");
   } catch {
     return fail("État OAuth invalide");
   }
@@ -664,6 +760,14 @@ router.get("/google/callback", async (req, res) => {
     });
   }
 
+  // L'app : seulement un code, lié au compte et à l'empreinte de son secret.
+  // La session, ou l'étape 2FA, vient à l'échange (POST /app/echange).
+  if (st.app && st.c) {
+    const codeApp = codesApp.emettre(user.id, st.c);
+    return res.redirect(`${RETOUR_APP}?code=${encodeURIComponent(codeApp)}`);
+  }
+
+  const retour = `${env.APP_URL}/oauth-callback`;
   // La 2FA s'applique AUSSI au parcours Google : sans ce controle, activer la 2FA sur un
   // compte lie a une adresse Gmail serait contournable en un clic.
   if (aLaDoubleAuth(user)) {
@@ -677,6 +781,27 @@ router.get("/google/callback", async (req, res) => {
   const tokens = await issueTokens(user);
   const frag = new URLSearchParams({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
   res.redirect(`${retour}#${frag.toString()}`);
+});
+
+const echangeSchema = z.object({
+  code: z.string().min(20).max(200),
+  verifier: z.string().min(43).max(128),
+});
+
+/**
+ * L'app échange le code reçu au retour de Google, avec le secret dont
+ * l'empreinte est partie à la demande. Réponse identique à une connexion par
+ * mot de passe : la session, ou l'étape du code 2FA (le code par email part ici).
+ */
+router.post("/app/echange", loginLimiter, validateBody(echangeSchema), async (req, res) => {
+  const { code, verifier } = req.body as z.infer<typeof echangeSchema>;
+  const userId = codesApp.echanger(code, verifier);
+  if (!userId) throw unauthorized("Connexion expirée. Recommencez la connexion avec Google.");
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw unauthorized("Compte introuvable.");
+  if (aLaDoubleAuth(user)) return res.json(await ouvrirDoubleAuth(user));
+  const tokens = await issueTokens(user);
+  res.json({ user: publicUser(user), ...tokens });
 });
 
 // ----------------------------------------------------- Se connecter avec Apple
@@ -714,16 +839,31 @@ router.post("/apple", loginLimiter, validateBody(appleSchema), async (req, res) 
   }
   if (!user) {
     if (!identite.email) throw badRequest("Apple n'a pas transmis d'adresse email : autorisez-la dans la fenêtre de connexion.");
-    user = await prisma.user.create({
-      data: {
-        email: identite.email,
-        passwordHash: await hashPassword(crypto.randomUUID() + crypto.randomUUID()), // inutilisable
-        firstName: corps.firstName || undefined,
-        lastName: corps.lastName || undefined,
-        role: "PARTICULIER",
-        appleSub: identite.sub,
-      },
-    });
+    // L'adresse appartient déjà à un compte, mais Apple ne l'a pas vérifiée : on
+    // ne peut ni l'y rattacher (n'importe qui pourrait la revendiquer) ni en
+    // créer un second. La création échouait sur l'unicité de l'adresse (500).
+    const adresseRefusee = conflict(
+      "Un compte Diagly existe déjà avec cette adresse, mais Apple ne l'a pas confirmée. Connectez-vous avec votre mot de passe ou avec Google.",
+    );
+    if (await prisma.user.findUnique({ where: { email: identite.email }, select: { id: true } })) throw adresseRefusee;
+    try {
+      user = await prisma.user.create({
+        data: {
+          email: identite.email,
+          passwordHash: await hashPassword(crypto.randomUUID() + crypto.randomUUID()), // inutilisable
+          firstName: corps.firstName || undefined,
+          lastName: corps.lastName || undefined,
+          role: "PARTICULIER",
+          appleSub: identite.sub,
+        },
+      });
+    } catch (err) {
+      // Compte créé entre-temps avec la même adresse (deux connexions simultanées).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw identite.emailVerifie ? conflict("Ce compte vient d'être créé. Réessayez de vous connecter.") : adresseRefusee;
+      }
+      throw err;
+    }
   } else if (user.appleSub !== identite.sub) {
     user = await prisma.user.update({ where: { id: user.id }, data: { appleSub: identite.sub } });
   }
@@ -745,10 +885,25 @@ router.post("/apple", loginLimiter, validateBody(appleSchema), async (req, res) 
 const suppressionSchema = z.object({ confirmation: z.literal("SUPPRIMER") });
 
 /**
+ * Qui reprend les dossiers d'un membre d'équipe qui supprime son compte : le
+ * propriétaire de l'équipe ; à défaut (cas anormal), un administrateur, sinon
+ * le plus ancien des autres membres. null quand le compte est seul dans l'équipe.
+ */
+async function repreneurDesDossiers(organizationId: string, userId: string): Promise<string | null> {
+  const autres = { organizationId, id: { not: userId } };
+  const repreneur =
+    (await prisma.user.findFirst({ where: { ...autres, orgRole: "OWNER" }, select: { id: true } })) ??
+    (await prisma.user.findFirst({ where: { ...autres, orgRole: "ADMIN" }, orderBy: { createdAt: "asc" }, select: { id: true } })) ??
+    (await prisma.user.findFirst({ where: autres, orderBy: { createdAt: "asc" }, select: { id: true } }));
+  return repreneur?.id ?? null;
+}
+
+/**
  * Suppression du compte par son titulaire, depuis l'app ou le site (exigée par
  * Apple pour toute app où l'on peut créer un compte, et due au titre de la
  * nLPD). Tout ce qui appartient au compte part avec lui : dossiers, relevés,
- * photos, plans (fichiers compris), notifications, appareils.
+ * photos, plans (fichiers compris), notifications, appareils. Sauf pour un
+ * membre d'équipe : ses dossiers sont ceux de l'équipe, ils lui restent.
  */
 router.post("/compte/supprimer", requireAuth, validateBody(suppressionSchema), async (req, res) => {
   const user = await prisma.user.findUnique({
@@ -766,18 +921,40 @@ router.post("/compte/supprimer", requireAuth, validateBody(suppressionSchema), a
     }
   }
 
-  // Les fichiers des plans ne sont pas en base : on les efface du disque.
-  const plans = await prisma.plan.findMany({ where: { project: { ownerId: user.id } }, select: { fileName: true } });
-  await Promise.all(plans.map((p) => unlink(join(UPLOAD_DIR, p.fileName)).catch(() => undefined)));
+  // Un membre d'équipe (pas son propriétaire) : le parc se partage par le
+  // propriétaire des dossiers (lib/org-context.ts), et la suppression du compte
+  // emportait en cascade les dossiers qu'il avait créés pour l'équipe. Ils
+  // passent au propriétaire de l'équipe, avec les opérations qui les regroupent
+  // (même ownerId, même cascade), dans la même transaction que la suppression.
+  const repreneur = user.organizationId && user.orgRole !== "OWNER"
+    ? await repreneurDesDossiers(user.organizationId, user.id)
+    : null;
 
+  // Les fichiers des plans ne sont pas en base : ceux des dossiers qui partent
+  // avec le compte sont effacés du disque, une fois la suppression faite.
+  const plans = repreneur
+    ? []
+    : await prisma.plan.findMany({ where: { project: { ownerId: user.id } }, select: { fileName: true } });
+
+  const dossiersConfies = await prisma.$transaction(async (tx) => {
+    let confies = 0;
+    if (repreneur) {
+      confies = (await tx.project.updateMany({ where: { ownerId: user.id }, data: { ownerId: repreneur } })).count;
+      await tx.operation.updateMany({ where: { ownerId: user.id }, data: { ownerId: repreneur } });
+    }
+    await tx.user.delete({ where: { id: user.id } });
+    return confies;
+  });
+
+  await Promise.all(plans.map((p) => unlink(join(UPLOAD_DIR, p.fileName)).catch(() => undefined)));
+  // Après la suppression : un échec de celle-ci ne laisse pas un compte privé de sa connexion Apple.
   if (user.appleRefreshToken) await revoquerApple(user.appleRefreshToken).catch(() => undefined);
-  await prisma.user.delete({ where: { id: user.id } });
   // Une équipe dont le seul membre vient de partir n'a plus de raison d'être.
   if (user.organizationId) {
     const restants = await prisma.user.count({ where: { organizationId: user.organizationId } });
     if (restants === 0) await prisma.organization.delete({ where: { id: user.organizationId } }).catch(() => undefined);
   }
-  logger.info({ userId: user.id }, "compte supprimé par son titulaire");
+  logger.info({ userId: user.id, repreneur, dossiersConfies }, "compte supprimé par son titulaire");
   res.status(204).end();
 });
 

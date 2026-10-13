@@ -62,4 +62,30 @@ describe('le jeton de « Se connecter avec Apple »', () => {
     const id = await verifierJetonApple(jeton({ ...valide(), email_verified: false }))
     expect(id.emailVerifie).toBe(false)
   })
+
+  it('n’attend pas Apple plus de quelques secondes', async () => {
+    const appels = vi.mocked(fetch).mock.calls
+    expect(appels.length).toBeGreaterThan(0)
+    expect(appels[0][1]?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('ne relit les clés d’Apple, pour une clé inconnue, qu’une fois par minute', async () => {
+    await verifierJetonApple(jeton(valide()))
+    const avant = vi.mocked(fetch).mock.calls.length
+    const inconnue = () => verifierJetonApple(jeton(valide(), { alg: 'RS256', kid: 'kid-invente' }))
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(Date.now() + 2 * 60_000)
+      await expect(inconnue()).rejects.toThrow(/inconnue/)
+      await expect(inconnue()).rejects.toThrow(/inconnue/)
+      await expect(inconnue()).rejects.toThrow(/inconnue/)
+      expect(vi.mocked(fetch).mock.calls.length).toBe(avant + 1)
+      // Une minute plus tard, une nouvelle lecture est permise.
+      vi.setSystemTime(Date.now() + 61_000)
+      await expect(inconnue()).rejects.toThrow(/inconnue/)
+      expect(vi.mocked(fetch).mock.calls.length).toBe(avant + 2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

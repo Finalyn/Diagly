@@ -1,5 +1,6 @@
 import UIKit
 import AuthenticationServices
+import CryptoKit
 import Capacitor
 
 /// Connexion à un compte tiers, avec les fenêtres d'iOS (src/lib/connexion-native.ts).
@@ -10,6 +11,10 @@ import Capacitor
 ///   pour Google. Google refuse les connexions dans la vue web d'une app ; cette
 ///   fenêtre-là est le navigateur du système. Elle se referme d'elle-même quand la
 ///   page revient sur l'adresse ch.diagly.app://, et rend cette adresse à l'app.
+///   Avec l'option `pkce`, elle tire d'abord un secret qui ne quitte pas l'app :
+///   seule son empreinte part avec la demande, et le serveur ne rend au retour
+///   qu'un code qui ne s'échange qu'avec ce secret. Une autre app qui déclarerait
+///   l'adresse ch.diagly.app:// n'en ferait rien.
 @objc(ConnexionPlugin)
 public class ConnexionPlugin: CAPPlugin, CAPBridgedPlugin, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     public let identifier = "ConnexionPlugin"
@@ -78,15 +83,36 @@ public class ConnexionPlugin: CAPPlugin, CAPBridgedPlugin, ASAuthorizationContro
     // MARK: Fenêtre de connexion sécurisée (Google)
 
     @objc func web(_ call: CAPPluginCall) {
-        guard let texte = call.getString("url"), let adresse = URL(string: texte), let schema = call.getString("schema") else {
+        guard let texte = call.getString("url"), let demandee = URL(string: texte), let schema = call.getString("schema") else {
             call.reject("Adresse de connexion manquante.")
             return
         }
+        var adresse = demandee
+        var secret: String?
+        if call.getBool("pkce", false) {
+            let verifier = ConnexionPlugin.secretAleatoire()
+            guard var composants = URLComponents(url: demandee, resolvingAgainstBaseURL: false) else {
+                call.reject("Adresse de connexion invalide.")
+                return
+            }
+            let challenge = URLQueryItem(name: "challenge", value: ConnexionPlugin.empreinte(de: verifier))
+            composants.queryItems = (composants.queryItems ?? []) + [challenge]
+            guard let avecEmpreinte = composants.url else {
+                call.reject("Adresse de connexion invalide.")
+                return
+            }
+            adresse = avecEmpreinte
+            secret = verifier
+        }
+        let adresseFinale = adresse
+        let secretGarde = secret
         DispatchQueue.main.async {
-            let session = ASWebAuthenticationSession(url: adresse, callbackURLScheme: schema) { [weak self] retour, erreur in
+            let session = ASWebAuthenticationSession(url: adresseFinale, callbackURLScheme: schema) { [weak self] retour, erreur in
                 self?.sessionWeb = nil
                 if let retour = retour {
-                    call.resolve(["url": retour.absoluteString])
+                    var resultat: [String: Any] = ["url": retour.absoluteString]
+                    if let verifier = secretGarde { resultat["verifier"] = verifier }
+                    call.resolve(resultat)
                 } else if let e = erreur as? ASWebAuthenticationSessionError, e.code == .canceledLogin {
                     call.reject("Connexion annulée.", "ANNULE")
                 } else {
@@ -103,6 +129,28 @@ public class ConnexionPlugin: CAPPlugin, CAPBridgedPlugin, ASAuthorizationContro
                 call.reject("La fenêtre de connexion n'a pas pu s'ouvrir.")
             }
         }
+    }
+
+    // MARK: PKCE (RFC 7636)
+
+    /// Le secret (verifier) : 32 octets tirés par le générateur cryptographique, en base64url.
+    private static func secretAleatoire() -> String {
+        let octets = SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }
+        return base64url(octets)
+    }
+
+    /// L'empreinte du secret (challenge) : SHA-256, en base64url. Le serveur la
+    /// recalcule à l'échange (server/src/lib/pkce.ts).
+    private static func empreinte(de secret: String) -> String {
+        return base64url(Data(SHA256.hash(data: Data(secret.utf8))))
+    }
+
+    /// base64url sans remplissage : sans caractère à échapper dans une adresse.
+    private static func base64url(_ donnees: Data) -> String {
+        return donnees.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 }
 

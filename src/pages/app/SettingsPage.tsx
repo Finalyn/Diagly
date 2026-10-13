@@ -1705,6 +1705,9 @@ function SuppressionDuCompte() {
   const [enCours, setEnCours] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
   const confirme = saisie.trim().toUpperCase() === 'SUPPRIMER'
+  // Un membre d'équipe (pas son propriétaire) : ses dossiers restent à l'équipe.
+  const org = useQuery({ queryKey: ['org'], queryFn: () => api.org.get(), staleTime: 5 * 60_000 })
+  const equipe = org.data?.organization && org.data.role !== 'OWNER' ? org.data.organization.name : null
 
   const supprimer = async () => {
     if (!confirme || enCours) return
@@ -1728,6 +1731,11 @@ function SuppressionDuCompte() {
       <p className="mt-2 text-sm text-muted-foreground">
         Exportez d'abord ce que vous voulez garder. Si vous êtes propriétaire d'une équipe, retirez d'abord ses membres.
       </p>
+      {equipe && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Les dossiers que vous avez créés dans l'équipe {equipe} lui restent : ils passent à son propriétaire.
+        </p>
+      )}
       {!ouvert ? (
         <Button variant="outline" size="sm" className="mt-3 border-red-200 text-red-700 hover:bg-red-50" onClick={() => setOuvert(true)}>
           Supprimer mon compte

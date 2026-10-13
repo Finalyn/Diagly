@@ -19,7 +19,7 @@ const PRIO_LABEL: Record<string, string> = {
 
 const n = (v: unknown): number => (v == null ? 0 : Number(v));
 /** Montant CHF au format suisse 1'234'567. */
-const chf = (v: number): string => Math.round(v).toLocaleString("fr-CH").replace(/[\s  ]/g, "'");
+const chf = (v: number): string => Math.round(v).toLocaleString("fr-CH").replace(/[\s\u00a0\u202f]/g, "'");
 
 type Scope = Prisma.ProjectWhereInput;
 

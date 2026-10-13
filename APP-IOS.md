@@ -89,15 +89,22 @@ react-query, qui ne survivrait pas à la fermeture de l'app.
   l'identifiant Apple, puis par l'adresse si Apple l'a vérifiée ; sinon il est
   créé. Une adresse relais d'Apple fait un compte à part.
 - **Google** : dans l'app, la fenêtre de connexion sécurisée d'iOS
-  (`ASWebAuthenticationSession`) ouvre `/api/auth/google?app=1` ; le serveur
-  revient sur `ch.diagly.app://oauth-callback` avec les jetons. Google refuse
-  les connexions dans la vue web d'une app, d'où ce détour.
+  (`ASWebAuthenticationSession`) ouvre `/api/auth/google?app=1&challenge=…`.
+  Google refuse les connexions dans la vue web d'une app, d'où ce détour. Une
+  autre app peut déclarer l'adresse `ch.diagly.app://` : le retour ne porte donc
+  pas de jetons, seulement un code à usage unique valable une minute
+  (`?code=…`). Le plugin a tiré un secret dont seule l'empreinte SHA-256
+  (`challenge`) est partie ; `POST /api/auth/app/echange` échange le code avec
+  ce secret (PKCE, `server/src/lib/pkce.ts`) et rend la session ou l'étape 2FA.
+  Une version de l'app d'avant cet échange reçoit « Mettez à jour l'app ».
 - La double authentification s'applique aussi à ces deux connexions.
 - **Suppression du compte** (règle 5.1.1 d'Apple) : Paramètres, Compte,
   « Supprimer mon compte », en tapant SUPPRIMER. Le serveur
   (`POST /api/auth/compte/supprimer`) efface les dossiers, relevés, photos,
   plans (fichiers compris) et notifications, et révoque l'accès Apple. Le
   propriétaire d'une équipe qui a d'autres membres doit d'abord la confier.
+  Les dossiers (et opérations) d'un autre membre d'équipe ne sont pas effacés :
+  ils passent au propriétaire de l'équipe, dans la même transaction.
 
 ## Les notifications
 

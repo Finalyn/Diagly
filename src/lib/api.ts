@@ -35,11 +35,15 @@ export class ApiError extends Error {
 }
 
 let refreshing: Promise<string | null> | null = null
+/** Après un échec passager du rafraîchissement, pas de nouvel essai avant cette heure. */
+let rafraichirPasAvant = 0
+const PAUSE_APRES_ECHEC_MS = 5_000
 
 async function refreshAccessToken(): Promise<string | null> {
   if (refreshing) return refreshing
   const refreshToken = useAuth.getState().refreshToken
   if (!refreshToken) return null
+  if (Date.now() < rafraichirPasAvant) return null
 
   refreshing = (async () => {
     try {
@@ -48,18 +52,29 @@ async function refreshAccessToken(): Promise<string | null> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
       })
-      if (!res.ok) {
-        // Session definitivement perdue : on efface aussi les donnees en cache local.
-        // Import dynamique : evite un cycle d'import entre api.ts et session.ts.
+      if (res.status === 401) {
+        // Le serveur refuse ce jeton (expiré, révoqué, inconnu) : session
+        // définitivement perdue, on efface aussi les données en cache local.
+        // Import dynamique : évite un cycle d'import entre api.ts et session.ts.
         void import('./session').then((m) => m.purgeLocalSession())
+        return null
+      }
+      if (!res.ok) {
+        // 502 pendant une mise en ligne, 429, page d'erreur d'un intermédiaire :
+        // rien ne dit que la session est perdue. Purger ici effaçait le cache
+        // du terrain pour une simple coupure. On la garde et on retentera.
+        rafraichirPasAvant = Date.now() + PAUSE_APRES_ECHEC_MS
         return null
       }
       const data = (await res.json()) as AuthResponse
       useAuth.getState().setAuth(data.user, data.accessToken, data.refreshToken)
       return data.accessToken
     } catch {
-      // Echec reseau : la session peut encore etre valide (mode hors-ligne), on ne
-      // purge rien, on se contente de ne pas rejouer la requete.
+      // Échec réseau : la session peut encore être valide (mode hors-ligne), on ne
+      // purge rien, on se contente de ne pas rejouer la requête. Si la rotation a
+      // eu lieu sans que la réponse arrive, le serveur tolère l'ancien jeton une
+      // minute (server/src/lib/rotation-session.ts).
+      rafraichirPasAvant = Date.now() + PAUSE_APRES_ECHEC_MS
       return null
     } finally {
       refreshing = null
@@ -192,6 +207,10 @@ export const api = {
     // remis par iOS, vérifié par le serveur auprès d'Apple.
     apple: (body: { identityToken: string; authorizationCode?: string; firstName?: string; lastName?: string }) =>
       request<AuthResponse | EtapeDoubleAuth>('/api/auth/apple', { method: 'POST', body, withAuth: false }),
+    // Google depuis l'app iPhone/iPad : le code reçu au retour, échangé avec le
+    // secret que l'app a gardé (PKCE). Rend la session, ou l'étape du code 2FA.
+    echangeApp: (body: { code: string; verifier: string }) =>
+      request<AuthResponse | EtapeDoubleAuth>('/api/auth/app/echange', { method: 'POST', body, withAuth: false }),
     // Suppression du compte par son titulaire (exigée par Apple, et due au titre de la nLPD).
     supprimerCompte: () =>
       request<void>('/api/auth/compte/supprimer', { method: 'POST', body: { confirmation: 'SUPPRIMER' } }),

@@ -1,6 +1,6 @@
 import { registerPlugin } from '@capacitor/core'
 import { api, BASE_URL } from '@/lib/api'
-import type { AuthResponse, ApiUser } from '@/lib/api-types'
+import type { AuthResponse } from '@/lib/api-types'
 import type { EtapeDoubleAuth } from '@/lib/api'
 
 // Connexion avec Apple ou Google, dans l'app iPhone/iPad seulement. Le plugin
@@ -8,7 +8,11 @@ import type { EtapeDoubleAuth } from '@/lib/api'
 
 interface PluginConnexion {
   apple(): Promise<{ identityToken: string; authorizationCode?: string; givenName?: string; familyName?: string; email?: string }>
-  web(options: { url: string; schema: string }): Promise<{ url: string }>
+  /**
+   * Avec `pkce`, le plugin tire un secret, ajoute son empreinte à l'adresse
+   * (`challenge`) et rend le secret (`verifier`) avec l'adresse de retour.
+   */
+  web(options: { url: string; schema: string; pkce?: boolean }): Promise<{ url: string; verifier?: string }>
 }
 
 const Connexion = registerPlugin<PluginConnexion>('Connexion')
@@ -42,33 +46,25 @@ export async function connexionApple(): Promise<IssueConnexion> {
 
 /**
  * Google, dans la fenêtre de connexion sécurisée d'iOS. Le serveur mène le même
- * flux que sur le site et revient sur ch.diagly.app://oauth-callback, avec le
- * même fragment : les jetons, l'étape du code 2FA, ou une erreur.
+ * flux que sur le site, mais revient sur ch.diagly.app://oauth-callback avec un
+ * simple code : une autre app peut déclarer cette adresse, le retour ne porte
+ * donc pas de jetons. Le code ne s'échange qu'avec le secret que le plugin a
+ * gardé (PKCE) ; l'échange rend la session, ou l'étape du code 2FA.
  */
 export async function connexionGoogle(): Promise<IssueConnexion> {
-  let retour: string
+  let r: { url: string; verifier?: string }
   try {
-    retour = (await Connexion.web({ url: `${BASE_URL}/api/auth/google?app=1`, schema: SCHEMA })).url
+    r = await Connexion.web({ url: `${BASE_URL}/api/auth/google?app=1`, schema: SCHEMA, pkce: true })
   } catch (e) {
     if (annulee(e)) throw new ConnexionAnnulee()
     throw e
   }
-  const p = new URLSearchParams(retour.split('#')[1] ?? '')
-  const erreur = p.get('error')
+  const [adresse, fragment = ''] = r.url.split('#')
+  const requete = new URLSearchParams(adresse.split('?')[1] ?? '')
+  const erreur = new URLSearchParams(fragment).get('error') ?? requete.get('error')
   if (erreur) throw new Error(erreur)
 
-  const ticket = p.get('ticket')
-  if (p.get('twoFactorRequired') === '1' && ticket) {
-    const methode = p.get('method') === 'email' ? 'email' : 'totp'
-    return { twoFactorRequired: true, ticket, method: methode, email: p.get('email') ?? undefined }
-  }
-
-  const accessToken = p.get('accessToken')
-  const refreshToken = p.get('refreshToken')
-  if (!accessToken || !refreshToken) throw new Error('Connexion Google échouée.')
-  // Le profil, avec le jeton qu'on vient de recevoir (il n'est pas encore dans le store).
-  const r = await fetch(`${BASE_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${accessToken}` } })
-  if (!r.ok) throw new Error('Session invalide, réessayez.')
-  const { user } = (await r.json()) as { user: ApiUser }
-  return { user, accessToken, refreshToken }
+  const code = requete.get('code')
+  if (!code || !r.verifier) throw new Error('Connexion Google échouée.')
+  return api.auth.echangeApp({ code, verifier: r.verifier })
 }
