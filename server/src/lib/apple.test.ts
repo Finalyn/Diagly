@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto'
+import { generateKeyPairSync, sign, verify, type KeyObject } from 'node:crypto'
 
-vi.mock('./env.js', () => ({ env: { APPLE_BUNDLE_ID: 'ch.diagly.app' } }))
+// Modifiable par les tests : la clé Apple n'est posée que pour ceux de l'échange du code.
+const envMock = vi.hoisted((): Record<string, string | undefined> => ({ APPLE_BUNDLE_ID: 'ch.diagly.app' }))
+vi.mock('./env.js', () => ({ env: envMock }))
 vi.mock('./logger.js', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }))
 
-const { verifierJetonApple } = await import('./apple.js')
+const { verifierJetonApple, jetonDeRevocation, revoquerApple } = await import('./apple.js')
 
 // Une paire de clés jouant le rôle de celle d'Apple, publiée comme Apple le fait.
 let privee: KeyObject
@@ -87,5 +89,93 @@ describe('le jeton de « Se connecter avec Apple »', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('le jeton d’une connexion depuis le site', () => {
+  const site = () => ({ ...valide(), aud: 'ch.diagly.web', nonce: 'nonce-de-la-demande' })
+
+  it('est accepté pour l’identifiant de service, avec le nonce de la demande', async () => {
+    const id = await verifierJetonApple(jeton(site()), { audience: 'ch.diagly.web', nonce: 'nonce-de-la-demande' })
+    expect(id.sub).toBe('001234.abcd.5678')
+  })
+
+  it('n’ouvre pas l’app, qui garde son identifiant par défaut', async () => {
+    await expect(verifierJetonApple(jeton(site()))).rejects.toThrow(/autre app/)
+  })
+
+  it('ne se remplace pas par un jeton de l’app', async () => {
+    await expect(verifierJetonApple(jeton({ ...valide(), nonce: 'nonce-de-la-demande' }), { audience: 'ch.diagly.web', nonce: 'nonce-de-la-demande' }))
+      .rejects.toThrow(/autre app/)
+  })
+
+  it('est refusé avec le nonce d’une autre demande, ou sans nonce', async () => {
+    const attendu = { audience: 'ch.diagly.web', nonce: 'nonce-de-la-demande' }
+    await expect(verifierJetonApple(jeton({ ...site(), nonce: 'autre-nonce' }), attendu)).rejects.toThrow(/nonce/)
+    const sansNonce: Record<string, unknown> = site()
+    delete sansNonce.nonce
+    await expect(verifierJetonApple(jeton(sansNonce), attendu)).rejects.toThrow(/nonce/)
+  })
+})
+
+describe('le jeton de rafraîchissement, gardé pour la révocation', () => {
+  let publique: KeyObject
+  const RETOUR = 'https://diagly.ch/api/auth/apple/web/retour'
+  const corpsDuDernierAppel = () => new URLSearchParams(String(vi.mocked(fetch).mock.calls.at(-1)![1]?.body))
+  const lire = (partie: string) => JSON.parse(Buffer.from(partie, 'base64url').toString('utf8'))
+
+  beforeAll(() => {
+    const paire = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+    publique = paire.publicKey
+    Object.assign(envMock, {
+      APPLE_TEAM_ID: 'EQUIPE1234',
+      APPLE_KEY_ID: 'CLE1234567',
+      APPLE_PRIVATE_KEY: paire.privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(),
+      APPLE_SERVICES_ID: 'ch.diagly.web',
+    })
+  })
+
+  it('s’obtient, pour le site, avec l’identifiant de service, l’adresse de retour et un secret signé par la clé', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ refresh_token: 'r123.0.abc' })))
+    const garde = await jetonDeRevocation('code-du-site', { servicesId: 'ch.diagly.web', retour: RETOUR })
+    expect(garde).toBe('site:r123.0.abc')
+    expect(vi.mocked(fetch).mock.calls.at(-1)![0]).toBe('https://appleid.apple.com/auth/token')
+    const corps = corpsDuDernierAppel()
+    expect(corps.get('client_id')).toBe('ch.diagly.web')
+    expect(corps.get('redirect_uri')).toBe(RETOUR)
+    expect(corps.get('code')).toBe('code-du-site')
+    const [e, c, s] = corps.get('client_secret')!.split('.')
+    expect(lire(e)).toEqual({ alg: 'ES256', kid: 'CLE1234567' })
+    expect(lire(c)).toMatchObject({ iss: 'EQUIPE1234', sub: 'ch.diagly.web', aud: 'https://appleid.apple.com' })
+    expect(verify('sha256', Buffer.from(`${e}.${c}`), { key: publique, dsaEncoding: 'ieee-p1363' }, Buffer.from(s, 'base64url'))).toBe(true)
+  })
+
+  it('s’obtient, pour l’app, comme avant : identifiant de l’app, sans adresse de retour ni préfixe', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ refresh_token: 'r456.0.def' })))
+    expect(await jetonDeRevocation('code-de-l-app')).toBe('r456.0.def')
+    const corps = corpsDuDernierAppel()
+    expect(corps.get('client_id')).toBe('ch.diagly.app')
+    expect(corps.has('redirect_uri')).toBe(false)
+    expect(lire(corps.get('client_secret')!.split('.')[1]).sub).toBe('ch.diagly.app')
+  })
+
+  it('ne fait pas échouer la connexion quand Apple refuse l’échange', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{"error":"invalid_grant"}', { status: 400 }))
+    expect(await jetonDeRevocation('code-perime', { servicesId: 'ch.diagly.web', retour: RETOUR })).toBeNull()
+  })
+
+  it('se révoque avec l’identifiant du client qui l’a obtenu', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 200 }))
+    await revoquerApple('site:r123.0.abc')
+    let corps = corpsDuDernierAppel()
+    expect(vi.mocked(fetch).mock.calls.at(-1)![0]).toBe('https://appleid.apple.com/auth/revoke')
+    expect(corps.get('client_id')).toBe('ch.diagly.web')
+    expect(corps.get('token')).toBe('r123.0.abc')
+
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 200 }))
+    await revoquerApple('r456.0.def')
+    corps = corpsDuDernierAppel()
+    expect(corps.get('client_id')).toBe('ch.diagly.app')
+    expect(corps.get('token')).toBe('r456.0.def')
   })
 })

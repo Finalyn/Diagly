@@ -205,7 +205,8 @@ les services publics fédéraux geo.admin.ch, qui ne demandent aucune clé.
 | Assistant IA (état depuis la photo, conversation, lecture d'un document ou d'un CECB) | `ANTHROPIC_API_KEY` dans `server/.env` | L'assistant répond qu'il est indisponible, le reste fonctionne |
 | Fonds de carte sans filigrane | `VITE_CARTO_KEY` dans `.env.local` | Les tuiles portent la mention « API KEY REQUIRED » |
 | Envoi d'emails (invitations, mot de passe oublié, notifications, support) | `SMTP_*` dans `server/.env` | Une invitation donne un lien à copier ; le lien de mot de passe oublié part dans le journal du serveur |
-| Connexion Google | `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` | Le bouton reste affiché, la connexion répond « Connexion Google non disponible pour le moment » |
+| Connexion Google | `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` | Le bouton n'apparaît pas sur le site |
+| Connexion Apple sur le site | `APPLE_SERVICES_ID` (et `APP_URL` en https) | Le bouton n'apparaît pas sur le site ; l'app iPhone/iPad garde le sien |
 | Notifications push du navigateur | `VAPID_PUBLIC_KEY` et `VAPID_PRIVATE_KEY` | Pas de push ; la cloche fonctionne |
 | Notifications sur l'iPhone et l'iPad | `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Pas de notification dans l'app ; la connexion Apple fonctionne |
 

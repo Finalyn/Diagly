@@ -130,6 +130,8 @@ GET    /api/auth/2fa/options   POST /api/auth/2fa/setup | enable | disable | ver
 POST   /api/auth/2fa/email/code | email/enable
 GET    /api/auth/google        GET /api/auth/google/callback      (?app=1 depuis l'app)
 POST   /api/auth/apple                                             (app iPhone/iPad)
+GET    /api/auth/apple/web     POST /api/auth/apple/web/retour    (site, retour Apple en form_post)
+GET    /api/auth/fournisseurs                                      (site : { google, apple } selon la configuration)
 POST   /api/auth/compte/supprimer
 
 GET    /api/cfc/base           GET /api/cfc/base/nomenclature
@@ -438,6 +440,7 @@ APPLE_BUNDLE_ID=ch.diagly.app
 APPLE_TEAM_ID=
 APPLE_KEY_ID=
 APPLE_PRIVATE_KEY=       # contenu du .p8 en base64
+APPLE_SERVICES_ID=       # connexion Apple sur le site (Services ID, ex. ch.diagly.web)
 APNS_SANDBOX=false
 STATIC_DIR=              # lu hors de env.ts : dossier du front construit
 DIAGLY_BASE_INDEX=       # lus hors de env.ts : coefficient marché

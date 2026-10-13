@@ -83,7 +83,8 @@ react-query, qui ne survivrait pas à la fermeture de l'app.
 
 ## Les comptes
 
-- **Se connecter avec Apple** (app seulement) : la feuille d'iOS
+- **Se connecter avec Apple** (dans l'app ; le site a son propre flux par
+  redirection, `GET /api/auth/apple/web`, voir `server/README.md`) : la feuille d'iOS
   (`ConnexionPlugin.swift`, méthode `apple`) rend un jeton d'identité, que
   `POST /api/auth/apple` vérifie auprès d'Apple. Le compte se retrouve par
   l'identifiant Apple, puis par l'adresse si Apple l'a vérifiée ; sinon il est

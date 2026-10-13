@@ -93,7 +93,15 @@ app.use(cors({
 // le middleware les laisse passer tels quels via son filtre par defaut.
 app.use(compression());
 app.use(express.json({ limit: "8mb" })); // photos d'observation stockées en data URL
-app.use(pinoHttp({ logger }));
+// Le retour d'une connexion Google ou Apple sur le site porte la session dans le
+// fragment de l'adresse de redirection (routes/auth.ts). Le journal des réponses
+// reprend les en-têtes : l'adresse y figure sans son fragment.
+const sansFragment = (r: { headers?: Record<string, unknown> }) => {
+  const location = r.headers?.location;
+  if (typeof location !== "string" || !location.includes("#")) return r;
+  return { ...r, headers: { ...r.headers, location: `${location.split("#")[0]}#(retiré du journal)` } };
+};
+app.use(pinoHttp({ logger, serializers: { res: sansFragment } }));
 
 app.get("/health", async (_req, res) => {
   try {

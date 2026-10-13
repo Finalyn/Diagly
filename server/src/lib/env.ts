@@ -43,6 +43,11 @@ const schema = z.object({
   APPLE_TEAM_ID: z.string().optional(),
   APPLE_KEY_ID: z.string().optional(),
   APPLE_PRIVATE_KEY: z.string().optional(),
+  // « Se connecter avec Apple » sur le site (lib/apple-web.ts) : l'identifiant
+  // de service (Services ID) déclaré chez Apple, par ex. ch.diagly.web, rattaché
+  // à l'App ID de l'app. Optionnel : sans lui (ou sans APP_URL en https), le
+  // bouton Apple n'apparaît pas sur le site. L'app iPhone/iPad n'en dépend pas.
+  APPLE_SERVICES_ID: z.string().optional(),
   // Bac à sable d'APNs : seulement pour une app compilée en développement.
   // TestFlight et l'App Store utilisent l'APNs de production.
   APNS_SANDBOX: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),

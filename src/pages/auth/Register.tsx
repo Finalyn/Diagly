@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { Button, Input, Select } from '@/components/ui'
 import { AuthCard } from '@/components/auth/AuthCard'
-import { GoogleButton, OrDivider } from '@/components/auth/Social'
+import { ConnexionWeb, OrDivider } from '@/components/auth/Social'
 import { estAppNative } from '@/lib/plateforme'
 import { ConnexionNative } from '@/components/auth/ConnexionNative'
 import { api, ApiError } from '@/lib/api'
@@ -85,19 +85,22 @@ export function Register() {
         </Button>
       </form>
 
-      {/* Dans l'app, Apple et Google passent par les fenêtres d'iOS ; le compte
-          se crée au premier passage. */}
-      <OrDivider label="ou continuer avec" />
+      {/* Dans l'app, Apple et Google passent par les fenêtres d'iOS ; sur le
+          site, par redirection, selon ce que le serveur propose. Le compte se
+          crée au premier passage. */}
       {estAppNative ? (
-        <ConnexionNative
-          onCompte={(r) => { setAuth(r.user, r.accessToken, r.refreshToken); navigate('/app/dashboard', { replace: true }) }}
-          // Un compte déjà existant, protégé par la 2FA : le code se saisit sur
-          // l'écran de connexion.
-          onDoubleAuth={(etape) => navigate('/login', { replace: true, state: { ticket: etape.ticket, method: etape.method, email: etape.email } })}
-          onErreur={setError}
-        />
+        <>
+          <OrDivider label="ou continuer avec" />
+          <ConnexionNative
+            onCompte={(r) => { setAuth(r.user, r.accessToken, r.refreshToken); navigate('/app/dashboard', { replace: true }) }}
+            // Un compte déjà existant, protégé par la 2FA : le code se saisit sur
+            // l'écran de connexion.
+            onDoubleAuth={(etape) => navigate('/login', { replace: true, state: { ticket: etape.ticket, method: etape.method, email: etape.email } })}
+            onErreur={setError}
+          />
+        </>
       ) : (
-        <GoogleButton label="S’inscrire avec Google" />
+        <ConnexionWeb libelleGoogle="S’inscrire avec Google" />
       )}
 
       <p className="text-center text-sm text-muted-foreground mt-6">

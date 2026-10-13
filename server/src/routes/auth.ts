@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router, type Response } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
@@ -9,7 +9,7 @@ import {
   signRefreshToken,
   verifyRefreshToken,
 } from "../lib/jwt.js";
-import { badRequest, conflict, tooManyRequests, unauthorized } from "../lib/http-error.js";
+import { HttpError, badRequest, conflict, tooManyRequests, unauthorized } from "../lib/http-error.js";
 import { validateBody } from "../middlewares/validate.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { loginLimiter, passwordResetLimiter, registerLimiter, twoFaLimiter } from "../middlewares/rate-limit.js";
@@ -19,7 +19,8 @@ import { logger } from "../lib/logger.js";
 import jwt from "jsonwebtoken";
 import { authenticator } from "otplib";
 import QRCode from "qrcode";
-import { jetonDeRevocation, revoquerApple, verifierJetonApple } from "../lib/apple.js";
+import { jetonDeRevocation, revoquerApple, verifierJetonApple, type ClientSiteApple, type IdentiteApple } from "../lib/apple.js";
+import { DUREE_DEMANDE_MS, adresseDeRetourApple, demandeAppleWeb, nomDuPremierPassage, verifierEtatAppleWeb } from "../lib/apple-web.js";
 import { CodesDeConnexion, challengeValide } from "../lib/pkce.js";
 import { rotationTolerable } from "../lib/rotation-session.js";
 import { EssaisDeCode, type RefusEssai } from "../lib/essais-code.js";
@@ -767,21 +768,31 @@ router.get("/google/callback", async (req, res) => {
     return res.redirect(`${RETOUR_APP}?code=${encodeURIComponent(codeApp)}`);
   }
 
+  return terminerSurLeSite(res, user);
+});
+
+/**
+ * Fin d'une connexion par redirection sur le site (Google, Apple) : la session,
+ * ou l'étape du code 2FA, part dans le fragment de /oauth-callback. Un fragment
+ * n'est envoyé à aucun serveur ; la page de retour le lit puis l'efface.
+ * 303 : le retour d'Apple arrive par un POST, la page se charge en GET.
+ */
+async function terminerSurLeSite(res: Response, user: CompteDoubleAuth & { role: string }) {
   const retour = `${env.APP_URL}/oauth-callback`;
-  // La 2FA s'applique AUSSI au parcours Google : sans ce controle, activer la 2FA sur un
-  // compte lie a une adresse Gmail serait contournable en un clic.
+  // La 2FA s'applique AUSSI à ces parcours : sans ce contrôle, activer la 2FA sur un
+  // compte lié à une adresse Gmail ou à un identifiant Apple serait contournable en un clic.
   if (aLaDoubleAuth(user)) {
     const etape = await ouvrirDoubleAuth(user);
     const frag = new URLSearchParams({
       twoFactorRequired: "1", ticket: etape.ticket, method: etape.method, ...("email" in etape ? { email: etape.email } : {}),
     });
-    return res.redirect(`${retour}#${frag.toString()}`);
+    return res.redirect(303, `${retour}#${frag.toString()}`);
   }
 
   const tokens = await issueTokens(user);
   const frag = new URLSearchParams({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
-  res.redirect(`${retour}#${frag.toString()}`);
-});
+  res.redirect(303, `${retour}#${frag.toString()}`);
+}
 
 const echangeSchema = z.object({
   code: z.string().min(20).max(200),
@@ -815,24 +826,17 @@ const appleSchema = z.object({
 });
 
 /**
- * Connexion depuis l'app iPhone/iPad avec « Se connecter avec Apple ». L'app
- * envoie le jeton d'identité qu'iOS lui a remis ; on le vérifie auprès d'Apple.
+ * Le compte d'une connexion Apple, depuis l'app ou depuis le site.
  *
  * Le compte se retrouve par l'identifiant Apple, puis par l'adresse si Apple
  * l'a vérifiée (une personne déjà inscrite avec cette adresse retrouve son
  * compte), sinon il est créé. Une adresse relais (@privaterelay.appleid.com)
  * fait un compte à part : c'est le choix de la personne de masquer son adresse.
+ * L'identifiant Apple est le même pour l'app et le site tant que l'identifiant
+ * de service est rattaché à l'App ID de l'app (même équipe, même groupe).
+ * Les refus sont des HttpError (409 pour une adresse non vérifiée déjà prise).
  */
-router.post("/apple", loginLimiter, validateBody(appleSchema), async (req, res) => {
-  const corps = req.body as z.infer<typeof appleSchema>;
-  let identite;
-  try {
-    identite = await verifierJetonApple(corps.identityToken);
-  } catch (err) {
-    logger.warn({ err }, "jeton Apple refusé");
-    throw unauthorized("Connexion Apple refusée.");
-  }
-
+async function compteApple(identite: IdentiteApple, nom: { firstName?: string; lastName?: string }) {
   let user = await prisma.user.findFirst({ where: { appleSub: identite.sub } });
   if (!user && identite.email && identite.emailVerifie) {
     user = await prisma.user.findUnique({ where: { email: identite.email } });
@@ -851,8 +855,8 @@ router.post("/apple", loginLimiter, validateBody(appleSchema), async (req, res) 
         data: {
           email: identite.email,
           passwordHash: await hashPassword(crypto.randomUUID() + crypto.randomUUID()), // inutilisable
-          firstName: corps.firstName || undefined,
-          lastName: corps.lastName || undefined,
+          firstName: nom.firstName || undefined,
+          lastName: nom.lastName || undefined,
           role: "PARTICULIER",
           appleSub: identite.sub,
         },
@@ -867,17 +871,120 @@ router.post("/apple", loginLimiter, validateBody(appleSchema), async (req, res) 
   } else if (user.appleSub !== identite.sub) {
     user = await prisma.user.update({ where: { id: user.id }, data: { appleSub: identite.sub } });
   }
+  return user;
+}
 
-  // De quoi révoquer l'accès à la suppression du compte, comme Apple l'exige.
-  if (corps.authorizationCode) {
-    const jeton = await jetonDeRevocation(corps.authorizationCode).catch(() => null);
-    if (jeton) await prisma.user.update({ where: { id: user.id }, data: { appleRefreshToken: jeton } });
+/**
+ * De quoi révoquer l'accès à la suppression du compte, comme Apple l'exige.
+ * Sans clé Apple, ou si Apple refuse l'échange, la connexion se fait quand même.
+ */
+async function garderJetonApple(userId: string, code: string, site?: ClientSiteApple) {
+  const jeton = await jetonDeRevocation(code, site).catch(() => null);
+  if (jeton) await prisma.user.update({ where: { id: userId }, data: { appleRefreshToken: jeton } });
+}
+
+/**
+ * Connexion depuis l'app iPhone/iPad avec « Se connecter avec Apple ». L'app
+ * envoie le jeton d'identité qu'iOS lui a remis ; on le vérifie auprès d'Apple.
+ */
+router.post("/apple", loginLimiter, validateBody(appleSchema), async (req, res) => {
+  const corps = req.body as z.infer<typeof appleSchema>;
+  let identite;
+  try {
+    identite = await verifierJetonApple(corps.identityToken);
+  } catch (err) {
+    logger.warn({ err }, "jeton Apple refusé");
+    throw unauthorized("Connexion Apple refusée.");
   }
+
+  const user = await compteApple(identite, corps);
+  if (corps.authorizationCode) await garderJetonApple(user.id, corps.authorizationCode);
 
   // La 2FA s'applique aussi ici, comme pour Google.
   if (aLaDoubleAuth(user)) return res.json(await ouvrirDoubleAuth(user));
   const tokens = await issueTokens(user);
   res.json({ user: publicUser(user), ...tokens });
+});
+
+// --------------------------------------- Se connecter avec Apple, sur le site
+
+// Apple n'accepte qu'une adresse de retour en https, sur un domaine déclaré chez
+// lui : sans APP_URL publique en https, le bouton ne mènerait nulle part.
+const appleWebConfiguree = () =>
+  !!env.APPLE_SERVICES_ID && urlPubliqueValide() && env.APP_URL.startsWith("https://");
+const APPLE_ETAT_COOKIE = "diagly_apple_etat";
+// Apple revient par un POST venu de appleid.apple.com : un cookie SameSite=Lax
+// n'y serait pas joint. None exige Secure ; le chemin le réserve à ce flux.
+const cookieEtatApple = { httpOnly: true, secure: true, sameSite: "none" as const, path: "/api/auth/apple/web" };
+
+// Les connexions que le site peut proposer, d'après la configuration du serveur.
+// L'app iPhone/iPad a ses propres boutons et ne s'en sert pas.
+router.get("/fournisseurs", (_req, res) => {
+  res.json({ google: googleConfigured(), apple: appleWebConfiguree() });
+});
+
+// Démarre le flux : redirige vers appleid.apple.com (lib/apple-web.ts).
+router.get("/apple/web", (_req, res) => {
+  const servicesId = env.APPLE_SERVICES_ID;
+  if (!servicesId || !appleWebConfiguree()) {
+    return res.redirect(`${env.APP_URL}/login?error=${encodeURIComponent("Connexion Apple non disponible pour le moment")}`);
+  }
+  const { url, lien } = demandeAppleWeb({ servicesId, retour: adresseDeRetourApple(env.APP_URL), secret: env.JWT_ACCESS_SECRET });
+  res.cookie(APPLE_ETAT_COOKIE, lien, { ...cookieEtatApple, maxAge: DUREE_DEMANDE_MS });
+  res.redirect(url);
+});
+
+/**
+ * Retour d'Apple, par un formulaire POST (code, id_token, state ; user au
+ * premier passage ; error si la personne a renoncé). Même compte que depuis
+ * l'app, même fin que le retour de Google sur le site.
+ */
+router.post("/apple/web/retour", express.urlencoded({ extended: false, limit: "20kb" }), async (req, res) => {
+  const corps = (req.body ?? {}) as Record<string, unknown>;
+  const champ = (nom: string) => (typeof corps[nom] === "string" ? (corps[nom] as string) : undefined);
+  const fail = (msg?: string) =>
+    res.redirect(303, msg ? `${env.APP_URL}/login?error=${encodeURIComponent(msg)}` : `${env.APP_URL}/login`);
+
+  const lien = readCookie(req.headers.cookie, APPLE_ETAT_COOKIE);
+  res.clearCookie(APPLE_ETAT_COOKIE, cookieEtatApple); // usage unique
+
+  const servicesId = env.APPLE_SERVICES_ID;
+  if (!servicesId || !appleWebConfiguree()) return fail("Connexion Apple non disponible pour le moment");
+  // La personne a fermé la fenêtre d'Apple : retour à l'écran de connexion, sans message.
+  const erreur = champ("error");
+  if (erreur) return fail(erreur === "user_cancelled_authorize" ? undefined : "Connexion Apple refusée.");
+
+  // Le retour doit correspondre à la demande partie de CE navigateur (CSRF de connexion).
+  let attendu: { nonce: string };
+  try {
+    attendu = verifierEtatAppleWeb(champ("state"), lien, env.JWT_ACCESS_SECRET);
+  } catch (err) {
+    logger.warn({ err }, "état de la connexion Apple (site) refusé");
+    return fail("La connexion Apple a expiré ou a été lancée ailleurs. Recommencez.");
+  }
+
+  const idToken = champ("id_token");
+  if (!idToken) return fail("Réponse Apple invalide");
+  let identite;
+  try {
+    identite = await verifierJetonApple(idToken, { audience: servicesId, nonce: attendu.nonce });
+  } catch (err) {
+    logger.warn({ err }, "jeton Apple (site) refusé");
+    return fail("Connexion Apple refusée.");
+  }
+
+  let user;
+  try {
+    user = await compteApple(identite, nomDuPremierPassage(champ("user")));
+  } catch (err) {
+    if (err instanceof HttpError) return fail(err.message);
+    throw err;
+  }
+
+  const code = champ("code");
+  if (code) await garderJetonApple(user.id, code, { servicesId, retour: adresseDeRetourApple(env.APP_URL) });
+
+  return terminerSurLeSite(res, user);
 });
 
 // ------------------------------------------------------- Supprimer son compte

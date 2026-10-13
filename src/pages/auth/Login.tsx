@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Loader2, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { Button, Input } from '@/components/ui'
 import { AuthCard } from '@/components/auth/AuthCard'
-import { GoogleButton, OrDivider } from '@/components/auth/Social'
+import { ConnexionWeb, OrDivider } from '@/components/auth/Social'
 import { estAppNative } from '@/lib/plateforme'
 import { ConnexionNative } from '@/components/auth/ConnexionNative'
 import { api, ApiError } from '@/lib/api'
@@ -160,19 +160,22 @@ export function Login() {
       </form>
 
       {/* Dans l'app, Apple et Google passent par les fenêtres d'iOS : le flux web
-          de Google ne fonctionne pas dans la vue d'une app. */}
-      <OrDivider label="ou continuer avec" />
+          de Google ne fonctionne pas dans la vue d'une app. Sur le site, par
+          redirection, selon ce que le serveur propose. */}
       {estAppNative ? (
-        <ConnexionNative
-          onCompte={finishAuth}
-          onDoubleAuth={(etape) => {
-            setTicket(etape.ticket)
-            setParEmail(etape.method === 'email' ? etape.email ?? 'votre adresse' : null)
-          }}
-          onErreur={setError}
-        />
+        <>
+          <OrDivider label="ou continuer avec" />
+          <ConnexionNative
+            onCompte={finishAuth}
+            onDoubleAuth={(etape) => {
+              setTicket(etape.ticket)
+              setParEmail(etape.method === 'email' ? etape.email ?? 'votre adresse' : null)
+            }}
+            onErreur={setError}
+          />
+        </>
       ) : (
-        <GoogleButton />
+        <ConnexionWeb />
       )}
 
       <p className="text-center text-sm text-muted-foreground mt-6">

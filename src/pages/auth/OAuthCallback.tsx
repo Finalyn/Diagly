@@ -6,9 +6,10 @@ import { useAuth } from '@/stores/auth'
 import type { ApiUser } from '@/lib/api-types'
 
 /**
- * Retour de connexion Google : le serveur redirige ici avec les tokens dans le
- * fragment d'URL (#accessToken=...&refreshToken=...). On les stocke, on récupère
- * le profil, puis on entre dans l'app.
+ * Retour de connexion Google ou Apple sur le site : le serveur redirige ici avec
+ * les tokens dans le fragment d'URL (#accessToken=...&refreshToken=...). On les
+ * lit, on retire le fragment de l'adresse, on les stocke, on récupère le profil,
+ * puis on entre dans l'app.
  */
 export function OAuthCallback() {
   const navigate = useNavigate()
@@ -21,6 +22,9 @@ export function OAuthCallback() {
     done.current = true
 
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    // Les jetons ne restent pas dans l'adresse affichée ni dans l'historique,
+    // même si la suite échoue. L'état du routeur est gardé tel quel.
+    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
 
     // Compte protege par la double authentification : le serveur ne delivre pas encore
     // les jetons, il renvoie un ticket. On repasse par l'ecran de connexion (etape 2).
@@ -33,7 +37,7 @@ export function OAuthCallback() {
     const accessToken = params.get('accessToken')
     const refreshToken = params.get('refreshToken')
     if (!accessToken || !refreshToken) {
-      setError('Connexion Google échouée.')
+      setError('La connexion a échoué.')
       return
     }
 

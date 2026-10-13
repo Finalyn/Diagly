@@ -1,7 +1,33 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { api, BASE_URL } from '@/lib/api'
 
-// Identifiants Google configurés sur le serveur de prod -> flux OAuth actif.
-export const SOCIAL_ENABLED = true
+/** Les connexions que le site propose, d'après la configuration du serveur. */
+interface Fournisseurs {
+  google: boolean
+  apple: boolean
+}
+
+// Lue une fois par visite : la configuration du serveur ne change pas d'un écran à l'autre.
+let lecture: Promise<Fournisseurs> | null = null
+function lireFournisseurs(): Promise<Fournisseurs> {
+  lecture ??= api.auth.fournisseurs().catch(() => {
+    lecture = null // nouvel essai au prochain affichage
+    // Serveur injoignable, ou d'avant cette route : Google comme avant, sans Apple.
+    return { google: true, apple: false }
+  })
+  return lecture
+}
+
+/** null tant que la réponse du serveur n'est pas arrivée. */
+function useFournisseurs(): Fournisseurs | null {
+  const [fournisseurs, setFournisseurs] = useState<Fournisseurs | null>(null)
+  useEffect(() => {
+    let actif = true
+    void lireFournisseurs().then((f) => { if (actif) setFournisseurs(f) })
+    return () => { actif = false }
+  }, [])
+  return fournisseurs
+}
 
 export function GoogleIcon() {
   return (
@@ -14,27 +40,65 @@ export function GoogleIcon() {
   )
 }
 
-/** Bouton « Continuer avec Google » (redirige vers le flux OAuth une fois activé). */
-export function GoogleButton({ label = 'Continuer avec Google' }: { label?: string }) {
-  const [info, setInfo] = useState<string | null>(null)
-  const onClick = () => {
-    if (!SOCIAL_ENABLED) {
-      setInfo('La connexion Google est en cours d’activation.')
-      return
-    }
-    window.location.href = '/api/auth/google'
-  }
+export function LogoApple() {
   return (
-    <div>
-      <button
-        type="button"
-        onClick={onClick}
-        className="w-full h-11 flex items-center justify-center gap-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 active:scale-[0.99] text-sm font-medium text-slate-700 transition-all"
-      >
-        <GoogleIcon />{label}
-      </button>
-      {info && <p className="text-xs text-amber-600 text-center mt-2">{info}</p>}
-    </div>
+    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" aria-hidden fill="currentColor">
+      <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.323-4.63-2.323-7.28 0-4.28 2.797-6.55 5.552-6.55 1.448 0 2.675.95 3.6.95.865 0 2.222-1.01 3.902-1.01.613 0 2.886.06 4.374 2.19-.13.09-2.383 1.37-2.383 4.19 0 3.26 2.854 4.42 2.955 4.45z" />
+    </svg>
+  )
+}
+
+// Ces boutons NAVIGUENT vers le serveur, qui redirige vers Apple ou Google. Pas
+// de formulaire : dans Chrome, la directive form-action 'self' de la CSP
+// s'applique aussi aux redirections qui suivent l'envoi d'un formulaire, et
+// bloquerait le passage vers appleid.apple.com ou accounts.google.com.
+const partirVers = (chemin: string) => { window.location.href = `${BASE_URL}${chemin}` }
+
+/** Bouton « Continuer avec Google » (flux OAuth par redirection). */
+export function GoogleButton({ label = 'Continuer avec Google' }: { label?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => partirVers('/api/auth/google')}
+      className="w-full h-11 flex items-center justify-center gap-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 active:scale-[0.99] text-sm font-medium text-slate-700 transition-all"
+    >
+      <GoogleIcon />{label}
+    </button>
+  )
+}
+
+/**
+ * Bouton « Continuer avec Apple » du site, selon la charte d'Apple : fond noir,
+ * logo et texte blancs, même hauteur que celui de Google.
+ */
+export function AppleButton({ label = 'Continuer avec Apple' }: { label?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => partirVers('/api/auth/apple/web')}
+      className="w-full h-11 flex items-center justify-center gap-2.5 rounded-lg bg-black hover:bg-neutral-800 active:scale-[0.99] text-sm font-medium text-white transition-all"
+    >
+      <LogoApple />{label}
+    </button>
+  )
+}
+
+/**
+ * Apple et Google sur le site, par redirection, selon ce que le serveur
+ * propose. Apple vient en premier, comme dans l'app. Rien, pas même le
+ * séparateur, quand aucun des deux n'est configuré.
+ */
+export function ConnexionWeb({ libelleGoogle }: { libelleGoogle?: string }) {
+  const fournisseurs = useFournisseurs()
+  if (!fournisseurs || (!fournisseurs.apple && !fournisseurs.google)) return null
+  return (
+    <>
+      <OrDivider label="ou continuer avec" />
+      <div className="space-y-3">
+        {fournisseurs.apple && <AppleButton />}
+        {fournisseurs.google && <GoogleButton label={libelleGoogle} />}
+      </div>
+    </>
   )
 }
 

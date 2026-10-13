@@ -4,10 +4,11 @@ import { env } from "./env.js";
 import { logger } from "./logger.js";
 
 /**
- * Ce que le serveur échange avec Apple, pour l'app iPhone/iPad :
+ * Ce que le serveur échange avec Apple, pour l'app iPhone/iPad et le site :
  *  - les notifications (APNs), envoyées avec un jeton signé par la clé .p8 ;
- *  - la connexion « Se connecter avec Apple » : vérifier le jeton que l'app
- *    reçoit d'iOS, et pouvoir révoquer l'accès à la suppression d'un compte.
+ *  - la connexion « Se connecter avec Apple » : vérifier le jeton d'identité
+ *    (remis par iOS à l'app, ou renvoyé par Apple au site, lib/apple-web.ts),
+ *    et pouvoir révoquer l'accès à la suppression d'un compte.
  *
  * Une seule clé .p8 sert aux deux (services APNs et Sign in with Apple cochés
  * sur la même clé). Elle arrive par l'environnement, en base64 pour tenir sur
@@ -187,12 +188,24 @@ export interface IdentiteApple {
   emailVerifie: boolean;
 }
 
+/** Ce que le jeton d'identité doit porter, au-delà de la signature d'Apple. */
+export interface AttenduApple {
+  /**
+   * Son destinataire : l'app (APPLE_BUNDLE_ID, par défaut) ou, pour une
+   * connexion depuis le site, l'identifiant de service (APPLE_SERVICES_ID).
+   */
+  audience?: string;
+  /** Le nonce parti avec la demande (site) : le jeton doit porter le même. */
+  nonce?: string;
+}
+
 /**
- * Vérifie le jeton d'identité qu'iOS remet à l'app après « Se connecter avec
- * Apple » : signature d'Apple, émetteur, destinataire (notre app), expiration.
- * Lève une erreur si quoi que ce soit cloche.
+ * Vérifie le jeton d'identité de « Se connecter avec Apple » : signature
+ * d'Apple, émetteur, destinataire (l'app, ou le site), expiration, et le nonce
+ * quand la demande en portait un. Lève une erreur si quoi que ce soit cloche.
  */
-export async function verifierJetonApple(jeton: string): Promise<IdentiteApple> {
+export async function verifierJetonApple(jeton: string, attendu: AttenduApple = {}): Promise<IdentiteApple> {
+  const audience = attendu.audience ?? BUNDLE_ID;
   const [e, c, s] = jeton.split(".");
   if (!e || !c || !s) throw new Error("jeton Apple mal formé");
   const entete = JSON.parse(Buffer.from(e, "base64url").toString("utf8")) as { alg?: string; kid?: string };
@@ -201,12 +214,16 @@ export async function verifierJetonApple(jeton: string): Promise<IdentiteApple> 
   if (!ok) throw new Error("signature Apple invalide");
   const charge = JSON.parse(Buffer.from(c, "base64url").toString("utf8")) as {
     iss?: string; aud?: string | string[]; exp?: number; sub?: string; email?: string; email_verified?: boolean | string;
+    nonce?: string;
   };
   const destinataires = Array.isArray(charge.aud) ? charge.aud : [charge.aud];
   if (charge.iss !== EMETTEUR) throw new Error("émetteur inattendu");
-  if (!destinataires.includes(BUNDLE_ID)) throw new Error("jeton destiné à une autre app");
+  if (!destinataires.includes(audience)) throw new Error("jeton destiné à une autre app");
   if (!charge.exp || charge.exp * 1000 < Date.now()) throw new Error("jeton Apple expiré");
   if (!charge.sub) throw new Error("identifiant Apple absent");
+  // Un jeton sans nonce, ou avec celui d'une autre demande, ne s'injecte pas
+  // dans cette connexion-ci.
+  if (attendu.nonce !== undefined && charge.nonce !== attendu.nonce) throw new Error("nonce du jeton Apple inattendu");
   return {
     sub: charge.sub,
     email: charge.email?.toLowerCase(),
@@ -214,39 +231,78 @@ export async function verifierJetonApple(jeton: string): Promise<IdentiteApple> 
   };
 }
 
-function secretClient(): string {
+/**
+ * Le secret du client auprès d'Apple : un jeton ES256 signé par la clé, dont
+ * le sujet est l'identifiant du client (l'app ou l'identifiant de service).
+ */
+function secretClient(clientId: string): string {
   const t = Math.floor(Date.now() / 1000);
-  return jetonSigne({ iss: env.APPLE_TEAM_ID, iat: t, exp: t + 300, aud: EMETTEUR, sub: BUNDLE_ID });
+  return jetonSigne({ iss: env.APPLE_TEAM_ID, iat: t, exp: t + 300, aud: EMETTEUR, sub: clientId });
 }
+
+/** Une connexion depuis le site : l'identifiant de service et l'adresse de retour déclarés chez Apple. */
+export interface ClientSiteApple {
+  servicesId: string;
+  retour: string;
+}
+
+/**
+ * Un jeton se révoque avec l'identifiant du client qui l'a obtenu. Celui du
+ * site est gardé avec ce préfixe, qui le dit sans colonne de plus en base ; un
+ * jeton de l'app reste tel quel (ceux déjà gardés aussi).
+ */
+const PREFIXE_SITE = "site:";
 
 /**
  * Échange le code d'autorisation remis à la connexion contre un jeton de
  * rafraîchissement. On ne s'en sert que pour le révoquer quand le compte est
- * supprimé, comme Apple le demande. null si la clé n'est pas configurée.
+ * supprimé, comme Apple le demande. Rend la valeur à garder (préfixée pour le
+ * site), ou null si la clé n'est pas configurée ou qu'Apple refuse.
  */
-export async function jetonDeRevocation(code: string): Promise<string | null> {
+export async function jetonDeRevocation(code: string, site?: ClientSiteApple): Promise<string | null> {
   if (!cleAppleConfiguree()) return null;
+  const clientId = site?.servicesId ?? BUNDLE_ID;
   const r = await fetch(`${EMETTEUR}/auth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: BUNDLE_ID, client_secret: secretClient(), code, grant_type: "authorization_code" }),
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: secretClient(clientId),
+      code,
+      grant_type: "authorization_code",
+      // Apple l'exige quand la demande d'autorisation en portait une (le site).
+      ...(site ? { redirect_uri: site.retour } : {}),
+    }),
     ...avecDelai(),
   });
   if (!r.ok) {
-    logger.warn({ statut: r.status }, "échange du code Apple refusé");
+    logger.warn({ statut: r.status, site: !!site }, "échange du code Apple refusé");
     return null;
   }
-  return ((await r.json()) as { refresh_token?: string }).refresh_token ?? null;
+  const jeton = ((await r.json()) as { refresh_token?: string }).refresh_token;
+  if (!jeton) return null;
+  return site ? `${PREFIXE_SITE}${jeton}` : jeton;
 }
 
-/** Révoque l'accès de Diagly au compte Apple (suppression du compte). */
-export async function revoquerApple(jetonRafraichissement: string): Promise<void> {
+/** Révoque l'accès de Diagly au compte Apple (suppression du compte), avec le client qui l'a obtenu. */
+export async function revoquerApple(garde: string): Promise<void> {
   if (!cleAppleConfiguree()) return;
+  const duSite = garde.startsWith(PREFIXE_SITE);
+  const clientId = duSite ? env.APPLE_SERVICES_ID : BUNDLE_ID;
+  if (!clientId) {
+    logger.warn("révocation Apple impossible : jeton du site, mais APPLE_SERVICES_ID n'est plus configuré");
+    return;
+  }
   const r = await fetch(`${EMETTEUR}/auth/revoke`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: BUNDLE_ID, client_secret: secretClient(), token: jetonRafraichissement, token_type_hint: "refresh_token" }),
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: secretClient(clientId),
+      token: duSite ? garde.slice(PREFIXE_SITE.length) : garde,
+      token_type_hint: "refresh_token",
+    }),
     ...avecDelai(),
   });
-  if (!r.ok) logger.warn({ statut: r.status }, "révocation Apple refusée");
+  if (!r.ok) logger.warn({ statut: r.status, site: duSite }, "révocation Apple refusée");
 }

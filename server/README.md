@@ -108,6 +108,7 @@ vaut « absente ».
 | `VAPID_SUBJECT` | `mailto:contact@diagly.ch` | contact déclaré au service push |
 | `APPLE_BUNDLE_ID` | `ch.diagly.app` | identifiant de l'app iPhone/iPad (connexion Apple, APNs, retour de Google vers l'app) |
 | `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | vides | clé `.p8` d'Apple, `APPLE_PRIVATE_KEY` étant son contenu en base64 sur une ligne : notifications sur l'iPhone (APNs) et révocation de l'accès Apple à la suppression d'un compte. Sans elle, la connexion Apple marche quand même |
+| `APPLE_SERVICES_ID` | vide | « Se connecter avec Apple » sur le site : l'identifiant de service (Services ID, par ex. `ch.diagly.web`) rattaché à l'App ID de l'app. Adresse de retour à déclarer chez Apple : `APP_URL` + `/api/auth/apple/web/retour` (https). Sans lui, le bouton Apple n'apparaît pas sur le site |
 | `APNS_SANDBOX` | `false` | `true` seulement pour une app compilée en développement ; TestFlight et l'App Store utilisent l'APNs de production |
 
 Lues directement dans le code, hors de `env.ts` :
@@ -205,6 +206,8 @@ Les fichiers de `/uploads` ne se lisent qu'avec le jeton signé que l'API ajoute
 | | `/api/auth/2fa/*` | double authentification par application (TOTP) ou par email ; `verify` et `resend` à la connexion |
 | GET | `/api/auth/google`, `/api/auth/google/callback` | connexion Google ; `?app=1` revient vers l'app iPhone/iPad |
 | POST | `/api/auth/apple` | `{ identityToken, authorizationCode?, firstName?, lastName? }`, depuis l'app |
+| GET | `/api/auth/apple/web` | connexion Apple sur le site : redirige vers Apple ; Apple revient par un POST (`form_post`) sur `/api/auth/apple/web/retour` |
+| GET | `/api/auth/fournisseurs` | `{ google, apple }` : les connexions que le site peut proposer, d'après la configuration |
 | POST | `/api/auth/compte/supprimer` | `{ confirmation: "SUPPRIMER" }` |
 
 Réponses de login, register et refresh : `{ user, accessToken, refreshToken }`.
