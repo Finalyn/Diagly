@@ -15,8 +15,9 @@ import { useEffect, useRef, useState } from 'react'
 // Fond villa (tableau de bord uniquement), fondu vers la gauche et vers le bas.
 // Le fondu se cale sur le cadre de l'image et non sur l'écran : calé sur
 // l'écran, il finissait plus bas que l'image sur iPad, et l'image s'arrêtait
-// net avant la fin du fondu.
-const DASH_MASK = 'linear-gradient(to right, transparent 14%, #000 51%), linear-gradient(to bottom, #000 60%, transparent 100%)'
+// net avant la fin du fondu. Le masque passe par la variable --masque-image,
+// posée en classe sur le cadre : sur iPad debout, la variante tablette: la
+// remplace, pour que le fondu gauche laisse lisible la phrase d'accueil.
 
 // Routes accessibles sur mobile (app épurée : liste, éditeur, base de données, paramètres, aide).
 // Tout le reste (dashboard, coûts, variantes, rapports, plans, parc, équipe, intégrations…)
@@ -139,18 +140,18 @@ export function AppLayout() {
           <div
             // iPad couché : le cadre est presque à la forme de l'image, qui
             // tenait donc en entier, villa comprise, et paraissait petite. On
-            // la grossit deux fois, toujours centrée sur la villa.
+            // la grossit d'une fois et demie, toujours centrée sur la villa.
             // iPad debout (« tablette ») : le cadre haut et étroit grossissait
             // au contraire l'image. Il prend sa forme exacte, un peu plus
             // large : l'image entière, plus petite, et le fondu du bas se
             // termine au bas de l'image.
-            className="js-print-hide pointer-events-none absolute right-0 top-0 z-0 h-[var(--hauteur-image,26rem)] w-[70%] bg-cover bg-no-repeat lg:[@media(pointer:coarse)]:bg-[length:auto_200%] tablette:aspect-[1728/973] tablette:h-auto tablette:w-[85%]"
+            className="js-print-hide pointer-events-none absolute right-0 top-0 z-0 h-[var(--hauteur-image,26rem)] w-[70%] bg-cover bg-no-repeat [--masque-image:linear-gradient(to_right,transparent_14%,#000_51%),linear-gradient(to_bottom,#000_60%,transparent_100%)] lg:[@media(pointer:coarse)]:bg-[length:auto_150%] tablette:aspect-[1728/973] tablette:h-auto tablette:w-[90%] tablette:[--masque-image:linear-gradient(to_right,transparent_30%,#000_62%),linear-gradient(to_bottom,#000_55%,transparent_100%)]"
             style={{
               backgroundImage: 'url(/preview-bg.webp)',
               backgroundPosition: '80% 20%',
-              WebkitMaskImage: DASH_MASK,
+              WebkitMaskImage: 'var(--masque-image)',
               WebkitMaskComposite: 'source-in',
-              maskImage: DASH_MASK,
+              maskImage: 'var(--masque-image)',
               maskComposite: 'intersect',
             }}
           />

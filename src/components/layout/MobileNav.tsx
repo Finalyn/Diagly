@@ -86,18 +86,26 @@ export function MobileNav() {
     void BarreOnglets.afficher({ gauche: d.gauche ?? undefined, centre: d.centre, droite: d.droite, actif: d.actif ?? undefined }).catch(() => undefined)
   }, [natif, visible, description])
 
+  // navigate change à chaque page : abonné avec lui, l'écouteur se refaisait à
+  // chaque navigation, et son nettoyage masquait la barre. Quand la barre
+  // restait la même (Dossier, puis Relevé : la page de relevé du dossier
+  // redirige vers l'éditeur, même barre), rien ne la réaffichait et elle
+  // disparaissait. On passe donc par une référence, et l'abonnement ne vit
+  // qu'avec le composant.
+  const naviguer = useRef(navigate)
+  useEffect(() => { naviguer.current = navigate }, [navigate])
   useEffect(() => {
     if (!natif) return
     const ecoute = BarreOnglets.addListener('toucher', ({ id }) => {
       const cible = cibles.current[id]
-      if (cible) navigate(cible)
+      if (cible) naviguer.current(cible)
     })
     return () => {
       void ecoute.then((h) => h.remove())
       // La barre disparaît avec le composant (écran de saisie, déconnexion).
       void BarreOnglets.masquer().catch(() => undefined)
     }
-  }, [natif, navigate])
+  }, [natif])
 
   if (natif) return null
 

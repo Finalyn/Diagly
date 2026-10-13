@@ -475,6 +475,17 @@ function cibleDuVolet(): CibleDuVolet | null {
   return racine ? { element: racine, gauche: 0 } : null
 }
 
+/**
+ * Le clic qui suit un toucher, absorbé : le volet s'est déjà fermé au
+ * relâcher du doigt, et ce clic tomberait sur ce qui était dessous (un bouton
+ * de la conversation).
+ */
+function avalerLeClicSuivant() {
+  const avaler = (e: Event) => { e.preventDefault(); e.stopPropagation() }
+  document.addEventListener('click', avaler, { capture: true, once: true })
+  window.setTimeout(() => document.removeEventListener('click', avaler, { capture: true }), 500)
+}
+
 function lacherApp(racine: HTMLElement) {
   delete racine.dataset.pousseParVolet
   racine.style.transform = ''
@@ -937,7 +948,15 @@ function VoletConversations({ ouvert, onFermer, conversations, courante, onOuvri
           {...gestes}
           onClick={onFermer}
           ref={bordRef}
-          className="fixed inset-y-0 right-0 z-50 touch-none lg:hidden"
+          // Sur iPhone, le clic qui suit un toucher n'atteignait pas toujours
+          // ce bord : le volet restait ouvert. Un toucher sans glissement le
+          // ferme donc dès que le doigt se lève ; onClick reste pour la souris.
+          onPointerUp={(e) => {
+            const g = geste.current
+            gestes.onPointerUp(e)
+            if (e.pointerType !== 'mouse' && g && !g.tire) { avalerLeClicSuivant(); onFermer() }
+          }}
+          className="fixed inset-y-0 right-0 z-50 cursor-pointer touch-none lg:hidden"
           // Position exacte posée par placer() : le bord droit du menu, sur iPad.
           style={{ left: LARGEUR_VOLET }}
         />
