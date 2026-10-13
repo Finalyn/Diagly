@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent, Input, Button } from '@/components/ui'
 import { api, ApiError, BASE_URL } from '@/lib/api'
-import { useIsMobile } from '@/lib/use-mobile'
+import { useEcranEtroit } from '@/lib/use-mobile'
 import { cn, formatDate } from '@/lib/utils'
 import type { ApiKey, WebhookEndpoint, WebhookDelivery, WebhookEventType } from '@/lib/api-types'
 
@@ -58,7 +58,11 @@ const OUTILS_MCP: [string, string][] = [
 ]
 
 export function Integrations() {
-  const isMobile = useIsMobile()
+  // Sous 1024 px (téléphone, iPad debout), le menu et le contenu s'empilent :
+  // en deux colonnes, le menu gardait toute la largeur et le contenu tombait à
+  // zéro sur iPad. Entre 768 et 1023 px, la zone principale ne défile pas
+  // (AppLayout la traite en page encastrée) : la page défile donc elle-même.
+  const empile = useEcranEtroit()
   const keysQuery = useQuery({ queryKey: ['api-keys'], queryFn: () => api.apiKeys.list() })
   const endpointsQuery = useQuery({ queryKey: ['webhooks'], queryFn: () => api.webhooks.list() })
   const keys = keysQuery.isLoading ? null : keysQuery.data?.keys ?? []
@@ -98,13 +102,13 @@ export function Integrations() {
   // La page tient dans la fenêtre : seul le panneau de droite défile (voir
   // pageEncastree dans AppLayout). Sur téléphone, c'est la page qui défile.
   return (
-    <div className={cn('space-y-4', !isMobile && 'flex h-full min-h-0 flex-col space-y-0 gap-4')}>
+    <div className={cn('space-y-4', empile ? 'md:h-full md:overflow-y-auto md:pb-4' : 'flex h-full min-h-0 flex-col space-y-0 gap-4')}>
       <div className="shrink-0">
         <h1 className="text-xl font-bold">Intégrations</h1>
         <p className="text-sm text-muted-foreground">Reliez Diagly à vos outils : ERP, logiciel de gérance, assistant IA. Les données restent en lecture seule.</p>
       </div>
 
-      <div className={cn('flex gap-4', isMobile ? 'flex-col' : 'min-h-0 flex-1 items-start')}>
+      <div className={cn('flex gap-4', empile ? 'flex-col' : 'min-h-0 flex-1 items-start')}>
         {/* ----- Le menu, à gauche ----- */}
         <div className="w-full shrink-0 space-y-4 lg:w-72">
           <Card className="overflow-hidden">
@@ -154,12 +158,12 @@ export function Integrations() {
         </div>
 
         {/* ----- Le contenu, à droite ----- */}
-        <Card className={cn('min-w-0 flex-1 overflow-hidden', !isMobile && 'flex max-h-full flex-col')}>
+        <Card className={cn('min-w-0 flex-1 overflow-hidden', !empile && 'flex max-h-full flex-col')}>
           <CardHeader className="shrink-0 space-y-0 border-b border-black/[0.06] px-5 py-3.5">
             <CardTitle className="text-base">{section.label}</CardTitle>
             <p className="mt-0.5 text-sm text-muted-foreground">{section.aide}</p>
           </CardHeader>
-          <CardContent key={choisie} className={cn('space-y-5 p-5', !isMobile && 'min-h-0 flex-1 overflow-y-auto overscroll-contain')}>
+          <CardContent key={choisie} className={cn('space-y-5 p-5', !empile && 'min-h-0 flex-1 overflow-y-auto overscroll-contain')}>
             {choisie === 'apikeys' && <SectionCles keys={keys} onChange={loadKeys} />}
             {choisie === 'webhooks' && <SectionWebhooks endpoints={endpoints} onChange={loadEndpoints} />}
             {choisie === 'mcp' && <SectionMcp aUneCle={activeKeys.length > 0} onCreerCle={() => choisir('apikeys')} />}

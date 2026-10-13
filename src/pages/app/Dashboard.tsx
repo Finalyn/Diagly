@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowRight, ChevronRight, Plus, ClipboardCheck, FileText, Layers,
@@ -82,6 +82,31 @@ export function Dashboard() {
 
   const greeting = user?.firstName ? `Bonjour ${user.firstName}` : 'Bonjour'
 
+  // L'image de fond (AppLayout) descend jusque sous la carte « Reprendre » et
+  // s'y efface : on lui donne le bas de la carte, mesuré depuis le haut de la
+  // zone principale, et remesuré quand la page change de taille (iPad tourné,
+  // menu replié).
+  const carteReprendre = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const carte = carteReprendre.current
+    const zone = carte?.closest<HTMLElement>('[data-zone-principale]')
+    if (!carte || !zone) return
+    const racine = document.documentElement
+    const mesurer = () => {
+      const defilement = carte.closest('main')?.scrollTop ?? 0
+      const bas = carte.getBoundingClientRect().bottom - zone.getBoundingClientRect().top + defilement
+      racine.style.setProperty('--hauteur-image', `${Math.round(bas + 24)}px`)
+    }
+    mesurer()
+    const o = new ResizeObserver(mesurer)
+    o.observe(carte)
+    o.observe(zone)
+    return () => {
+      o.disconnect()
+      racine.style.removeProperty('--hauteur-image')
+    }
+  }, [])
+
   // Fil d'activité dérivé : projets créés / diagnostics mis à jour + éléments ajoutés.
   const activity = useMemo(() => {
     type A = { id: string; ts: string; icon: typeof ClipboardCheck; title: string; sub: string; to: string }
@@ -127,7 +152,9 @@ export function Dashboard() {
       </div>
 
       {/* Dossier mis en avant : le dernier modifié */}
-      <div className="liquid-glass relative overflow-hidden rounded-[26px] lg:max-w-[720px]" style={glass(0.72)} data-visite="dash-reprendre">
+      {/* Couché, l'iPad la gardait presque pleine largeur : elle s'arrête aux
+          deux tiers environ, l'image restant visible à côté. */}
+      <div ref={carteReprendre} className="liquid-glass relative overflow-hidden rounded-[26px] lg:max-w-[min(720px,62%)]" style={glass(0.72)} data-visite="dash-reprendre">
         <div className="relative z-10 p-5 sm:p-6 short:sm:p-5">
           {lastProject ? (
             <>

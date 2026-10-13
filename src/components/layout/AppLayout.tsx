@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react'
 // Le fondu se cale sur le cadre de l'image et non sur l'écran : calé sur
 // l'écran, il finissait plus bas que l'image sur iPad, et l'image s'arrêtait
 // net avant la fin du fondu.
-const DASH_MASK = 'linear-gradient(to right, transparent 14%, #000 51%), linear-gradient(to bottom, #000 55%, transparent 100%)'
+const DASH_MASK = 'linear-gradient(to right, transparent 14%, #000 51%), linear-gradient(to bottom, #000 60%, transparent 100%)'
 
 // Routes accessibles sur mobile (app épurée : liste, éditeur, base de données, paramètres).
 // Tout le reste (dashboard, coûts, variantes, rapports, plans, parc, équipe, intégrations…)
@@ -105,24 +105,30 @@ export function AppLayout() {
   return (
     // Sur téléphone, la marge de la barre d'état passe dans la barre du haut,
     // pour que le verre monte jusqu'en haut de l'écran.
-    <div className="js-print-shell safe-sides flex h-dvh overflow-hidden bg-muted md:pt-[var(--safe-top)]">
+    // La marge de la barre d'état est portée par chaque colonne et non par
+    // l'ensemble : la zone principale commence ainsi tout en haut de l'écran,
+    // et l'image du tableau de bord monte sous la barre d'état au lieu de s'y
+    // arrêter net.
+    <div className="js-print-shell safe-sides flex h-dvh overflow-hidden bg-muted">
       {/* Colonne gauche : panneau unique (desktop) */}
       {/* Repliable (bouton de la barre du haut) ; replié d'office dans l'éditeur
           du relevé sur tablette, qui travaille un panneau à la fois. */}
-      <div className={cn('js-print-hide hidden gap-3 pl-3 py-3 w-[15rem] lg:w-[17.5rem] shrink-0', menu.visible && 'md:flex md:flex-col')}>
+      <div className={cn('js-print-hide hidden gap-3 pl-3 py-3 md:pt-[calc(var(--safe-top)+0.75rem)] w-[15rem] lg:w-[17.5rem] shrink-0', menu.visible && 'md:flex md:flex-col')}>
         {/* Dans un dossier, la barre de gauche devient la sienne. */}
         {diagProjectId && !isMobile ? <DossierSidebar projectId={diagProjectId} /> : <Sidebar />}
       </div>
 
       {/* Zone principale */}
-      <div className="js-print-column relative flex flex-1 flex-col min-w-0 overflow-hidden p-3 max-md:py-0">
+      <div data-zone-principale className="js-print-column relative flex flex-1 flex-col min-w-0 overflow-hidden p-3 max-md:py-0 md:pt-[calc(var(--safe-top)+0.75rem)]">
         {onDashboard && (
-          // Un cadre en haut à droite, 70 % de la largeur et assez haut pour que
-          // le fondu se fasse dans l'image (« cover » remplit le cadre quelle
-          // que soit sa forme : iPad debout, couché, ou grand écran). La villa
+          // Un cadre en haut à droite, sur 70 % de la largeur, depuis le haut de
+          // l'écran jusque sous la carte « Reprendre » : le tableau de bord en
+          // mesure le bas (--hauteur-image), pour que le fondu soit terminé
+          // avant les cartes du dessous, sur iPad debout, couché ou grand écran.
+          // « cover » remplit le cadre quelle que soit sa forme ; la villa
           // reste dans le cadre (position à 80 % de la largeur).
           <div
-            className="js-print-hide pointer-events-none absolute right-0 top-0 z-0 h-[clamp(26rem,58%,40rem)] w-[70%] bg-cover bg-no-repeat"
+            className="js-print-hide pointer-events-none absolute right-0 top-0 z-0 h-[var(--hauteur-image,26rem)] w-[70%] bg-cover bg-no-repeat"
             style={{
               backgroundImage: 'url(/preview-bg.jpg)',
               backgroundPosition: '80% 20%',
