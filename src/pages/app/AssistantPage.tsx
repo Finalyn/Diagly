@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal, flushSync } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  ArrowLeft, ArrowUp, Building2, Check, ImagePlus, Loader2, MessageSquarePlus,
-  PanelLeftClose, PanelLeftOpen, Paperclip, PanelLeft, Search, Trash2, X,
+  ArrowLeft, ArrowUp, Building2, Check, Ellipsis, ImagePlus, Loader2, MessageSquarePlus,
+  PanelLeftClose, PanelLeftOpen, Paperclip, PanelLeft, Search, SquarePen, Trash2, X,
 } from 'lucide-react'
 import { Button, Input } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
@@ -12,7 +13,9 @@ import {
   lireConversations, ecrireConversations, nouvelleConversation, titreDepuis,
   type Conversation, type MessageChat,
 } from '@/lib/conversations'
+import { mouvementReduit } from '@/lib/motion'
 import { analyser, type Bloc, type Segment } from '@/lib/texte-riche'
+import { useEcranEtroit } from '@/lib/use-mobile'
 import { cn } from '@/lib/utils'
 
 const SUGGESTIONS = [
@@ -52,10 +55,20 @@ export function AssistantPage() {
   const [listeOuverte, setListeOuverte] = useState(true)
   const [tiroir, setTiroir] = useState(false)
   const [choixDossier, setChoixDossier] = useState(false)
+  const etroit = useEcranEtroit()
+
+  // Le volet n'existe que sous 1024 px. Un iPad tourné à l'horizontale pendant
+  // qu'il est ouvert le démonte : sans cette remise à zéro, il se rouvrirait
+  // de lui-même au retour à la verticale.
+  if (!etroit && tiroir) setTiroir(false)
 
   const champFichier = useRef<HTMLInputElement>(null)
   const filRef = useRef<HTMLDivElement>(null)
   const saisieRef = useRef<HTMLTextAreaElement>(null)
+  /** Le lecteur est au bas du fil : il doit y rester si la vue change de taille. */
+  const colleEnBas = useRef(true)
+  /** Une descente animée vers le dernier message est en cours. */
+  const descenteAuto = useRef(false)
 
   // Un diagnostic ouvert quand on arrive se rattache de lui-même : c'est de lui
   // qu'on veut parler neuf fois sur dix.
@@ -66,8 +79,47 @@ export function AssistantPage() {
   }, [depuis])
 
   useEffect(() => {
-    filRef.current?.scrollTo({ top: filRef.current.scrollHeight, behavior: 'smooth' })
+    const fil = filRef.current
+    if (!fil) return
+    colleEnBas.current = true
+    descenteAuto.current = true
+    fil.scrollTo({ top: fil.scrollHeight, behavior: 'smooth' })
   }, [courante.messages, enCours])
+
+  // Quand la vue rétrécit, c'est le bas du fil qui reste en place, pas le
+  // haut. Dans l'app, le clavier rétrécit la vue (Keyboard, resize: 'native') :
+  // sans cela, la réponse qu'on était en train de lire passait sous la zone de
+  // saisie au moment même où l'on commençait à répondre.
+  useEffect(() => {
+    const fil = filRef.current
+    if (!fil) return
+    let hauteur = fil.clientHeight
+    const suivre = () => {
+      const ecart = fil.scrollHeight - fil.scrollTop - fil.clientHeight
+      // Les positions de passage d'une descente animée ne disent rien de ce
+      // que veut le lecteur : seule compte son arrivée en bas.
+      if (descenteAuto.current) { if (ecart < 2) descenteAuto.current = false; return }
+      colleEnBas.current = ecart < 32
+    }
+    // Le doigt ou la molette reprennent la main sur une descente en cours.
+    const reprendre = () => { descenteAuto.current = false }
+    const observateur = new ResizeObserver(() => {
+      const avant = hauteur
+      hauteur = fil.clientHeight
+      if (colleEnBas.current) fil.scrollTop = fil.scrollHeight
+      else fil.scrollTop += avant - hauteur
+    })
+    fil.addEventListener('scroll', suivre, { passive: true })
+    fil.addEventListener('touchstart', reprendre, { passive: true })
+    fil.addEventListener('wheel', reprendre, { passive: true })
+    observateur.observe(fil)
+    return () => {
+      fil.removeEventListener('scroll', suivre)
+      fil.removeEventListener('touchstart', reprendre)
+      fil.removeEventListener('wheel', reprendre)
+      observateur.disconnect()
+    }
+  }, [])
 
   const enregistrer = (maj: Conversation) => {
     setCourante(maj)
@@ -136,9 +188,13 @@ export function AssistantPage() {
   const vide = courante.messages.length === 0
 
   return (
-    <div className="flex h-[calc(100dvh-7rem)] gap-3">
+    // La page prend la hauteur que la mise en page lui laisse, et seul le fil
+    // défile. Une hauteur calculée à la main (écran moins une constante) était
+    // fausse dans l'app, entre la barre d'état, la barre du haut en verre et la
+    // barre d'accueil : la page entière défilait et la saisie quittait le bas.
+    <div className="flex h-full min-h-0 gap-3">
       {/* Sur grand écran la liste est une colonne ; au doigt elle devient un
-          tiroir, parce que soixante-quatre pixels de large volés à la
+          volet, parce que soixante-quatre pixels de large volés à la
           conversation ne laisseraient ni l'une ni l'autre lisible. */}
       {listeOuverte && (
         <div className="hidden w-64 shrink-0 lg:flex">
@@ -151,22 +207,16 @@ export function AssistantPage() {
           />
         </div>
       )}
-      {tiroir && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-neutral-900/40" onClick={() => setTiroir(false)} />
-          {/* Le tiroir prend toute la hauteur de l'écran : dans l'app, son
-              bouton « Nouvelle conversation » passait sous la barre d'état, et
-              le bas de la liste sous la barre d'accueil. */}
-          <div className="absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] p-2 pb-[calc(var(--safe-bottom)+0.5rem)] pl-[calc(var(--safe-left)+0.5rem)] pt-[calc(var(--safe-top)+0.5rem)]">
-            <ListeConversations
-              conversations={conversations}
-              courante={courante.id}
-              onOuvrir={(c) => { ouvrir(c); setTiroir(false) }}
-              onSupprimer={supprimer}
-              onNouvelle={() => { demarrer(); setTiroir(false) }}
-            />
-          </div>
-        </div>
+      {etroit && (
+        <VoletConversations
+          ouvert={tiroir}
+          onFermer={() => setTiroir(false)}
+          conversations={conversations}
+          courante={courante.id}
+          onOuvrir={(c) => { ouvrir(c); setTiroir(false) }}
+          onSupprimer={supprimer}
+          onNouvelle={() => { demarrer(); setTiroir(false) }}
+        />
       )}
 
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
@@ -183,6 +233,8 @@ export function AssistantPage() {
           <button
             onClick={() => setTiroir(true)}
             title="Mes conversations"
+            aria-label="Mes conversations"
+            aria-expanded={tiroir}
             className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted lg:hidden"
           >
             <PanelLeft className="h-5 w-5" />
@@ -231,7 +283,11 @@ export function AssistantPage() {
           )}
         </div>
 
-        <div className="shrink-0 border-t bg-white px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
+        {/* Sur téléphone, la mise en page arrête déjà la page au-dessus de la
+            barre d'accueil : y ajouter ici la marge de cette barre doublait le
+            vide sous le champ. Au-dessus, la carte descend près du bord et la
+            garde. */}
+        <div className="shrink-0 border-t bg-white px-3 py-3 sm:px-6 md:pb-[max(0.75rem,var(--safe-bottom))]">
           <div className="mx-auto max-w-3xl">
             {erreur && <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{erreur}</p>}
 
@@ -355,6 +411,474 @@ function ListeConversations({ conversations, courante, onOuvrir, onSupprimer, on
         )}
       </div>
     </aside>
+  )
+}
+
+// ------------------------------------------------------------------ le volet
+
+/** Les trois quarts d'un téléphone ; sur iPad debout, une colonne et non un demi-écran. */
+const LARGEUR_VOLET = 'min(77vw, 23rem)'
+const DUREE_VOLET = 280
+/** Départ franc, long freinage : la courbe des volets d'iOS. */
+const COURBE_VOLET = 'cubic-bezier(0.32, 0.72, 0, 1)'
+const GLISSEMENT = `transform ${DUREE_VOLET}ms ${COURBE_VOLET}, border-radius ${DUREE_VOLET}ms ${COURBE_VOLET}`
+/** Mouvement réduit : rien ne glisse, le volet apparaît en fondu. */
+const DUREE_FONDU = 150
+
+/** Rend à l'application sa place, une fois le volet refermé. */
+function lacherApp(racine: HTMLElement) {
+  racine.style.transform = ''
+  racine.style.transition = ''
+  racine.style.borderRadius = ''
+  racine.style.overflow = ''
+  racine.inert = false
+}
+
+/** Sans accents ni capitales : « electricite » trouve « Électricité ». */
+const plier = (texte: string) => texte.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+interface GesteVolet {
+  id: number
+  x: number
+  y: number
+  largeur: number
+  decalage: number
+  tire: boolean
+  dernierX: number
+  dernierT: number
+  vitesse: number
+}
+
+/**
+ * Les conversations, au doigt : téléphone et iPad debout.
+ *
+ * C'est le volet des apps de chat que tout le monde a déjà en main. La
+ * conversation n'est pas assombrie sous un voile : elle glisse vers la droite
+ * et reste visible au bord, et c'est elle qu'on touche pour revenir. Le volet
+ * ne montre que des titres, sur une ligne chacun : on y cherche une
+ * conversation des yeux, et une date ou une icône par ligne ne servaient qu'à
+ * ralentir la lecture.
+ *
+ * Pour glisser, c'est l'application entière qui bouge (#root), barre du haut
+ * comprise : déplacer la seule page aurait laissé la barre du haut en place,
+ * coupée en deux par le volet. Le volet est donc rendu hors de #root, et ce
+ * qu'il pose sur elle est retiré dès qu'il est refermé.
+ */
+function VoletConversations({ ouvert, onFermer, conversations, courante, onOuvrir, onSupprimer, onNouvelle }: {
+  ouvert: boolean
+  onFermer: () => void
+  conversations: Conversation[]
+  courante: string
+  onOuvrir: (c: Conversation) => void
+  onSupprimer: (id: string) => void
+  onNouvelle: () => void
+}) {
+  const [cherche, setCherche] = useState(false)
+  const [filtre, setFiltre] = useState('')
+  const [menu, setMenu] = useState<string | null>(null)
+  const [defile, setDefile] = useState(false)
+
+  // Chaque ouverture repart d'une liste entière, comme dans les apps de chat.
+  // Remettre à zéro à la fermeture aurait changé la liste pendant qu'elle
+  // sortait de l'écran.
+  const [ouvertAvant, setOuvertAvant] = useState(ouvert)
+  if (ouvert !== ouvertAvant) {
+    setOuvertAvant(ouvert)
+    if (ouvert) { setCherche(false); setFiltre(''); setMenu(null) }
+  }
+
+  const panneauRef = useRef<HTMLDivElement>(null)
+  const listeRef = useRef<HTMLDivElement>(null)
+  const champRecherche = useRef<HTMLInputElement>(null)
+  const rangement = useRef(0)
+  const retour = useRef<HTMLElement | null>(null)
+  const geste = useRef<GesteVolet | null>(null)
+  const appui = useRef<{ minuteur: number; x: number; y: number } | null>(null)
+  /** Un glissement ou un appui long vient de finir : le clic qui suit ne compte pas. */
+  const ignorerClic = useRef(false)
+  const dejaPlace = useRef(false)
+
+  /**
+   * Pose le volet et l'application ouverts ou fermés.
+   *
+   * Les styles sont écrits directement, et non rendus par React : pendant un
+   * glissement, le doigt les déplace à chaque image, et React, qui croirait
+   * leur valeur inchangée, ne les remettrait pas en place au relâchement.
+   */
+  const placer = useCallback((ouvrir: boolean, anime: boolean) => {
+    const panneau = panneauRef.current
+    const racine = document.getElementById('root')
+    if (!panneau || !racine) return
+    window.clearTimeout(rangement.current)
+    const reduit = mouvementReduit()
+    const glisse = anime && !reduit
+
+    if (ouvrir) {
+      // Le bouton qui a ouvert le volet reprend le focus à la fermeture.
+      if (!racine.inert && document.activeElement instanceof HTMLElement) retour.current = document.activeElement
+      panneau.style.transition = !anime ? 'none' : reduit ? `opacity ${DUREE_FONDU}ms ease-out` : GLISSEMENT
+      panneau.style.visibility = 'visible'
+      panneau.style.opacity = '1'
+      panneau.style.transform = 'translateX(0)'
+      racine.style.transition = glisse ? GLISSEMENT : 'none'
+      racine.style.transform = `translateX(${LARGEUR_VOLET})`
+      racine.style.borderRadius = '2rem 0 0 2rem'
+      racine.style.overflow = 'hidden'
+      // Ce qui reste visible de l'application se touche pour fermer, rien de
+      // plus : ni le clavier ni un lecteur d'écran n'y entrent.
+      racine.inert = true
+      panneau.focus({ preventScroll: true })
+      // La conversation ouverte est en vue, même tout en bas de la liste. Le
+      // calcul est fait à la main : scrollIntoView viserait la position du
+      // volet en plein mouvement, encore hors de l'écran.
+      const liste = listeRef.current
+      const ligne = liste?.querySelector<HTMLElement>('[aria-current="true"]')?.parentElement
+      if (liste && ligne && (ligne.offsetTop < liste.scrollTop || ligne.offsetTop + ligne.offsetHeight > liste.scrollTop + liste.clientHeight)) {
+        liste.scrollTop = ligne.offsetTop - liste.clientHeight / 3
+      }
+      return
+    }
+
+    const duree = !anime ? 0 : reduit ? DUREE_FONDU : DUREE_VOLET
+    // Le volet reste visible le temps de sortir, puis disparaît pour de bon.
+    panneau.style.transition = !anime
+      ? 'none'
+      : `${reduit ? `opacity ${DUREE_FONDU}ms ease-out` : GLISSEMENT}, visibility 0s linear ${duree}ms`
+    panneau.style.visibility = 'hidden'
+    panneau.style.opacity = reduit ? '0' : '1'
+    panneau.style.transform = reduit ? 'translateX(0)' : 'translateX(-100%)'
+    if (!racine.style.transform) return
+    racine.inert = false
+    racine.style.transition = glisse ? GLISSEMENT : 'none'
+    racine.style.transform = 'translateX(0)'
+    racine.style.borderRadius = '0'
+    retour.current?.focus({ preventScroll: true })
+    retour.current = null
+    // Une transformation laissée sur #root, même nulle, ferait d'elle le repère
+    // de tout ce qui est fixe dans l'application : on la retire une fois
+    // l'application revenue en place.
+    rangement.current = window.setTimeout(() => lacherApp(racine), duree + 50)
+  }, [])
+
+  useLayoutEffect(() => {
+    // La première pose se fait sans animation : le volet naît fermé, hors de l'écran.
+    placer(ouvert, dejaPlace.current)
+    dejaPlace.current = true
+  }, [ouvert, placer])
+
+  useEffect(() => {
+    const racine = document.getElementById('root')
+    return () => {
+      window.clearTimeout(rangement.current)
+      if (racine) lacherApp(racine)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!ouvert) return
+    const touche = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      if (menu) setMenu(null)
+      else onFermer()
+    }
+    document.addEventListener('keydown', touche)
+    return () => document.removeEventListener('keydown', touche)
+  }, [ouvert, menu, onFermer])
+
+  // Un menu ouvert sur une ligne au bord de la partie visible serait coupé,
+  // ou caché sous le fondu du bas : la liste défile juste assez pour le
+  // montrer en entier.
+  useEffect(() => {
+    const liste = listeRef.current
+    const carte = liste?.querySelector<HTMLElement>('[role="menu"]')
+    const ligne = carte?.parentElement
+    if (!liste || !carte || !ligne) return
+    // La ligne compte autant que son menu : on doit voir de quoi on parle.
+    const haut = ligne.offsetTop + Math.min(0, carte.offsetTop) - 8
+    const bas = ligne.offsetTop + Math.max(ligne.offsetHeight, carte.offsetTop + carte.offsetHeight) + 32
+    const cible = haut < liste.scrollTop
+      ? haut
+      : bas > liste.scrollTop + liste.clientHeight ? bas - liste.clientHeight : null
+    if (cible !== null) liste.scrollTo({ top: cible, behavior: mouvementReduit() ? 'auto' : 'smooth' })
+  }, [menu])
+
+  // -------- appui long sur une ligne : ses actions
+
+  const annulerAppui = () => {
+    if (!appui.current) return
+    window.clearTimeout(appui.current.minuteur)
+    appui.current = null
+  }
+
+  const appuiDebut = (e: React.PointerEvent, id: string) => {
+    if (e.pointerType === 'mouse') return
+    annulerAppui()
+    appui.current = {
+      x: e.clientX,
+      y: e.clientY,
+      minuteur: window.setTimeout(() => {
+        appui.current = null
+        ignorerClic.current = true
+        setMenu(id)
+      }, 450),
+    }
+  }
+
+  const appuiSuite = (e: React.PointerEvent) => {
+    const a = appui.current
+    if (a && Math.hypot(e.clientX - a.x, e.clientY - a.y) > 8) annulerAppui()
+  }
+
+  // -------- glisser vers la gauche pour fermer
+
+  const gesteDebut = (e: React.PointerEvent<HTMLElement>) => {
+    ignorerClic.current = false
+    // À la souris, glisser sélectionnerait du texte : on ferme d'un clic.
+    if (!ouvert || e.pointerType === 'mouse' || !panneauRef.current) return
+    geste.current = {
+      id: e.pointerId, x: e.clientX, y: e.clientY, largeur: panneauRef.current.offsetWidth,
+      decalage: 0, tire: false, dernierX: e.clientX, dernierT: e.timeStamp, vitesse: 0,
+    }
+  }
+
+  const gesteSuite = (e: React.PointerEvent<HTMLElement>) => {
+    const g = geste.current
+    if (!g || g.id !== e.pointerId) return
+    const dx = e.clientX - g.x
+    const dy = e.clientY - g.y
+    if (!g.tire) {
+      // Un geste vertical fait défiler la liste ; vers la droite, il n'y a
+      // rien à ouvrir de plus.
+      if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { geste.current = null; return }
+      if (dx > 10) { geste.current = null; return }
+      if (dx > -10) return
+      g.tire = true
+      e.currentTarget.setPointerCapture(e.pointerId)
+      annulerAppui()
+    }
+    const dt = Math.max(1, e.timeStamp - g.dernierT)
+    g.vitesse = (e.clientX - g.dernierX) / dt
+    g.dernierX = e.clientX
+    g.dernierT = e.timeStamp
+    g.decalage = Math.max(-g.largeur, Math.min(0, dx))
+    // Le volet et l'application suivent le doigt, sans transition : une
+    // transition ici ferait courir l'image derrière le geste.
+    const panneau = panneauRef.current
+    const racine = document.getElementById('root')
+    if (!panneau || !racine) return
+    panneau.style.transition = 'none'
+    panneau.style.transform = `translateX(${g.decalage}px)`
+    racine.style.transition = 'none'
+    racine.style.transform = `translateX(${g.largeur + g.decalage}px)`
+  }
+
+  const gesteFin = (e: React.PointerEvent<HTMLElement>, annule = false) => {
+    const g = geste.current
+    if (!g || g.id !== e.pointerId) return
+    geste.current = null
+    if (!g.tire) return
+    ignorerClic.current = true
+    // Un tiers du chemin, ou un geste vif, suffit : on ne demande pas d'aller
+    // jusqu'au bord de l'écran.
+    if (!annule && (g.decalage < -g.largeur * 0.33 || g.vitesse < -0.35)) onFermer()
+    else placer(true, true)
+  }
+
+  const gestes = {
+    onPointerDown: gesteDebut,
+    onPointerMove: gesteSuite,
+    onPointerUp: (e: React.PointerEvent<HTMLElement>) => gesteFin(e),
+    onPointerCancel: (e: React.PointerEvent<HTMLElement>) => gesteFin(e, true),
+    onClickCapture: (e: React.MouseEvent) => {
+      if (!ignorerClic.current) return
+      ignorerClic.current = false
+      e.preventDefault()
+      e.stopPropagation()
+    },
+  }
+
+  const ouvrirRecherche = () => {
+    // Le champ doit exister avant qu'on lui donne le focus, dans le même
+    // toucher : iOS n'ouvre le clavier que pour un focus donné pendant le geste.
+    flushSync(() => setCherche(true))
+    champRecherche.current?.focus()
+  }
+
+  const q = plier(filtre.trim())
+  const visibles = q ? conversations.filter((c) => plier(c.titre).includes(q)) : conversations
+
+  return createPortal(
+    <>
+      <div
+        ref={panneauRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Conversations de l’assistant"
+        tabIndex={-1}
+        {...gestes}
+        className="fixed inset-y-0 left-0 z-50 flex w-[min(77vw,23rem)] touch-pan-y flex-col bg-white pl-[var(--safe-left)] outline-none lg:hidden"
+      >
+        {/* En haut, sous la barre d'état : le titre, et la recherche. */}
+        <div className="flex shrink-0 items-center gap-3 pb-3 pl-5 pr-3 pt-[calc(var(--safe-top)+0.75rem)]">
+          {cherche ? (
+            <>
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+                {/* 17 px : sous 16 px, Safari zoome sur le champ à la saisie. */}
+                <input
+                  ref={champRecherche}
+                  type="search"
+                  value={filtre}
+                  onChange={(e) => setFiltre(e.target.value)}
+                  placeholder="Rechercher"
+                  aria-label="Rechercher une conversation"
+                  enterKeyHint="search"
+                  className="h-11 w-full appearance-none rounded-full bg-black/[0.05] pl-10 pr-4 text-[17px] outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => { setCherche(false); setFiltre('') }}
+                className="shrink-0 px-1 text-[17px] text-[#0167EA]"
+              >
+                Annuler
+              </button>
+            </>
+          ) : (
+            <>
+              {/* La marque, et non une icône d'étoiles : l'assistant est Diagly. */}
+              <img src="/diagly-mark.svg" alt="" className="h-7 w-auto shrink-0" />
+              <h2 className="min-w-0 flex-1 truncate text-[26px] font-bold leading-tight tracking-tight">Assistant</h2>
+              <button
+                type="button"
+                onClick={ouvrirRecherche}
+                aria-label="Rechercher une conversation"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.05] text-neutral-700 transition-colors hover:bg-black/[0.08] active:bg-black/[0.1]"
+              >
+                <Search className="h-5 w-5" />
+              </button>
+            </>
+          )}
+        </div>
+        {/* Le seul filet du volet, et seulement quand la liste a défilé sous
+            l'en-tête. Un élément à part et non une bordure : la règle
+            `* { border-color }` d'index.css, hors des couches de Tailwind,
+            l'emporte sur toute couleur de bordure posée par classe. */}
+        <div aria-hidden className={cn('h-px shrink-0 bg-black/[0.07] transition-opacity', defile ? 'opacity-100' : 'opacity-0')} />
+
+        {/* Des titres, une ligne chacun, sans cadre ni séparateur. La liste
+            est son propre repère (relative) pour que les calculs de défilement
+            se fassent dans ses coordonnées, et elle redit pan-y : le geste
+            horizontal qui ferme le volet s'arrêterait sinon à elle, qui défile. */}
+        <div
+          ref={listeRef}
+          onScroll={(e) => setDefile(e.currentTarget.scrollTop > 2)}
+          className="relative min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-2 pb-6 pt-1"
+        >
+          {visibles.length === 0 ? (
+            <p className="px-3 py-4 text-[15px] text-muted-foreground">
+              {q ? 'Aucune conversation ne porte ce titre.' : 'Vos conversations s’empileront ici.'}
+            </p>
+          ) : (
+            <ul>
+              {visibles.map((c, i) => {
+                const active = c.id === courante
+                // Sous les deux dernières lignes d'une longue liste, il n'y a
+                // plus de place : leur menu s'ouvre vers le haut.
+                const versLeHaut = visibles.length > 3 && i >= visibles.length - 2
+                return (
+                  <li key={c.id} className={cn('group relative', menu === c.id && 'z-20')}>
+                    <button
+                      type="button"
+                      aria-current={active ? 'true' : undefined}
+                      onClick={() => onOuvrir(c)}
+                      onPointerDown={(e) => appuiDebut(e, c.id)}
+                      onPointerMove={appuiSuite}
+                      onPointerUp={annulerAppui}
+                      onPointerCancel={annulerAppui}
+                      onPointerLeave={annulerAppui}
+                      onContextMenu={(e) => { e.preventDefault(); annulerAppui(); setMenu(c.id) }}
+                      className={cn(
+                        'flex h-12 w-full select-none items-center rounded-xl pl-3 text-left text-[17px] text-foreground transition-colors [-webkit-touch-callout:none]',
+                        active || menu === c.id ? 'bg-black/[0.05] pr-12' : 'pr-3 hover:bg-black/[0.03] active:bg-black/[0.05] pointer-fine:pr-12',
+                      )}
+                    >
+                      <span className="min-w-0 truncate">{c.titre}</span>
+                    </button>
+                    {/* Les actions d'une ligne : en vue sur la conversation
+                        ouverte, au survol pour les autres, et par appui long
+                        sur n'importe laquelle. Une poubelle sur chaque ligne
+                        faisait de la liste une liste de boutons. */}
+                    <button
+                      type="button"
+                      onClick={() => setMenu((m) => (m === c.id ? null : c.id))}
+                      aria-label={`Actions sur « ${c.titre} »`}
+                      aria-haspopup="menu"
+                      aria-expanded={menu === c.id}
+                      className={cn(
+                        'absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-neutral-500 transition-[opacity,color,background-color] hover:bg-black/[0.06] hover:text-neutral-800',
+                        active || menu === c.id
+                          ? 'opacity-100'
+                          : 'pointer-events-none opacity-0 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100',
+                      )}
+                    >
+                      <Ellipsis className="h-5 w-5" />
+                    </button>
+                    {menu === c.id && (
+                      <div
+                        role="menu"
+                        className={cn('absolute right-1.5 w-56 rounded-2xl bg-white p-1 shadow-[0_16px_40px_-12px_rgba(0,0,0,0.28)] ring-1 ring-black/[0.06]',
+                          versLeHaut ? 'bottom-[calc(100%+0.25rem)]' : 'top-[calc(100%+0.25rem)]')}
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => { setMenu(null); onSupprimer(c.id) }}
+                          className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[16px] text-red-600 transition-colors hover:bg-red-50 active:bg-red-50"
+                        >
+                          <Trash2 className="h-[18px] w-[18px]" />Supprimer
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* En bas, au-dessus de la barre d'accueil : la nouvelle conversation.
+            La liste s'efface sous le bouton plutôt que de s'y couper net. */}
+        <div className="relative shrink-0 px-4 pb-[calc(var(--safe-bottom)+0.75rem)] pt-2">
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-full h-6 bg-gradient-to-t from-white to-transparent" />
+          <button
+            type="button"
+            onClick={onNouvelle}
+            className="inline-flex h-[52px] max-w-full items-center gap-2.5 rounded-full bg-[#0167EA] pl-5 pr-6 text-[17px] font-semibold text-white shadow-[0_10px_24px_-12px_rgba(1,103,234,0.7)] transition-colors hover:bg-[#0154c4] active:bg-[#0154c4]"
+          >
+            <SquarePen className="h-5 w-5 shrink-0" />
+            <span className="truncate">Nouvelle conversation</span>
+          </button>
+        </div>
+
+        {/* Un menu ouvert se referme d'un toucher à côté, sans rien ouvrir d'autre. */}
+        {menu && <div aria-hidden className="absolute inset-0 z-10" onClick={() => setMenu(null)} />}
+      </div>
+
+      {/* Le bord de la conversation, resté visible à droite : le toucher
+          referme le volet, le faire glisser vers la gauche aussi. */}
+      {ouvert && (
+        <div
+          aria-hidden
+          {...gestes}
+          onClick={onFermer}
+          className="fixed inset-y-0 right-0 z-50 touch-none lg:hidden"
+          style={{ left: LARGEUR_VOLET }}
+        />
+      )}
+    </>,
+    document.body,
   )
 }
 
