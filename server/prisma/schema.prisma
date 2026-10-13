@@ -405,6 +405,10 @@ model Project {
   /// null = celle des preferences de l'utilisateur. Un rapport se personnalise
   /// pour un client sans changer les reglages de tous les autres.
   reportBranding        Json?         @map("report_branding")
+  /// Photo de la page de garde des rapports, choisie dans la page Photos : pas
+  /// l'image (elle vit dans le releve), mais l'identifiant du releve et une
+  /// empreinte de la photo (src/lib/photo-de-garde.ts). Vide : la premiere photo.
+  photoDeGarde          String?       @map("photo_de_garde") @db.VarChar(255)
   sharedAt              DateTime?     @map("shared_at")
   /// Organisation de la visite : rendez-vous, créneaux proposés, préparation.
   /// Le rendez-vous est recopié dans un Event (calendrier) et dans visitDate.

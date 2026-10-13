@@ -158,6 +158,8 @@ export interface ApiProject {
    * changer les autres.
    */
   reportBranding?: MarqueDuDossier | null
+  /** Photo de la page de garde des rapports (lib/photo-de-garde.ts). */
+  photoDeGarde?: string | null
   createdAt: string
   updatedAt: string
 }

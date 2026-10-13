@@ -42,6 +42,7 @@ import { CHAPITRES, ETATS, PAGE, TVA } from './constants'
 import { CaseEtat, Info, Ligne, LogoEntete, Row } from './shared'
 import { DocumentA4, type BlocDocument } from './PagesA4'
 import { usePageDuBloc } from './page-contexte'
+import { photoDeGarde } from '@/lib/photo-de-garde'
 
 /** Titre du chapitre énergétique : il vit avec le sommaire, qui l'annonce. */
 const TITRE_ENERGIE = 'Estimation énergétique indicative'
@@ -479,7 +480,8 @@ function PageDeGarde({ project, items, adresse, aujourdhui, auteur, company, acc
   /** La couleur du dossier : le seul endroit de la garde où elle se voit. */
   accent: string | null
 }) {
-  const photo = items.find((i) => i.photos.length > 0)?.photos[0]
+  // Celle choisie dans la page Photos, sinon la première venue.
+  const photo = photoDeGarde(items, project.photoDeGarde)
   const ligne2 = [company?.postalCode, company?.city].filter(Boolean).join(' ')
   // La hauteur utile moins l'en-tête et le pied : la garde remplit sa page.
   const hauteur = `${PAGE.hauteur - PAGE.entete - PAGE.pied}mm`

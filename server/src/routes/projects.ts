@@ -71,6 +71,8 @@ const projectBaseSchema = z.object({
   windowPct: z.number().min(0).max(100).optional(),
   honoraryPct: z.number().min(0).max(100).optional(),
   reservePct: z.number().min(0).max(100).optional(),
+  /** Référence de la photo de garde (releveId:empreinte), ou null pour la règle par défaut. */
+  photoDeGarde: z.string().max(255).nullable().optional(),
   /**
    * Apparence propre a ce dossier. Memes regles que le logo des preferences :
    * seulement une image en data URL, parce qu'une URL externe fuiterait vers un

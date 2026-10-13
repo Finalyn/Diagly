@@ -20,8 +20,8 @@ import { useMarque } from './use-marque'
  * Entreprise, sinon celui de Diagly : un rapport sans logo n'a l'air de rien,
  * et c'est la première chose que le destinataire voit. Mais quand le dossier a
  * demandé « aucun logo », il n'y a aucune image : c'est un choix, pas un oubli,
- * et retomber sur le logo de Diagly le trahirait. La raison sociale reste, elle,
- * dans tous les cas : elle est ce qui identifie l'émetteur.
+ * et retomber sur le logo de Diagly le trahirait. La raison sociale ne s'écrit
+ * alors qu'à sa place : sans logo, c'est elle qui identifie l'émetteur.
  *
  * L'en-tête était auparavant posé une seule fois, en tête du document ; depuis
  * que tous les rapports sont paginés, il revient sur chaque page, comme sur un
@@ -38,7 +38,10 @@ export function LogoEntete() {
           className="max-h-[10mm] w-auto object-contain"
         />
       )}
-      {marque.name && <span className="text-[9pt] font-semibold text-muted-foreground">{marque.name}</span>}
+      {/* Sous un logo, la raison sociale faisait doublon : le logo la porte
+          déjà, le plus souvent. Elle ne s'écrit que quand le dossier a choisi
+          « aucun logo », pour que l'émetteur reste identifié. */}
+      {marque.sansLogo && marque.name && <span className="text-[9pt] font-semibold text-muted-foreground">{marque.name}</span>}
     </div>
   )
 }

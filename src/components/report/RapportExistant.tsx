@@ -16,6 +16,7 @@ import { buildingTypeLabels } from '@/data/mock'
 import { cfcGroupCode } from '@/lib/cfc'
 import { formatDate } from '@/lib/utils'
 import type { ApiDiagnosticItem, ApiProject, ElementState } from '@/lib/api-types'
+import { photoDeGarde } from '@/lib/photo-de-garde'
 
 export function RapportExistant({ project, items, etatExistant, auteur }: {
   project: ApiProject
@@ -40,7 +41,8 @@ export function RapportExistant({ project, items, etatExistant, auteur }: {
 
   const aujourdhui = formatDate(new Date())
   const niveaux = project.nbFloors ? `${project.nbFloors} niveau${project.nbFloors > 1 ? 'x' : ''}` : null
-  const photo = items.find((i) => i.photos.length > 0)?.photos[0]
+  // Celle choisie dans la page Photos, sinon la première venue.
+  const photo = photoDeGarde(items, project.photoDeGarde)
 
   const blocs = useMemo(() => {
     const out: BlocDocument[] = []

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle, Download } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Loader2, AlertCircle, Download, BookmarkCheck, Bookmark } from 'lucide-react'
 import { Button, Card, CardContent } from '@/components/ui'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -9,6 +9,7 @@ import { stateLabels, stateColors } from '@/data/mock'
 import { vibrer } from '@/lib/motion'
 import { creerZip, octetsDeDataUrl } from '@/lib/zip'
 import { Visionneuse } from '@/components/Visionneuse'
+import { referencePhoto } from '@/lib/photo-de-garde'
 import type { ElementState } from '@/lib/api-types'
 
 /**
@@ -71,6 +72,19 @@ export function ProjectPhotos() {
     enabled: !!diagnostic,
   })
 
+  // La photo de la page de garde des rapports : celle choisie ici, sinon la
+  // première venue (lib/photo-de-garde.ts). Un toucher sur « Page de garde »
+  // la choisit ; un second toucher sur la même revient à la règle par défaut.
+  const qc = useQueryClient()
+  const garde = useMutation({
+    mutationFn: (reference: string | null) => api.projects.update(id!, { photoDeGarde: reference }),
+    onSuccess: () => { vibrer('succes'); void qc.invalidateQueries({ queryKey: ['project', id] }) },
+  })
+  const choisirGarde = (p: PhotoTrouvee) => {
+    const reference = referencePhoto(p.itemId, p.src)
+    garde.mutate(project?.photoDeGarde === reference ? null : reference)
+  }
+
   /** Toutes les photos, dans l'ordre des postes, à plat pour la visionneuse. */
   const photos = useMemo<PhotoTrouvee[]>(() => {
     const out: PhotoTrouvee[] = []
@@ -130,6 +144,13 @@ export function ProjectPhotos() {
     )
   }
 
+  // La vignette en page de garde, par son emplacement (élément et rang) et non
+  // par l'image : deux éléments peuvent porter la même photo, et toutes ses
+  // copies se seraient allumées. Sans choix, la première, comme les rapports.
+  const cle = (p: PhotoTrouvee) => `${p.itemId}-${p.rang}`
+  const choisie = project?.photoDeGarde ? photos.find((p) => referencePhoto(p.itemId, p.src) === project.photoDeGarde) : undefined
+  const cleGarde = choisie ? cle(choisie) : photos[0] ? cle(photos[0]) : null
+
   const active = ouverte != null ? photos[ouverte] : null
 
   return (
@@ -142,7 +163,7 @@ export function ProjectPhotos() {
           <p className="text-sm text-muted-foreground">
             {photos.length === 0
               ? 'Aucune photo pour ce diagnostic.'
-              : `${photos.length} photo${photos.length > 1 ? 's' : ''} sur ${groupes.length} élément${groupes.length > 1 ? 's' : ''}.`}
+              : `${photos.length} photo${photos.length > 1 ? 's' : ''} sur ${groupes.length} élément${groupes.length > 1 ? 's' : ''}. Le signet d'une photo la met en page de garde des rapports.`}
           </p>
         </div>
         {photos.length > 0 && (
@@ -189,6 +210,7 @@ export function ProjectPhotos() {
                       >
                         <img src={p.src} alt="" loading="lazy" className="aspect-[4/3] w-full object-cover transition-transform group-hover:scale-[1.02]" />
                       </button>
+                      <BoutonGarde active={cle(p) === cleGarde} onClick={() => choisirGarde(p)} />
                       <button
                         onClick={() => enregistrer(nomFichier(project.name, p), p.src)}
                         title="Enregistrer cette photo"
@@ -216,6 +238,15 @@ export function ProjectPhotos() {
           titre={active.cfcLabel}
           sousTitre={<span className="font-mono">{active.cfcCode}</span>}
           action={(
+            <>
+            <button
+              onClick={() => choisirGarde(active)}
+              className="flex items-center gap-1.5 rounded-lg bg-white/15 px-2.5 py-2 text-sm font-medium transition-colors hover:bg-white/25"
+              title={cle(active) === cleGarde ? 'Photo de la page de garde' : 'Mettre en page de garde'}
+            >
+              {cle(active) === cleGarde ? <BookmarkCheck className="h-5 w-5" /> : <Bookmark className="h-5 w-5" />}
+              <span className="hidden sm:inline">{cle(active) === cleGarde ? 'Page de garde' : 'Mettre en page de garde'}</span>
+            </button>
             <button
               onClick={() => enregistrer(nomFichier(project.name, active), active.src)}
               className="rounded-lg bg-white/15 p-2 transition-colors hover:bg-white/25"
@@ -223,9 +254,32 @@ export function ProjectPhotos() {
             >
               <Download className="h-5 w-5" />
             </button>
+            </>
           )}
         />
       )}
     </div>
+  )
+}
+
+/**
+ * Sur chaque vignette, en haut à gauche : la photo de garde est marquée, les
+ * autres proposent de le devenir. Toujours visible, puisqu'au doigt il n'y a
+ * pas de survol pour faire apparaître le bouton.
+ */
+function BoutonGarde({ active, onClick }: { active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title={active ? 'Photo de la page de garde (toucher pour revenir à la première photo)' : 'Mettre en page de garde'}
+      aria-pressed={active}
+      className={cn(
+        'absolute left-1.5 top-1.5 flex items-center gap-1 rounded-lg px-1.5 py-1 text-[11px] font-medium backdrop-blur-sm transition-colors',
+        active ? 'bg-[#0167EA] text-white' : 'bg-black/55 text-white hover:bg-black/75',
+      )}
+    >
+      {active ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}
+      {active && <span>Page de garde</span>}
+    </button>
   )
 }
