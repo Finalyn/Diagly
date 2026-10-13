@@ -140,7 +140,11 @@ export function AppLayout() {
             // iPad couché : le cadre est presque à la forme de l'image, qui
             // tenait donc en entier, villa comprise, et paraissait petite. On
             // la grossit deux fois, toujours centrée sur la villa.
-            className="js-print-hide pointer-events-none absolute right-0 top-0 z-0 h-[var(--hauteur-image,26rem)] w-[70%] bg-cover bg-no-repeat lg:[@media(pointer:coarse)]:bg-[length:auto_200%]"
+            // iPad debout (« tablette ») : le cadre haut et étroit grossissait
+            // au contraire l'image. Il prend sa forme exacte, un peu plus
+            // large : l'image entière, plus petite, et le fondu du bas se
+            // termine au bas de l'image.
+            className="js-print-hide pointer-events-none absolute right-0 top-0 z-0 h-[var(--hauteur-image,26rem)] w-[70%] bg-cover bg-no-repeat lg:[@media(pointer:coarse)]:bg-[length:auto_200%] tablette:aspect-[1728/973] tablette:h-auto tablette:w-[85%]"
             style={{
               backgroundImage: 'url(/preview-bg.webp)',
               backgroundPosition: '80% 20%',
@@ -191,7 +195,13 @@ export function AppLayout() {
                       ? 'min-h-0 overflow-hidden pb-[calc(var(--safe-bottom)+0.75rem)]'
                       : `overflow-y-auto ${editeurPleinEcran ? 'pb-[calc(var(--safe-bottom)+1.5rem)]' : 'pb-[calc(var(--safe-bottom)+7rem)]'}`
                 : `${onDashboard ? 'mt-6 lg:mt-8 short:mt-3' : 'mt-3'} ${
-                  pageEncastree ? 'min-h-0 overflow-hidden pb-3' : onDashboard ? 'min-h-0 overflow-y-auto pb-6' : 'overflow-y-auto pb-16'}`
+                  pageEncastree ? 'min-h-0 overflow-hidden pb-3'
+                    : onDashboard ? 'min-h-0 overflow-y-auto pb-6'
+                      // Paramètres : en deux colonnes à partir de 1024 px, la carte
+                      // de la section défile seule (SettingsPage) ; en dessous, une
+                      // section à la fois, c'est la page qui défile.
+                      : location.pathname.startsWith('/app/settings') ? 'overflow-y-auto pb-16 lg:min-h-0 lg:overflow-hidden lg:pb-3'
+                        : 'overflow-y-auto pb-16'}`
             }`}
           >
             <Outlet />

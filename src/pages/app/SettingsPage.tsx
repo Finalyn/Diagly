@@ -26,7 +26,7 @@ import {
   CreditCard, KeyRound, LifeBuoy, Loader2, LogOut, Mail, Palette, Plus, ShieldCheck, ShieldOff,
   User as UserIcon, Users, type LucideIcon,
 } from 'lucide-react'
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui'
+import { Badge, Button, Input } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import { cn } from '@/lib/utils'
@@ -116,41 +116,62 @@ export function SettingsPage() {
 
   const section = SECTIONS.find((s) => s.id === choisie)
 
-  // Sous lg, l'écran prend la forme des Réglages de l'iPhone : il a sa propre
-  // composition, et la mise en page à deux colonnes ci-dessous reste celle de
-  // l'ordinateur, sans un pixel de différence.
+  // Sous lg, une section à la fois, comme dans les Réglages de l'iPhone.
   if (uneALaFois) return <UneSectionALaFois section={section} onChoisir={choisir} />
 
-  // Les deux panneaux suivent leur contenu : une hauteur figée laissait un
-  // grand vide sous un formulaire court. C'est la page qui défile.
+  /**
+   * À partir de lg (ordinateur, iPad couché), la même liste groupée tient en
+   * colonne à gauche, et la section ouverte occupe la droite.
+   *
+   * L'écran prend la hauteur de la zone principale : la colonne de gauche reste
+   * en place, et c'est la carte de la section qui défile quand un formulaire
+   * dépasse, comme dans Intégrations. Une carte courte garde la hauteur de son
+   * contenu (`max-h-full`), plutôt que de s'étirer sur un grand vide blanc. Si
+   * la hauteur n'était pas connue, tout reprendrait sa taille naturelle et la
+   * page défilerait d'un bloc : rien ne serait coupé.
+   */
   return (
-    <div className="space-y-4">
-      {/* Le titre nomme la page, pas le menu : dans la carte de gauche, il
-          servait d'étiquette à la colonne des sections, et la page elle-même
-          n'avait plus de nom. Il se tient maintenant au-dessus des deux
-          panneaux, comme sur les autres écrans. */}
-      <div>
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      {/* Le titre nomme la page, pas le menu : il se tient au-dessus des deux
+          colonnes, comme sur les autres écrans. */}
+      <div className="shrink-0">
         <h1 className="text-xl font-bold">Paramètres</h1>
         <p className="text-sm text-muted-foreground">
           Votre compte, votre bureau, et ce que Diagly fait en votre nom.
         </p>
       </div>
 
-      <div className="flex items-start gap-4">
-        {/* ----- Le menu, à gauche ----- */}
-        <Menu choisie={choisie} onChoisir={choisir} />
+      <div className="flex min-h-0 flex-1 items-start gap-5">
+        {/* ----- Le sommaire, à gauche ----- */}
+        <nav
+          aria-label="Sections des paramètres"
+          className="max-h-full w-80 shrink-0 overflow-y-auto overscroll-contain xl:w-[22rem]"
+        >
+          <Sommaire colonne choisie={choisie} onOuvrir={choisir} />
+        </nav>
 
-        {/* ----- Les réglages de la section, à droite ----- */}
+        {/* ----- La section ouverte, à droite ----- */}
         {section && (
-          <Card className="min-w-0 flex-1 overflow-hidden">
-            <CardHeader className="space-y-0 border-b border-black/[0.06] px-5 py-3.5">
-              <CardTitle className="text-base">{section.label}</CardTitle>
+          <section className="flex max-h-full min-w-0 flex-1 flex-col">
+            <header className="shrink-0 px-1 pb-3">
+              <h2 className="text-lg font-semibold leading-tight">{section.label}</h2>
               <p className="mt-0.5 text-sm text-muted-foreground">{section.aide}</p>
-            </CardHeader>
-            <CardContent className="space-y-5 p-5">
-              <ContenuDeLaSection id={section.id} onChoisir={choisir} />
-            </CardContent>
-          </Card>
+            </header>
+            {/* La clé remonte la carte en haut à chaque section : sans elle, la
+                suivante s'ouvrirait au niveau où l'on avait laissé la
+                précédente. La carte étant ce qui défile, la barre
+                d'enregistrement y reste collée en bas sur un long formulaire,
+                et ses marges négatives l'étendent bord à bord du retrait de
+                20 px. */}
+            <div
+              key={section.id}
+              className="min-h-0 overflow-y-auto overscroll-contain rounded-3xl bg-card text-card-foreground"
+            >
+              <div className="space-y-5 p-5">
+                <ContenuDeLaSection id={section.id} onChoisir={choisir} />
+              </div>
+            </div>
+          </section>
         )}
       </div>
     </div>
@@ -179,8 +200,8 @@ function ContenuDeLaSection({ id, onChoisir }: { id: IdSection; onChoisir: (id: 
  * Les sections que la personne connectée peut ouvrir.
  *
  * Les invitations ne regardent que les administrateurs d'une organisation :
- * le menu de l'ordinateur et le sommaire de l'iPhone appliquent la même règle,
- * d'où ce point unique.
+ * la colonne de l'ordinateur et le sommaire de l'iPhone appliquent la même
+ * règle, d'où ce point unique.
  */
 function useSectionsVisibles() {
   const org = useQuery({ queryKey: ['org'], queryFn: () => api.org.get(), staleTime: 5 * 60_000 })
@@ -189,65 +210,7 @@ function useSectionsVisibles() {
   return { org, gereEquipe, visibles }
 }
 
-/**
- * Le menu, dans sa carte (ordinateur, à partir de lg).
- *
- * En tête la personne connectée, puis les sections par famille. Même carte et
- * même colonne que les autres écrans à deux panneaux.
- */
-function Menu({ choisie, onChoisir }: {
-  choisie: IdSection | null
-  onChoisir: (id: IdSection) => void
-}) {
-  const user = useAuth((s) => s.user)
-  const bureau = user?.preferences?.company
-  const { visibles } = useSectionsVisibles()
-  return (
-    <Card className="w-full shrink-0 overflow-hidden lg:w-72">
-      <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-3.5">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-sm font-semibold text-foreground">
-          {initiales(user ?? {})}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold leading-tight">{nomAffiche(user ?? {})}</p>
-          <p className="truncate text-xs text-muted-foreground">{bureau?.name || user?.companyName || user?.email}</p>
-        </div>
-      </div>
-
-      <nav className="space-y-4 p-2">
-        {FAMILLES.map((famille) => (
-          <div key={famille}>
-            <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{famille}</p>
-            <div className="space-y-1">
-              {visibles.filter((s) => s.famille === famille).map((s) => {
-                const on = s.id === choisie
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => onChoisir(s.id)}
-                    className={cn(
-                      'flex w-full items-center gap-2.5 rounded-2xl px-3 py-2.5 text-left transition-colors',
-                      on
-                        ? 'border border-blue-100 bg-blue-50 text-blue-700'
-                        : 'text-neutral-600 hover:bg-black/[0.03] hover:text-neutral-900',
-                    )}
-                  >
-                    <s.icone className="h-4 w-4 shrink-0" />
-                    <span className="min-w-0 flex-1">
-                      <span className={cn('block truncate text-sm', on ? 'font-semibold' : 'font-medium')}>{s.label}</span>
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        ))}
-      </nav>
-    </Card>
-  )
-}
-
-// ------------------------------------------------- iPhone et iPad debout
+// ------------------------------------------------------ la liste groupée
 
 /** Le retour au toucher : un fond un peu plus sombre, sans le voile gris de Safari. */
 const TOUCHER = 'transition-colors hover:bg-black/[0.02] active:bg-black/[0.06] [-webkit-tap-highlight-color:transparent]'
@@ -338,7 +301,25 @@ function EnTete({ titre, onRetour }: { titre: string; onRetour?: () => void }) {
 }
 
 /**
- * Le sommaire en liste groupée.
+ * Les mesures de la liste, selon qu'elle tient l'écran ou une colonne.
+ *
+ * Seule sur l'écran, elle prend celles des Réglages d'iOS : lignes de 56 px,
+ * libellés de 17 px. En colonne, à côté d'une section, elle se resserre pour
+ * tenir dans la hauteur d'un écran d'ordinateur, et garde 52 px sous le doigt
+ * sur un iPad couché.
+ */
+const MESURES = {
+  ecran: { ligne: 'min-h-14', libelle: 'text-[17px]', icone: 'h-[22px] w-[22px]', valeur: 'text-[15px]', ecart: 'gap-3.5' },
+  colonne: { ligne: 'min-h-12 pointer-coarse:min-h-[52px]', libelle: 'text-[15px]', icone: 'h-5 w-5', valeur: 'text-[13px]', ecart: 'gap-3' },
+}
+
+/**
+ * Le sommaire en liste groupée : la carte du compte, puis les familles.
+ *
+ * `colonne` : à partir de lg, il tient la colonne de gauche à côté de la
+ * section ouverte. Celle-ci y est marquée d'un fond arrondi, et les chevrons
+ * disparaissent : la ligne ne mène plus à un autre écran, elle remplit celui
+ * d'à côté.
  *
  * Les valeurs grises à droite des lignes ne viennent que de ce que l'appareil
  * sait déjà : le compte en mémoire, et les listes de l'équipe si une visite
@@ -346,7 +327,12 @@ function EnTete({ titre, onRetour }: { titre: string; onRetour?: () => void }) {
  * une valeur absente vaut mieux qu'un écran qui attend le réseau pour
  * s'afficher.
  */
-function Sommaire({ onOuvrir }: { onOuvrir: (id: IdSection) => void }) {
+function Sommaire({ onOuvrir, choisie = null, colonne = false }: {
+  onOuvrir: (id: IdSection) => void
+  choisie?: IdSection | null
+  colonne?: boolean
+}) {
+  const m = colonne ? MESURES.colonne : MESURES.ecran
   const navigate = useNavigate()
   const user = useAuth((s) => s.user)
   const { org, gereEquipe, visibles } = useSectionsVisibles()
@@ -397,47 +383,55 @@ function Sommaire({ onOuvrir }: { onOuvrir: (id: IdSection) => void }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className={colonne ? 'space-y-5' : 'space-y-6'}>
       {/* ----- La carte du compte ----- */}
       <div className="overflow-hidden rounded-3xl bg-card">
         <button
           type="button"
           onClick={() => onOuvrir('profil')}
-          className={cn('flex w-full items-center gap-3.5 px-4 py-3.5 text-left', TOUCHER)}
+          className={cn('flex w-full items-center px-4 text-left', m.ecart, colonne ? 'py-3' : 'py-3.5', TOUCHER)}
         >
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-base font-semibold text-foreground">
+          <span className={cn(
+            'flex shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary font-semibold text-foreground',
+            colonne ? 'h-11 w-11 text-sm' : 'h-12 w-12 text-base',
+          )}>
             {initiales(user ?? {})}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[19px] font-semibold leading-tight text-foreground">{nomAffiche(user ?? {})}</span>
+            <span className={cn('block truncate font-semibold leading-tight text-foreground', colonne ? 'text-base' : 'text-[19px]')}>
+              {nomAffiche(user ?? {})}
+            </span>
             {secondaire && (
-              <span className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-                <secondaire.icone className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+              <span className={cn('mt-1 flex items-center gap-1.5 text-muted-foreground', colonne ? 'text-[13px]' : 'text-sm')}>
+                <secondaire.icone className={cn('shrink-0', colonne ? 'h-3.5 w-3.5' : 'h-4 w-4')} strokeWidth={1.8} />
                 <span className="truncate">{secondaire.texte}</span>
               </span>
             )}
           </span>
-          <ChevronRight className="h-[18px] w-[18px] shrink-0 text-neutral-400" />
+          {!colonne && <ChevronRight className="h-[18px] w-[18px] shrink-0 text-neutral-400" />}
         </button>
         {actionEquipe && (
           <button
             type="button"
             onClick={() => onOuvrir('membres')}
-            className={cn('flex w-full items-center gap-3.5 pl-4 text-left text-blue-600', TOUCHER)}
+            className={cn('flex w-full items-center pl-4 text-left text-blue-600', m.ecart, TOUCHER)}
           >
             {/* L'icône se tient dans la colonne de l'avatar, et le filet
                 commence au texte, comme entre les lignes des groupes. */}
-            <span className="flex w-12 shrink-0 justify-center">
-              <Plus className="h-[22px] w-[22px]" strokeWidth={1.8} />
+            <span className={cn('flex shrink-0 justify-center', colonne ? 'w-11' : 'w-12')}>
+              <Plus className={m.icone} strokeWidth={1.8} />
             </span>
-            <span className="flex min-h-[52px] min-w-0 flex-1 items-center border-t border-black/[0.08] pr-4 text-[17px]">
+            <span className={cn(
+              'flex min-w-0 flex-1 items-center border-t border-black/[0.08] pr-4', m.libelle,
+              colonne ? m.ligne : 'min-h-[52px]',
+            )}>
               {actionEquipe}
             </span>
           </button>
         )}
       </div>
 
-      {/* ----- Les familles, puis l'aide ----- */}
+      {/* ----- Les familles ----- */}
       {FAMILLES.map((famille) => {
         const lignes = visibles.filter((s) => s.famille === famille)
         if (lignes.length === 0) return null
@@ -449,7 +443,11 @@ function Sommaire({ onOuvrir }: { onOuvrir: (id: IdSection) => void }) {
                 icone={s.icone}
                 label={s.label}
                 valeur={valeurs[s.id]}
-                premiere={i === 0}
+                colonne={colonne}
+                active={colonne && s.id === choisie}
+                // Pas de filet contre le fond de la section ouverte : il
+                // couperait la ligne voisine au ras de l'arrondi.
+                filet={i > 0 && !(colonne && (s.id === choisie || lignes[i - 1].id === choisie))}
                 onClick={() => onOuvrir(s.id)}
               />
             ))}
@@ -457,11 +455,14 @@ function Sommaire({ onOuvrir }: { onOuvrir: (id: IdSection) => void }) {
         )
       })}
 
-      {/* Sur ordinateur, l'aide est dans la barre latérale ; sur téléphone, il
-          n'y a pas de barre latérale, et c'est ici qu'on vient la chercher. */}
-      <Groupe titre="Aide">
-        <LigneDeListe icone={LifeBuoy} label="Aide et support" premiere onClick={() => navigate('/app/support')} />
-      </Groupe>
+      {/* L'aide, seulement sous lg : sur téléphone, sans barre latérale, c'est
+          ici qu'on vient la chercher. En colonne, à côté de la barre latérale
+          qui la porte déjà, elle ferait doublon. */}
+      {!colonne && (
+        <Groupe titre="Aide">
+          <LigneDeListe icone={LifeBuoy} label="Aide et support" filet={false} onClick={() => navigate('/app/support')} />
+        </Groupe>
+      )}
     </div>
   )
 }
@@ -477,27 +478,42 @@ function Groupe({ titre, children }: { titre: string; children: React.ReactNode 
 }
 
 /**
- * Une ligne du sommaire, haute de 56 px pour le pouce.
+ * Une ligne du sommaire, haute de 56 px pour le pouce (48 en colonne).
  *
  * Le filet qui la sépare de la précédente est porté par la partie texte : il
  * commence au libellé et non sous l'icône, comme dans les Réglages d'iOS.
+ *
+ * `active` : la section ouverte, en colonne. Son fond arrondi se tient en
+ * retrait des bords de la carte, comme la sélection d'une barre latérale
+ * d'iPad ; le contenu passe devant lui.
  */
-function LigneDeListe({ icone: Icone, label, valeur, premiere, onClick }: {
+function LigneDeListe({ icone: Icone, label, valeur, filet, active = false, colonne = false, onClick }: {
   icone: LucideIcon
   label: string
   valeur?: React.ReactNode
-  premiere: boolean
+  filet: boolean
+  active?: boolean
+  colonne?: boolean
   onClick: () => void
 }) {
+  const m = colonne ? MESURES.colonne : MESURES.ecran
   return (
-    <button type="button" onClick={onClick} className={cn('flex w-full items-center gap-3.5 pl-4 text-left', TOUCHER)}>
-      <Icone className="h-[22px] w-[22px] shrink-0 text-neutral-800" strokeWidth={1.6} />
-      <span className={cn('flex min-h-14 min-w-0 flex-1 items-center gap-2 pr-4', !premiere && 'border-t border-black/[0.08]')}>
-        <span className="min-w-0 flex-1 truncate text-[17px] text-foreground">{label}</span>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={cn('relative flex w-full items-center pl-4 text-left', m.ecart, active ? '[-webkit-tap-highlight-color:transparent]' : TOUCHER)}
+    >
+      {active && <span aria-hidden className="absolute inset-x-1.5 inset-y-1 rounded-2xl bg-blue-50" />}
+      <Icone className={cn('relative shrink-0', m.icone, active ? 'text-blue-600' : 'text-neutral-800')} strokeWidth={1.6} />
+      <span className={cn('relative flex min-w-0 flex-1 items-center gap-2 pr-4', m.ligne, filet && 'border-t border-black/[0.08]')}>
+        <span className={cn('min-w-0 flex-1 truncate', m.libelle, active ? 'font-semibold text-blue-700' : 'text-foreground')}>
+          {label}
+        </span>
         {valeur != null && (
-          <span className="max-w-[55%] shrink-0 truncate text-[15px] text-muted-foreground">{valeur}</span>
+          <span className={cn('max-w-[55%] shrink-0 truncate text-muted-foreground', m.valeur)}>{valeur}</span>
         )}
-        <ChevronRight className="h-[18px] w-[18px] shrink-0 text-neutral-400" />
+        {!colonne && <ChevronRight className="h-[18px] w-[18px] shrink-0 text-neutral-400" />}
       </span>
     </button>
   )
