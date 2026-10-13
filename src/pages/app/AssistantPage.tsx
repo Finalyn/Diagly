@@ -571,20 +571,24 @@ function VoletConversations({ ouvert, onFermer, conversations, courante, onOuvri
    */
   const placer = useCallback((ouvrir: boolean, anime: boolean) => {
     const panneau = panneauRef.current
+    if (!panneau) return
     if (ouvrir && !cible.current) cible.current = cibleDuVolet()
-    const racine = cible.current?.element
-    if (!panneau || !racine) return
+    // À la fermeture, rien n'est encore poussé au premier affichage : le volet
+    // doit quand même se cacher. Exiger l'élément poussé ici le laissait
+    // visible dès l'arrivée sur la page, par-dessus la conversation.
+    const racine = cible.current?.element ?? null
     window.clearTimeout(rangement.current)
     const reduit = mouvementReduit()
     // Le volet part du bord de ce qu'il pousse (0, ou le bord droit du menu).
     const gauche = cible.current?.gauche ?? 0
     // Marqué pour que le suivi du doigt le retrouve dans la page.
-    racine.dataset.pousseParVolet = ''
+    if (racine) racine.dataset.pousseParVolet = ''
     panneau.style.left = `${gauche}px`
     if (bordRef.current) bordRef.current.style.left = `calc(${gauche}px + ${LARGEUR_VOLET})`
     const glisse = anime && !reduit
 
     if (ouvrir) {
+      if (!racine) return
       // Le bouton qui a ouvert le volet reprend le focus à la fermeture.
       if (!racine.inert && document.activeElement instanceof HTMLElement) retour.current = document.activeElement
       panneau.style.transition = !anime ? 'none' : reduit ? `opacity ${DUREE_FONDU}ms ease-out` : GLISSEMENT
@@ -618,7 +622,7 @@ function VoletConversations({ ouvert, onFermer, conversations, courante, onOuvri
     panneau.style.visibility = 'hidden'
     panneau.style.opacity = reduit ? '0' : '1'
     panneau.style.transform = reduit ? 'translateX(0)' : 'translateX(-100%)'
-    if (!racine.style.transform) return
+    if (!racine || !racine.style.transform) return
     racine.inert = false
     racine.style.transition = glisse ? GLISSEMENT : 'none'
     racine.style.transform = 'translateX(0)'
