@@ -1,6 +1,7 @@
 // Recharger la page quand un fichier de code manque ou ne se charge pas : un
 // onglet ouvert pendant une mise en ligne, ou un cache du service worker qui
-// garde une mauvaise version. Voir components/FiletDeSecurite.tsx.
+// garde une mauvaise version. Voir components/FiletDeSecurite.tsx. Hors
+// connexion, rien de tout cela : voir estHorsLigne.
 
 const CLE = 'diagly.rechargement'
 
@@ -11,12 +12,27 @@ function fichierDeCodeIntrouvable(err: unknown): boolean {
 }
 
 /**
+ * Hors connexion, d'après le navigateur. Un écran dont le code n'a jamais été
+ * chargé ne peut pas s'ouvrir sans réseau : ce n'est pas un cache abîmé, et
+ * rien ne doit être purgé.
+ */
+export function estHorsLigne(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
+/**
  * Recharge en repartant de zéro : caches du service worker vidés et service
  * worker désinscrit (il se réinstalle au chargement suivant). Un simple
  * rechargement repassait par le même cache, qui resservait le même fichier
  * abîmé : la page tournait en boucle.
+ *
+ * Jamais hors connexion : on désinscrivait le service worker et on effaçait
+ * l'application gardée sur l'appareil, puis on rechargeait sans réseau. Le
+ * relevé devenait inutilisable jusqu'au retour de la connexion, alors que
+ * seul un écran manquait. Dans ce cas, on ne touche à rien.
  */
 export async function rechargerProprement(): Promise<void> {
+  if (estHorsLigne()) return
   try {
     const enregistrements = await navigator.serviceWorker?.getRegistrations?.() ?? []
     await Promise.all(enregistrements.map((r) => r.unregister()))
@@ -34,9 +50,14 @@ export async function rechargerProprement(): Promise<void> {
  * Un fichier de code manque : on recharge proprement, une fois par minute au
  * plus. Si le fichier manque encore juste après, c'est une autre panne, et elle
  * doit se voir (FiletDeSecurite) plutôt que tourner en boucle.
+ *
+ * Hors connexion, l'échec est attendu (l'écran n'a jamais été ouvert en
+ * ligne) : ni purge ni rechargement, et la minute de garde n'est pas
+ * consommée, pour que le rechargement reste possible au retour du réseau.
+ * FiletDeSecurite propose alors de revenir à la liste des diagnostics.
  */
 export function rechargerUneFois(err: unknown): never {
-  if (fichierDeCodeIntrouvable(err)) {
+  if (fichierDeCodeIntrouvable(err) && !estHorsLigne()) {
     let dernier = 0
     try { dernier = Number(sessionStorage.getItem(CLE) ?? 0) } catch { /* stockage indisponible */ }
     if (Date.now() - dernier > 60_000) {

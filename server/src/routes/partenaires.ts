@@ -3,11 +3,13 @@ import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { blockViewerWrites } from "../middlewares/org.js";
 import { validateBody } from "../middlewares/validate.js";
-import { badRequest, forbidden, notFound } from "../lib/http-error.js";
+import { badRequest, forbidden, notFound, tooManyRequests } from "../lib/http-error.js";
 import { ownerScopeFor } from "../lib/org-context.js";
 import { env } from "../lib/env.js";
 import { sendMail, mailConfigured, demandePartenaireEmail } from "../lib/mail.js";
+import { messageDeQuota, quotaEnvois } from "../lib/quota-envois.js";
 import { fireEvent } from "../lib/webhook.js";
 
 /**
@@ -188,7 +190,13 @@ const demandeSchema = z.object({
   mode: z.enum(["send", "messagerie"]),
 });
 
-router.post("/:id/demandes", validateBody(demandeSchema), async (req, res) => {
+// Une demande est une écriture : elle part au nom de l'équipe, peut joindre le
+// résumé d'un dossier et créer son lien public de partage. Un compte en
+// lecture seule ne la fait pas, comme il ne partage pas un rapport depuis le
+// dossier (projects.ts). Le blocage est posé ici plutôt que sur tout le
+// routeur : compter l'ouverture d'une offre (POST /:id/offre) n'écrit rien
+// pour l'équipe et reste ouvert à tous.
+router.post("/:id/demandes", blockViewerWrites, validateBody(demandeSchema), async (req, res) => {
   const userId = req.auth!.sub;
   const d = req.body as z.infer<typeof demandeSchema>;
   const partenaire = await prisma.partner.findFirst({ where: { id: req.params.id, actif: true } });
@@ -239,6 +247,9 @@ router.post("/:id/demandes", validateBody(demandeSchema), async (req, res) => {
   const mail = demandePartenaireEmail({ partenaire: partenaire.nom, auteur, societe, email: user.email, telephone: user.phone, objet: d.objet, message: d.message, dossier, lienRapport });
   let statut = "MESSAGERIE";
   if (d.mode === "send") {
+    // Même plafond que les mails de visite : c'est le même SMTP.
+    const verdict = quotaEnvois.reserver(userId, 1);
+    if (!verdict.ok) throw tooManyRequests(messageDeQuota(verdict, 1));
     const parti = await sendMail({ to: destinataire, subject: mail.subject, text: mail.text, html: mail.html, replyTo: user.email, fromName: societe ? `${auteur} (${societe})` : auteur });
     statut = parti ? "ENVOYEE" : "ECHEC";
   }
@@ -262,7 +273,7 @@ router.get("/demandes", async (req, res) => {
 });
 
 // MESSAGERIE : une demande dont l'envoi a échoué, rouverte dans la messagerie de l'utilisateur.
-router.patch("/demandes/:id", validateBody(z.object({ statut: z.enum(["EN_COURS", "TERMINEE", "MESSAGERIE"]) })), async (req, res) => {
+router.patch("/demandes/:id", blockViewerWrites, validateBody(z.object({ statut: z.enum(["EN_COURS", "TERMINEE", "MESSAGERIE"]) })), async (req, res) => {
   const d = await prisma.partnerRequest.findFirst({ where: { id: req.params.id, userId: req.auth!.sub } });
   if (!d) throw notFound("Demande introuvable");
   const demande = await prisma.partnerRequest.update({ where: { id: d.id }, data: { statut: (req.body as { statut: string }).statut } });

@@ -157,6 +157,7 @@ export function ProjectVisite() {
           mailConfigured={mailConfigured}
           onFermer={() => setComposer(null)}
           onEnvoye={() => { setComposer(null); rafraichir() }}
+          onContactsAjoutes={rafraichir}
         />
       )}
     </div>
@@ -368,8 +369,8 @@ function Historique({ mails }: { mails: VisitMail[] }) {
 
 // ---------------------------------------------------------------- composition d'un mail
 
-function Composer({ modele: m, ctx, projet, mailConfigured, onFermer, onEnvoye }: {
-  modele: Modele; ctx: ContexteVisite; projet: ApiProject; mailConfigured: boolean; onFermer: () => void; onEnvoye: () => void
+function Composer({ modele: m, ctx, projet, mailConfigured, onFermer, onEnvoye, onContactsAjoutes }: {
+  modele: Modele; ctx: ContexteVisite; projet: ApiProject; mailConfigured: boolean; onFermer: () => void; onEnvoye: () => void; onContactsAjoutes: () => void
 }) {
   const depart = useMemo(() => m.composer(ctx), [m, ctx])
   const avecEmail = ctx.contacts.filter((c) => c.email)
@@ -387,10 +388,24 @@ function Composer({ modele: m, ctx, projet, mailConfigured, onFermer, onEnvoye }
     ...libres.map((e) => ({ name: '', email: e })),
   ]
   const toggle = (idc: string) => setChoisis((l) => (l.includes(idc) ? l.filter((x) => x !== idc) : [...l, idc]))
+  // Le serveur n'envoie qu'aux interlocuteurs du dossier : une adresse saisie à
+  // la main y est ajoutée avant un envoi par Diagly (pas pour la messagerie).
+  const connues = new Set(ctx.contacts.map((c) => c.email?.trim().toLowerCase()).filter(Boolean))
+  const aAjouter = [...new Set(libres.map((e) => e.toLowerCase()))].filter((e) => !connues.has(e))
 
   const noter = async (mode: 'send' | 'messagerie') => {
     setEnCours(true); setErreur(null)
     try {
+      if (mode === 'send' && aAjouter.length) {
+        const ajoutes = await Promise.all(aAjouter.map((email) => api.visite.addContact(projet.id, { role: 'AUTRE', name: email, email })))
+        // Les adresses deviennent des interlocuteurs cochés : si l'envoi échoue,
+        // un nouvel essai ne les ajoute pas une seconde fois.
+        const saisies = new Set(libres.map((e) => e.toLowerCase()))
+        const deja = ctx.contacts.filter((c) => c.email && saisies.has(c.email.trim().toLowerCase())).map((c) => c.id)
+        setChoisis((l) => [...new Set([...l, ...deja, ...ajoutes.map((r) => r.contact.id)])])
+        setAutres('')
+        onContactsAjoutes()
+      }
       const r = await api.visite.sendMail(projet.id, { template: m.id, subject: objet, body: corps, recipients: destinataires, mode })
       if (r.mail.status === 'ECHEC') { setErreur('L’envoi a échoué. Le mail est noté dans l’historique ; vous pouvez l’ouvrir dans votre messagerie.'); return }
       onEnvoye()
@@ -453,6 +468,11 @@ function Composer({ modele: m, ctx, projet, mailConfigured, onFermer, onEnvoye }
             {destinataires.length > 1 && mailConfigured && (
               <p className="mt-1 text-[11px] text-muted-foreground">Un envoi par destinataire : personne ne voit l’adresse des autres.</p>
             )}
+            {aAjouter.length > 0 && mailConfigured && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Avec « Envoyer », {aAjouter.length > 1 ? 'ces adresses sont ajoutées' : 'cette adresse est ajoutée'} aux interlocuteurs du dossier : Diagly n’écrit qu’à eux.
+              </p>
+            )}
           </div>
           <Champ label="Objet"><Input value={objet} onChange={(e) => setObjet(e.target.value)} /></Champ>
           <Champ label="Message"><Textarea value={corps} onChange={(e) => setCorps(e.target.value)} rows={16} className="text-sm leading-relaxed" /></Champ>
@@ -461,8 +481,11 @@ function Composer({ modele: m, ctx, projet, mailConfigured, onFermer, onEnvoye }
               L’envoi direct n’est pas configuré sur ce serveur : le mail s’ouvre dans votre messagerie, prêt à partir, et il est noté dans l’historique.
             </p>
           )}
-          {erreur && <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-800">{erreur}</p>}
         </div>
+
+        {/* Hors de la zone qui défile : sous un long message, l'erreur d'un
+            envoi refusé (quota, adresse) restait invisible sans faire défiler. */}
+        {erreur && <p role="alert" className="mx-5 mb-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-800">{erreur}</p>}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-black/[0.06] px-5 py-3">
           <div className="flex gap-2">

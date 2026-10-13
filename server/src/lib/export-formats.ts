@@ -12,11 +12,14 @@ const CHF_FMT = '#,##0" CHF"';
 const HEADER_FILL = "FFEFF3F8";
 
 /** dd.mm.yyyy depuis une date ISO (ou '' si nul). */
+// La date du jour en Suisse, quel que soit le fuseau du serveur : lue avec
+// getDate(), une visite enregistrée à minuit à Zurich sortait la veille sur un
+// serveur réglé en UTC.
+const DATE_SUISSE = new Intl.DateTimeFormat("fr-CH", { timeZone: "Europe/Zurich", day: "2-digit", month: "2-digit", year: "numeric" });
+
 function swissDate(iso: string | null): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
+  return DATE_SUISSE.format(new Date(iso));
 }
 
 // ---- CSV ----

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  bilanDigneDEtreEnvoye, canauxVoulus, cestLHeureDuResume, numeroDeSemaine, phraseDuBilan,
-  palierDeRelance, cestLHeureDesRelances, phraseDeRelance,
+  bilanDigneDEtreEnvoye, canauxVoulus, cestLHeureDuResume, cleDuResume, destinatairesDuResume,
+  numeroDeSemaine, phraseDuBilan, palierDeRelance, cestLHeureDesRelances, phraseDeRelance,
 } from './notifications-regles.js'
 
 const TOUT = { push: true, email: true }
@@ -70,24 +70,98 @@ describe('le résumé de la semaine', () => {
   })
 })
 
+// Les instants sont écrits en UTC (« Z ») : les tests ne dépendent pas du
+// fuseau de la machine qui les lance, pas plus que les règles du serveur.
 describe('la semaine et son heure', () => {
   it('numérote les semaines à la norme ISO', () => {
     // Le 4 janvier appartient toujours à la première semaine.
-    expect(numeroDeSemaine(new Date('2026-01-04T12:00:00'))).toBe('2026-S01')
-    expect(numeroDeSemaine(new Date('2026-10-12T08:00:00'))).toBe('2026-S42')
+    expect(numeroDeSemaine(new Date('2026-01-04T12:00:00Z'))).toBe('2026-S01')
+    expect(numeroDeSemaine(new Date('2026-10-12T06:00:00Z'))).toBe('2026-S42')
+    // Le 31 décembre 2026, un jeudi, est dans la semaine 53.
+    expect(numeroDeSemaine(new Date('2026-12-31T12:00:00Z'))).toBe('2026-S53')
   })
 
   it('donne la même clé à tous les jours d’une même semaine', () => {
-    const lundi = numeroDeSemaine(new Date('2026-10-12T08:00:00'))
-    const vendredi = numeroDeSemaine(new Date('2026-10-16T18:00:00'))
+    const lundi = numeroDeSemaine(new Date('2026-10-12T06:00:00Z'))
+    const vendredi = numeroDeSemaine(new Date('2026-10-16T16:00:00Z'))
     expect(lundi).toBe(vendredi)
   })
 
-  it('n’envoie le résumé que le lundi matin', () => {
-    expect(cestLHeureDuResume(new Date('2026-10-12T08:00:00'))).toBe(true)
-    expect(cestLHeureDuResume(new Date('2026-10-12T06:00:00'))).toBe(false)
-    expect(cestLHeureDuResume(new Date('2026-10-12T14:00:00'))).toBe(false)
-    expect(cestLHeureDuResume(new Date('2026-10-13T08:00:00'))).toBe(false)
+  it('compte la semaine au calendrier suisse, pas à celui du serveur', () => {
+    // Dimanche 11 octobre, 22 h 30 UTC = lundi 12 octobre, 0 h 30 à Zurich.
+    expect(numeroDeSemaine(new Date('2026-10-11T22:30:00Z'))).toBe('2026-S42')
+    // Dimanche 11 octobre, 21 h 30 UTC = 23 h 30 à Zurich : encore la S41.
+    expect(numeroDeSemaine(new Date('2026-10-11T21:30:00Z'))).toBe('2026-S41')
+  })
+
+  it('n’envoie le résumé que le lundi matin, heure suisse', () => {
+    // Lundi 12 octobre 2026 (heure d’été, Zurich = UTC + 2).
+    expect(cestLHeureDuResume(new Date('2026-10-12T06:00:00Z'))).toBe(true) // 8 h
+    expect(cestLHeureDuResume(new Date('2026-10-12T05:00:00Z'))).toBe(true) // 7 h pile
+    expect(cestLHeureDuResume(new Date('2026-10-12T04:59:00Z'))).toBe(false) // 6 h 59
+    expect(cestLHeureDuResume(new Date('2026-10-12T09:59:00Z'))).toBe(true) // 11 h 59
+    // 10 h UTC = midi à Zurich : un serveur en UTC croyait qu’il était 10 h.
+    expect(cestLHeureDuResume(new Date('2026-10-12T10:00:00Z'))).toBe(false)
+    expect(cestLHeureDuResume(new Date('2026-10-12T12:00:00Z'))).toBe(false)
+    expect(cestLHeureDuResume(new Date('2026-10-13T06:00:00Z'))).toBe(false) // mardi
+    // Hiver : lundi 7 décembre, Zurich = UTC + 1.
+    expect(cestLHeureDuResume(new Date('2026-12-07T06:00:00Z'))).toBe(true) // 7 h
+    expect(cestLHeureDuResume(new Date('2026-12-07T05:30:00Z'))).toBe(false) // 6 h 30
+    expect(cestLHeureDuResume(new Date('2026-12-07T10:30:00Z'))).toBe(true) // 11 h 30
+    expect(cestLHeureDuResume(new Date('2026-12-07T11:00:00Z'))).toBe(false) // midi
+  })
+})
+
+describe('le résumé ne part qu’une fois', () => {
+  const demande = { notifications: { weeklyDigest: true } }
+
+  it('garde la même clé à chaque passe de la matinée', () => {
+    const cles = new Set<string>()
+    for (let h = 0; h < 24; h++) {
+      const passe = new Date(Date.UTC(2026, 9, 12, h, 7))
+      if (cestLHeureDuResume(passe)) cles.add(cleDuResume(passe))
+    }
+    expect([...cles]).toEqual(['resume-2026-S42'])
+  })
+
+  it('change de clé d’une semaine à l’autre', () => {
+    expect(cleDuResume(new Date('2026-10-19T06:00:00Z'))).toBe('resume-2026-S43')
+  })
+
+  it('ne part qu’à ceux qui l’ont demandé', () => {
+    const comptes = [
+      { id: 'a', preferences: demande },
+      { id: 'b', preferences: { notifications: { weeklyDigest: false } } },
+      { id: 'c', preferences: null },
+      { id: 'd', preferences: { notifications: {} } },
+    ]
+    expect(destinatairesDuResume(comptes, new Set())).toEqual(['a'])
+  })
+
+  it('ne repart pas à qui l’a déjà reçu cette semaine', () => {
+    const comptes = [{ id: 'a', preferences: demande }, { id: 'b', preferences: demande }]
+    expect(destinatairesDuResume(comptes, new Set(['a']))).toEqual(['b'])
+    expect(destinatairesDuResume(comptes, new Set(['a', 'b']))).toEqual([])
+  })
+
+  it('part une fois quand la passe horaire tourne toute la matinée', () => {
+    // Ce que fait le planificateur : une passe par heure, plus celle du
+    // démarrage, et la cloche qui garde la trace de ce qui est parti.
+    const cloche = new Set<string>()
+    const comptes = [{ id: 'a', preferences: demande }]
+    let envois = 0
+    const passes = [...Array.from({ length: 24 }, (_, h) => Date.UTC(2026, 9, 12, h, 7)), Date.UTC(2026, 9, 12, 8, 30)]
+    for (const t of passes) {
+      const maintenant = new Date(t)
+      if (!cestLHeureDuResume(maintenant)) continue
+      const cle = cleDuResume(maintenant)
+      const dejaServis = new Set([...cloche].filter((x) => x.endsWith(`|${cle}`)).map((x) => x.split('|')[0]))
+      for (const id of destinatairesDuResume(comptes, dejaServis)) {
+        envois++
+        cloche.add(`${id}|${cle}`)
+      }
+    }
+    expect(envois).toBe(1)
   })
 })
 

@@ -5,7 +5,12 @@
  * Séparé de l'envoi pour être vérifiable : c'est ici que se respecte ou se
  * trahit le choix de la personne, et un réglage ignoré ne se voit pas à
  * l'écran, il se voit dans une boîte aux lettres.
+ *
+ * Les heures se lisent à Zurich (heure-suisse.ts), jamais sur l'horloge du
+ * serveur, qui peut tourner en UTC.
  */
+
+import { enSuisse } from "./heure-suisse.js";
 
 export const TYPES_NOTIFICATION = [
   "diagnostic_cree",
@@ -100,20 +105,49 @@ export function bilanDigneDEtreEnvoye(b: BilanDeLaSemaine): boolean {
  * Numéro de semaine ISO, pour n'envoyer qu'un résumé par semaine.
  *
  * Il sert de clé de regroupement : la passe du lundi peut tourner vingt fois
- * dans la matinée, la notification reste unique.
+ * dans la matinée, la notification reste unique. La semaine est celle du
+ * calendrier suisse : entre minuit et deux heures du matin à Zurich, un
+ * serveur en UTC est encore la veille, parfois la semaine d'avant.
  */
 export function numeroDeSemaine(d: Date): string {
-  const jour = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const jourDeSemaine = jour.getUTCDay() || 7;
-  jour.setUTCDate(jour.getUTCDate() + 4 - jourDeSemaine);
+  const ici = enSuisse(d);
+  const jour = new Date(Date.UTC(ici.annee, ici.mois - 1, ici.jour));
+  jour.setUTCDate(jour.getUTCDate() + 4 - ici.jourDeSemaine);
   const premier = new Date(Date.UTC(jour.getUTCFullYear(), 0, 1));
   const numero = Math.ceil(((jour.getTime() - premier.getTime()) / 86_400_000 + 1) / 7);
   return `${jour.getUTCFullYear()}-S${String(numero).padStart(2, "0")}`;
 }
 
-/** L'heure du résumé : le lundi matin, entre sept heures et midi. */
+/** L'heure du résumé : le lundi matin, entre sept heures et midi, heure suisse. */
 export function cestLHeureDuResume(d: Date): boolean {
-  return d.getDay() === 1 && d.getHours() >= 7 && d.getHours() < 12;
+  const ici = enSuisse(d);
+  return ici.jourDeSemaine === 1 && ici.heure >= 7 && ici.heure < 12;
+}
+
+/**
+ * La clé du résumé d'une semaine : la même à chaque passe du lundi, pour
+ * l'enregistrement dans la cloche comme pour savoir s'il est déjà parti.
+ */
+export function cleDuResume(d: Date): string {
+  return `resume-${numeroDeSemaine(d)}`;
+}
+
+/**
+ * Ceux à qui le résumé doit partir à cette passe.
+ *
+ * Seulement ceux qui l'ont demandé, et pas ceux qui l'ont déjà reçu cette
+ * semaine : la passe horaire tourne cinq fois dans la matinée, et `notifier`
+ * renvoie le push et le courriel à chaque appel, même quand la cloche, elle,
+ * ne garde qu'une notification.
+ */
+export function destinatairesDuResume(
+  comptes: readonly { id: string; preferences: unknown }[],
+  dejaServis: ReadonlySet<string>,
+): string[] {
+  return comptes
+    .filter((u) => ((u.preferences as { notifications?: ReglagesNotification } | null) ?? {}).notifications?.weeklyDigest === true)
+    .filter((u) => !dejaServis.has(u.id))
+    .map((u) => u.id);
 }
 
 // ------------------------------------------------------- rappels d'absence
@@ -139,12 +173,8 @@ export function palierDeRelance(joursAbsent: number): number | null {
  * Le serveur peut tourner en UTC : l'heure se lit à Zurich, pas sur sa montre.
  */
 export function cestLHeureDesRelances(d: Date): boolean {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/Zurich", weekday: "short", hour: "numeric", hourCycle: "h23",
-  }).formatToParts(d);
-  const jour = parts.find((p) => p.type === "weekday")?.value;
-  const heure = Number(parts.find((p) => p.type === "hour")?.value);
-  return jour !== "Sat" && jour !== "Sun" && heure >= 9 && heure < 11;
+  const ici = enSuisse(d);
+  return ici.jourDeSemaine <= 5 && ici.heure >= 9 && ici.heure < 11;
 }
 
 /** Le dossier qui attend : le diagnostic pas terminé le plus récemment touché. */

@@ -5,9 +5,11 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { blockViewerWrites } from "../middlewares/org.js";
 import { validateBody } from "../middlewares/validate.js";
-import { notFound } from "../lib/http-error.js";
+import { badRequest, notFound, tooManyRequests } from "../lib/http-error.js";
 import { ownerScopeFor } from "../lib/org-context.js";
 import { sendMail, mailConfigured } from "../lib/mail.js";
+import { messageAdressesInconnues, nomExpediteur, trierDestinataires } from "../lib/mails-visite.js";
+import { messageDeQuota, quotaEnvois } from "../lib/quota-envois.js";
 
 /**
  * Organisation de la visite d'un dossier.
@@ -16,7 +18,11 @@ import { sendMail, mailConfigured } from "../lib/mail.js";
  * locataires), le plan de visite (rendez-vous, créneaux proposés,
  * préparation), et les mails envoyés à ces interlocuteurs, gardés en
  * historique. Les textes des mails sont composés par l'application : le
- * serveur envoie ce qu'on lui donne, sans le réécrire.
+ * serveur envoie ce qu'on lui donne, sans le réécrire. Mais il décide seul à
+ * qui (les interlocuteurs enregistrés du dossier), sous quel nom (celui du
+ * compte, « via Diagly ») et combien (quota-envois.ts) : sinon le SMTP de
+ * Diagly devenait un relais ouvert, vite bloqué, et les codes de double
+ * authentification par email ne partaient plus.
  *
  * Le rendez-vous se recopie dans le calendrier (Event VISITE) et dans la date
  * de visite du diagnostic, pour que le tableau de bord et les rappels le
@@ -173,21 +179,43 @@ router.post("/:projectId/mails", validateBody(mailSchema), async (req, res) => {
   const userId = req.auth!.sub;
   const p = await projetAccessible(req.params.projectId, userId);
   const d = req.body as z.infer<typeof mailSchema>;
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, firstName: true, lastName: true } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, firstName: true, lastName: true, companyName: true, preferences: true },
+  });
   const auteur = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || "Diagly";
 
   let status = "MESSAGERIE";
+  let recipients: { name: string; email: string }[] = d.recipients;
   if (d.mode === "send") {
+    // Seulement les interlocuteurs du dossier. En mode messagerie, le mail part
+    // de la messagerie de l'utilisateur : ses destinataires ne regardent que lui.
+    const contacts = await prisma.projectContact.findMany({
+      where: { projectId: p.id, email: { not: null } },
+      select: { name: true, email: true },
+    });
+    const { retenus, inconnus } = trierDestinataires(d.recipients, contacts);
+    if (inconnus.length) throw badRequest(messageAdressesInconnues(inconnus), { inconnus });
+    if (!retenus.length) throw badRequest("Aucun destinataire.");
+
+    // Réservé avant l'envoi : tout ou rien, et deux requêtes simultanées ne
+    // passent pas ensemble sous le plafond.
+    const verdict = quotaEnvois.reserver(userId, retenus.length);
+    if (!verdict.ok) throw tooManyRequests(messageDeQuota(verdict, retenus.length));
+
+    const societe = ((user?.preferences as { company?: { name?: string } } | null)?.company?.name) || user?.companyName || null;
+    const fromName = nomExpediteur({ prenom: user?.firstName, nom: user?.lastName, societe });
     // Un envoi par destinataire : personne ne voit l'adresse des autres
     // (locataires d'un même immeuble).
-    const resultats = await Promise.all(d.recipients.map((r) => sendMail({
-      to: r.email, subject: d.subject, text: d.body, html: enHtml(d.body), replyTo: user?.email, fromName: auteur,
+    const resultats = await Promise.all(retenus.map((r) => sendMail({
+      to: r.email, subject: d.subject, text: d.body, html: enHtml(d.body), replyTo: user?.email, fromName,
     })));
     status = resultats.every(Boolean) ? "ENVOYE" : "ECHEC";
+    recipients = retenus;
   }
 
   const mail = await prisma.projectMail.create({
-    data: { projectId: p.id, userId, authorName: auteur, template: d.template, subject: d.subject, body: d.body, recipients: d.recipients, status },
+    data: { projectId: p.id, userId, authorName: auteur, template: d.template, subject: d.subject, body: d.body, recipients, status },
   });
   res.status(201).json({ mail });
 });

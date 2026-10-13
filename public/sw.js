@@ -1,8 +1,10 @@
 /**
- * Service worker Diagly — PWA installable + offline (chantier / sous-sol).
+ * Service worker Diagly : PWA installable + offline (chantier / sous-sol).
  *
  * Stratégies (runtime caching, sans dépendance de build) :
  *  - Navigations SPA : network-first, repli sur le shell caché -> l'app s'ouvre hors-ligne.
+ *    Chaque navigation réussie en ligne remplace la copie du shell : c'est la
+ *    dernière version vue en ligne qui tourne hors ligne.
  *  - /assets/ (JS/CSS hashés, immuables) : cache-first.
  *  - /uploads/ (photos, plans) : cache-first.
  *  - /api/ GET : network-first avec repli cache -> données consultables hors-ligne.
@@ -13,6 +15,11 @@
  */
 // v3 : purge des caches où une page HTML avait pu être gardée à la place d'un
 // fichier de code d'une version précédente (page blanche, 13 octobre 2026).
+// Pas de v4 pour le shell rafraîchi à chaque navigation : ce fichier ayant
+// changé, le navigateur installe ce service worker de lui-même, et son
+// installation recharge déjà le shell dans le même cache. Monter la version
+// viderait en plus le cache des données de l'API, gardées pour le hors-ligne,
+// sans rien corriger.
 const VERSION = 'v3'
 const SHELL_CACHE = `diagly-shell-${VERSION}`
 const ASSET_CACHE = `diagly-assets-${VERSION}`
@@ -42,7 +49,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return // externe (polices, etc.)
 
   if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).catch(() => caches.match('/index.html').then((r) => r || caches.match('/'))))
+    event.respondWith(naviguer(event, url))
     return
   }
   if (url.pathname.startsWith('/assets/')) {
@@ -100,6 +107,44 @@ function gardable(request, res) {
   if (!res.ok) return false
   const html = (res.headers.get('content-type') || '').includes('text/html')
   return !(html && request.destination !== 'document')
+}
+
+/**
+ * Une navigation : le réseau d'abord, le shell gardé hors ligne.
+ *
+ * La copie du shell était celle de l'installation du service worker : après
+ * une mise en ligne, l'app hors ligne restait l'ancienne, jusqu'à la
+ * réinstallation suivante. Désormais chaque navigation réussie en ligne la
+ * remplace, si la réponse est bien le shell de l'app web.
+ */
+async function naviguer(event, url) {
+  try {
+    const res = await fetch(event.request)
+    if (estLeShell(event.request, url, res)) {
+      const copie = res.clone()
+      event.waitUntil(
+        caches.open(SHELL_CACHE).then((c) => c.put('/index.html', copie)).catch(() => undefined),
+      )
+    }
+    return res
+  } catch {
+    return (await caches.match('/index.html')) || (await caches.match('/')) || Response.error()
+  }
+}
+
+/**
+ * La réponse d'une navigation est-elle le shell de l'app web ?
+ *
+ * Pas l'API ni un fichier joint ouverts dans un onglet, pas l'app mobile
+ * (/mobile, son propre index.html), pas un fichier (un chemin avec une
+ * extension), pas une redirection ; et la règle de `gardable` tient toujours.
+ */
+function estLeShell(request, url, res) {
+  if (res.redirected || res.type !== 'basic') return false
+  if (!gardable(request, res)) return false
+  if (!(res.headers.get('content-type') || '').includes('text/html')) return false
+  if (/^\/(api|uploads|mobile)(\/|$)/.test(url.pathname)) return false
+  return !/\.[a-z0-9]{1,8}$/i.test(url.pathname)
 }
 
 async function cacheFirst(request, cacheName, opts) {

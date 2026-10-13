@@ -1,10 +1,11 @@
 import { prisma } from "./prisma.js";
 import { notifier } from "./notifications.js";
 import {
-  bilanDigneDEtreEnvoye, cestLHeureDuResume, numeroDeSemaine, phraseDuBilan,
+  bilanDigneDEtreEnvoye, cestLHeureDuResume, cleDuResume, destinatairesDuResume, phraseDuBilan,
   cestLHeureDesRelances, palierDeRelance, phraseDeRelance,
   type BilanDeLaSemaine,
 } from "./notifications-regles.js";
+import { heureSuisse } from "./heure-suisse.js";
 import { logger } from "./logger.js";
 
 /**
@@ -45,7 +46,8 @@ async function rappelerLesVisites(): Promise<void> {
   });
 
   for (const ev of evenements) {
-    const heure = ev.startAt.toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" });
+    // L'heure de Zurich, pas celle du serveur (souvent en UTC).
+    const heure = heureSuisse(ev.startAt);
     await notifier(ev.userId, "rappel_visite", {
       titre: `Dans une demi-heure : ${ev.title}`,
       texte: ev.location ? `${heure}, ${ev.location}` : `À ${heure}`,
@@ -61,34 +63,37 @@ async function rappelerLesVisites(): Promise<void> {
 /**
  * Le résumé du lundi.
  *
- * Envoyé une seule fois par semaine et par personne, grâce à la clé de
- * regroupement qui porte le numéro de la semaine : même si la passe tourne
- * vingt fois dans la matinée, la notification reste unique.
+ * Envoyé une seule fois par semaine et par personne. La clé de regroupement,
+ * qui porte le numéro de la semaine, garde une seule notification dans la
+ * cloche ; mais `notifier` renvoie le push et le courriel à chaque appel. La
+ * passe tourne toutes les heures de la fenêtre (et au démarrage) : sans
+ * vérifier d'abord que la notification de cette clé existe, le même résumé
+ * partait cinq ou six fois.
  */
 async function envoyerLesResumes(): Promise<void> {
   const maintenant = new Date();
   if (!cestLHeureDuResume(maintenant)) return;
 
   const depuis = new Date(maintenant.getTime() - 7 * 24 * 60 * MINUTE);
-  const semaine = numeroDeSemaine(maintenant);
+  const cle = cleDuResume(maintenant);
 
-  // Seulement ceux qui l'ont demandé : le réglage par défaut est « non », et
-  // interroger toute la base chaque lundi pour n'envoyer à personne serait
-  // autant de courriels inutiles à préparer.
-  const utilisateurs = await prisma.user.findMany({ select: { id: true, preferences: true } });
+  // Seulement ceux qui l'ont demandé (le réglage par défaut est « non ») et
+  // qui ne l'ont pas encore reçu cette semaine : même clé que l'enregistrement.
+  const [utilisateurs, dejaEnvoyes] = await Promise.all([
+    prisma.user.findMany({ select: { id: true, preferences: true } }),
+    prisma.notification.findMany({ where: { cle }, select: { userId: true } }),
+  ]);
+  const destinataires = destinatairesDuResume(utilisateurs, new Set(dejaEnvoyes.map((n) => n.userId)));
 
-  for (const u of utilisateurs) {
-    const reglages = ((u.preferences as { notifications?: { weeklyDigest?: boolean } } | null) ?? {}).notifications;
-    if (reglages?.weeklyDigest !== true) continue;
-
-    const bilan = await bilanDeLaSemaine(u.id, depuis);
+  for (const userId of destinataires) {
+    const bilan = await bilanDeLaSemaine(userId, depuis);
     if (!bilanDigneDEtreEnvoye(bilan)) continue;
 
-    await notifier(u.id, "resume_hebdo", {
+    await notifier(userId, "resume_hebdo", {
       titre: "Votre semaine sur Diagly",
       texte: phraseDuBilan(bilan),
       url: "/app/dashboard",
-      cle: `resume-${semaine}`,
+      cle,
     });
   }
 }

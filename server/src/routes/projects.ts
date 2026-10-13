@@ -116,6 +116,7 @@ router.get("/", async (req, res) => {
   });
   // `geoData` est le dump brut des registres (plusieurs Ko par batiment) : inutile en liste,
   // il n'est lu que sur la fiche du diagnostic, qui passe par GET /projects/:id.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- retiré exprès de la réponse
   const projects = rows.map(({ geoData: _geoData, ...rest }) => rest);
   res.json({ projects, count: projects.length });
 });
@@ -228,7 +229,7 @@ router.post("/:id/diagnostics", validateBody(createDiagnosticSchema), async (req
   notifierSansAttendre(req.auth!.sub, "diagnostic_cree", {
     titre: `Diagnostic ouvert : ${project.name}`,
     texte: data.visitDate
-      ? `Visite prévue le ${new Date(data.visitDate).toLocaleDateString("fr-CH", { day: "numeric", month: "long" })}.`
+      ? `Visite prévue le ${new Date(data.visitDate).toLocaleDateString("fr-CH", { day: "numeric", month: "long", timeZone: "Europe/Zurich" })}.`
       : "Aucune date de visite pour l'instant.",
     url: `/app/diagnostic/${diagnostic.id}`,
     cle: `diagnostic-cree-${diagnostic.id}`,
