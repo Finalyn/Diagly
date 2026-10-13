@@ -17,4 +17,8 @@ export const estIOS = Capacitor.getPlatform() === 'ios'
  * d'un rapport, invitation) doit donc partir de cette adresse, pas de
  * window.location.origin.
  */
-export const ORIGINE_PUBLIQUE = estAppNative ? 'https://diagly.ch' : window.location.origin
+// Lu sans supposer de fenêtre : ce module est aussi chargé par les tests, hors
+// navigateur, à travers ceux qui demandent seulement estAppNative.
+export const ORIGINE_PUBLIQUE = estAppNative
+  ? 'https://diagly.ch'
+  : typeof window !== 'undefined' ? window.location.origin : ''
