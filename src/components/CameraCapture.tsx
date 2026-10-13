@@ -126,7 +126,7 @@ export function CameraCapture({ onCapture }: { onCapture: (dataUrl: string) => v
   // Fallback : appareil photo natif.
   if (error) {
     return (
-      <div className="flex aspect-square w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-muted-foreground/30 bg-muted/30 text-muted-foreground">
+      <div className="flex aspect-square max-h-[50dvh] w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-muted-foreground/30 bg-muted/30 text-muted-foreground">
         <label className="flex cursor-pointer flex-col items-center">
           <Camera className="mb-2 h-12 w-12" />
           <span className="text-sm font-medium">Prendre une photo</span>
@@ -147,8 +147,11 @@ export function CameraCapture({ onCapture }: { onCapture: (dataUrl: string) => v
 
   return (
     <>
-      {/* Aperçu carré inline */}
-      <div className="relative aspect-square w-full rounded-2xl overflow-hidden bg-black touch-none"
+      {/* Aperçu carré inline, jamais plus haut que la moitié de l'écran : sur
+          iPad couché, le carré pleine largeur dépassait l'écran et cachait son
+          déclencheur. Le glissement vertical passe à la fiche (touch-pan-y),
+          qui défile ; le pincement à deux doigts reste au zoom. */}
+      <div className="relative aspect-square max-h-[50dvh] w-full rounded-2xl overflow-hidden bg-black touch-pan-y"
         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         <video ref={inlineRef} autoPlay playsInline muted
           className="absolute inset-0 h-full w-full object-cover origin-center"

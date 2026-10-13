@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from 'react'
 // net avant la fin du fondu.
 const DASH_MASK = 'linear-gradient(to right, transparent 14%, #000 51%), linear-gradient(to bottom, #000 60%, transparent 100%)'
 
-// Routes accessibles sur mobile (app épurée : liste, éditeur, base de données, paramètres).
+// Routes accessibles sur mobile (app épurée : liste, éditeur, base de données, paramètres, aide).
 // Tout le reste (dashboard, coûts, variantes, rapports, plans, parc, équipe, intégrations…)
 // est réservé au desktop et redirigé vers la liste des diagnostics.
 function isMobileAllowed(pathname: string): boolean {
@@ -30,6 +30,7 @@ function isMobileAllowed(pathname: string): boolean {
   if (pathname === '/app/cfc') return true                    // base de données
   if (pathname === '/app/assistant') return true              // assistant, en page plein écran
   if (pathname.startsWith('/app/settings')) return true       // paramètres
+  if (pathname.startsWith('/app/support')) return true        // aide et support, ouverts depuis les paramètres
   if (pathname.startsWith('/app/join/')) return true          // acceptation d'invitation
   return false
 }
@@ -64,6 +65,10 @@ export function AppLayout() {
     || location.pathname === '/app/integrations' || location.pathname === '/app/prestataires'
     || location.pathname === '/app/cfc' || location.pathname === '/app/projects'
     || /^\/app\/diagnostic\/[^/]+$/.test(location.pathname)
+    // L'assistant aussi : c'est la conversation qui défile, la zone de saisie
+    // reste en bas. Sa hauteur calculée à la main (100dvh moins un forfait)
+    // ignorait les barres de l'iPhone, et la page entière glissait.
+    || location.pathname === '/app/assistant'
   const mainRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
   const menu = useMenuDeLaPage()
@@ -75,6 +80,8 @@ export function AppLayout() {
   // Téléphone : la liste des diagnostics. Le titre, la recherche et les filtres
   // restent en place ; seule la liste défile, jusque sous la barre du bas.
   const listeMobile = isMobile && location.pathname === '/app/projects'
+  // Téléphone : l'assistant tient dans l'écran, sa conversation défile.
+  const assistantMobile = isMobile && location.pathname === '/app/assistant'
   // Téléphone : la barre du haut est en verre, posée sur le contenu, qui glisse
   // dessous comme dans une app iOS. Sa hauteur varie (bandeau hors-ligne,
   // retour au dossier) : on la mesure pour que la page commence sous elle.
@@ -119,7 +126,9 @@ export function AppLayout() {
       </div>
 
       {/* Zone principale */}
-      <div data-zone-principale className="js-print-column relative flex flex-1 flex-col min-w-0 overflow-hidden p-3 max-md:py-0 md:pt-[calc(var(--safe-top)+0.75rem)]">
+      {/* En bas, la place du clavier de l'app iPhone/iPad (--clavier, lib/natif.ts) :
+          la zone s'arrête au-dessus, le menu de gauche garde sa hauteur. */}
+      <div data-zone-principale className="js-print-column relative flex flex-1 flex-col min-w-0 overflow-hidden p-3 max-md:pt-0 max-md:pb-[var(--clavier,0px)] md:pt-[calc(var(--safe-top)+0.75rem)] md:pb-[max(0.75rem,var(--clavier,0px))]">
         {onDashboard && (
           // Un cadre en haut à droite, sur 70 % de la largeur, depuis le haut de
           // l'écran jusque sous la carte « Reprendre » : le tableau de bord en
@@ -130,7 +139,7 @@ export function AppLayout() {
           <div
             className="js-print-hide pointer-events-none absolute right-0 top-0 z-0 h-[var(--hauteur-image,26rem)] w-[70%] bg-cover bg-no-repeat"
             style={{
-              backgroundImage: 'url(/preview-bg.jpg)',
+              backgroundImage: 'url(/preview-bg.webp)',
               backgroundPosition: '80% 20%',
               WebkitMaskImage: DASH_MASK,
               WebkitMaskComposite: 'source-in',
@@ -173,7 +182,11 @@ export function AppLayout() {
                     // La liste descend jusqu'en bas de l'écran, sous la barre en
                     // verre ; c'est elle qui garde la marge du bas (ProjectsList).
                     ? 'min-h-0 overflow-hidden'
-                    : `overflow-y-auto ${editeurPleinEcran ? 'pb-[calc(var(--safe-bottom)+1.5rem)]' : 'pb-[calc(var(--safe-bottom)+7rem)]'}`
+                    : assistantMobile
+                      // Pas de barre du bas ici : la saisie se pose au-dessus
+                      // de la barre d'accueil de l'iPhone.
+                      ? 'min-h-0 overflow-hidden pb-[calc(var(--safe-bottom)+0.75rem)]'
+                      : `overflow-y-auto ${editeurPleinEcran ? 'pb-[calc(var(--safe-bottom)+1.5rem)]' : 'pb-[calc(var(--safe-bottom)+7rem)]'}`
                 : `${onDashboard ? 'mt-6 lg:mt-8 short:mt-3' : 'mt-3'} ${
                   pageEncastree ? 'min-h-0 overflow-hidden pb-3' : onDashboard ? 'min-h-0 overflow-y-auto pb-6' : 'overflow-y-auto pb-16'}`
             }`}

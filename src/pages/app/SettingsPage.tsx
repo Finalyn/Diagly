@@ -18,12 +18,13 @@
  * d'enregistrement qui ne paraît que si quelque chose a changé, et qui propose
  * d'annuler : on ne modifie pas une adresse de facturation par inadvertance.
  */
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertTriangle, Bell, BellRing, Building2, Check, ChevronLeft, ChevronRight, CircleUser,
-  CreditCard, KeyRound, Loader2, LogOut, Mail, Palette, ShieldCheck, ShieldOff, User as UserIcon, Users,
+  AlertTriangle, Bell, BellRing, Briefcase, Building2, Check, ChevronLeft, ChevronRight, CircleUser,
+  CreditCard, KeyRound, LifeBuoy, Loader2, LogOut, Mail, Palette, Plus, ShieldCheck, ShieldOff,
+  User as UserIcon, Users, type LucideIcon,
 } from 'lucide-react'
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
@@ -47,7 +48,7 @@ const TOUTES_LES_SECTIONS: {
   id: IdSection
   label: string
   aide: string
-  icone: React.ComponentType<{ className?: string }>
+  icone: LucideIcon
   famille: 'Mon compte' | 'Mon travail' | 'Mon organisation'
 }[] = [
   { id: 'profil', label: 'Profil', aide: 'Votre nom, votre téléphone', icone: UserIcon, famille: 'Mon compte' },
@@ -115,9 +116,13 @@ export function SettingsPage() {
 
   const section = SECTIONS.find((s) => s.id === choisie)
 
+  // Sous lg, l'écran prend la forme des Réglages de l'iPhone : il a sa propre
+  // composition, et la mise en page à deux colonnes ci-dessous reste celle de
+  // l'ordinateur, sans un pixel de différence.
+  if (uneALaFois) return <UneSectionALaFois section={section} onChoisir={choisir} />
+
   // Les deux panneaux suivent leur contenu : une hauteur figée laissait un
-  // grand vide sous un formulaire court, et passait sous la barre de
-  // navigation flottante du téléphone. C'est la page qui défile.
+  // grand vide sous un formulaire court. C'est la page qui défile.
   return (
     <div className="space-y-4">
       {/* Le titre nomme la page, pas le menu : dans la carte de gauche, il
@@ -131,38 +136,19 @@ export function SettingsPage() {
         </p>
       </div>
 
-      <div className={cn('flex gap-4', uneALaFois ? 'flex-col' : 'items-start')}>
+      <div className="flex items-start gap-4">
         {/* ----- Le menu, à gauche ----- */}
-        {(!uneALaFois || choisie === null) && (
-          <Menu choisie={choisie} onChoisir={choisir} seul={uneALaFois} />
-        )}
+        <Menu choisie={choisie} onChoisir={choisir} />
 
         {/* ----- Les réglages de la section, à droite ----- */}
         {section && (
           <Card className="min-w-0 flex-1 overflow-hidden">
             <CardHeader className="space-y-0 border-b border-black/[0.06] px-5 py-3.5">
-              {uneALaFois && (
-                <button
-                  onClick={() => choisir(null)}
-                  className="mb-1.5 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-                >
-                  <ChevronLeft className="h-4 w-4" />Paramètres
-                </button>
-              )}
               <CardTitle className="text-base">{section.label}</CardTitle>
               <p className="mt-0.5 text-sm text-muted-foreground">{section.aide}</p>
             </CardHeader>
             <CardContent className="space-y-5 p-5">
-              {choisie === 'profil' && <SectionProfil />}
-              {choisie === 'securite' && <SectionSecurite />}
-              {choisie === 'notifications' && <SectionNotifications />}
-              {choisie === 'bureau' && <SectionBureau />}
-              {choisie === 'personnalisation' && <SectionPersonnalisation />}
-              {choisie === 'facturation' && <SectionFacturation />}
-              {choisie === 'compte' && <SectionCompte />}
-              {(choisie === 'membres' || choisie === 'invitations' || choisie === 'roles') && (
-                <SectionEquipe section={choisie} onChoisir={choisir} />
-              )}
+              <ContenuDeLaSection id={section.id} onChoisir={choisir} />
             </CardContent>
           </Card>
         )}
@@ -171,28 +157,51 @@ export function SettingsPage() {
   )
 }
 
+/** Les formulaires d'une section, les mêmes sur ordinateur et sur iPhone. */
+function ContenuDeLaSection({ id, onChoisir }: { id: IdSection; onChoisir: (id: IdSection) => void }) {
+  return (
+    <>
+      {id === 'profil' && <SectionProfil />}
+      {id === 'securite' && <SectionSecurite />}
+      {id === 'notifications' && <SectionNotifications />}
+      {id === 'bureau' && <SectionBureau />}
+      {id === 'personnalisation' && <SectionPersonnalisation />}
+      {id === 'facturation' && <SectionFacturation />}
+      {id === 'compte' && <SectionCompte />}
+      {(id === 'membres' || id === 'invitations' || id === 'roles') && (
+        <SectionEquipe section={id} onChoisir={onChoisir} />
+      )}
+    </>
+  )
+}
+
 /**
- * Le menu, dans sa carte.
+ * Les sections que la personne connectée peut ouvrir.
  *
- * En tête le titre de la page et ce qu'il reste à regarder, puis la personne
- * connectée, puis les sections par famille, chacune avec ce qui lui manque.
- * Même carte et même colonne que les autres écrans à deux panneaux.
- *
- * `seul` : le menu tient l'écran à lui seul (téléphone, iPad à la verticale)
- * et mène à la section, qui le remplace. Ses lignes sont alors plus hautes,
- * portent leur aide et un chevron, et aucune n'est marquée comme ouverte.
+ * Les invitations ne regardent que les administrateurs d'une organisation :
+ * le menu de l'ordinateur et le sommaire de l'iPhone appliquent la même règle,
+ * d'où ce point unique.
  */
-function Menu({ choisie, onChoisir, seul }: {
-  choisie: IdSection | null
-  onChoisir: (id: IdSection) => void
-  seul: boolean
-}) {
-  const user = useAuth((s) => s.user)
-  const bureau = user?.preferences?.company
-  // Les invitations ne regardent que les administrateurs d'une organisation.
+function useSectionsVisibles() {
   const org = useQuery({ queryKey: ['org'], queryFn: () => api.org.get(), staleTime: 5 * 60_000 })
   const gereEquipe = !!org.data?.organization && (org.data.role === 'OWNER' || org.data.role === 'ADMIN')
   const visibles = SECTIONS.filter((s) => s.id !== 'invitations' || gereEquipe)
+  return { org, gereEquipe, visibles }
+}
+
+/**
+ * Le menu, dans sa carte (ordinateur, à partir de lg).
+ *
+ * En tête la personne connectée, puis les sections par famille. Même carte et
+ * même colonne que les autres écrans à deux panneaux.
+ */
+function Menu({ choisie, onChoisir }: {
+  choisie: IdSection | null
+  onChoisir: (id: IdSection) => void
+}) {
+  const user = useAuth((s) => s.user)
+  const bureau = user?.preferences?.company
+  const { visibles } = useSectionsVisibles()
   return (
     <Card className="w-full shrink-0 overflow-hidden lg:w-72">
       <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-3.5">
@@ -217,19 +226,16 @@ function Menu({ choisie, onChoisir, seul }: {
                     key={s.id}
                     onClick={() => onChoisir(s.id)}
                     className={cn(
-                      'flex w-full items-center gap-2.5 rounded-2xl px-3 text-left transition-colors',
-                      seul ? 'py-3' : 'py-2.5',
-                      on && !seul
+                      'flex w-full items-center gap-2.5 rounded-2xl px-3 py-2.5 text-left transition-colors',
+                      on
                         ? 'border border-blue-100 bg-blue-50 text-blue-700'
                         : 'text-neutral-600 hover:bg-black/[0.03] hover:text-neutral-900',
                     )}
                   >
                     <s.icone className="h-4 w-4 shrink-0" />
                     <span className="min-w-0 flex-1">
-                      <span className={cn('block truncate text-sm', on && !seul ? 'font-semibold' : 'font-medium')}>{s.label}</span>
-                      {seul && <span className="block truncate text-[11px] text-muted-foreground">{s.aide}</span>}
+                      <span className={cn('block truncate text-sm', on ? 'font-semibold' : 'font-medium')}>{s.label}</span>
                     </span>
-                    {seul && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
                   </button>
                 )
               })}
@@ -238,6 +244,262 @@ function Menu({ choisie, onChoisir, seul }: {
         ))}
       </nav>
     </Card>
+  )
+}
+
+// ------------------------------------------------- iPhone et iPad debout
+
+/** Le retour au toucher : un fond un peu plus sombre, sans le voile gris de Safari. */
+const TOUCHER = 'transition-colors hover:bg-black/[0.02] active:bg-black/[0.06] [-webkit-tap-highlight-color:transparent]'
+
+/**
+ * Sous lg, les Paramètres en liste groupée, comme les Réglages de l'iPhone.
+ *
+ * Le sommaire d'abord : la carte du compte, puis les familles en cartes de
+ * lignes, chacune avec son icône, ce qu'on sait déjà de son état, et un
+ * chevron. Toucher une ligne ouvre la section à la place du sommaire, sous un
+ * en-tête qui porte son nom et un bouton rond pour revenir.
+ *
+ * La zone principale de l'application ne remonte en haut qu'en changeant de
+ * page, et ouvrir une section ne change que le paramètre `?s=` : une section
+ * ouverte depuis le bas du sommaire paraîtrait déjà défilée, son en-tête hors
+ * de l'écran. On remonte donc à chaque section, et l'on rend au sommaire la
+ * position qu'il avait quand on l'a quitté.
+ */
+function UneSectionALaFois({ section, onChoisir }: {
+  section: (typeof SECTIONS)[number] | undefined
+  onChoisir: (id: IdSection | null) => void
+}) {
+  const racine = useRef<HTMLDivElement>(null)
+  const positionDuSommaire = useRef(0)
+  const id = section?.id ?? null
+
+  // Avant que l'écran ne soit peint, pour ne pas voir la section apparaître à
+  // mi-hauteur puis sauter en haut.
+  useLayoutEffect(() => {
+    racine.current?.closest('main')?.scrollTo(0, id === null ? positionDuSommaire.current : 0)
+  }, [id])
+
+  const ouvrir = (cible: IdSection) => {
+    positionDuSommaire.current = racine.current?.closest('main')?.scrollTop ?? 0
+    onChoisir(cible)
+  }
+
+  return (
+    <div ref={racine} className="mx-auto w-full max-w-2xl">
+      {section ? (
+        <>
+          <EnTete titre={section.label} onRetour={() => onChoisir(null)} />
+          <p className="mb-2 px-4 text-[13px] leading-snug text-muted-foreground">{section.aide}</p>
+          {/* Une seule carte pour les formulaires, aux angles du sommaire, et
+              du même retrait de 20 px que sur ordinateur : la barre
+              d'enregistrement s'y étend bord à bord par ses marges négatives. */}
+          <div className="space-y-5 overflow-hidden rounded-3xl bg-card p-5 text-card-foreground">
+            <ContenuDeLaSection id={section.id} onChoisir={onChoisir} />
+          </div>
+        </>
+      ) : (
+        <>
+          <EnTete titre="Paramètres" />
+          <Sommaire onOuvrir={ouvrir} />
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * L'en-tête d'écran : le titre centré, et le bouton rond du retour.
+ *
+ * Le titre garde une marge de chaque côté, de la largeur du bouton, pour
+ * rester centré sur l'écran et ne jamais passer sous lui. La hauteur est la
+ * même avec ou sans bouton : le titre ne saute pas en passant du sommaire à
+ * une section.
+ */
+function EnTete({ titre, onRetour }: { titre: string; onRetour?: () => void }) {
+  return (
+    <header className="relative mb-3 flex h-11 items-center justify-center px-14">
+      {onRetour && (
+        <button
+          type="button"
+          onClick={onRetour}
+          aria-label="Retour aux paramètres"
+          className={cn(
+            'absolute left-0 top-0 flex h-11 w-11 items-center justify-center rounded-full border border-black/[0.06] bg-card text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
+            'transition-colors hover:bg-neutral-50 active:bg-neutral-200 [-webkit-tap-highlight-color:transparent]',
+          )}
+        >
+          <ChevronLeft className="h-[22px] w-[22px]" strokeWidth={1.8} />
+        </button>
+      )}
+      <h1 className="truncate text-[17px] font-bold">{titre}</h1>
+    </header>
+  )
+}
+
+/**
+ * Le sommaire en liste groupée.
+ *
+ * Les valeurs grises à droite des lignes ne viennent que de ce que l'appareil
+ * sait déjà : le compte en mémoire, et les listes de l'équipe si une visite
+ * précédente les a chargées. Le sommaire ne lance aucune requête pour elles ;
+ * une valeur absente vaut mieux qu'un écran qui attend le réseau pour
+ * s'afficher.
+ */
+function Sommaire({ onOuvrir }: { onOuvrir: (id: IdSection) => void }) {
+  const navigate = useNavigate()
+  const user = useAuth((s) => s.user)
+  const { org, gereEquipe, visibles } = useSectionsVisibles()
+  // `enabled: false` : on lit le cache, et on suit ses mises à jour, sans
+  // jamais rien demander au serveur. L'équipe et la facturation rangent les
+  // membres sous deux clés différentes : l'une ou l'autre suffit.
+  const membres = useQuery({ queryKey: ['org-members'], queryFn: () => api.org.members(), enabled: false })
+  const membresFacturation = useQuery({ queryKey: ['org-membres'], queryFn: () => api.org.members(), enabled: false })
+  const invitations = useQuery({ queryKey: ['org-invites'], queryFn: () => api.org.invitations(), enabled: false })
+
+  const bureau = user?.preferences?.company
+  const societe = bureau?.name || user?.companyName || ''
+  const role = ROLES[user?.role ?? '']
+  const aUnNom = !!(user?.firstName?.trim() || user?.lastName?.trim())
+  // La ligne sous le nom dit pour qui l'on travaille ; à défaut, son métier ;
+  // à défaut, l'adresse, quand le nom ne l'affiche pas déjà.
+  const secondaire: { icone: LucideIcon; texte: string } | null = societe
+    ? { icone: Building2, texte: societe }
+    : role
+      ? { icone: Briefcase, texte: role }
+      : aUnNom && user?.email ? { icone: Mail, texte: user.email } : null
+
+  // L'action du compte, en bleu : agrandir l'équipe. Elle ne paraît qu'à ceux
+  // qui peuvent le faire, et seulement quand l'organisation est connue ; un
+  // membre sans droits tomberait sur une section qui lui dit non.
+  const actionEquipe = !org.data ? null
+    : !org.data.organization ? 'Créer l’équipe'
+      : gereEquipe ? 'Inviter un membre' : null
+
+  const nbMembres = (membres.data ?? membresFacturation.data)?.members.length ?? null
+  const nbInvitations = invitations.data?.invitations.length ?? null
+  const valeurs: Partial<Record<IdSection, React.ReactNode>> = {
+    profil: user && etatDuProfil(user).etat === 'incomplet' ? 'À compléter' : null,
+    securite: user ? (user.twoFactorEnabled ? 'Code à la connexion' : 'Mot de passe seul') : null,
+    bureau: user && champsManquantsDuBureau({ ...bureau, name: societe }).length > 0 ? 'À compléter' : null,
+    personnalisation: (
+      <span className="inline-flex items-center gap-2">
+        {!bureau?.logo && 'Sans logo'}
+        <span
+          aria-hidden
+          className="h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-black/10"
+          style={{ backgroundColor: bureau?.accentColor || '#3b82f6' }}
+        />
+      </span>
+    ),
+    membres: nbMembres !== null ? String(nbMembres) : null,
+    invitations: nbInvitations === null ? null : nbInvitations > 0 ? String(nbInvitations) : 'Aucune',
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ----- La carte du compte ----- */}
+      <div className="overflow-hidden rounded-3xl bg-card">
+        <button
+          type="button"
+          onClick={() => onOuvrir('profil')}
+          className={cn('flex w-full items-center gap-3.5 px-4 py-3.5 text-left', TOUCHER)}
+        >
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-black/[0.06] bg-secondary text-base font-semibold text-foreground">
+            {initiales(user ?? {})}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[19px] font-semibold leading-tight text-foreground">{nomAffiche(user ?? {})}</span>
+            {secondaire && (
+              <span className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                <secondaire.icone className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+                <span className="truncate">{secondaire.texte}</span>
+              </span>
+            )}
+          </span>
+          <ChevronRight className="h-[18px] w-[18px] shrink-0 text-neutral-400" />
+        </button>
+        {actionEquipe && (
+          <button
+            type="button"
+            onClick={() => onOuvrir('membres')}
+            className={cn('flex w-full items-center gap-3.5 pl-4 text-left text-blue-600', TOUCHER)}
+          >
+            {/* L'icône se tient dans la colonne de l'avatar, et le filet
+                commence au texte, comme entre les lignes des groupes. */}
+            <span className="flex w-12 shrink-0 justify-center">
+              <Plus className="h-[22px] w-[22px]" strokeWidth={1.8} />
+            </span>
+            <span className="flex min-h-[52px] min-w-0 flex-1 items-center border-t border-black/[0.08] pr-4 text-[17px]">
+              {actionEquipe}
+            </span>
+          </button>
+        )}
+      </div>
+
+      {/* ----- Les familles, puis l'aide ----- */}
+      {FAMILLES.map((famille) => {
+        const lignes = visibles.filter((s) => s.famille === famille)
+        if (lignes.length === 0) return null
+        return (
+          <Groupe key={famille} titre={famille}>
+            {lignes.map((s, i) => (
+              <LigneDeListe
+                key={s.id}
+                icone={s.icone}
+                label={s.label}
+                valeur={valeurs[s.id]}
+                premiere={i === 0}
+                onClick={() => onOuvrir(s.id)}
+              />
+            ))}
+          </Groupe>
+        )
+      })}
+
+      {/* Sur ordinateur, l'aide est dans la barre latérale ; sur téléphone, il
+          n'y a pas de barre latérale, et c'est ici qu'on vient la chercher. */}
+      <Groupe titre="Aide">
+        <LigneDeListe icone={LifeBuoy} label="Aide et support" premiere onClick={() => navigate('/app/support')} />
+      </Groupe>
+    </div>
+  )
+}
+
+/** Un groupe du sommaire : son titre gris, puis sa carte de lignes. */
+function Groupe({ titre, children }: { titre: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h2 className="mb-1.5 px-4 text-[13px] font-medium text-muted-foreground">{titre}</h2>
+      <div className="overflow-hidden rounded-3xl bg-card">{children}</div>
+    </section>
+  )
+}
+
+/**
+ * Une ligne du sommaire, haute de 56 px pour le pouce.
+ *
+ * Le filet qui la sépare de la précédente est porté par la partie texte : il
+ * commence au libellé et non sous l'icône, comme dans les Réglages d'iOS.
+ */
+function LigneDeListe({ icone: Icone, label, valeur, premiere, onClick }: {
+  icone: LucideIcon
+  label: string
+  valeur?: React.ReactNode
+  premiere: boolean
+  onClick: () => void
+}) {
+  return (
+    <button type="button" onClick={onClick} className={cn('flex w-full items-center gap-3.5 pl-4 text-left', TOUCHER)}>
+      <Icone className="h-[22px] w-[22px] shrink-0 text-neutral-800" strokeWidth={1.6} />
+      <span className={cn('flex min-h-14 min-w-0 flex-1 items-center gap-2 pr-4', !premiere && 'border-t border-black/[0.08]')}>
+        <span className="min-w-0 flex-1 truncate text-[17px] text-foreground">{label}</span>
+        {valeur != null && (
+          <span className="max-w-[55%] shrink-0 truncate text-[15px] text-muted-foreground">{valeur}</span>
+        )}
+        <ChevronRight className="h-[18px] w-[18px] shrink-0 text-neutral-400" />
+      </span>
+    </button>
   )
 }
 

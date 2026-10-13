@@ -3,6 +3,7 @@ import { Network } from '@capacitor/network'
 import { SplashScreen } from '@capacitor/splash-screen'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import { PushNotifications } from '@capacitor/push-notifications'
+import { Keyboard } from '@capacitor/keyboard'
 import { onlineManager } from '@tanstack/react-query'
 import { queryClient } from './query-client'
 import { estAppNative } from './plateforme'
@@ -53,6 +54,26 @@ export function demarrerNatif(): void {
 
   // Texte sombre dans la barre d'état : l'app est claire partout.
   void StatusBar.setStyle({ style: Style.Light }).catch(() => undefined)
+
+  // Le clavier se pose par-dessus la page (capacitor.config.ts). Sa hauteur
+  // passe dans --clavier : la zone principale (AppLayout) et les fenêtres plein
+  // écran (index.css) s'arrêtent au-dessus, le menu de gauche ne bouge pas. Le
+  // champ en cours de saisie est ensuite ramené en vue dans sa zone.
+  const racine = document.documentElement
+  void Keyboard.addListener('keyboardWillShow', ({ keyboardHeight }) => {
+    racine.style.setProperty('--clavier', `${keyboardHeight}px`)
+  })
+  void Keyboard.addListener('keyboardDidShow', () => {
+    // WebKit décale parfois toute la page pour montrer le champ : la page ne
+    // défile pas (html.natif), c'est sa zone qui doit le faire.
+    window.scrollTo(0, 0)
+    const champ = document.activeElement
+    if (champ instanceof HTMLElement) champ.scrollIntoView({ block: 'nearest' })
+  })
+  void Keyboard.addListener('keyboardWillHide', () => {
+    racine.style.setProperty('--clavier', '0px')
+    window.scrollTo(0, 0)
+  })
 
   // L'état du réseau vient du système (NWPathMonitor) plutôt que des événements
   // online/offline de la page.

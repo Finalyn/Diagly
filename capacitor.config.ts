@@ -37,10 +37,12 @@ const config: CapacitorConfig = {
       presentationOptions: ['banner', 'list', 'sound', 'badge'],
     },
     Keyboard: {
-      // La vue rétrécit au-dessus du clavier : les champs fixés en bas (assistant,
-      // notes) restent visibles pendant la frappe.
-      resize: 'native',
-      resizeOnFullScreen: true,
+      // Le clavier se pose par-dessus la page, comme dans une app native. En
+      // « native », toute la vue rétrécissait : le menu de gauche de l'iPad se
+      // tassait sans pouvoir défiler, et le fond apparaissait derrière les
+      // coins arrondis du clavier. La place du clavier est rendue par le front,
+      // à la zone principale et aux fenêtres seulement (lib/natif.ts, --clavier).
+      resize: 'none',
     },
   },
 }

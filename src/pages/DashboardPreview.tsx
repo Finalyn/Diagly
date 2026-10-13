@@ -160,7 +160,7 @@ export function DashboardPreview() {
       <div
         className="fixed inset-0 -z-30 bg-no-repeat"
         style={{
-          backgroundImage: 'url(/preview-bg.jpg)',
+          backgroundImage: 'url(/preview-bg.webp)',
           backgroundSize: `${cfg.zoom}%`,
           backgroundPosition: `${cfg.posX}% ${cfg.posY}%`,
           filter: `saturate(${cfg.sat}%) brightness(${cfg.bright}%)`,

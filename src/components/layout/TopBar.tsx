@@ -11,7 +11,9 @@ export function TopBar() {
       {/* Logo Diagly : visible sur mobile (pas de sidebar) */}
       <Link to="/app/projects" aria-label="Diagly" className="flex items-center gap-2 shrink-0 md:hidden">
         <img src="/diagly-mark.svg" alt="" className="h-8 w-auto" />
-        <span className="text-xl font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
+        {/* Décalé de 2 px : centré sur sa boîte, jambages du g et du y compris,
+            le mot remontait au-dessus du milieu du picto. */}
+        <span className="relative top-[2px] text-xl font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
       </Link>
       <div className="hidden shrink-0 items-center gap-3 md:flex">
         {/* Replier ou rouvrir le menu de gauche (stores/menu-lateral.ts) : sur

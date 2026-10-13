@@ -52,10 +52,11 @@ export function DossierSidebar({ projectId }: { projectId: string }) {
 
   return (
     <aside className="flex h-full flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-3.5 text-sidebar-foreground shadow-[0_1px_2px_rgba(0,0,0,0.03),0_12px_32px_-16px_rgba(0,0,0,0.10)]">
-      {/* Écran bas : le logo cède sa place pour que tout le menu tienne. */}
-      <Link to="/app/dashboard" className="flex items-center gap-2.5 rounded-xl px-2 py-2 transition-colors hover:bg-muted/50 short:hidden">
+      {/* Le logo reste, même sur écran bas (iPad couché) : on reconnaît l'app
+          en entrant dans un dossier. Le menu en dessous défile s'il manque de place. */}
+      <Link to="/app/dashboard" className="flex shrink-0 items-center gap-2.5 rounded-xl px-2 py-2 transition-colors hover:bg-muted/50 short:py-1">
         <img src="/diagly-mark.svg" alt="" className="h-8 w-auto" />
-        <span className="relative top-[1px] text-[22px] font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
+        <span className="text-[22px] font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
       </Link>
 
       <Link to="/app/projects" className="mt-2 flex items-center gap-1.5 rounded-xl px-2 py-1.5 short:mt-0 text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.03] hover:text-foreground">

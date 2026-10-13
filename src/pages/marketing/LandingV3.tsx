@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Plus, Check, Minus, ArrowUpRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import rapport from '@/assets/vitrine/app-rapport.png'
-import catalogue from '@/assets/vitrine/app-catalogue.png'
-import visite from '@/assets/vitrine/app-visite.png'
+import rapport from '@/assets/vitrine/app-rapport.webp'
+import catalogue from '@/assets/vitrine/app-catalogue.webp'
+import visite from '@/assets/vitrine/app-visite.webp'
 import { Entete, Hero, PiedDePage } from './Landing'
 import { BoutonFleche, LienFleche, GrandTitre, Chapo, Surtitre, Etape } from './elements'
 

@@ -119,6 +119,13 @@ input::-webkit-date-and-time-value {
   text-align: left;
 }
 
+/* App iPhone/iPad : le clavier se pose par-dessus la page. Les fenêtres et
+   écrans plein écran (dialogues, outil Plan) s'arrêtent au-dessus de lui
+   (--clavier, lib/natif.ts) pour que leurs champs et boutons restent visibles. */
+html.natif .fixed.inset-0 {
+  bottom: var(--clavier, 0px);
+}
+
 html.natif {
   -webkit-tap-highlight-color: transparent;
 }

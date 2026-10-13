@@ -664,7 +664,11 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
             className="absolute inset-0 z-30 overflow-hidden bg-muted md:px-[max(1.5rem,calc((100%-42rem)/2))]"
           >
             {selectedDiagItem ? (
+              // Une fiche neuve par élément : « Suivant » la rouvre en haut, sur
+              // la photo, et rien de l'élément précédent (notes en cours de
+              // saisie, options ouvertes) ne passe au suivant.
               <ItemEditor
+                key={selectedDiagItem.id}
                 item={selectedDiagItem}
                 catalog={selectedCatalog}
                 batiment={batiment}
@@ -700,9 +704,12 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
            on lisait cela comme une page qui deborde plutot que comme une liste a
            derouler. */
         <div className="flex-1 min-w-0 overflow-hidden rounded-2xl border border-black/[0.06] bg-card shadow-[0_1px_2px_rgba(0,0,0,0.03),0_12px_32px_-16px_rgba(0,0,0,0.10)]">
-        <div className="h-full overflow-y-auto overflow-x-hidden pb-4">
+        {/* Recréée à chaque élément : elle repart en haut au lieu de garder le
+            défilement de la fiche précédente. */}
+        <div key={selectedItemId ?? ligneAConfirmer?.cle ?? 'vide'} className="h-full overflow-y-auto overflow-x-hidden pb-4">
           {selectedDiagItem ? (
             <ItemEditor
+              key={selectedDiagItem.id}
               cadreExterne
               item={selectedDiagItem}
               catalog={selectedCatalog}

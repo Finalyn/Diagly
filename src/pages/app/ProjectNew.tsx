@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { Fragment, lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, Check, Loader2, AlertCircle, Plus, X } from 'lucide-react'
@@ -115,6 +115,13 @@ const FACULTATIFS: Record<number, { key: keyof FormState; label: string; pourquo
 const isEmpty = (v: unknown) => v === '' || v === null || v === undefined
 
 export function ProjectNew() {
+  // La création d'un diagnostic travaille en bleu Diagly, comme l'éditeur du
+  // relevé qui la suit (index.css, .editeur-diagnostic) : ses étapes et ses
+  // boutons restaient noirs, la couleur principale du reste de l'app.
+  useEffect(() => {
+    document.documentElement.classList.add('editeur-diagnostic')
+    return () => document.documentElement.classList.remove('editeur-diagnostic')
+  }, [])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
@@ -443,17 +450,21 @@ export function ProjectNew() {
         </div>
       )}
 
-      <div className="flex items-center gap-2 mb-6">
+      {/* Sur iPad debout (variante « tablette »), les étapes s'empilent, reliées
+          par un trait vertical : en ligne, elles s'étalaient sur toute la largeur. */}
+      <div className="flex items-center gap-2 mb-6 tablette:flex-col tablette:items-start tablette:gap-0">
         {[1, 2, 3].map(s => (
-          <div key={s} className="flex shrink-0 items-center gap-2">
-            <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${s < step ? 'bg-green-500 text-white' : s === step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-              {s < step ? <Check className="h-4 w-4" /> : s}
+          <Fragment key={s}>
+            <div className="flex shrink-0 items-center gap-2 tablette:gap-3">
+              <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${s < step ? 'bg-green-500 text-white' : s === step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                {s < step ? <Check className="h-4 w-4" /> : s}
+              </div>
+              <span className={`hidden text-sm sm:inline ${s === step ? 'font-medium' : 'text-muted-foreground'}`}>
+                {s === 1 ? 'Informations' : s === 2 ? 'Surfaces' : 'Récapitulatif'}
+              </span>
             </div>
-            <span className={`hidden text-sm sm:inline ${s === step ? 'font-medium' : 'text-muted-foreground'}`}>
-              {s === 1 ? 'Informations' : s === 2 ? 'Surfaces' : 'Récapitulatif'}
-            </span>
-            {s < 3 && <div className="h-0.5 w-6 shrink-0 bg-muted mx-1 sm:w-12" />}
-          </div>
+            {s < 3 && <div className="h-0.5 w-6 shrink-0 bg-muted mx-1 sm:w-12 tablette:mx-0 tablette:ml-[15px] tablette:h-4 tablette:w-0.5" />}
+          </Fragment>
         ))}
       </div>
 

@@ -38,7 +38,7 @@ export function Sidebar() {
       {/* Logo */}
       <NavLink to="/app/dashboard" className="flex items-center gap-2.5 rounded-xl px-2 py-2 transition-colors hover:bg-muted/50">
         <img src="/diagly-mark.svg" alt="" className="h-10 w-auto" />
-        <span className="relative top-[1px] text-[27px] font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
+        <span className="text-[27px] font-semibold leading-none tracking-tight text-neutral-900">Diagly</span>
       </NavLink>
 
       {/* Nouveau diagnostic */}
