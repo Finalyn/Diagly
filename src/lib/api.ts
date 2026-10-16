@@ -151,8 +151,29 @@ export interface EtapeDoubleAuth {
 async function envoyerFichier<T>(path: string, file: File): Promise<T> {
   const fd = new FormData()
   fd.append('file', file)
-  const token = useAuth.getState().accessToken
-  const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+  return envoyerFormulaire<T>(path, fd)
+}
+
+/** Plusieurs fichiers d'un coup, sous le champ « files » (un jeu de plans). */
+async function envoyerFichiers<T>(path: string, files: File[]): Promise<T> {
+  const fd = new FormData()
+  for (const f of files) fd.append('files', f)
+  return envoyerFormulaire<T>(path, fd)
+}
+
+/**
+ * Un formulaire de fichiers. Une session expirée pendant que l'écran restait
+ * ouvert se renouvelle une fois, puis l'envoi repart : le diagnostiqueur qui a
+ * choisi ses plans n'a pas à les choisir de nouveau.
+ */
+async function envoyerFormulaire<T>(path: string, fd: FormData): Promise<T> {
+  const envoyer = (token: string | null) =>
+    fetch(`${BASE_URL}${path}`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd })
+  let res = await envoyer(useAuth.getState().accessToken)
+  if (res.status === 401) {
+    const t = await refreshAccessToken()
+    if (t) res = await envoyer(t)
+  }
   const text = await res.text()
   let data: { error?: string; details?: unknown } | null = null
   try { data = text ? JSON.parse(text) : null } catch { /* réponse non JSON */ }
@@ -516,8 +537,34 @@ export const api = {
     replay: (deliveryId: string) => request<{ delivery: import('./api-types').WebhookDelivery }>(`/api/webhooks/deliveries/${deliveryId}/replay`, { method: 'POST' }),
   },
 
-  /** Démarrer un diagnostic depuis un document (Word, Excel, PDF) ou un CECB : lecture par l'IA. */
+  /** Démarrer un diagnostic depuis des plans, un document (Word, Excel, PDF) ou un CECB : lecture par l'IA. */
   demarrage: {
+    /**
+     * La lecture des plans se fait en tâche de fond côté serveur (une à trois
+     * minutes) : l'envoi rend un numéro, puis on demande toutes les 3 s où elle
+     * en est. Pour l'appelant, rien ne change : une promesse du résultat final.
+     * Un signal abandonné arrête la lecture côté serveur aussi.
+     */
+    plans: async (files: File[], signal?: AbortSignal) => {
+      type Resultat = { configured: boolean; tronque?: boolean; refus?: boolean; lecture?: import('./api-types').LecturePlans | null }
+      const depart = await envoyerFichiers<Resultat & { enCours?: string }>('/api/demarrage/plans', files)
+      if (!depart.enCours) return depart
+      const id = depart.enCours
+      const arreter = () => { void request(`/api/demarrage/plans/${id}`, { method: 'DELETE' }).catch(() => undefined) }
+      signal?.addEventListener('abort', arreter, { once: true })
+      try {
+        const limite = Date.now() + 15 * 60_000
+        while (Date.now() < limite) {
+          await new Promise((r) => setTimeout(r, 3000))
+          if (signal?.aborted) throw new DOMException('Lecture abandonnée', 'AbortError')
+          const etat = await request<Resultat & { etat: 'en_cours' | 'prete' }>(`/api/demarrage/plans/${id}`)
+          if (etat.etat === 'prete') return etat
+        }
+        throw new Error('La lecture des plans prend trop de temps. Réessayez avec moins de pages.')
+      } finally {
+        signal?.removeEventListener('abort', arreter)
+      }
+    },
     document: (file: File) =>
       envoyerFichier<{ configured: boolean; tronque?: boolean; lecture?: import('./api-types').LectureDocument | null }>('/api/demarrage/document', file),
     cecb: (file: File) =>

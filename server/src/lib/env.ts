@@ -31,6 +31,10 @@ const schema = z.object({
   // Assistant IA (optionnel : si la cle est absente, l'assistant renvoie un message d'indisponibilite).
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default("claude-haiku-4-5-20251001"),
+  // Lecture des plans d'architecte (démarrer un diagnostic avec des plans) : un
+  // modèle plus fort que celui de l'assistant, parce qu'une cote mal lue fausse
+  // tous les métrés du dossier. Il réfléchit avant de répondre (effort élevé).
+  ANTHROPIC_MODEL_PLANS: z.string().default("claude-opus-5-5"),
   // Notifications push (optionnel : si les cles VAPID sont absentes, le push est desactive).
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),

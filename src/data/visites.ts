@@ -125,7 +125,7 @@ export const VISITES: Visite[] = [
         cible: '[data-visite="nouveau"]',
         cote: 'droite',
         titre: 'Créer un diagnostic',
-        texte: 'Accessible de partout. Trois départs possibles : de zéro avec l’adresse, depuis un document (ancien rapport, relevé Excel, Word ou PDF), ou depuis un certificat énergétique cantonal (CECB®).',
+        texte: 'Accessible de partout. Quatre départs possibles : avec les plans d’architecte (recommandé), avec les valeurs publiques ou les vôtres à partir de l’adresse, depuis un document (ancien rapport, relevé Excel, Word ou PDF), ou depuis un certificat énergétique cantonal (CECB®).',
       },
       {
         cible: '[data-visite="nav-cfc"]',
@@ -191,8 +191,15 @@ export const VISITES: Visite[] = [
         cible: '[data-visite="creation-departs"]',
         cote: 'bas',
         sauterSi: '[data-visite="nom"]',
-        titre: 'Trois façons de commencer',
-        texte: 'De zéro, depuis un document, ou depuis un certificat énergétique. Dans les deux derniers cas, l’assistant Diagly lit le fichier et vous relisez tout avant que le dossier soit créé.',
+        titre: 'Quatre façons de commencer',
+        texte: 'Avec des plans, avec les valeurs publiques ou les vôtres, depuis un document, ou depuis un certificat énergétique. Quand vous partez d’un fichier, l’assistant Diagly le lit et vous relisez tout avant que le dossier soit créé.',
+      },
+      {
+        cible: '[data-visite="depart-plans"]',
+        cote: 'bas',
+        sauterSi: '[data-visite="nom"]',
+        titre: 'Avec des plans, le départ recommandé',
+        texte: 'Les plans d’architecte à l’échelle, en PDF ou en photos. L’assistant y lit l’emprise, le périmètre, les étages, la hauteur d’étage et les vitrages : les métrés partent de mesures, et les plans sont rangés dans le dossier.',
       },
       {
         cible: '[data-visite="depart-document"]',
@@ -212,8 +219,8 @@ export const VISITES: Visite[] = [
         cible: '[data-visite="depart-zero"]',
         cote: 'bas',
         sauterSi: '[data-visite="nom"]',
-        titre: 'Partons de zéro',
-        texte: 'Pour cette visite, cliquez sur Partir de zéro : c’est le chemin le plus court, et l’adresse suffit.',
+        titre: 'Partons de l’adresse',
+        texte: 'Pour cette visite, cliquez sur Valeurs publiques ou personnelles : c’est le chemin le plus court, l’adresse suffit. Pour un vrai dossier, préférez les plans : les valeurs publiques ne sont que des estimations.',
         avanceAuClic: true,
       },
       {

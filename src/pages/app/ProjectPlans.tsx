@@ -12,7 +12,7 @@
  * zones donnent comme quantités pour les ouvrages du diagnostic.
  */
 import { useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Upload, Trash2, Loader2, AlertCircle, Pencil, FileText, Image as ImageIcon,
@@ -44,6 +44,10 @@ export function ProjectPlans() {
   const champFichier = useRef<HTMLInputElement>(null)
   const [edite, setEdite] = useState<ApiPlan | null>(null)
   const [erreur, setErreur] = useState<string | null>(null)
+  // Un dossier créé avec des plans arrive ici quand certains n'ont pas pu être
+  // rangés (voir ProjectNew) : on le dit une fois, là où on peut les ajouter.
+  const location = useLocation()
+  const [avis, setAvis] = useState<string | null>(() => (location.state as { avisPlans?: string } | null)?.avisPlans ?? null)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['plans', id],
@@ -96,6 +100,12 @@ export function ProjectPlans() {
       </div>
 
       {erreur && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{erreur}</div>}
+      {avis && (
+        <div className="flex items-start justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <p>{avis}</p>
+          <button className="shrink-0 text-xs font-medium hover:underline" onClick={() => setAvis(null)}>Fermer</button>
+        </div>
+      )}
 
       {isLoading ? (
         <Card><CardContent className="py-16 text-center text-muted-foreground"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></CardContent></Card>

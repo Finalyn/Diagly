@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "node:crypto";
 import multer from "multer";
 import { z } from "zod";
 import ExcelJS from "exceljs";
@@ -8,15 +9,19 @@ import { requireAuth } from "../middlewares/auth.js";
 import { aiLimiter } from "../middlewares/rate-limit.js";
 import { env } from "../lib/env.js";
 import { logger } from "../lib/logger.js";
-import { badRequest } from "../lib/http-error.js";
+import { HttpError, badRequest, notFound } from "../lib/http-error.js";
+import { AssembleurDeFlux, objetJson } from "../lib/flux-messages.js";
+import { CONSIGNE_PLANS, blocsDesPlans, validerLecturePlans, type BlocPlan } from "../lib/lecture-plans.js";
 
 /**
  * Démarrer un diagnostic à partir d'un fichier.
  *
- * Deux portes : un document quelconque (ancien rapport, relevé Excel, état des
- * lieux Word ou PDF), dont l'IA tire le bâtiment et les éléments observés ; ou
- * un certificat énergétique CECB, dont elle tire le bâtiment, l'étiquette et
- * les mesures recommandées.
+ * Trois portes : les plans d'architecte, dont l'IA lit les mesures du
+ * bâtiment (emprise, périmètre, étages, hauteur d'étage, vitrages) ; un
+ * document quelconque (ancien rapport, relevé Excel, état des lieux Word ou
+ * PDF), dont elle tire le bâtiment et les éléments observés ; ou un
+ * certificat énergétique CECB, dont elle tire le bâtiment, l'étiquette et les
+ * mesures recommandées.
  *
  * Les éléments sont rapprochés des articles de la base CFC par l'IA, qui reçoit
  * la liste complète ; le serveur vérifie ensuite chaque rapprochement (article
@@ -26,7 +31,10 @@ import { badRequest } from "../lib/http-error.js";
  */
 const router = Router();
 router.use(requireAuth);
-router.use(aiLimiter);
+// Le quota IA compte les lectures demandées, pas le suivi d'une lecture en
+// cours : interrogé toutes les quelques secondes, il l'aurait épuisé en deux
+// minutes.
+router.use((req, res, next) => (req.method === "GET" ? next() : aiLimiter(req, res, next)));
 
 const MO = 1024 * 1024;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * MO } });
@@ -34,6 +42,28 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 
 const recevoir: import("express").RequestHandler = (req, res, next) =>
   upload.single("file")(req, res, (err: unknown) => {
     if (err && (err as { code?: string }).code === "LIMIT_FILE_SIZE") return next(badRequest("Fichier trop lourd : 12 Mo au plus."));
+    return next(err as Error | undefined);
+  });
+
+/**
+ * Un jeu de plans arrive en plusieurs fichiers d'un coup : un PDF par niveau,
+ * ou des photos de plans papier. Douze fichiers et 30 Mo au total, soit la
+ * limite d'un plan seul dans l'onglet Plans, où ils seront rangés ensuite.
+ * Les noms sont lus en UTF-8, comme les navigateurs les envoient : en latin1,
+ * le réglage par défaut, « Façade.pdf » arrivait en « FaÃ§ade.pdf ».
+ */
+const MAX_PLANS = 12;
+const MAX_PLANS_TOTAL = 30 * MO;
+const uploadPlans = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PLANS_TOTAL, files: MAX_PLANS },
+  defParamCharset: "utf8",
+});
+const recevoirPlans: import("express").RequestHandler = (req, res, next) =>
+  uploadPlans.array("files", MAX_PLANS)(req, res, (err: unknown) => {
+    const code = err ? (err as { code?: string }).code : undefined;
+    if (code === "LIMIT_FILE_SIZE") return next(badRequest("Plans trop lourds : 30 Mo au total."));
+    if (code === "LIMIT_FILE_COUNT" || code === "LIMIT_UNEXPECTED_FILE") return next(badRequest(`${MAX_PLANS} fichiers au plus.`));
     return next(err as Error | undefined);
   });
 
@@ -133,14 +163,7 @@ async function demanderAClaude(contenu: Bloc, consigne: string, maxTokens: numbe
   }
   const data = (await r.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string };
   const text = (data.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
-  const debut = text.indexOf("{");
-  const fin = text.lastIndexOf("}");
-  if (debut < 0 || fin <= debut) return { json: null, tronque: data.stop_reason === "max_tokens" };
-  try {
-    return { json: JSON.parse(text.slice(debut, fin + 1)) as unknown, tronque: data.stop_reason === "max_tokens" };
-  } catch {
-    return { json: null, tronque: data.stop_reason === "max_tokens" };
-  }
+  return { json: objetJson(text), tronque: data.stop_reason === "max_tokens" };
 }
 
 // ---------------------------------------------------------------- schémas
@@ -306,6 +329,142 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour :
       confiance: lu.data.confiance ?? null,
     },
   });
+});
+
+// ---------------------------------------------------------------- plans
+
+/**
+ * Demande la lecture des plans, réponse en flux.
+ *
+ * Mêmes en-têtes que les autres lectures ; ce qui change, c'est le modèle et
+ * sa réflexion. Pas de température ni de budget de réflexion : ce modèle les
+ * refuse, l'effort en tient lieu.
+ */
+async function lireLesPlans(blocs: BlocPlan[], signal: AbortSignal) {
+  const debut = Date.now();
+  let r: Awaited<ReturnType<typeof fetch>>;
+  try {
+    r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: env.ANTHROPIC_MODEL_PLANS,
+        max_tokens: 16_000,
+        thinking: { type: "adaptive" },
+        output_config: { effort: "high" },
+        stream: true,
+        messages: [{ role: "user", content: [...blocs, { type: "text", text: CONSIGNE_PLANS }] }],
+      }),
+      signal,
+    });
+  } catch {
+    throw badRequest("Lecture momentanément indisponible (réseau).");
+  }
+  if (!r.ok || !r.body) {
+    const txt = await r.text().catch(() => "");
+    logger.warn({ status: r.status, body: txt.slice(0, 300) }, "anthropic plans error");
+    if (r.status === 413) throw badRequest("Ces plans sont trop lourds pour être lus en une fois. Retirez les pages inutiles ou allégez les PDF.");
+    throw badRequest("Lecture momentanément indisponible.");
+  }
+
+  const flux = new AssembleurDeFlux();
+  const decodeur = new TextDecoder();
+  try {
+    for await (const morceau of r.body) flux.pousser(decodeur.decode(morceau as Uint8Array, { stream: true }));
+    flux.pousser(decodeur.decode());
+  } catch {
+    throw badRequest("La lecture a été interrompue. Réessayez.");
+  }
+  const { texte, arret, erreur } = flux.terminer();
+  logger.info({ arret, erreur, secondes: Math.round((Date.now() - debut) / 1000) }, "lecture des plans");
+  if (erreur) throw badRequest("Lecture momentanément indisponible.");
+  return { json: objetJson(texte), tronque: arret === "max_tokens", refus: arret === "refusal" };
+}
+
+/**
+ * Les plans d'architecte : la façon de commencer par défaut.
+ *
+ * Ici seulement, un modèle plus fort et qui réfléchit (ANTHROPIC_MODEL_PLANS) :
+ * lire des cotes, retrouver une hauteur d'étage sur une coupe, sommer les
+ * ouvertures d'une élévation demande plus qu'une extraction de texte, et une
+ * erreur se propagerait à tous les métrés du dossier. La lecture est validée
+ * par lecture-plans.ts ; rien n'est créé ici, et les fichiers ne sont pas
+ * gardés : l'écran les range dans les Plans du dossier une fois celui-ci créé.
+ *
+ * Si le navigateur abandonne en cours de route, la lecture s'arrête aussi :
+ * personne n'en attend plus la réponse.
+ */
+/**
+ * La lecture des plans se fait en tâche de fond. Elle prend une à trois
+ * minutes : une requête qui attend aussi longtemps peut être coupée par le
+ * relais placé devant le serveur en production, et la lecture serait payée puis
+ * perdue. L'envoi répond donc tout de suite avec un numéro, et le navigateur
+ * demande où elle en est (GET /plans/:id) jusqu'à ce qu'elle soit prête.
+ *
+ * Les lectures vivent en mémoire : le serveur tourne en un seul processus. Une
+ * lecture non réclamée est oubliée au bout de 30 minutes.
+ */
+interface LectureEnCours {
+  proprietaire: string;
+  debut: number;
+  abandon: AbortController;
+  etat: "en_cours" | "prete" | "erreur";
+  resultat?: Record<string, unknown>;
+  erreur?: string;
+}
+const LECTURES = new Map<string, LectureEnCours>();
+const OUBLI_APRES = 30 * 60_000;
+
+function oublierLesVieilles(): void {
+  for (const [id, l] of LECTURES) {
+    if (Date.now() - l.debut > OUBLI_APRES) { l.abandon.abort(); LECTURES.delete(id); }
+  }
+}
+
+router.post("/plans", recevoirPlans, async (req, res) => {
+  if (!env.ANTHROPIC_API_KEY) { res.json({ configured: false }); return; }
+  const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+  if (files.length === 0) throw badRequest("Aucun plan reçu.");
+  if (files.reduce((s, f) => s + f.size, 0) > MAX_PLANS_TOTAL) throw badRequest("Plans trop lourds : 30 Mo au total.");
+  const blocs = blocsDesPlans(files.map((f) => ({ nom: f.originalname, type: f.mimetype, contenu: f.buffer })));
+
+  oublierLesVieilles();
+  const proprietaire = req.auth!.sub;
+  // Une lecture à la fois par compte : chacune coûte, et une deuxième ne
+  // ferait que doubler la première.
+  for (const l of LECTURES.values()) {
+    if (l.proprietaire === proprietaire && l.etat === "en_cours") throw badRequest("Une lecture de plans est déjà en cours. Attendez qu'elle se termine.");
+  }
+  const id = randomUUID();
+  const lecture: LectureEnCours = { proprietaire, debut: Date.now(), abandon: new AbortController(), etat: "en_cours" };
+  LECTURES.set(id, lecture);
+  void lireLesPlans(blocs, lecture.abandon.signal)
+    .then(({ json, tronque, refus }) => {
+      lecture.etat = "prete";
+      lecture.resultat = { configured: true, tronque, refus, lecture: json ? validerLecturePlans(json, files.length) : null };
+    })
+    .catch((e: unknown) => {
+      lecture.etat = "erreur";
+      lecture.erreur = e instanceof HttpError ? e.message : "La lecture des plans a échoué. Réessayez.";
+      if (!(e instanceof HttpError)) logger.warn({ err: e }, "lecture des plans en échec");
+    });
+  res.status(202).json({ configured: true, enCours: id });
+});
+
+router.get("/plans/:id", (req, res) => {
+  const lecture = LECTURES.get(req.params.id);
+  if (!lecture || lecture.proprietaire !== req.auth!.sub) throw notFound("Lecture introuvable : elle a peut-être expiré. Relancez-la.");
+  if (lecture.etat === "en_cours") { res.json({ etat: "en_cours" }); return; }
+  LECTURES.delete(req.params.id);
+  if (lecture.etat === "erreur") throw badRequest(lecture.erreur ?? "La lecture des plans a échoué.");
+  res.json({ etat: "prete", ...lecture.resultat });
+});
+
+// Quitter l'écran pendant la lecture l'arrête : personne ne la relira.
+router.delete("/plans/:id", (req, res) => {
+  const lecture = LECTURES.get(req.params.id);
+  if (lecture && lecture.proprietaire === req.auth!.sub) { lecture.abandon.abort(); LECTURES.delete(req.params.id); }
+  res.status(204).end();
 });
 
 export default router;

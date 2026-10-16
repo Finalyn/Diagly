@@ -524,6 +524,34 @@ export interface LectureCecb {
   confiance: 'high' | 'medium' | 'low' | null
 }
 
+/** Comment une mesure a été obtenue sur les plans (voir server/src/lib/lecture-plans.ts). */
+export type MethodeDeLecture = 'cote lue' | 'surface imprimée' | 'calcul depuis des cotes' | 'estimation'
+export type ConfianceDeLecture = 'haute' | 'moyenne' | 'basse'
+/** Une grandeur lue sur les plans, avec ce qui permet de la juger. */
+export interface GrandeurLue<T = number> {
+  valeur: T | null
+  /** Repère de la page : « F1 p. 3 », fichier 1, page 3. */
+  page: string | null
+  methode: MethodeDeLecture | null
+  confiance: ConfianceDeLecture | null
+  remarque: string | null
+}
+export type CleGrandeurPlans =
+  | 'emprise' | 'perimetre' | 'etagesHorsSol' | 'sousSols' | 'hauteurEtage' | 'hauteurTotale'
+  | 'surfacePlancher' | 'surfaceFacade' | 'surfaceFenetres' | 'tauxVitrage'
+  | 'logements' | 'cagesEscalier' | 'surfaceToiture'
+export interface PageDePlan { page: string; type: string | null; titre: string | null; echelle: string | null }
+export interface LecturePlans {
+  estUnJeuDePlans: boolean
+  projet: { nom: string | null; adresse: string | null; npa: string | null; localite: string | null; canton: string | null }
+  pages: PageDePlan[]
+  grandeurs: Record<CleGrandeurPlans, GrandeurLue>
+  typeToit: GrandeurLue<RoofType>
+  typologies: GrandeurLue<Record<string, number>>
+  facadesParOrientation: (GrandeurLue & { orientation: string })[]
+  remarques: string | null
+}
+
 // ---- Organisation de la visite ----
 export type VisitContactRole = 'GERANCE' | 'PROPRIETAIRE' | 'CONCIERGE' | 'LOCATAIRE' | 'ENTREPRISE' | 'AUTRE'
 export interface VisitContact {

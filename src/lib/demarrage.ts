@@ -13,8 +13,23 @@ import { ouvrageDeLArticle, resolutionDeQuantite } from './base-cfc/pont'
 import { donneesDuBatiment } from './base-cfc/batiment'
 import { localisationDeLaZone } from './base-cfc/catalogue'
 import { computeCost, workForState, STATE_PRIORITY } from './diagnostic-auto'
+import type { ChampsDesPlans } from './demarrage-plans'
 
 export type SourceImport = 'document' | 'cecb'
+
+/**
+ * Ce qu'il faut savoir des valeurs publiques, dit au moment du choix et
+ * redit à l'étape des surfaces : les registres donnent un ordre de grandeur,
+ * pas une mesure, et tous les métrés du dossier en découlent.
+ */
+export const AVERTISSEMENT_VALEURS_PUBLIQUES =
+  'Les valeurs publiques sont des estimations (périmètre déduit de l’emprise, hauteur d’étage et vitrages par défaut) : les métrés qui en découlent sont approximatifs. Vérifiez-les ou remplacez-les par vos mesures.'
+
+/** Un départ depuis des plans : les mesures retenues, et les fichiers à ranger dans le dossier une fois créé. */
+export interface PlansRetenus {
+  fichiers: File[]
+  champs: ChampsDesPlans
+}
 
 /** Un relevé retenu à la relecture. */
 export interface ReleveRetenu {
@@ -29,13 +44,15 @@ export interface ReleveRetenu {
 
 /** Ce que la relecture transmet à l'assistant de création. */
 export interface ImportPret {
-  source: SourceImport
+  source: SourceImport | 'plans'
   fichier: string
   batiment: BatimentLu
   energie: EnergieLue | null
   mesures: { label: string; priorite: string | null }[]
   confiance: 'high' | 'medium' | 'low' | null
   releves: ReleveRetenu[]
+  /** Seulement pour un départ depuis des plans. */
+  plans?: PlansRetenus
 }
 
 /** La classe d'une étiquette, réduite à sa lettre (« Classe E » → « E »). */

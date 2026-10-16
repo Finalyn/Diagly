@@ -1,13 +1,14 @@
 import { Fragment, lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, Check, Loader2, AlertCircle, Plus, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Loader2, AlertCircle, AlertTriangle, Plus, X } from 'lucide-react'
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Badge } from '@/components/ui'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AddressAutocomplete, type AddressSelection } from '@/components/AddressAutocomplete'
 import { fetchRegistryInfo } from '@/lib/geoadmin'
 import { ChoixDepart, ImportFichier, type Depart } from '@/components/demarrage/Demarrage'
-import { champsEnergie, relevesPourLeDiagnostic, type ImportPret } from '@/lib/demarrage'
+import { ImportPlans } from '@/components/demarrage/ImportPlans'
+import { AVERTISSEMENT_VALEURS_PUBLIQUES, champsEnergie, relevesPourLeDiagnostic, type ImportPret } from '@/lib/demarrage'
 
 // Leaflet et sa feuille de style pesent : la carte ne se charge qu'une fois une
 // adresse saisie, pas a l'ouverture du formulaire.
@@ -72,7 +73,36 @@ interface FormState {
   floorArea: Num
   builtArea: Num
   perimeter: Num
+  /** Surface de façade relevée : repli du calcul par le périmètre (voir base-cfc/batiment.ts). */
+  facadeArea: Num
   terrainArea: Num
+}
+
+/**
+ * D'où vient la valeur d'un champ. Les mesures lues sur les plans ne se
+ * laissent pas remplacer par les registres ; celles des registres et les
+ * valeurs par défaut sont signalées, parce que les métrés en découlent. Une
+ * saisie efface la provenance : la valeur est alors celle du diagnostiqueur.
+ */
+type Origine = 'plans' | 'registre' | 'defaut'
+
+/** Les champs des métrés dont une valeur des registres déclenche l'avertissement. */
+const CHAMPS_DES_METRES: { key: keyof FormState; label: string }[] = [
+  { key: 'builtArea', label: 'surface bâtie' },
+  { key: 'perimeter', label: 'périmètre' },
+  { key: 'floorArea', label: 'surface de plancher' },
+  { key: 'nbFloors', label: 'étages' },
+]
+
+function Provenance({ origine }: { origine?: Origine }) {
+  if (!origine) return null
+  const style = {
+    plans: 'bg-[#0167EA]/10 text-[#0167EA]',
+    registre: 'bg-amber-100 text-amber-800',
+    defaut: 'bg-neutral-900/[0.05] text-muted-foreground',
+  }[origine]
+  const libelle = { plans: 'plans', registre: 'registre', defaut: 'par défaut' }[origine]
+  return <span className={cn('ml-1.5 rounded-full px-1.5 py-px align-middle text-[10px] font-medium', style)}>{libelle}</span>
 }
 
 // Champs requis par étape : c'est ce qui déclenche la notification avant de passer à la suite.
@@ -141,20 +171,23 @@ export function ProjectNew() {
   const [enrichNote, setEnrichNote] = useState<string | null>(null)
 
   /**
-   * Le point de départ : de zéro, d'un document ou d'un CECB. Tant qu'il n'est
-   * pas choisi, l'écran propose les trois. Un fichier relu pré-remplit le
-   * formulaire et apporte des relevés, créés avec le diagnostic.
+   * Le point de départ : des plans (recommandé), les valeurs publiques ou
+   * personnelles, un document ou un CECB. Tant qu'il n'est pas choisi,
+   * l'écran propose les quatre. Une lecture relue pré-remplit le formulaire ;
+   * un document ou un CECB apporte aussi des relevés, et des plans leurs
+   * fichiers, rangés dans le dossier une fois créé.
    */
   const [depart, setDepart] = useState<Depart | null>(null)
   const [importPret, setImportPret] = useState<ImportPret | null>(null)
   const [progression, setProgression] = useState<string | null>(null)
+  const [origines, setOrigines] = useState<Partial<Record<keyof FormState, Origine>>>({ floorHeight: 'defaut', windowPct: 'defaut' })
 
   const [form, setForm] = useState<FormState>({
     name: '', address: '', postalCode: '', city: '', canton: 'VD',
     buildingType: 'LOGEMENT', roofType: '', parcelNumber: '',
     yearBuilt: '', renovationYear: '', nbApartments: '', nbFloors: '', floorHeight: 2.7, nbStaircases: 1,
     honoraryPct: 12, reservePct: 5, windowPct: 0.30,
-    floorArea: '', builtArea: '', perimeter: '', terrainArea: '',
+    floorArea: '', builtArea: '', perimeter: '', facadeArea: '', terrainArea: '',
   })
 
   const n = (v: Num) => (v === '' ? 0 : v)
@@ -162,10 +195,11 @@ export function ProjectNew() {
   const metrics = computeProjectMetrics({
     perimeter: n(form.perimeter), nbFloors: n(form.nbFloors), floorHeight: n(form.floorHeight),
     builtArea: n(form.builtArea), floorArea: n(form.floorArea), windowPct: form.windowPct, nbApartments: n(form.nbApartments),
+    facadeArea: n(form.facadeArea),
   })
 
   const create = useMutation({
-    mutationFn: async (): Promise<{ kind: 'single'; projectId: string; releves: number } | { kind: 'multi'; operationId: string }> => {
+    mutationFn: async (): Promise<{ kind: 'single'; projectId: string; releves: number; plansManquants: number } | { kind: 'multi'; operationId: string }> => {
       const num = (v: Num) => (v === '' ? undefined : v)
       const primary = {
         name: form.name,
@@ -184,9 +218,12 @@ export function ProjectNew() {
         nbStaircases: num(form.nbStaircases),
         floorArea: num(form.floorArea),
         builtArea: num(form.builtArea),
+        facadeArea: num(form.facadeArea),
         terrainArea: num(form.terrainArea),
         perimeter: num(form.perimeter),
         windowPct: form.windowPct * 100, // form 0-1, API attend 0-100
+        // Les typologies lues sur les plans : le formulaire n'a pas de champ pour elles.
+        apartmentTypes: importPret?.plans?.champs.apartmentTypes,
         honoraryPct: num(form.honoraryPct),
         reservePct: num(form.reservePct),
         // Un fichier importé apporte l'EGID et, pour un CECB, l'étiquette.
@@ -201,6 +238,7 @@ export function ProjectNew() {
         const opId = grp.operation.id
         const principal = await api.projects.create({ ...primary, operationId: opId })
         await creerReleves(principal.project)
+        await rangerLesPlans(principal.project.id)
         for (let i = 0; i < validExtras.length; i++) {
           const b = validExtras[i]
           await api.projects.create({
@@ -228,7 +266,8 @@ export function ProjectNew() {
       // Bâtiment unique (éventuellement rattaché à un groupe existant via l'URL).
       const res = await api.projects.create({ ...primary, operationId: operationId ?? undefined })
       const releves = await creerReleves(res.project)
-      return { kind: 'single', projectId: res.project.id, releves }
+      const plansManquants = await rangerLesPlans(res.project.id)
+      return { kind: 'single', projectId: res.project.id, releves, plansManquants }
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
@@ -237,6 +276,13 @@ export function ProjectNew() {
       } else if (operationId) {
         queryClient.invalidateQueries({ queryKey: ['operation', operationId] })
         navigate(`/app/diagnostics-multi/${operationId}`)
+      } else if (data.plansManquants) {
+        // Le dossier s'ouvre quand même, sur ses Plans, où il suffit d'ajouter
+        // ceux qui manquent.
+        const n = data.plansManquants
+        navigate(`/app/projects/${data.projectId}/plans`, {
+          state: { avisPlans: n > 1 ? `${n} plans n’ont pas pu être rangés dans le dossier. Ajoutez-les ici.` : 'Un plan n’a pas pu être rangé dans le dossier. Ajoutez-le ici.' },
+        })
       } else {
         // Avec des relevés importés, on ouvre le diagnostic pour les vérifier.
         navigate(data.releves ? `/app/projects/${data.projectId}/diagnostic` : `/app/projects/${data.projectId}`)
@@ -268,11 +314,35 @@ export function ProjectNew() {
     return faits
   }
 
+  /**
+   * Les plans déposés au départ, rangés dans l'onglet Plans du dossier : un
+   * fichier, un plan, sous son nom d'origine. Un envoi refusé n'arrête ni les
+   * autres ni l'ouverture du dossier ; on compte seulement ceux qui manquent,
+   * pour le dire.
+   */
+  async function rangerLesPlans(projectId: string): Promise<number> {
+    const fichiers = importPret?.plans?.fichiers ?? []
+    let manquants = 0
+    for (let i = 0; i < fichiers.length; i++) {
+      setProgression(`Rangement des plans ${i + 1}/${fichiers.length}…`)
+      try { await api.plans.upload(projectId, fichiers[i]) } catch { manquants++ }
+    }
+    if (fichiers.length) queryClient.invalidateQueries({ queryKey: ['plans', projectId] })
+    return manquants
+  }
+
   /** Une lecture relue pré-remplit le formulaire ; rien n'est encore créé. */
   const appliquerImport = (imp: ImportPret) => {
     const b = imp.batiment
     const nombre = (v: number | null | undefined): Num => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : '')
     const canton = b.canton?.trim().toUpperCase()
+    // Les mesures lues sur les plans passent après le reste : ce sont elles
+    // que les métrés doivent prendre. Les typologies n'ont pas de champ dans
+    // le formulaire ; elles partent avec la création.
+    const mesures = Object.fromEntries(
+      Object.entries(imp.plans?.champs ?? {}).filter(([k, v]) => k !== 'apartmentTypes' && v !== undefined),
+    ) as Partial<FormState>
+    setOrigines((prev) => ({ ...prev, ...Object.fromEntries(Object.keys(mesures).map((k) => [k, 'plans' as const])) }))
     setForm((prev) => ({
       ...prev,
       name: b.nom?.trim() || [b.adresse, b.localite].filter(Boolean).join(', ') || prev.name,
@@ -290,6 +360,7 @@ export function ProjectNew() {
       builtArea: nombre(b.surfaceBatie) || prev.builtArea,
       terrainArea: nombre(b.surfaceTerrain) || prev.terrainArea,
       perimeter: nombre(b.perimetre) || prev.perimeter,
+      ...mesures,
     }))
     setErrors(new Set())
     setImportPret(imp)
@@ -306,6 +377,12 @@ export function ProjectNew() {
 
   const update = (field: keyof FormState, value: string | number) => {
     setForm(prev => ({ ...prev, [field]: value }))
+    setOrigines(prev => {
+      if (!prev[field]) return prev
+      const suite = { ...prev }
+      delete suite[field]
+      return suite
+    })
     clearError(field as string)
   }
   const updateNum = (field: keyof FormState, raw: string) =>
@@ -328,34 +405,32 @@ export function ProjectNew() {
     setEnriching(true)
     try {
       const info = await fetchRegistryInfo(sel.east, sel.north)
-      const filled: string[] = []
-      if (info.parcelNumber) filled.push(`parcelle n°${info.parcelNumber}`)
-      if (info.terrainArea) filled.push('terrain')
-      if (info.yearBuilt) filled.push('année')
-      if (info.builtArea) filled.push('surface bâtie')
-      if (info.perimeter) filled.push('périmètre')
-      if (info.floorArea) filled.push(info.floorAreaEstimated ? 'surface de plancher (estimée)' : 'surface de plancher')
-      if (info.buildingType) filled.push('type de bâtiment')
-      if (info.nbFloors) filled.push('étages')
-      if (info.nbApartments != null) filled.push('logements')
+      // Ce que le registre propose, champ par champ, avec son nom pour la note.
+      const proposes: [keyof FormState, string | number | undefined, string][] = [
+        ['parcelNumber', info.parcelNumber, `parcelle n°${info.parcelNumber}`],
+        ['terrainArea', info.terrainArea, 'terrain'],
+        ['yearBuilt', info.yearBuilt, 'année'],
+        ['builtArea', info.builtArea, 'surface bâtie'],
+        ['perimeter', info.perimeter, info.perimeterEstimated ? 'périmètre (déduit de l’emprise)' : 'périmètre'],
+        ['floorArea', info.floorArea, info.floorAreaEstimated ? 'surface de plancher (estimée)' : 'surface de plancher'],
+        ['buildingType', info.buildingType, 'type de bâtiment'],
+        ['nbFloors', info.nbFloors, 'étages'],
+        ['nbApartments', info.nbApartments, 'logements'],
+      ]
+      // Une mesure lue sur les plans ne cède pas la place à une estimation du
+      // registre : il ne complète que ce que les plans n'ont pas donné.
+      const retenus = proposes.filter(([k, v]) => v !== undefined && v !== null && v !== '' && origines[k] !== 'plans')
+      const gardes = proposes.filter(([k, v]) => v !== undefined && v !== null && origines[k] === 'plans').length
 
-      setForm(prev => ({
-        ...prev,
-        parcelNumber: info.parcelNumber ?? prev.parcelNumber,
-        terrainArea: info.terrainArea ?? prev.terrainArea,
-        yearBuilt: info.yearBuilt ?? prev.yearBuilt,
-        builtArea: info.builtArea ?? prev.builtArea,
-        perimeter: info.perimeter ?? prev.perimeter,
-        floorArea: info.floorArea ?? prev.floorArea,
-        buildingType: (info.buildingType as BuildingType) ?? prev.buildingType,
-        nbFloors: info.nbFloors ?? prev.nbFloors,
-        nbApartments: info.nbApartments ?? prev.nbApartments,
-      }))
+      setForm(prev => ({ ...prev, ...Object.fromEntries(retenus.map(([k, v]) => [k, v])) }))
+      setOrigines(prev => ({ ...prev, ...Object.fromEntries(retenus.map(([k]) => [k, 'registre' as const])) }))
       clearError('yearBuilt', 'nbApartments', 'nbFloors', 'floorArea', 'builtArea', 'perimeter')
       setEnrichNote(
-        filled.length
-          ? `Pré-rempli automatiquement (registre fédéral RegBL + cadastre) : ${filled.join(', ')}. Vérifiez et ajustez si besoin.`
-          : 'Adresse trouvée, mais aucune donnée registre disponible pour ce bâtiment.',
+        retenus.length
+          ? `Pré-rempli automatiquement (registre fédéral RegBL + cadastre) : ${retenus.map(([, , l]) => l).join(', ')}. Vérifiez et ajustez si besoin.${gardes ? ' Les mesures lues sur vos plans sont gardées.' : ''}`
+          : gardes
+            ? 'Adresse trouvée. Les mesures lues sur vos plans sont gardées.'
+            : 'Adresse trouvée, mais aucune donnée registre disponible pour ce bâtiment.',
       )
     } catch {
       setEnrichNote(null)
@@ -416,6 +491,11 @@ export function ProjectNew() {
   const errCls = (key: keyof FormState) =>
     errors.has(key as string) ? 'border-red-400 focus-visible:ring-red-300' : ''
 
+  /** Les champs des métrés qui tiennent encore une valeur des registres publics. */
+  const depuisLeRegistre = CHAMPS_DES_METRES
+    .filter((c) => origines[c.key] === 'registre' && !isEmpty(form[c.key]))
+    .map((c) => c.label)
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
@@ -426,26 +506,35 @@ export function ProjectNew() {
             {!depart
               ? 'Comment voulez-vous commencer ?'
               : depart !== 'zero' && !importPret
-                ? (depart === 'cecb' ? 'À partir d’un certificat énergétique' : 'À partir d’un document')
+                ? (depart === 'plans' ? 'À partir des plans' : depart === 'cecb' ? 'À partir d’un certificat énergétique' : 'À partir d’un document')
                 : `Étape ${step} sur 3${operationId ? " · rattaché à l'opération" : ''}`}
           </p>
         </div>
       </div>
 
       {!depart && <ChoixDepart onChoisir={setDepart} />}
-      {depart && depart !== 'zero' && !importPret && (
+      {depart === 'plans' && !importPret && (
+        <ImportPlans onRetour={() => setDepart(null)} onPret={appliquerImport} />
+      )}
+      {(depart === 'document' || depart === 'cecb') && !importPret && (
         <ImportFichier source={depart} onRetour={() => setDepart(null)} onPret={appliquerImport} />
       )}
 
       {(depart === 'zero' || importPret) && <>
       {importPret && (
         <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm">
-          <p className="min-w-0 text-blue-900">
-            Pré-rempli depuis « {importPret.fichier} ». Vérifiez chaque champ ; en choisissant l’adresse dans la liste proposée, les registres fédéraux complètent le reste.
-            {importPret.releves.length > 0 && ` ${importPret.releves.length} relevé${importPret.releves.length > 1 ? 's' : ''} seront créés avec le diagnostic.`}
-          </p>
+          {importPret.plans ? (
+            <p className="min-w-0 text-blue-900">
+              Pré-rempli depuis vos plans ({importPret.fichier}). Les mesures lues portent la mention « plans » ; vérifiez chaque champ. En choisissant l’adresse dans la liste proposée, les registres fédéraux complètent l’année et la parcelle sans remplacer vos mesures. Les plans seront rangés dans l’onglet Plans du dossier.
+            </p>
+          ) : (
+            <p className="min-w-0 text-blue-900">
+              Pré-rempli depuis « {importPret.fichier} ». Vérifiez chaque champ ; en choisissant l’adresse dans la liste proposée, les registres fédéraux complètent le reste.
+              {importPret.releves.length > 0 && ` ${importPret.releves.length} relevé${importPret.releves.length > 1 ? 's' : ''} seront créés avec le diagnostic.`}
+            </p>
+          )}
           <button className="shrink-0 text-xs font-medium text-blue-700 hover:underline" onClick={() => setImportPret(null)}>
-            Changer de fichier
+            {importPret.plans ? 'Changer de plans' : 'Changer de fichier'}
           </button>
         </div>
       )}
@@ -560,7 +649,7 @@ export function ProjectNew() {
                 </Select>
               </div>
               <div className="col-span-2">
-                <label className="text-sm font-medium mb-1 block">Type de toiture</label>
+                <label className="text-sm font-medium mb-1 block">Type de toiture<Provenance origine={origines.roofType} /></label>
                 <Select id="champ-roofType" value={form.roofType} onChange={e => update('roofType', e.target.value)}>
                   <option value="">Non précisé</option>
                   <option value="PLATE">Plate</option>
@@ -571,21 +660,25 @@ export function ProjectNew() {
               </div>
               {isResidential(form.buildingType) && (
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Nombre d'appartements</label>
+                  <label className="text-sm font-medium mb-1 block">Nombre d'appartements<Provenance origine={origines.nbApartments} /></label>
                   <Input id="champ-nbApartments" type="number" value={form.nbApartments} onChange={e => updateNum('nbApartments', e.target.value)} placeholder="Ex: 12" className={errCls('nbApartments')} />
                 </div>
               )}
               <div>
-                <label className="text-sm font-medium mb-1 block">Nombre d'etages</label>
+                <label className="text-sm font-medium mb-1 block">Nombre d'etages<Provenance origine={origines.nbFloors} /></label>
                 <Input id="champ-nbFloors" type="number" value={form.nbFloors} onChange={e => updateNum('nbFloors', e.target.value)} placeholder="Ex: 4" className={errCls('nbFloors')} />
-                <p className="text-[11px] text-muted-foreground mt-1">Valeur du registre fédéral : combles ou sous-sol parfois comptés, ajustez si besoin.</p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {origines.nbFloors === 'plans'
+                    ? 'Lu sur les plans : niveaux hors sol, rez compris.'
+                    : 'Valeur du registre fédéral : combles ou sous-sol parfois comptés, ajustez si besoin.'}
+                </p>
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Hauteur d'etage (m)</label>
+                <label className="text-sm font-medium mb-1 block">Hauteur d'etage (m)<Provenance origine={origines.floorHeight} /></label>
                 <Input type="number" step="0.1" value={form.floorHeight} onChange={e => updateNum('floorHeight', e.target.value)} />
               </div>
               <div>
-                <label className="text-sm font-medium mb-1 block">Nombre de cages</label>
+                <label className="text-sm font-medium mb-1 block">Nombre de cages<Provenance origine={origines.nbStaircases} /></label>
                 <Input type="number" value={form.nbStaircases} onChange={e => updateNum('nbStaircases', e.target.value)} />
               </div>
               <div>
@@ -641,25 +734,41 @@ export function ProjectNew() {
           <Card>
             <CardHeader><CardTitle>Surfaces</CardTitle></CardHeader>
             <CardContent className="space-y-4">
+              {/* Redit ici, au moment où les surfaces se relisent : c'est d'elles
+                  que partent tous les métrés, et l'avertissement de la carte de
+                  départ est loin. */}
+              {depuisLeRegistre.length > 0 && (
+                <div className="flex gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                  <p>
+                    <span className="font-medium">Repris des registres : {depuisLeRegistre.join(', ')}.</span> {AVERTISSEMENT_VALEURS_PUBLIQUES}
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Surface de plancher (m2)</label>
+                  <label className="text-sm font-medium mb-1 block">Surface de plancher (m2)<Provenance origine={origines.floorArea} /></label>
                   <Input id="champ-floorArea" type="number" value={form.floorArea} onChange={e => updateNum('floorArea', e.target.value)} placeholder="Ex: 1800" className={errCls('floorArea')} />
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Surface batie (m2)</label>
+                  <label className="text-sm font-medium mb-1 block">Surface batie (m2)<Provenance origine={origines.builtArea} /></label>
                   <Input id="champ-builtArea" type="number" value={form.builtArea} onChange={e => updateNum('builtArea', e.target.value)} placeholder="Ex: 450" className={errCls('builtArea')} />
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Perimetre (ml)</label>
+                  <label className="text-sm font-medium mb-1 block">Perimetre (ml)<Provenance origine={origines.perimeter} /></label>
                   <Input id="champ-perimeter" type="number" value={form.perimeter} onChange={e => updateNum('perimeter', e.target.value)} placeholder="Ex: 90" className={errCls('perimeter')} />
                 </div>
                 <div>
                   <label className="text-sm font-medium mb-1 block">Surface terrain (m2)</label>
                   <Input id="champ-terrainArea" type="number" value={form.terrainArea} onChange={e => updateNum('terrainArea', e.target.value)} placeholder="Ex: 800" />
                 </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="text-sm font-medium mb-1 block">Surface de façade (m2)<Provenance origine={origines.facadeArea} /></label>
+                  <Input type="number" value={form.facadeArea} onChange={e => updateNum('facadeArea', e.target.value)} placeholder="Facultatif" />
+                  <p className="text-[11px] text-muted-foreground mt-1">Les métrés la calculent du périmètre, des étages et de la hauteur d’étage ; cette valeur sert de repli.</p>
+                </div>
                 <div className="col-span-2">
-                  <label className="text-sm font-medium mb-1 block">Pourcentage fenetres : {Math.round(form.windowPct * 100)}%</label>
+                  <label className="text-sm font-medium mb-1 block">Pourcentage fenetres : {Math.round(form.windowPct * 100)}%<Provenance origine={origines.windowPct} /></label>
                   <input type="range" min="10" max="60" value={form.windowPct * 100} onChange={e => update('windowPct', +e.target.value / 100)}
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
                   <div className="flex justify-between text-xs text-muted-foreground"><span>10%</span><span>60%</span></div>
@@ -735,6 +844,13 @@ export function ProjectNew() {
                 </div>
               </div>
             </div>
+            {importPret?.plans && importPret.plans.fichiers.length > 0 && (
+              <p className="border-t pt-3 text-sm text-muted-foreground">
+                {importPret.plans.fichiers.length > 1
+                  ? `${importPret.plans.fichiers.length} plans seront rangés dans l’onglet Plans du dossier.`
+                  : 'Le plan sera rangé dans l’onglet Plans du dossier.'}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

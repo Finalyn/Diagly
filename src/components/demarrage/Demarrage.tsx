@@ -1,68 +1,118 @@
 /**
- * Les trois façons de commencer un diagnostic, et la relecture d'un fichier lu
- * par l'IA.
+ * Les quatre façons de commencer un diagnostic, et la relecture d'un fichier
+ * lu par l'IA.
  *
- * Partir de zéro reste le chemin de toujours : l'adresse, puis les registres
- * fédéraux. Les deux autres partent d'un fichier : un document quelconque
+ * Les plans d'architecte viennent en premier : c'est le départ recommandé,
+ * parce que les métrés de chaque ouvrage partent de quelques chiffres du
+ * bâtiment (périmètre, emprise, étages, hauteur d'étage, vitrages), et que des
+ * plans à l'échelle les donnent mesurés (voir ImportPlans.tsx).
+ *
+ * Les valeurs publiques ou personnelles restent le chemin de toujours :
+ * l'adresse, puis les registres fédéraux. La carte le dit sans détour : ces
+ * valeurs sont des estimations, et les métrés qui en découlent aussi.
+ *
+ * Les deux derniers départs partent d'un fichier : un document quelconque
  * (ancien rapport, relevé Excel, état des lieux Word ou PDF) ou un certificat
  * énergétique CECB. L'IA en tire le bâtiment et les éléments ; rien n'est
  * créé avant que le diagnostiqueur ait relu, corrigé un article, un état, ou
  * décoché ce qu'il ne veut pas reprendre.
  */
 import { useMemo, useRef, useState } from 'react'
-import { PenLine, FileText, Zap, Upload, Loader2, AlertCircle, ArrowLeft, ArrowRight, RotateCcw } from 'lucide-react'
+import { PenLine, FileText, Zap, Upload, Loader2, AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, RotateCcw, Ruler } from 'lucide-react'
 import { Button, Card, CardContent, CardHeader, CardTitle, Select } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
 import { useBaseCfc } from '@/lib/base-cfc/requete'
 import { buildingTypeLabels } from '@/data/mock'
 import { cn } from '@/lib/utils'
 import type { ApiBaseCfc, BatimentLu, ElementState, LectureCecb, LectureDocument } from '@/lib/api-types'
-import { lettreDeClasse, type ImportPret, type SourceImport } from '@/lib/demarrage'
+import { AVERTISSEMENT_VALEURS_PUBLIQUES, lettreDeClasse, type ImportPret, type SourceImport } from '@/lib/demarrage'
 import { MENTION_CECB } from '@/lib/marque-cecb'
 
-export type Depart = 'zero' | SourceImport
+/** « zero » garde son nom d'origine : c'est le départ par les valeurs publiques ou personnelles. */
+export type Depart = 'plans' | 'zero' | SourceImport
 
 // ---------------------------------------------------------------- choix
 
-const CHOIX: { id: Depart; icone: typeof PenLine; titre: string; texte: string; detail: string }[] = [
+interface Choix {
+  id: Depart
+  icone: typeof PenLine
+  titre: string
+  texte: string
+  detail: string
+  action: string
+  recommande?: boolean
+  /** Le détail est une mise en garde, à ne pas lire en passant. */
+  avertissement?: boolean
+}
+
+const CHOIX: Choix[] = [
   {
-    id: 'zero', icone: PenLine, titre: 'Partir de zéro',
-    texte: 'Saisissez l’adresse : les registres fédéraux remplissent l’année, les surfaces et les étages.',
-    detail: 'Le relevé se fait ensuite sur place, étape par étape.',
+    id: 'plans', icone: Ruler, titre: 'Commencer avec des plans', recommande: true,
+    texte: 'Les plans d’architecte à l’échelle : étages, façades, coupe. En PDF ou en photos.',
+    detail: 'L’IA y lit les mesures du bâtiment (périmètre, emprise, étages, hauteur d’étage, vitrages) : les métrés partent de vos plans, pas d’estimations. Les plans sont rangés dans le dossier.',
+    action: 'Déposer les plans',
+  },
+  {
+    id: 'zero', icone: PenLine, titre: 'Valeurs publiques ou personnelles',
+    texte: 'Saisissez l’adresse : les registres fédéraux proposent l’année, les surfaces et les étages, que vous pouvez remplacer par vos propres valeurs.',
+    detail: AVERTISSEMENT_VALEURS_PUBLIQUES, avertissement: true,
+    action: 'Saisir l’adresse',
   },
   {
     id: 'document', icone: FileText, titre: 'Importer un document',
     texte: 'Un ancien rapport, un relevé Excel, un état des lieux Word ou PDF.',
     detail: 'Le bâtiment et les éléments décrits sont repris, avec leur état, pour être vérifiés sur place.',
+    action: 'Choisir le fichier',
   },
   {
     id: 'cecb', icone: Zap, titre: 'Partir d’un certificat énergétique',
     texte: 'Le certificat énergétique cantonal (CECB®) du bâtiment, en PDF.',
     detail: 'Le bâtiment, l’étiquette énergétique et les éléments visés par les mesures recommandées.',
+    action: 'Choisir le fichier',
   },
 ]
 
 export function ChoixDepart({ onChoisir }: { onChoisir: (d: Depart) => void }) {
   return (
     <div className="space-y-3">
-      {/* Sur iPad debout (« tablette »), les trois départs s'empilent : côte à
-          côte, à côté du menu, leurs textes tenaient sur des colonnes étroites. */}
-      <div className="grid gap-3 md:grid-cols-3 tablette:grid-cols-1" data-visite="creation-departs">
+      {/* Deux par deux : sur quatre colonnes, dans la largeur du formulaire,
+          les textes tenaient sur des colonnes de quelques mots. Sur iPad debout
+          (« tablette »), les départs s'empilent : à côté du menu, même deux
+          colonnes restaient trop étroites. */}
+      <div className="grid gap-3 md:grid-cols-2 tablette:grid-cols-1" data-visite="creation-departs">
         {CHOIX.map((c) => (
           <button
             key={c.id}
             data-visite={`depart-${c.id}`}
             onClick={() => onChoisir(c.id)}
-            className="group flex flex-col rounded-2xl border border-black/[0.08] bg-card p-5 text-left transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_14px_40px_-16px_rgba(0,0,0,0.18)]"
+            className={cn(
+              'group flex flex-col rounded-2xl border bg-card p-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_40px_-16px_rgba(0,0,0,0.18)]',
+              c.recommande ? 'border-[#0167EA]/25 hover:border-[#0167EA]/50' : 'border-black/[0.08] hover:border-blue-200',
+            )}
           >
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-900/[0.04] text-muted-foreground transition-colors group-hover:bg-blue-50 group-hover:text-blue-600">
-              <c.icone className="h-5 w-5" strokeWidth={1.6} />
+            <span className="flex items-start justify-between gap-3">
+              <span className={cn(
+                'flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+                c.recommande ? 'bg-[#0167EA]/10 text-[#0167EA]' : 'bg-neutral-900/[0.04] text-muted-foreground group-hover:bg-blue-50 group-hover:text-blue-600',
+              )}>
+                <c.icone className="h-5 w-5" strokeWidth={1.6} />
+              </span>
+              {c.recommande && (
+                <span className="rounded-full bg-[#0167EA]/10 px-2 py-0.5 text-[11px] font-medium text-[#0167EA]">Recommandé</span>
+              )}
             </span>
             <span className="mt-4 text-base font-semibold">{c.titre}</span>
             <span className="mt-1 text-sm text-muted-foreground">{c.texte}</span>
-            <span className="mt-3 border-t border-black/[0.06] pt-3 text-xs text-muted-foreground">{c.detail}</span>
-            <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-              {c.id === 'zero' ? 'Commencer' : 'Choisir le fichier'}<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            {c.avertissement ? (
+              <span className="mt-3 flex gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                <span>{c.detail}</span>
+              </span>
+            ) : (
+              <span className="mt-3 border-t border-black/[0.06] pt-3 text-xs text-muted-foreground">{c.detail}</span>
+            )}
+            <span className="mt-auto inline-flex items-center gap-1.5 pt-4 text-sm font-medium text-foreground">
+              {c.action}<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </span>
           </button>
         ))}
