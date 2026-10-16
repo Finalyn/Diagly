@@ -19,15 +19,16 @@
  * ne dit rien de la résolution d'un scan ou d'une photo.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Upload, Loader2, AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, RotateCcw, FileText, Image as ImageIcon, X } from 'lucide-react'
+import { Upload, Loader2, AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, Check, RotateCcw, FileText, Image as ImageIcon, X } from 'lucide-react'
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { GrandeurLue, LecturePlans, RoofType } from '@/lib/api-types'
+import type { ElementCompteLu, GrandeurLue, LecturePlans, RoofType } from '@/lib/api-types'
 import {
-  GRANDEURS_DES_PLANS, aVerifier, champsDepuisPlans, lieuDeLaPage, valeursInitiales,
+  GRANDEURS_DES_PLANS, aVerifier, champsDepuisPlans, comptagesDepuisPlans, elementAVerifier, lieuDeLaPage, valeursInitiales,
   type ValeursRetenues,
 } from '@/lib/demarrage-plans'
+import { CATEGORIES_COMPTEES, NOMBRE_MAX, type CategorieComptee } from '@/lib/base-cfc/comptages'
 import type { ImportPret } from '@/lib/demarrage'
 
 const MAX_FICHIERS = 12
@@ -264,7 +265,9 @@ function RelecturePlans({ lecture, noms, fichiers, onRecommencer, onPret }: {
 }) {
   const [valeurs, setValeurs] = useState<ValeursRetenues>(() => valeursInitiales(lecture))
   const champs = useMemo(() => champsDepuisPlans(valeurs), [valeurs])
+  const comptages = useMemo(() => comptagesDepuisPlans(lecture, valeurs, noms), [lecture, valeurs, noms])
   const nbChamps = Object.keys(champs).length
+  const nbComptes = Object.keys(comptages).length
   const remplissantes = GRANDEURS_DES_PLANS.filter((g) => g.champ)
   const pourInformation = GRANDEURS_DES_PLANS.filter((g) => !g.champ && lecture.grandeurs[g.cle].valeur !== null)
   const aRevoir = [...remplissantes.map((g) => lecture.grandeurs[g.cle]), lecture.typeToit].filter(aVerifier).length
@@ -275,6 +278,16 @@ function RelecturePlans({ lecture, noms, fichiers, onRecommencer, onPret }: {
     const n = brut.trim() === '' ? null : Number(brut.replace(',', '.'))
     setValeurs((v) => ({ ...v, grandeurs: { ...v.grandeurs, [cle]: n !== null && Number.isFinite(n) ? n : null } }))
   }
+  /** Un nombre d'éléments : entier, zéro compris ; ce qui n'en est pas un vide le champ. */
+  const poserElement = (cle: CategorieComptee, brut: string) => {
+    const n = brut.trim() === '' ? null : Number(brut)
+    const valable = n !== null && Number.isInteger(n) && n >= 0 && n <= NOMBRE_MAX
+    setValeurs((v) => ({ ...v, elements: { ...v.elements, [cle]: valable ? n : null } }))
+  }
+  const confirmer = (cle: CategorieComptee) => setValeurs((v) => ({
+    ...v,
+    confirmes: v.confirmes.includes(cle) ? v.confirmes.filter((c) => c !== cle) : [...v.confirmes, cle],
+  }))
 
   const valider = () => onPret({
     source: 'plans',
@@ -284,7 +297,7 @@ function RelecturePlans({ lecture, noms, fichiers, onRecommencer, onPret }: {
     mesures: [],
     confiance: null,
     releves: [],
-    plans: { fichiers, champs },
+    plans: { fichiers, champs, comptages },
   })
 
   return (
@@ -376,6 +389,14 @@ function RelecturePlans({ lecture, noms, fichiers, onRecommencer, onPret }: {
         </CardContent>
       </Card>
 
+      <ElementsLus
+        elements={lecture.elements}
+        valeurs={valeurs}
+        noms={noms}
+        onNombre={poserElement}
+        onConfirmer={confirmer}
+      />
+
       {(pourInformation.length > 0 || lecture.facadesParOrientation.length > 0) && (
         <Card className="overflow-hidden">
           <CardHeader className="space-y-0 border-b border-black/[0.06] px-5 py-3.5">
@@ -431,13 +452,100 @@ function RelecturePlans({ lecture, noms, fichiers, onRecommencer, onPret }: {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {nbChamps
-            ? `${nbChamps} champ${nbChamps > 1 ? 's' : ''} du dossier rempli${nbChamps > 1 ? 's' : ''} depuis les plans. Les plans seront rangés dans le dossier.`
-            : 'Aucune mesure retenue : vous les saisirez à l’étape suivante. Les plans seront rangés dans le dossier.'}
+            ? `${nbChamps} champ${nbChamps > 1 ? 's' : ''} du dossier rempli${nbChamps > 1 ? 's' : ''} depuis les plans. `
+            : 'Aucune mesure retenue : vous les saisirez à l’étape suivante. '}
+          {nbComptes > 0 && `${nbComptes} catégorie${nbComptes > 1 ? 's' : ''} d’éléments comptés. `}
+          Les plans seront rangés dans le dossier.
         </p>
         <Button onClick={valider}>
           Continuer avec ces mesures<ArrowRight className="h-4 w-4" />
         </Button>
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------- éléments comptés
+
+/**
+ * Les éléments que l'IA a comptés sur les plans : portes, fenêtres, balcons…
+ *
+ * Même relecture que les mesures : la valeur se corrige, sa page et son
+ * calcul disent d'où elle vient, et l'ambre signale une estimation ou une
+ * lecture incertaine. Un compte qu'on a regardé sans le changer se confirme
+ * d'une touche : il entre au dossier comme relu, les autres comme « à
+ * vérifier ». Ces nombres remplacent ensuite les règles de quantité de la
+ * base (une porte palière par logement…) pour les ouvrages comptés.
+ */
+function ElementsLus({ elements, valeurs, noms, onNombre, onConfirmer }: {
+  elements: LecturePlans['elements']
+  valeurs: ValeursRetenues
+  noms: string[]
+  onNombre: (cle: CategorieComptee, brut: string) => void
+  onConfirmer: (cle: CategorieComptee) => void
+}) {
+  const lus = CATEGORIES_COMPTEES.filter((c) => elements?.[c.cle]?.nombre != null).length
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="space-y-0 border-b border-black/[0.06] px-5 py-3.5">
+        <CardTitle className="text-base">Éléments comptés</CardTitle>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          {lus
+            ? 'Comptés sur les plans, étages identiques compris. Ils donnent la quantité des portes, fenêtres et autres ouvrages comptés ; leur répartition entre types (bois, métal…) se précise ensuite, au dossier ou pendant la visite.'
+            : 'Les plans ne permettent pas de compter ces éléments. Saisissez ceux que vous connaissez, ou laissez-les vides : la quantité suivra la règle de la base.'}
+        </p>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="divide-y divide-black/[0.05]">
+          {CATEGORIES_COMPTEES.map((d) => {
+            const e: ElementCompteLu | undefined = elements?.[d.cle]
+            const v = valeurs.elements[d.cle] ?? null
+            const lu = e?.nombre ?? null
+            const corrige = v !== lu
+            const confirme = valeurs.confirmes.includes(d.cle)
+            const ambre = !corrige && !confirme && elementAVerifier(e)
+            const lieux = (e?.pages ?? []).map((pg) => lieuDeLaPage(pg, noms) ?? pg)
+            return (
+              <div key={d.cle} className={cn('grid gap-2 px-5 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start', ambre && 'bg-amber-50/60')}>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{d.libelle}</p>
+                  {lu === null ? (
+                    <p className="mt-0.5 text-xs text-muted-foreground">Non compté sur les plans.</p>
+                  ) : (
+                    <p className={cn('mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs', ambre ? 'text-amber-800' : 'text-muted-foreground')}>
+                      {ambre && <AlertTriangle className="h-3 w-3 shrink-0 text-amber-600" />}
+                      {[lieux.join(', ') || null, e?.methode, e?.confiance && `confiance ${e.confiance}`, e?.surface != null && `${nombre(e.surface)} m²`].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
+                  {e?.detail && <p className="mt-0.5 text-xs">{e.detail}</p>}
+                  {corrige && lu !== null && <p className="mt-0.5 text-xs text-blue-700">Corrigé par vous ; compté sur les plans : {lu}.</p>}
+                  {e?.remarque && <p className="mt-0.5 text-xs text-muted-foreground">{e.remarque}</p>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number" step={1} min={0} max={NOMBRE_MAX} inputMode="numeric"
+                    value={v ?? ''} onChange={(ev) => onNombre(d.cle, ev.target.value)}
+                    placeholder="nombre"
+                    className="h-11 w-28 text-right" aria-label={d.libelle}
+                  />
+                  {lu !== null && !corrige && (
+                    <button
+                      type="button"
+                      onClick={() => onConfirmer(d.cle)}
+                      aria-pressed={confirme}
+                      title={confirme ? 'Vérifié : il entre au dossier comme relu' : 'Marquer ce compte comme vérifié'}
+                      className={cn('flex h-11 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors',
+                        confirme ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'bg-background hover:bg-muted')}
+                    >
+                      <Check className="h-4 w-4" />{confirme ? 'Vérifié' : 'Vérifier'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { loadPdfjs } from '@/lib/pdf'
-import type { ApiDiagnosticItem, ApiPlan, PageAnalysee, ZoneEcartee } from '@/lib/api-types'
+import type { ApiDiagnosticItem, ApiPlan, ComptageAnalyse, PageAnalysee, ZoneEcartee } from '@/lib/api-types'
 import { dimensionsPourLeModele, propositionsDeLAnalyse, type PageRendue, type Propositions } from '@/lib/plans/analyse-ia'
 import { IndexGeometrie, extraireSegments, type OpsPdf } from '@/lib/plans/geometrie-vectorielle'
 
@@ -34,6 +34,8 @@ export type EtatAnalyse =
 export interface ResultatAnalyse extends Propositions {
   pages: PageAnalysee[]
   ecartees: ZoneEcartee[]
+  /** Les totaux par catégorie (portes, fenêtres…), étages identiques compris. */
+  comptages: ComptageAnalyse[]
   remarques: string | null
   /** La réponse a été coupée : il peut manquer des zones. */
   tronque: boolean
@@ -184,6 +186,7 @@ export function useAnalyseIA(plan: ApiPlan, ouvrages: ApiDiagnosticItem[]) {
         ...propositions,
         pages: r.analyse.pages,
         ecartees: r.analyse.ecartees,
+        comptages: r.analyse.comptages ?? [],
         remarques: r.analyse.remarques,
         tronque: !!r.tronque,
         pagesSansGeometrie: estPdf ? pages.filter((p) => !p.rendue.index).map((p) => p.rendue.numero) : [],

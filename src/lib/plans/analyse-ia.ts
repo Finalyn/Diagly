@@ -17,6 +17,7 @@
 import type {
   AnalysePlan, ConfianceZone, PlanAnnotation, PlanPoint, PointImage, PropositionIA, TypePageAnalysee, TypeZoneIA,
 } from '../api-types'
+import { CATEGORIE, type CategorieComptee } from '../base-cfc/comptages'
 import { aimanter, type IndexGeometrie } from './geometrie-vectorielle'
 import { proposerEchelle, type PropositionEchelle } from './echelle-exacte'
 import { airePolygone, longueurPolyligne } from '../plan-quantites'
@@ -119,6 +120,29 @@ export const NOMS_TYPES_PAGE: Record<TypePageAnalysee, string> = {
 export const NOMS_CONFIANCE: Record<ConfianceZone, string> = { haute: 'confiance haute', moyenne: 'confiance moyenne', basse: 'confiance basse' }
 
 /**
+ * La couleur des repères d'éléments comptés, une par catégorie : sur un plan
+ * d'étage où se mêlent portes palières, portes intérieures et fenêtres, c'est
+ * la couleur qui dit d'un coup d'œil ce que l'IA a vu où.
+ */
+export const COULEURS_CATEGORIE: Record<CategorieComptee, string> = {
+  porte_entree: '#dc2626',
+  porte_paliere: '#7c3aed',
+  porte_interieure: '#db2777',
+  fenetre: '#0284c7',
+  fenetre_toit: '#0891b2',
+  balcon: '#16a34a',
+  cuisine: '#ea580c',
+  appareil_sanitaire: '#a16207',
+}
+
+/** « Porte palière 3 » : le nom d'un repère, au singulier, avec son rang. */
+export function nomDuRepere(a: Pick<PlanAnnotation, 'repere'>): string {
+  if (!a.repere) return 'Repère'
+  const s = CATEGORIE[a.repere.categorie].singulier
+  return `${s.charAt(0).toUpperCase()}${s.slice(1)} ${a.repere.numero}`
+}
+
+/**
  * Le contour qu'un métré retient pour chaque type de zone.
  *
  * Une ouverture se mesure au vide de maçonnerie, donc au cadre extérieur ; une
@@ -158,6 +182,27 @@ export function propositionsDeLAnalyse(
 ): Propositions {
   const parNumero = new Map(pages.map((p) => [p.numero, p]))
   const annotations: PlanAnnotation[] = []
+
+  // Les repères des éléments comptés : un point par porte ou par fenêtre,
+  // numéroté dans sa catégorie et sa page, à valider comme les zones. Pas
+  // d'aimantation : le centre d'une ouverture ne tombe sur aucun trait.
+  const rangs = new Map<string, number>()
+  for (const e of analyse.elements ?? []) {
+    const page = parNumero.get(e.page)
+    if (!page) continue
+    const cle = `${e.page}@${e.categorie}`
+    const numero = (rangs.get(cle) ?? 0) + 1
+    rangs.set(cle, numero)
+    annotations.push({
+      id: options.identifiant(),
+      type: 'repere',
+      points: [imageVersCanevas(e.point, page)],
+      page: options.estPdf ? e.page : undefined,
+      color: COULEURS_CATEGORIE[e.categorie],
+      text: e.libelle ?? undefined,
+      repere: { categorie: e.categorie, numero, aValider: true },
+    })
+  }
 
   for (const z of analyse.zones) {
     const page = parNumero.get(z.page)
@@ -209,6 +254,12 @@ export function propositionsDeLAnalyse(
   }
 
   return { annotations, echelles }
+}
+
+/** Valider un repère : il reste sur le plan, en trait plein, et part avec lui à l'export. */
+export function validerRepere(a: PlanAnnotation): PlanAnnotation {
+  if (!a.repere?.aValider) return a
+  return { ...a, repere: { categorie: a.repere.categorie, numero: a.repere.numero } }
 }
 
 /**

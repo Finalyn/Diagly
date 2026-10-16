@@ -242,3 +242,22 @@ describe('compter ce qui attend', () => {
     expect(Object.fromEntries(enAttenteParDiagnostic(f))).toEqual({ d1: 2, d2: 1 })
   })
 })
+
+describe('les unités d’un type compté dans la file', () => {
+  it('se fondent dans la création non tentée, et s’affichent avant l’envoi', () => {
+    const c = op('creer', 'r9', { corps: { cfcCode: '273.0', unites: null } } as Partial<Operation>)
+    const m = op('modifier', 'r9', { corps: { unites: 2, area: 2 } } as Partial<Operation>)
+    const r = entrer([c], m)
+    expect(r.file).toHaveLength(1)
+    expect(r.file[0].type !== 'supprimer' && r.file[0].corps).toEqual({ cfcCode: '273.0', unites: 2, area: 2 })
+    expect(superposer([], r.file, 'd1', 'u1')[0]).toMatchObject({ id: 'r9', unites: 2, area: 2 })
+  })
+
+  it('partent à part après une création tentée, comme toute saisie', () => {
+    const c = op('creer', 'r8', { corps: { cfcCode: '273.0' }, tentee: true } as Partial<Operation>)
+    const m = op('modifier', 'r8', { corps: { unites: 4 } } as Partial<Operation>)
+    const r = entrer([c], m)
+    expect(r.file.map((o) => o.type)).toEqual(['creer', 'modifier'])
+    expect(superposer([serveur('r8')], r.file, 'd1', 'u1')[0].unites).toBe(4)
+  })
+})

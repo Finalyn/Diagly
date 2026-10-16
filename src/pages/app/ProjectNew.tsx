@@ -224,6 +224,9 @@ export function ProjectNew() {
         windowPct: form.windowPct * 100, // form 0-1, API attend 0-100
         // Les typologies lues sur les plans : le formulaire n'a pas de champ pour elles.
         apartmentTypes: importPret?.plans?.champs.apartmentTypes,
+        // Les éléments comptés sur les plans (portes, fenêtres…) : ils donnent la
+        // quantité des ouvrages comptés dès le premier relevé.
+        comptages: importPret?.plans && Object.keys(importPret.plans.comptages).length ? importPret.plans.comptages : undefined,
         honoraryPct: num(form.honoraryPct),
         reservePct: num(form.reservePct),
         // Un fichier importé apporte l'EGID et, pour un CECB, l'étiquette.

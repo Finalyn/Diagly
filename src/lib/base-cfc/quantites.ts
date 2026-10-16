@@ -13,6 +13,7 @@
  */
 
 import type { BaseQuantite } from './normaliser'
+import type { Comptages } from './comptages'
 
 /**
  * Deux décimales, pas quinze.
@@ -40,6 +41,12 @@ export interface DonneesBatiment {
   hauteur: number | null
   /** Facultative : les sprinklers la prennent si elle est renseignée. */
   surfaceParking?: number | null
+  /**
+   * Les éléments comptés sur les plans ou au dossier : portes, fenêtres,
+   * balcons… Quand une catégorie en a un, il l'emporte sur la règle de la base
+   * (voir pont.ts, resolutionDeQuantite).
+   */
+  comptages?: Comptages | null
 }
 
 /** Nombre de logements par typologie, en pièces. */

@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import {
-  COULEUR_PROPOSITION, COULEURS_PAR_TYPE, GRAND_COTE_MAX, bilanDeFacade, dimensionsPourLeModele, ecartAuxCotes,
-  imageVersCanevas, mesureDeLaZone, propositionsDeLAnalyse, tientDansLeModele, validerProposition, type PageRendue,
+  COULEUR_PROPOSITION, COULEURS_CATEGORIE, COULEURS_PAR_TYPE, GRAND_COTE_MAX, bilanDeFacade, dimensionsPourLeModele, ecartAuxCotes,
+  imageVersCanevas, mesureDeLaZone, nomDuRepere, propositionsDeLAnalyse, tientDansLeModele, validerProposition, validerRepere,
+  type PageRendue,
 } from './analyse-ia'
-import { FACADE_SUD, OUVERTURES_FACADE, geometrieDePdf, pdfFacade, versCanevas } from './plans-de-test'
+import {
+  FACADE_SUD, OUVERTURES_FACADE, PLAN_ETAGE_TYPE, PORTES_ETAGE_TYPE, geometrieDePdf, pdfEtageType, pdfFacade, versCanevas,
+} from './plans-de-test'
 import { natureDe } from '../plan-quantites'
 import type { AnalysePlan, PointImage, ZoneAnalysee } from '../api-types'
 
@@ -155,5 +158,81 @@ describe('une analyse de la façade de test au 1:100', () => {
   it('ignore une zone d’une page qui n’a pas été envoyée', () => {
     const autre = { ...analyse, zones: analyse.zones.map((z) => ({ ...z, page: 2 })) }
     expect(propositionsDeLAnalyse(autre, [page], { estPdf: true, identifiant: () => 'z' }).annotations).toEqual([])
+  })
+})
+
+/**
+ * Les repères d'éléments comptés sur le plan d'étage type : une porte palière
+ * de chaque côté du palier, trois portes de pièce par logement. Le modèle
+ * rend leur centre à quelques pixels près ; ils doivent tomber sur le
+ * canevas là où sont les portes, numérotés dans leur catégorie, et ne
+ * jamais compter dans un métré.
+ */
+describe('les repères du plan d’étage type', () => {
+  let page: PageRendue
+  let analyse: AnalysePlan
+
+  beforeAll(async () => {
+    const g = await geometrieDePdf(pdfEtageType())
+    const image = dimensionsPourLeModele(g.largeurPt, g.hauteurPt, true)
+    page = {
+      numero: 1, largeurImage: image.largeur, hauteurImage: image.hauteur,
+      largeurCanevas: g.largeurCanevas, hauteurCanevas: g.hauteurCanevas,
+      largeurPagePt: g.largeurPt, hauteurPagePt: g.hauteurPt, index: g.index,
+    }
+    const k = image.largeur / g.largeurCanevas
+    analyse = {
+      pages: [{ page: 1, type: 'plan_etage', titre: 'Étage type (1er au 3e)', orientation: null, echelle: '1:100', echelleOu: 'cartouche', cote: null, remarque: null }],
+      zones: [],
+      elements: PORTES_ETAGE_TYPE.map((p) => {
+        const c = versCanevas(PLAN_ETAGE_TYPE, p.x, p.y)
+        return { page: 1, categorie: p.categorie, point: [c.x * k + 2, c.y * k - 2] as PointImage, libelle: null }
+      }),
+      comptages: [{ categorie: 'porte_paliere', nombre: 6, surface: null, detail: '2 par palier × 3 étages = 6', pages: [1], confiance: 'haute' }],
+      ecartees: [],
+      remarques: null,
+    }
+  })
+
+  it('dessine un vrai plan vectoriel, avec ses portes et leurs arcs', async () => {
+    const g = await geometrieDePdf(pdfEtageType())
+    expect(g.geo.nombre).toBeGreaterThan(100)
+    expect(PLAN_ETAGE_TYPE.attendu.portesPalieres).toBe(6)
+    expect(PLAN_ETAGE_TYPE.attendu.portesInterieures).toBe(18)
+    expect(PLAN_ETAGE_TYPE.attendu.fenetres).toBe(36)
+    expect(PORTES_ETAGE_TYPE.filter((p) => p.categorie === 'porte_paliere')).toHaveLength(PLAN_ETAGE_TYPE.attendu.portesPalieresParEtage)
+    expect(PORTES_ETAGE_TYPE.filter((p) => p.categorie === 'porte_interieure')).toHaveLength(PLAN_ETAGE_TYPE.attendu.portesInterieuresParEtage)
+  })
+
+  it('pose un repère par porte, là où elle est, numéroté dans sa catégorie', () => {
+    let n = 0
+    const { annotations } = propositionsDeLAnalyse(analyse, [page], { estPdf: true, identifiant: () => `r${n++}` })
+    const reperes = annotations.filter((a) => a.type === 'repere')
+    expect(reperes).toHaveLength(PORTES_ETAGE_TYPE.length)
+    for (const [i, p] of PORTES_ETAGE_TYPE.entries()) {
+      const attendu = versCanevas(PLAN_ETAGE_TYPE, p.x, p.y)
+      expect(Math.hypot(reperes[i].points[0].x - attendu.x, reperes[i].points[0].y - attendu.y)).toBeLessThan(3)
+      expect(reperes[i].repere?.categorie).toBe(p.categorie)
+      expect(reperes[i].color).toBe(COULEURS_CATEGORIE[p.categorie])
+    }
+    expect(reperes.filter((a) => a.repere?.categorie === 'porte_paliere').map((a) => a.repere?.numero)).toEqual([1, 2])
+    expect(reperes.filter((a) => a.repere?.categorie === 'porte_interieure').map((a) => a.repere?.numero)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(nomDuRepere(reperes[1])).toBe('Porte palière 2')
+  })
+
+  it('ne compte jamais un repère dans un métré, validé ou non', () => {
+    const { annotations } = propositionsDeLAnalyse(analyse, [page], { estPdf: true, identifiant: () => 'r' })
+    const repere = annotations[0]
+    expect(repere.repere?.aValider).toBe(true)
+    expect(natureDe(repere)).toBe('aucune')
+    const valide = validerRepere(repere)
+    expect(valide.repere).toEqual({ categorie: 'porte_paliere', numero: 1 })
+    expect(natureDe(valide)).toBe('aucune')
+    expect(validerRepere(valide)).toBe(valide)
+  })
+
+  it('ignore un repère d’une page qui n’a pas été envoyée', () => {
+    const autre = { ...analyse, elements: analyse.elements!.map((e) => ({ ...e, page: 2 })) }
+    expect(propositionsDeLAnalyse(autre, [page], { estPdf: true, identifiant: () => 'r' }).annotations).toEqual([])
   })
 })

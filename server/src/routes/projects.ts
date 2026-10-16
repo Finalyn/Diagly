@@ -10,6 +10,7 @@ import { notFound, badRequest } from "../lib/http-error.js";
 import { fireEvent } from "../lib/webhook.js";
 import { ownerScopeFor } from "../lib/org-context.js";
 import { blockViewerWrites } from "../middlewares/org.js";
+import { comptagesSchema } from "../lib/comptages.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -34,6 +35,15 @@ function typologiesPourPrisma(v: Record<string, number> | null | undefined) {
 function apparencePourPrisma(v: unknown) {
   if (v === undefined) return {};
   return { reportBranding: v === null ? Prisma.JsonNull : (v as Prisma.InputJsonValue) };
+}
+
+/**
+ * Les éléments comptés du dossier, prêts pour Prisma. Même règle que
+ * l'apparence : absents, on n'y touche pas ; null, on vide la colonne.
+ */
+function comptagesPourPrisma(v: unknown) {
+  if (v === undefined) return {};
+  return { comptages: v === null ? Prisma.JsonNull : (v as Prisma.InputJsonValue) };
 }
 
 /** Vérifie que l'opération (si fournie) est accessible (parc de l'organisation ou compte solo). */
@@ -87,6 +97,12 @@ const projectBaseSchema = z.object({
     sansLogo: z.boolean().nullish(),
   }).strict().partial().nullable().optional(),
   status: z.nativeEnum(ProjectStatus).optional(),
+  /**
+   * Éléments comptés : portes, fenêtres, balcons… par catégorie connue
+   * (lib/comptages.ts). null les retire tous ; un dossier sans comptage
+   * garde les règles de quantité de la base.
+   */
+  comptages: comptagesSchema.nullable().optional(),
   // Données énergétiques (import certificat)
   sre: z.number().nonnegative().nullable().optional(),
   energyConsumptionHeat: z.number().nonnegative().nullable().optional(),
@@ -124,13 +140,14 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", validateBody(createSchema), async (req, res) => {
-  const { apartmentTypes, reportBranding, ...data } = req.body as z.infer<typeof createSchema>;
+  const { apartmentTypes, reportBranding, comptages, ...data } = req.body as z.infer<typeof createSchema>;
   await assertOperationOwnership(data.operationId, req.auth!.sub);
   const project = await prisma.project.create({
     data: {
       ...data,
       ...typologiesPourPrisma(apartmentTypes),
       ...apparencePourPrisma(reportBranding),
+      ...comptagesPourPrisma(comptages),
       ownerId: req.auth!.sub,
     },
   });
@@ -155,11 +172,11 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", validateBody(updateSchema), async (req, res) => {
   const before = await loadOwnedProject(req.params.id, req.auth!.sub);
-  const { apartmentTypes, reportBranding, ...data } = req.body as z.infer<typeof updateSchema>;
+  const { apartmentTypes, reportBranding, comptages, ...data } = req.body as z.infer<typeof updateSchema>;
   await assertOperationOwnership(data.operationId, req.auth!.sub);
   const project = await prisma.project.update({
     where: { id: req.params.id },
-    data: { ...data, ...typologiesPourPrisma(apartmentTypes), ...apparencePourPrisma(reportBranding) },
+    data: { ...data, ...typologiesPourPrisma(apartmentTypes), ...apparencePourPrisma(reportBranding), ...comptagesPourPrisma(comptages) },
   });
   // Finalisation (transition vers TERMINE uniquement).
   if (data.status === "TERMINE" && before.status !== "TERMINE") {

@@ -28,6 +28,10 @@
 import { z } from "zod";
 import { badRequest } from "./http-error.js";
 import { sansTiretCadratin } from "./sans-tiret.js";
+import {
+  CATEGORIES_COMPTEES, DEFINITIONS_POUR_LIA, LIBELLES_CATEGORIES, NOMBRE_MAX, SURFACE_MAX, estUneCategorie,
+  type CategorieComptee,
+} from "./comptages.js";
 
 // ---------------------------------------------------------------- vocabulaire
 
@@ -86,6 +90,25 @@ export const CLES_GRANDEURS = Object.keys(GRANDEURS) as CleGrandeur[];
 /** Une façade d'une orientation donnée : la même mesure, à plus petite échelle. */
 const BORNES_FACADE_ORIENTEE: Bornes = { libelle: "surface de façade", unite: " m²", min: 1, max: 200_000 };
 
+/** Comment un nombre d'éléments a été obtenu. */
+export const METHODES_COMPTAGE = [
+  "compté sur le plan", "compté et multiplié par les étages identiques", "lu dans un tableau", "estimation",
+] as const;
+export type MethodeComptage = (typeof METHODES_COMPTAGE)[number];
+
+/** Un nombre d'éléments lu sur les plans : portes palières, fenêtres, balcons… */
+export interface ElementLu {
+  nombre: number | null;
+  /** Surface totale en m², pour les fenêtres seulement. */
+  surface: number | null;
+  pages: string[];
+  methode: MethodeComptage | null;
+  confiance: Confiance | null;
+  /** Le calcul, en clair : « 2 portes palières par palier × 3 étages = 6 ». */
+  detail: string | null;
+  remarque: string | null;
+}
+
 export interface PageDePlan {
   page: string;
   type: string | null;
@@ -103,6 +126,8 @@ export interface LecturePlans {
   /** Logements par nombre de pièces à la suisse : { "3.5": 4 }. */
   typologies: GrandeurLue<Record<string, number>>;
   facadesParOrientation: (GrandeurLue<number> & { orientation: string })[];
+  /** Les éléments comptés, une entrée par catégorie (null quand les plans ne permettent pas de compter). */
+  elements: Record<CategorieComptee, ElementLu>;
   remarques: string | null;
 }
 
@@ -131,6 +156,9 @@ Les grandeurs, et ce qu'elles désignent :
 - typeToit : PLATE, PENTE ou MIXTE ;
 - surfaceToiture (m²) : surface de la couverture ; pour un toit en pente, celle des pans et non leur projection.
 
+Compte aussi les éléments du bâtiment, dans "elements", une entrée par catégorie :
+${CATEGORIES_COMPTEES.map((c) => `- ${DEFINITIONS_POUR_LIA[c]} ;`).join("\n")}
+
 Chaque grandeur prend la forme G suivante :
 { "valeur": 226.3, "page": "F1 p. 2", "methode": "cote lue | surface imprimée | calcul depuis des cotes | estimation", "confiance": "haute | moyenne | basse", "remarque": "..." }
 
@@ -142,6 +170,17 @@ Règles :
 5. "confiance" : haute si la valeur est écrite et bien lisible ; moyenne si elle est calculée depuis des cotes sûres, ou à peine lisible ; basse sinon.
 6. Les valeurs en chiffres (226.3), sans unité ni texte.
 7. Si deux plans se contredisent, retiens la valeur la plus sûre et signale l'écart dans "remarque".
+
+Chaque élément compté prend la forme E suivante :
+{ "nombre": 8, "surface": null, "pages": ["F1 p. 2"], "methode": "compté sur le plan | compté et multiplié par les étages identiques | lu dans un tableau | estimation", "confiance": "haute | moyenne | basse", "detail": "2 portes palières par palier × 4 étages = 8" }
+
+Règles du comptage :
+8. Compte sur les plans d'étage. Une porte se reconnaît à son arc d'ouverture (un quart de cercle) ; une porte palière est la porte d'un logement qui donne sur la cage d'escalier ; la porte d'entrée d'immeuble est la porte extérieure de la cage.
+9. Les fenêtres se comptent sur les élévations ET se recoupent avec les plans d'étage, sans compter deux fois la même : une fenêtre vue sur la façade sud et dans le plan du 1er étage est une seule fenêtre. "surface" : la somme de leurs surfaces en m², seulement si les cotes la donnent, sinon null ; jamais pour une autre catégorie.
+10. Un plan d'« étage type » vaut pour chaque étage qu'il représente (son titre le dit : « Étage type (2e au 5e) » vaut 4 étages) : multiplie par ce nombre d'étages, "methode": "compté et multiplié par les étages identiques", et écris la multiplication dans "detail". Ajoute les étages dessinés à part (rez, attique) sans les compter deux fois.
+11. "detail" donne toujours le calcul en une phrase courte, même sans multiplication (« 2 au rez + 2 par étage × 4 étages = 10 »).
+12. N'invente jamais. Une catégorie que les plans ne permettent pas de compter vaut { "nombre": null } avec dans "detail" ce qui manque (par exemple « salles de bain non dessinées ») ; zéro seulement si les plans montrent qu'il n'y en a aucune.
+13. Une estimation n'est permise que marquée comme telle : "methode": "estimation" et "confiance": "basse", avec le raisonnement dans "detail".
 
 Réponds UNIQUEMENT par un objet JSON valide, sans texte autour :
 {
@@ -155,6 +194,9 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour :
  },
  "facadesParOrientation": [ { "orientation": "Sud", "valeur": 180.5, "page": "F3 p. 1", "methode": "calcul depuis des cotes", "confiance": "moyenne", "remarque": "..." } ],
  "typologies": { "valeur": { "3.5": 4, "4.5": 2 }, "page": "F1 p. 2", "methode": "surface imprimée", "confiance": "haute", "remarque": "..." },
+ "elements": {
+  ${CATEGORIES_COMPTEES.map((c) => `"${c}": E`).join(", ")}
+ },
  "remarques": "ce qui manque au jeu de plans ou ce qu'il faut vérifier, en deux phrases au plus"
 }
 L'adresse et le nom du projet ne se remplissent que s'ils figurent sur les plans (cartouche, plan de situation) ; sinon null. "estUnJeuDePlans" = false si les fichiers ne montrent aucun plan de bâtiment. N'utilise jamais le tiret cadratin.`;
@@ -246,6 +288,7 @@ const lectureBrute = z.object({
   grandeurs: z.record(z.string(), z.unknown()).optional().catch({}),
   facadesParOrientation: z.array(z.unknown()).optional().catch([]),
   typologies: z.unknown().optional(),
+  elements: z.unknown().optional(),
   remarques: texte(800),
 });
 
@@ -398,6 +441,98 @@ function typologiesLues(brut: unknown, nbFichiers: number): GrandeurLue<Record<s
   return { valeur: r, page: repereDePage(g.page, nbFichiers), methode, confiance, remarque: joindre(note, noteMethode, remarque) };
 }
 
+function methodeDeComptage(v: unknown): MethodeComptage | null {
+  if (typeof v !== "string" || !v.trim()) return null;
+  const t = sansAccents(v);
+  return METHODES_COMPTAGE.find((m) => sansAccents(m) === t)
+    // Le modèle abrège parfois : « multiplié par les étages », « tableau ».
+    ?? (t.includes("multipli") ? "compté et multiplié par les étages identiques"
+      : t.includes("tableau") ? "lu dans un tableau"
+      : t.includes("estim") ? "estimation"
+      : t.includes("compt") ? "compté sur le plan"
+      : null);
+}
+
+const elementVide = (remarque: string | null = null, detail: string | null = null): ElementLu => ({
+  nombre: null, surface: null, pages: [], methode: null, confiance: null, detail, remarque,
+});
+
+/**
+ * Un élément compté, validé.
+ *
+ * Mêmes règles que les grandeurs : un nombre négatif, décimal ou hors des
+ * bornes ne passe pas pour un compte, il est remis à null avec ce qui a été
+ * lu ; sans méthode, c'est une estimation, et une estimation n'a jamais
+ * qu'une confiance basse.
+ */
+function elementLu(brut: unknown, categorie: CategorieComptee, nbFichiers: number): ElementLu {
+  const objet = typeof brut === "number" || typeof brut === "string" ? { nombre: brut } : brut;
+  if (!objet || typeof objet !== "object" || Array.isArray(objet)) return elementVide();
+  const e = objet as Record<string, unknown>;
+  const detailLu = texte(300).parse(e.detail ?? e.calcul);
+  const detail = detailLu ? sansTiretCadratin(detailLu) : null;
+  const remarque = texte(300).parse(e.remarque) ?? null;
+  const brutNombre = e.nombre ?? e.valeur;
+  if (brutNombre === null || brutNombre === undefined || String(brutNombre).trim() === "") {
+    return elementVide(remarque ? sansTiretCadratin(remarque) : null, detail);
+  }
+  const n = nombreLu(brutNombre);
+  const ecarte = (pourquoi: string) => elementVide(joindre(pourquoi, remarque), detail);
+  if (n === null) return ecarte(`Nombre illisible écarté (« ${String(brutNombre).slice(0, 40)} »).`);
+  if (n < 0) return ecarte(`Nombre négatif écarté (${fr(n)}).`);
+  if (!Number.isInteger(n)) return ecarte(`Nombre non entier écarté (${fr(n)}) : un élément se compte à l'unité.`);
+  if (n > NOMBRE_MAX) return ecarte(`Nombre écarté : ${n}, au-delà de ${NOMBRE_MAX} ${LIBELLES_CATEGORIES[categorie]}.`);
+
+  const pagesBrutes: unknown[] = Array.isArray(e.pages) ? e.pages : e.pages !== undefined ? [e.pages] : e.page !== undefined ? [e.page] : [];
+  const pages = [...new Set(pagesBrutes.slice(0, 40).map((p) => repereDePage(p, nbFichiers)).filter((p): p is string => !!p))].slice(0, 20);
+
+  let surface: number | null = null;
+  let noteSurface: string | null = null;
+  if (categorie === "fenetre" && e.surface !== null && e.surface !== undefined) {
+    const sf = nombreLu(e.surface);
+    if (sf !== null && sf > 0 && sf <= SURFACE_MAX) surface = arrondi(sf);
+    else noteSurface = `Surface des fenêtres écartée (« ${String(e.surface).slice(0, 20)} »).`;
+  }
+
+  const lue = methodeDeComptage(e.methode);
+  const methode: MethodeComptage = lue ?? "estimation";
+  const confiance: Confiance = methode === "estimation" ? "basse" : confianceLue(typeof e.confiance === "string" ? e.confiance : null) ?? "basse";
+  return {
+    nombre: n,
+    surface,
+    pages,
+    methode,
+    confiance,
+    detail,
+    remarque: joindre(noteSurface, lue ? null : "Méthode non indiquée : traitée comme une estimation.", remarque),
+  };
+}
+
+/**
+ * Les éléments comptés, une entrée par catégorie connue. Le modèle peut les
+ * rendre par clé (la forme demandée) ou en liste, chacun avec sa catégorie ;
+ * une catégorie inconnue est écartée, et dite dans les remarques. Une
+ * catégorie donnée deux fois garde sa première lecture.
+ */
+function elementsLus(brut: unknown, nbFichiers: number): { elements: Record<CategorieComptee, ElementLu>; inconnues: string[] } {
+  const sources = new Map<CategorieComptee, unknown>();
+  const inconnues: string[] = [];
+  const ranger = (cle: unknown, v: unknown) => {
+    const c = typeof cle === "string" ? sansAccents(cle).replace(/[\s'-]+/g, "_") : "";
+    if (estUneCategorie(c)) { if (!sources.has(c)) sources.set(c, v); }
+    else if (typeof cle === "string" && cle.trim()) inconnues.push(cle.trim().slice(0, 30));
+  };
+  if (Array.isArray(brut)) {
+    for (const e of brut.slice(0, 50)) if (e && typeof e === "object") ranger((e as { categorie?: unknown }).categorie, e);
+  } else if (brut && typeof brut === "object") {
+    for (const [cle, v] of Object.entries(brut as Record<string, unknown>).slice(0, 50)) ranger(cle, v);
+  }
+  const elements = Object.fromEntries(
+    CATEGORIES_COMPTEES.map((c) => [c, sources.has(c) ? elementLu(sources.get(c), c, nbFichiers) : elementVide()]),
+  ) as Record<CategorieComptee, ElementLu>;
+  return { elements, inconnues };
+}
+
 /** Passe une grandeur en confiance basse, avec la raison. */
 function douter(g: GrandeurLue<unknown>, pourquoi: string) {
   g.confiance = "basse";
@@ -448,6 +583,51 @@ function verifierLaCoherence(gr: Record<CleGrandeur, GrandeurLue<number>>, typol
   }
 }
 
+/** Plafonds vraisemblables par logement : au-delà, le compte a sans doute pris un étage pour plusieurs. */
+const PAR_LOGEMENT: Partial<Record<CategorieComptee, number>> = {
+  porte_paliere: 3,
+  cuisine: 2,
+  balcon: 4,
+  appareil_sanitaire: 12,
+};
+
+/**
+ * Les comptes qui contredisent les grandeurs.
+ *
+ * Plus de trois portes palières par logement, plus de quatre portes d'entrée
+ * par cage, plus de fenêtres en surface que la façade n'en porte : on ne
+ * sait pas lequel des deux chiffres est faux, le compte passe en confiance
+ * basse et la remarque dit pourquoi.
+ */
+function verifierLesComptes(elements: Record<CategorieComptee, ElementLu>, gr: Record<CleGrandeur, GrandeurLue<number>>) {
+  const douterDuCompte = (e: ElementLu, pourquoi: string) => {
+    e.confiance = "basse";
+    e.remarque = joindre(e.remarque, pourquoi);
+  };
+  const L = gr.logements.valeur;
+  if (L !== null && L > 0) {
+    for (const [cle, plafond] of Object.entries(PAR_LOGEMENT) as [CategorieComptee, number][]) {
+      const e = elements[cle];
+      if (e.nombre !== null && e.nombre > L * plafond) {
+        douterDuCompte(e, `${e.nombre} ${LIBELLES_CATEGORIES[cle]} pour ${L} logement${L > 1 ? "s" : ""} : plus de ${plafond} par logement, vérifiez qu'un étage n'a pas été compté deux fois.`);
+      }
+    }
+  }
+  const C = gr.cagesEscalier.valeur;
+  const entrees = elements.porte_entree;
+  if (C !== null && C > 0 && entrees.nombre !== null && entrees.nombre > C * 4) {
+    douterDuCompte(entrees, `${entrees.nombre} portes d'entrée pour ${C} cage${C > 1 ? "s" : ""} d'escalier : plus de quatre par cage.`);
+  }
+  const f = elements.fenetre;
+  const F = gr.surfaceFacade.valeur;
+  if (f.surface !== null && F !== null && f.surface > F) {
+    douterDuCompte(f, `${fr(f.surface)} m² de fenêtres pour ${fr(F)} m² de façade : l'une des deux valeurs est fausse.`);
+  }
+  if (f.nombre !== null && f.nombre > 0 && f.surface !== null && f.surface / f.nombre > 25) {
+    douterDuCompte(f, `${fr(f.surface / f.nombre)} m² par fenêtre en moyenne : la surface ou le nombre est faux.`);
+  }
+}
+
 /**
  * La lecture brute du modèle, validée. null si elle n'a pas la forme d'une
  * lecture (pas un objet, JSON hors sujet).
@@ -464,6 +644,8 @@ export function validerLecturePlans(brut: unknown, nbFichiers: number): LectureP
   ) as Record<CleGrandeur, GrandeurLue<number>>;
   const typologies = typologiesLues(d.typologies, nbFichiers);
   verifierLaCoherence(grandeurs, typologies);
+  const { elements, inconnues } = elementsLus(d.elements, nbFichiers);
+  verifierLesComptes(elements, grandeurs);
 
   const facadesParOrientation = (d.facadesParOrientation ?? []).slice(0, 12).flatMap((f) => {
     const orientation = f && typeof f === "object" && typeof (f as { orientation?: unknown }).orientation === "string"
@@ -498,6 +680,10 @@ export function validerLecturePlans(brut: unknown, nbFichiers: number): LectureP
     typeToit: typeToitLu(sources.typeToit, nbFichiers),
     typologies,
     facadesParOrientation,
-    remarques: d.remarques ? sansTiretCadratin(d.remarques) : null,
+    elements,
+    remarques: joindre(
+      d.remarques ?? null,
+      inconnues.length ? `Comptes écartés, catégorie inconnue : ${inconnues.slice(0, 5).map((c) => `« ${c} »`).join(", ")}.` : null,
+    ),
   };
 }

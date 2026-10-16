@@ -437,6 +437,235 @@ export function pdfJeuDePlans(): Uint8Array {
   return assemblerPdf([dessinerFacade(), dessinerRez()])
 }
 
+// ---------------------------------------------------------------- étage type
+
+/**
+ * Le plan d'étage type d'un petit immeuble : une cage d'escalier au milieu,
+ * un logement de part et d'autre du palier, et un titre qui dit que la
+ * feuille vaut pour trois étages.
+ *
+ * C'est le plan sur lequel l'IA doit compter : les portes y sont dessinées à
+ * la manière d'un architecte, une ouverture dans le mur, le vantail et son
+ * arc d'ouverture en quart de cercle ; les fenêtres, une interruption du mur
+ * de façade avec son cadre et son vitrage. Les pièges sont ceux d'un vrai
+ * plan : une porte palière ressemble à une porte de chambre, seul son mur
+ * (celui de la cage) la distingue, et la feuille ne montre qu'un étage alors
+ * que le bâtiment en compte trois pareils.
+ *
+ * Les logements sont en miroir l'un de l'autre, autour de l'axe x = 10 m.
+ */
+const ETAGE = { largeur: 20, profondeur: 11, mur: 0.3, cloison: 0.12, murCage: 0.25 }
+/** La cage d'escalier, entre ses deux murs : x de 8,50 à 11,50 m. */
+const CAGE = { gauche: 8.5, droite: 11.5 }
+/** Portes palières, dans les murs de la cage : y de 1,60 à 2,50 m. */
+const PALIERE = { y1: 1.6, y2: 2.5 }
+/** Portes intérieures du logement de gauche, dans la cloison y = 6,00 m : chambre, bain, chambre. */
+const PORTES_CLOISON: [number, number][] = [[2.0, 2.8], [4.2, 4.9], [6.5, 7.3]]
+/** Fenêtres du logement de gauche : sur la façade sud (y = 0), nord (y = 11) et ouest (x = 0). */
+const FENETRES_SUD: [number, number][] = [[1.5, 3.0], [5.0, 6.5]]
+const FENETRES_NORD: [number, number][] = [[1.2, 2.4], [4.1, 4.9], [6.4, 7.6]]
+const FENETRE_OUEST: [number, number] = [2.0, 3.4]
+
+/** Le symétrique d'une abscisse du logement de gauche, dans celui de droite. */
+const miroir = (x: number) => ETAGE.largeur - x
+
+export const PLAN_ETAGE_TYPE: PlanDeTest = {
+  nom: 'Étage type (1er au 3e)',
+  echelle: 100,
+  largeurPt: A3_PAYSAGE.largeur,
+  hauteurPt: A3_PAYSAGE.hauteur,
+  origineMm: { x: 70, y: 105 },
+  attendu: {
+    etagesRepresentes: 3,
+    logementsParEtage: 2,
+    portesPalieresParEtage: 2,
+    portesPalieres: 6,
+    portesInterieuresParEtage: 2 * PORTES_CLOISON.length,
+    portesInterieures: 3 * 2 * PORTES_CLOISON.length, // 18
+    fenetresParEtage: 2 * (FENETRES_SUD.length + FENETRES_NORD.length + 1),
+    fenetres: 3 * 2 * (FENETRES_SUD.length + FENETRES_NORD.length + 1), // 36
+    cuisines: 3 * 2, // 6
+    // Baignoire, lavabo et WC dans chaque salle de bain.
+    appareilsSanitaires: 3 * 2 * 3, // 18
+  },
+}
+
+/** Les portes de l'étage type, en mètres : le milieu de l'ouverture, là où un repère doit tomber. */
+export const PORTES_ETAGE_TYPE: { categorie: 'porte_paliere' | 'porte_interieure'; x: number; y: number }[] = [
+  { categorie: 'porte_paliere', x: CAGE.gauche + ETAGE.murCage / 2, y: (PALIERE.y1 + PALIERE.y2) / 2 },
+  { categorie: 'porte_paliere', x: CAGE.droite - ETAGE.murCage / 2, y: (PALIERE.y1 + PALIERE.y2) / 2 },
+  ...PORTES_CLOISON.flatMap(([a, b]) => [
+    { categorie: 'porte_interieure' as const, x: (a + b) / 2, y: 6 + ETAGE.cloison / 2 },
+    { categorie: 'porte_interieure' as const, x: miroir((a + b) / 2), y: 6 + ETAGE.cloison / 2 },
+  ]),
+]
+
+/**
+ * Un quart de cercle en courbe de Bézier, du point d'angle a0 au point
+ * d'angle a1 (en degrés), autour du centre (cx, cy).
+ */
+function quartDeCercle(c: Crayon, cx: number, cy: number, r: number, a0: number, a1: number) {
+  const rad = (a: number) => (a * Math.PI) / 180
+  const sens = Math.sign(a1 - a0)
+  const k = 0.5523 * r
+  const p0 = [cx + r * Math.cos(rad(a0)), cy + r * Math.sin(rad(a0))]
+  const p3 = [cx + r * Math.cos(rad(a1)), cy + r * Math.sin(rad(a1))]
+  const p1 = [p0[0] - sens * k * Math.sin(rad(a0)), p0[1] + sens * k * Math.cos(rad(a0))]
+  const p2 = [p3[0] + sens * k * Math.sin(rad(a1)), p3[1] - sens * k * Math.cos(rad(a1))]
+  c.ecrire(`${n(p0[0])} ${n(p0[1])} m ${n(p1[0])} ${n(p1[1])} ${n(p2[0])} ${n(p2[1])} ${n(p3[0])} ${n(p3[1])} c S`)
+}
+
+/**
+ * Une porte : le vantail ouvert à angle droit depuis sa charnière, et l'arc
+ * que décrit son bord. `angleMur` est la direction du mur vers l'autre
+ * montant, `angleVantail` celle du vantail ouvert, en degrés.
+ */
+function porte(c: Crayon, hx: number, hy: number, largeur: number, angleMur: number, angleVantail: number) {
+  const rad = (a: number) => (a * Math.PI) / 180
+  c.trait(hx, hy, hx + largeur * Math.cos(rad(angleVantail)), hy + largeur * Math.sin(rad(angleVantail)))
+  quartDeCercle(c, hx, hy, largeur, angleVantail, angleMur)
+}
+
+/** Une fenêtre en plan dans un mur horizontal : les deux montants, le vitrage au milieu, le nu intérieur. */
+function fenetreH(c: Crayon, a: number, b: number, y0: number, ep: number) {
+  c.trait(a, y0, a, y0 + ep)
+  c.trait(b, y0, b, y0 + ep)
+  c.trait(a, y0 + ep / 2, b, y0 + ep / 2)
+  c.trait(a, y0 + ep * 0.62, b, y0 + ep * 0.62)
+}
+function fenetreV(c: Crayon, a: number, b: number, x0: number, ep: number) {
+  c.trait(x0, a, x0 + ep, a)
+  c.trait(x0, b, x0 + ep, b)
+  c.trait(x0 + ep / 2, a, x0 + ep / 2, b)
+  c.trait(x0 + ep * 0.62, a, x0 + ep * 0.62, b)
+}
+
+/** Les morceaux pleins d'un segment [debut, fin] interrompu par des ouvertures. */
+function pleins(debut: number, fin: number, ouvertures: [number, number][]): [number, number][] {
+  const tri = [...ouvertures].sort((u, v) => u[0] - v[0])
+  const r: [number, number][] = []
+  let x = debut
+  for (const [a, b] of tri) { if (a > x) r.push([x, a]); x = Math.max(x, b) }
+  if (fin > x) r.push([x, fin])
+  return r
+}
+
+function dessinerEtageType(): PageDessinee {
+  const plan = PLAN_ETAGE_TYPE
+  const { largeur: L, profondeur: P, mur: M, cloison: K, murCage: MC } = ETAGE
+  const c = new Crayon()
+  c.ecrire('q', `${n(PT_PAR_MM)} 0 0 ${n(PT_PAR_MM)} 0 0 cm`, '1 J 1 j')
+  c.texte(plan.origineMm.x, 275, 'ÉTAGE TYPE (1ER AU 3E)', 7)
+  c.texte(plan.origineMm.x, 268, 'Plan des 1er, 2e et 3e étages, identiques. État existant.', 3.5)
+
+  const mm = 1000 / plan.echelle
+  c.ecrire('q', `${n(mm)} 0 0 ${n(mm)} ${n(plan.origineMm.x)} ${n(plan.origineMm.y)} cm`)
+  const m = (mmFeuille: number) => mmFeuille / mm
+
+  // Les ouvertures de chaque façade, logement de droite compris (en miroir).
+  const sud = [...FENETRES_SUD, ...FENETRES_SUD.map(([a, b]) => [miroir(b), miroir(a)] as [number, number])]
+  const nord = [...FENETRES_NORD, ...FENETRES_NORD.map(([a, b]) => [miroir(b), miroir(a)] as [number, number])]
+  const cloison = [...PORTES_CLOISON, ...PORTES_CLOISON.map(([a, b]) => [miroir(b), miroir(a)] as [number, number])]
+
+  // Murs en aplat gris : façades, murs de la cage, cloisons, interrompus aux ouvertures.
+  const pave = (x: number, y: number, l: number, h: number) => c.ecrire(`${n(x)} ${n(y)} ${n(l)} ${n(h)} re f`)
+  c.ecrire('0.55 g')
+  for (const [a, b] of pleins(0, L, sud)) pave(a, 0, b - a, M)
+  for (const [a, b] of pleins(0, L, nord)) pave(a, P - M, b - a, M)
+  for (const [a, b] of pleins(M, P - M, [FENETRE_OUEST])) { pave(0, a, M, b - a); pave(L - M, a, M, b - a) }
+  for (const [a, b] of pleins(M, P - M, [[PALIERE.y1, PALIERE.y2]])) {
+    pave(CAGE.gauche, a, MC, b - a)
+    pave(CAGE.droite - MC, a, MC, b - a)
+  }
+  c.ecrire('0.75 g')
+  for (const [a, b] of pleins(M, CAGE.gauche, cloison.filter(([x]) => x < 10))) pave(a, 6, b - a, K)
+  for (const [a, b] of pleins(CAGE.droite, L - M, cloison.filter(([x]) => x > 10))) pave(a, 6, b - a, K)
+  for (const x of [3.5, 5.5]) { pave(x, 6 + K, K, P - M - 6 - K); pave(miroir(x) - K, 6 + K, K, P - M - 6 - K) }
+  c.ecrire('0 g')
+
+  // Contour extérieur, d'un trait fort.
+  c.epaisseur(m(0.5))
+  c.rect(0, 0, L, P)
+
+  // Fenêtres en plan.
+  c.epaisseur(m(0.18))
+  for (const [a, b] of sud) fenetreH(c, a, b, 0, M)
+  for (const [a, b] of nord) fenetreH(c, a, b, P - M, M)
+  fenetreV(c, FENETRE_OUEST[0], FENETRE_OUEST[1], 0, M)
+  fenetreV(c, FENETRE_OUEST[0], FENETRE_OUEST[1], L - M, M)
+
+  // Portes : vantail et arc d'ouverture. Les portes palières s'ouvrent vers
+  // le logement, les portes des pièces vers la pièce.
+  c.epaisseur(m(0.13))
+  const lp = PALIERE.y2 - PALIERE.y1
+  porte(c, CAGE.gauche, PALIERE.y1, lp, 90, 180)
+  porte(c, CAGE.droite, PALIERE.y1, lp, 90, 0)
+  for (const [a, b] of PORTES_CLOISON) {
+    porte(c, a, 6 + K, b - a, 0, 90)
+    porte(c, miroir(a), 6 + K, b - a, 180, 90)
+  }
+
+  // Escalier : deux volées et leurs marches, dans la moitié nord de la cage.
+  c.epaisseur(m(0.13))
+  const xg = CAGE.gauche + MC, xd = CAGE.droite - MC, xm = (xg + xd) / 2
+  c.trait(xm, 4.2, xm, P - M - 0.3)
+  for (let y = 4.2; y <= P - M - 0.3 + 1e-9; y += 0.28) c.trait(xg, y, xd, y)
+  c.trait(xg + 0.3, 4.6, xg + 0.3, 9.6)
+  c.trait(xg + 0.3, 9.6, xg + 0.15, 9.35)
+  c.trait(xg + 0.3, 9.6, xg + 0.45, 9.35)
+
+  // Cuisines : un plan de travail contre le mur de la cage, avec son évier.
+  for (const sens of [1, -1]) {
+    const x = sens === 1 ? CAGE.gauche - 0.6 : CAGE.droite
+    c.rect(x, 3.0, 0.6, 2.6)
+    c.rect(x + 0.1, 4.0, 0.4, 0.5)
+  }
+
+  // Salles de bain : baignoire, lavabo, WC, entre les cloisons x = 3,50 et 5,50.
+  for (const sens of [1, -1]) {
+    const x = (v: number) => (sens === 1 ? v : miroir(v))
+    const r = (x0: number, y0: number, l: number, h: number) => c.rect(Math.min(x(x0), x(x0 + l)), y0, l, h)
+    r(3.7, 9.85, 1.7, 0.75)
+    r(3.85, 9.95, 1.4, 0.55)
+    r(5.0, 7.2, 0.45, 0.6)
+    r(5.08, 7.35, 0.28, 0.3)
+    r(3.7, 7.4, 0.4, 0.2)
+    r(3.75, 7.6, 0.3, 0.55)
+  }
+
+  // Cotes extérieures.
+  const textes: { x: number; y: number; texte: string; vertical?: boolean }[] = []
+  c.epaisseur(m(0.13))
+  textes.push(coteH(c, mm, 0, L, -1.2, 0, '20.00'))
+  textes.push(coteH(c, mm, 0, CAGE.gauche, -0.6, 0, '8.50'))
+  textes.push(coteH(c, mm, CAGE.gauche, CAGE.droite, -0.6, 0, '3.00'))
+  textes.push(coteH(c, mm, CAGE.droite, L, -0.6, 0, '8.50'))
+  textes.push({ ...coteV(c, mm, 0, P, -1.2, 0, '11.00'), vertical: true })
+  c.ecrire('Q')
+
+  textesDeCotes(c, plan, textes)
+  const piece = (x: number, y: number, t: string, taille = 3.2) =>
+    c.texte(plan.origineMm.x + x * mm, plan.origineMm.y + y * mm, t, taille)
+  for (const [nom, x0] of [['Logement A', 0], ['Logement B', 11.5]] as const) {
+    piece(x0 + 2.2, 4.4, nom, 3.6)
+    piece(x0 + 2.4, 3.3, 'Séjour')
+    piece(x0 + (x0 === 0 ? 6.4 : 0.9), 5.0, 'Cuisine', 2.6)
+    piece(x0 + (x0 === 0 ? 0.7 : 5.3), 8.5, 'Chambre')
+    piece(x0 + (x0 === 0 ? 3.75 : 3.3), 8.7, 'Bain', 2.6)
+    piece(x0 + (x0 === 0 ? 6.0 : 0.6), 8.5, 'Chambre')
+  }
+  piece(8.85, 2.9, 'Palier', 2.8)
+  piece(8.75, 4.0, "Cage d'escalier", 2.4)
+  cartouche(c, 'Étage type (1er au 3e)', '1:100')
+  c.ecrire('Q')
+  return { largeur: plan.largeurPt, hauteur: plan.hauteurPt, contenu: c.ops.join('\n') }
+}
+
+/** Le plan d'étage type seul, sur une feuille A3 au 1:100. */
+export function pdfEtageType(): Uint8Array {
+  return assemblerPdf([dessinerEtageType()])
+}
+
 /**
  * La géométrie d'une page de test, lue par pdf.js comme le fait l'éditeur :
  * la liste d'opérateurs réelle, la vue au canevas de 1600 px. Chargé à la

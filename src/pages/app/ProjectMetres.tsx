@@ -8,6 +8,7 @@ import { stateLabels, stateColors, priorityColors } from '@/data/mock'
 import { formatCHF, cn } from '@/lib/utils'
 import { priceBasisNote } from '@/lib/diagnostic-auto'
 import { api } from '@/lib/api'
+import { ElementsComptes } from '@/components/comptages/ElementsComptes'
 
 const TVA = 0.081 // TVA Suisse 8.1%
 const toNum = (v: string | null | undefined) => (v ? Number(v) : 0)
@@ -50,13 +51,20 @@ export function ProjectMetres() {
     )
   }
 
+  // Les éléments comptés se règlent au bureau aussi bien que pendant la
+  // visite : ils ouvrent la page, avant les montants qui en découlent.
+  const elementsComptes = <ElementsComptes project={project} diagnosticId={diagnostic?.id ?? null} items={items} />
+
   if (!diagnostic) {
     return (
-      <Card><CardContent className="py-16 text-center">
-        <h3 className="text-lg font-semibold mb-1">Aucun diagnostic</h3>
-        <p className="text-sm text-muted-foreground mb-4">Les coûts proviennent du diagnostic. Démarrez-le d'abord.</p>
-        <Link to={`/app/projects/${id}/diagnostic`}><Button>Aller au diagnostic</Button></Link>
-      </CardContent></Card>
+      <div className="space-y-4 md:space-y-6">
+        {elementsComptes}
+        <Card><CardContent className="py-16 text-center">
+          <h3 className="text-lg font-semibold mb-1">Aucun diagnostic</h3>
+          <p className="text-sm text-muted-foreground mb-4">Les coûts proviennent du diagnostic. Démarrez-le d'abord.</p>
+          <Link to={`/app/projects/${id}/diagnostic`}><Button>Aller au diagnostic</Button></Link>
+        </CardContent></Card>
+      </div>
     )
   }
 
@@ -106,6 +114,8 @@ export function ProjectMetres() {
         </div>
         <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
       </div>
+
+      {elementsComptes}
 
       {items.length === 0 ? (
         <Card><CardContent className="py-16 text-center">

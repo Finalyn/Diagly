@@ -1,3 +1,4 @@
+import type { CategorieComptee, Comptage } from './base-cfc/comptages'
 import type { MarqueDuDossier } from './marque'
 import type { BaseQuantite, EtatArticle, Unite } from './base-cfc/normaliser'
 
@@ -160,6 +161,12 @@ export interface ApiProject {
   reportBranding?: MarqueDuDossier | null
   /** Photo de la page de garde des rapports (lib/photo-de-garde.ts). */
   photoDeGarde?: string | null
+  /**
+   * Les éléments comptés : portes, fenêtres, balcons… par catégorie
+   * (base-cfc/comptages.ts). Lus sur les plans, comptés dans l'outil Plan ou
+   * saisis au dossier, ils l'emportent sur les règles de quantité de la base.
+   */
+  comptages?: Partial<Record<CategorieComptee, Comptage>> | null
   createdAt: string
   updatedAt: string
 }
@@ -276,6 +283,14 @@ export interface ApiDiagnosticItem {
    * sans groupe, ou part pas encore répartie.
    */
   sharePct?: number | null
+  /**
+   * Nombre d'éléments de sa catégorie comptée qui reviennent à ce type :
+   * « 2 » portes palières en bois sur les 6 comptées. Il remplace la part de
+   * surface quand le dossier a un comptage pour la catégorie
+   * (base-cfc/comptages.ts). null = seul de sa catégorie (il prend tout), ou
+   * pas encore précisé.
+   */
+  unites?: number | null
   /** true = coût forcé à la main : il ne suit plus le catalogue. */
   costManual?: boolean
   /** Coefficient marché appliqué au coût de cette ligne, pour pouvoir la réindexer. */
@@ -352,7 +367,7 @@ export interface PlanPoint { x: number; y: number }
  * titre qu'elles, et qu'un document stocké en un seul bloc JSON se relit d'une
  * pièce. Les composants qui dessinent doivent donc les ignorer explicitement.
  */
-export type PlanAnnotationType = 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference' | 'pages'
+export type PlanAnnotationType = 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference' | 'pages' | 'repere'
 export interface PlanAnnotation {
   id: string
   type: PlanAnnotationType
@@ -396,6 +411,20 @@ export interface PlanAnnotation {
    * absentes de cette table.
    */
   pageScales?: Record<string, number>
+
+  // ---- Repère d'un élément compté (type `repere`) ----
+  /**
+   * Une porte, une fenêtre, un balcon pointé sur le plan par l'analyse : un
+   * point et sa catégorie, numéroté dans sa catégorie. Un repère ne mesure
+   * rien et ne compte dans aucun métré (plan-quantites.ts, natureDuTrace) :
+   * il montre où l'IA a vu ce qu'elle a compté, pour qu'on le vérifie.
+   */
+  repere?: {
+    categorie: CategorieComptee
+    numero: number
+    /** Posé par l'IA et pas encore regardé : en pointillé, et pas exporté avec le plan. */
+    aValider?: boolean
+  }
 
   // ---- Zone proposée par l'analyse du plan ----
   /**
@@ -465,9 +494,31 @@ export interface ZoneEcartee {
   raison: string
 }
 
+/** Un élément compté sur une page : une porte, une fenêtre, un repère au centre. */
+export interface ElementRepere {
+  page: number
+  categorie: CategorieComptee
+  point: PointImage
+  libelle: string | null
+}
+
+/** Le total d'une catégorie sur les pages analysées, étages identiques compris. */
+export interface ComptageAnalyse {
+  categorie: CategorieComptee
+  nombre: number
+  surface: number | null
+  /** « 2 par palier × 3 étages (plan d'étage type) = 6 » */
+  detail: string | null
+  pages: number[]
+  confiance: ConfianceZone
+}
+
 export interface AnalysePlan {
   pages: PageAnalysee[]
   zones: ZoneAnalysee[]
+  /** Absents d'une analyse d'avant les comptages. */
+  elements?: ElementRepere[]
+  comptages?: ComptageAnalyse[]
   ecartees: ZoneEcartee[]
   remarques: string | null
 }
@@ -631,6 +682,20 @@ export type CleGrandeurPlans =
   | 'surfacePlancher' | 'surfaceFacade' | 'surfaceFenetres' | 'tauxVitrage'
   | 'logements' | 'cagesEscalier' | 'surfaceToiture'
 export interface PageDePlan { page: string; type: string | null; titre: string | null; echelle: string | null }
+/** Comment un nombre d'éléments a été obtenu sur les plans. */
+export type MethodeDeComptage = 'compté sur le plan' | 'compté et multiplié par les étages identiques' | 'lu dans un tableau' | 'estimation'
+/** Un nombre d'éléments lu sur les plans : portes, fenêtres, balcons… */
+export interface ElementCompteLu {
+  nombre: number | null
+  /** Surface totale en m², pour les fenêtres seulement. */
+  surface: number | null
+  pages: string[]
+  methode: MethodeDeComptage | null
+  confiance: ConfianceDeLecture | null
+  /** Le calcul : « 2 portes palières par palier × 3 étages = 6 ». */
+  detail: string | null
+  remarque: string | null
+}
 export interface LecturePlans {
   estUnJeuDePlans: boolean
   projet: { nom: string | null; adresse: string | null; npa: string | null; localite: string | null; canton: string | null }
@@ -639,6 +704,8 @@ export interface LecturePlans {
   typeToit: GrandeurLue<RoofType>
   typologies: GrandeurLue<Record<string, number>>
   facadesParOrientation: (GrandeurLue & { orientation: string })[]
+  /** Les éléments comptés, par catégorie ; absent d'une lecture d'avant les comptages. */
+  elements?: Partial<Record<CategorieComptee, ElementCompteLu>>
   remarques: string | null
 }
 

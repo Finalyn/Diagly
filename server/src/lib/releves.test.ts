@@ -47,3 +47,19 @@ describe('le renvoi d’une création déjà reçue', () => {
     expect(m.works).toEqual([])
   })
 })
+
+describe('les unités d’un type compté', () => {
+  it('passent à la création, à la modification et au renvoi', () => {
+    expect(createItemSchema.parse({ ...base, unites: 2 }).unites).toBe(2)
+    expect(updateItemSchema.parse({ unites: null }).unites).toBeNull()
+    expect(modificationDuRenvoi(createItemSchema.parse({ ...base, id: ID, unites: 4 })).unites).toBe(4)
+  })
+
+  it('refusent un nombre négatif, décimal ou absurde', () => {
+    for (const unites of [-1, 1.5, 6000]) expect(updateItemSchema.safeParse({ unites }).success).toBe(false)
+  })
+
+  it('restent absentes d’un renvoi qui ne les porte pas', () => {
+    expect(modificationDuRenvoi(createItemSchema.parse({ ...base, id: ID }))).not.toHaveProperty('unites')
+  })
+})

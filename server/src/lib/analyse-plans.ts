@@ -24,6 +24,9 @@
 import { z } from "zod";
 import { sansTiretCadratin } from "./sans-tiret.js";
 import { echelleLue } from "./lecture-plans.js";
+import {
+  CATEGORIES_COMPTEES, DEFINITIONS_POUR_LIA, NOMBRE_MAX, SURFACE_MAX, estUneCategorie, type CategorieComptee,
+} from "./comptages.js";
 
 // ---------------------------------------------------------------- vocabulaire
 
@@ -87,9 +90,29 @@ export interface ZoneEcartee {
   raison: string;
 }
 
+/** Un élément compté sur une page : un repère au centre de la porte, de la fenêtre… */
+export interface ElementRepere {
+  page: number;
+  categorie: CategorieComptee;
+  point: Point;
+  libelle: string | null;
+}
+
+/** Le total d'une catégorie sur les pages analysées, étages identiques compris. */
+export interface ComptageAnalyse {
+  categorie: CategorieComptee;
+  nombre: number;
+  surface: number | null;
+  detail: string | null;
+  pages: number[];
+  confiance: Confiance;
+}
+
 export interface AnalysePlan {
   pages: PageAnalysee[];
   zones: ZoneAnalysee[];
+  elements: ElementRepere[];
+  comptages: ComptageAnalyse[];
   ecartees: ZoneEcartee[];
   remarques: string | null;
 }
@@ -181,6 +204,12 @@ CHAQUE ZONE
 - "valeurCotee" : la surface en m² ou la longueur en m que donnent les cotes imprimées, si elles suffisent à la calculer (1.20 × 1.40 = 1.68), sinon null ; "cotes" : les cotes employées (« 1.20 × 1.40 »), sinon null ;
 - "remarque" : ce qui est douteux, en une phrase, ou null.
 
+CE QU'IL FAUT COMPTER
+Pointe aussi, sur chaque page, les éléments du bâtiment : un repère par élément, posé au centre de l'élément, dans "elements" de la page. Les catégories :
+${CATEGORIES_COMPTEES.map((c) => `- ${DEFINITIONS_POUR_LIA[c]} ;`).join("\n")}
+Sur un plan d'étage, une porte se reconnaît à son arc d'ouverture (un quart de cercle) : le repère se pose au milieu de l'ouverture, entre ses deux montants. Une porte palière est la porte d'un logement qui donne sur la cage d'escalier ; la porte d'entrée d'immeuble est la porte extérieure de la cage. Une fenêtre en plan : au milieu de l'ouverture dans le mur ; en élévation : au centre de son cadre.
+Puis, au niveau de la réponse, "comptages" : une entrée par catégorie présente sur les pages, avec le nombre d'éléments du BÂTIMENT. Un plan d'« étage type » vaut pour chaque étage qu'il représente (son titre le dit : « Étage type (2e au 5e) » vaut 4 étages) : multiplie, et écris la multiplication dans "detail" (« 2 par palier × 4 étages (étage type, 2e au 5e) = 8 »). Une fenêtre vue sur une élévation et sur un plan d'étage ne se compte qu'une fois. "surface" (fenêtres seulement) : la somme de leurs surfaces en m², si les cotes la donnent, sinon null. "pages" : les numéros des pages où l'on a compté. Une catégorie que les pages ne montrent pas ne figure pas dans "comptages" : n'invente rien.
+
 CE QU'IL FAUT DESSINER
 - Sur une élévation : la façade entière, zone "facade" : le contour extérieur brut du mur, du terrain fini (ou du haut du socle s'il est distinct) jusqu'au haut de l'acrotère ou à l'égout du toit, sans découper les ouvertures. Puis CHAQUE fenêtre et CHAQUE porte comme zone à part, au contour extérieur du cadre (le vide de maçonnerie), pour que la façade moins ses ouvertures se calcule. La toiture visible en élévation seulement si elle fait partie de la façade dessinée.
 - Sur un plan d'étage : l'emprise (contour extérieur des murs de façade, au nu extérieur) ; la dalle (surface intérieure brute, au nu intérieur des murs de façade) si elle se lit clairement.
@@ -192,7 +221,7 @@ RÈGLES
 2. Préférer les cotes imprimées : quand elles existent, place les points en accord avec elles et remplis "valeurCotee".
 3. Rien hors du dessin : le cartouche, la légende, les cotes, les textes et le cadre de la feuille ne sont pas des zones.
 4. Confiance basse dès que le contour est douteux (trait peu lisible, photo de travers, élément caché ou coupé), haute seulement quand le contour est net et que les cotes le confirment.
-5. Au plus 150 zones en tout.
+5. Au plus 150 zones en tout, et au plus 400 repères.
 6. N'utilise jamais le tiret cadratin.
 
 OUVRAGES DU RELEVÉ (id | CFC | libellé | unité)
@@ -208,8 +237,14 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour :
    "zones": [
     { "type": "facade", "libelle": "Façade sud", "orientation": "sud", "mesure": "surface", "points": [[412, 1110], [1102, 1110], [1102, 676], [412, 676]], "releveId": null, "confiance": "haute", "valeurCotee": 96.72, "cotes": "12.40 × 7.80", "remarque": null }
    ],
+   "elements": [
+    { "categorie": "fenetre", "point": [${Math.round(exemple.largeurImage * 0.3)}, ${Math.round(exemple.hauteurImage * 0.5)}], "libelle": "Fenêtre 1er étage, à gauche" }
+   ],
    "remarque": null
   }
+ ],
+ "comptages": [
+  { "categorie": "fenetre", "nombre": 14, "surface": 23.52, "detail": "4 au rez + 5 par étage × 2 étages = 14", "pages": [${exemple.numero}], "confiance": "haute" }
  ],
  "remarques": "ce qu'il faut vérifier, en deux phrases au plus, ou null"
 }`;
@@ -244,12 +279,15 @@ const pageBrute = z.object({
   echelleOu: texte(60),
   cote: z.unknown().optional(),
   zones: z.array(z.unknown()).optional().catch([]),
+  elements: z.array(z.unknown()).optional().catch([]),
   remarque: texte(300),
 }).passthrough();
 
 const analyseBrute = z.object({
   pages: z.array(z.unknown()).optional().catch([]),
   zones: z.array(z.unknown()).optional().catch([]),
+  elements: z.array(z.unknown()).optional().catch([]),
+  comptages: z.unknown().optional(),
   remarques: texte(600),
 }).passthrough();
 
@@ -259,6 +297,10 @@ const sansAccents = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").to
 export const MAX_ZONES = 200;
 /** Un contour de plus de sommets n'est pas une zone de métré. */
 const MAX_SOMMETS = 200;
+/** Au-delà, les repères ne se lisent plus sur la page : le reste est écarté. */
+export const MAX_REPERES = 400;
+/** Deux repères de la même catégorie à moins de ce nombre de pixels désignent le même élément. */
+const DOUBLON_PX = 8;
 
 function typeDePage(v: unknown): TypePage {
   if (typeof v !== "string") return "autre";
@@ -270,6 +312,13 @@ function typeDePage(v: unknown): TypePage {
   if (t.includes("toit")) return "toiture";
   if (t.includes("situation")) return "situation";
   return "autre";
+}
+
+/** Une catégorie comptée écrite par le modèle, ramenée à sa clé ; null si elle n'en est pas une. */
+function categorieLue(v: unknown): CategorieComptee | null {
+  if (typeof v !== "string") return null;
+  const t = sansAccents(v).replace(/[\s'-]+/g, "_");
+  return estUneCategorie(t) ? t : null;
 }
 
 function confianceLue(v: unknown): Confiance {
@@ -377,6 +426,10 @@ export function validerAnalyse(brut: unknown, pages: PageEnvoyee[], releveIds: s
   const aPlat: { brut: unknown; page: unknown }[] = (lu.data.zones ?? []).map((z) => ({
     brut: z, page: z && typeof z === "object" ? (z as { page?: unknown }).page : undefined,
   }));
+  // Même tolérance pour les repères : dans leur page, ou à plat avec leur numéro.
+  const reperesAPlat: { brut: unknown; page: unknown }[] = (lu.data.elements ?? []).map((e) => ({
+    brut: e, page: e && typeof e === "object" ? (e as { page?: unknown }).page : undefined,
+  }));
 
   for (const pb of lu.data.pages ?? []) {
     const p = pageBrute.safeParse(pb);
@@ -391,6 +444,7 @@ export function validerAnalyse(brut: unknown, pages: PageEnvoyee[], releveIds: s
       continue;
     }
     for (const z of p.data.zones ?? []) aPlat.push({ brut: z, page: numero });
+    for (const e of p.data.elements ?? []) reperesAPlat.push({ brut: e, page: numero });
     if (vues.has(numero)) continue;
     vues.add(numero);
 
@@ -486,6 +540,113 @@ export function validerAnalyse(brut: unknown, pages: PageEnvoyee[], releveIds: s
     });
   }
 
+  const elements = reperesValides(reperesAPlat, envoyees, pages, ecartees);
+  const comptages = comptagesValides(lu.data.comptages, elements, envoyees, ecartees);
+
   pagesLues.sort((a, b) => a.page - b.page);
-  return { pages: pagesLues, zones, ecartees, remarques: lu.data.remarques ?? null };
+  return { pages: pagesLues, zones, elements, comptages, ecartees, remarques: lu.data.remarques ?? null };
+}
+
+/**
+ * Les repères des éléments comptés, validés.
+ *
+ * Un repère est un point : il doit tomber dans l'image de sa page et
+ * désigner une catégorie connue. Deux repères de la même catégorie presque
+ * au même endroit désignent le même élément : le second est écarté, sans
+ * quoi une porte vue deux fois serait comptée deux fois sur le plan.
+ */
+function reperesValides(
+  aPlat: { brut: unknown; page: unknown }[],
+  envoyees: Map<number, PageEnvoyee>,
+  pages: PageEnvoyee[],
+  ecartees: ZoneEcartee[],
+): ElementRepere[] {
+  const reperes: ElementRepere[] = [];
+  let auDela = 0;
+  for (const { brut, page } of aPlat) {
+    if (!brut || typeof brut !== "object" || Array.isArray(brut)) { ecartees.push({ page: null, libelle: null, raison: "repère illisible" }); continue; }
+    const r = brut as Record<string, unknown>;
+    let numero = entier(page ?? r.page);
+    if ((numero === null || !envoyees.has(numero)) && pages.length === 1) numero = pages[0].numero;
+    const envoyee = numero !== null ? envoyees.get(numero) : undefined;
+    const libelle = texte(80).parse(r.libelle);
+    const ecarter = (raison: string) => ecartees.push({ page: numero, libelle: libelle ?? null, raison: `repère : ${raison}` });
+    if (!envoyee || numero === null) { ecarter("page qui n'a pas été envoyée"); continue; }
+    const categorie = categorieLue(r.categorie);
+    if (!categorie) { ecarter(`catégorie inconnue${typeof r.categorie === "string" ? ` « ${r.categorie.slice(0, 30)} »` : ""}`); continue; }
+    const point = pointLu(r.point ?? (r.x !== undefined ? { x: r.x, y: r.y } : undefined), envoyee.largeurImage, envoyee.hauteurImage);
+    if (typeof point === "string") { ecarter(point); continue; }
+    if (reperes.some((x) => x.page === numero && x.categorie === categorie && Math.hypot(x.point[0] - point[0], x.point[1] - point[1]) < DOUBLON_PX)) {
+      ecarter("en double, au même endroit qu'un autre repère");
+      continue;
+    }
+    if (reperes.length >= MAX_REPERES) { auDela++; continue; }
+    reperes.push({ page: numero, categorie, point, libelle: libelle ?? null });
+  }
+  // Un seul motif pour tout ce qui dépasse le plafond : quatre cents lignes
+  // identiques n'apprendraient rien de plus.
+  if (auDela > 0) ecartees.push({ page: null, libelle: null, raison: `${auDela} repère${auDela > 1 ? "s" : ""} au-delà de ${MAX_REPERES}` });
+  return reperes;
+}
+
+/**
+ * Les totaux par catégorie, validés.
+ *
+ * Un total est un entier entre zéro et cinq mille ; ce qui n'en est pas un
+ * est écarté avec ce qui a été lu. Les pages citées doivent avoir été
+ * envoyées. Une catégorie donnée deux fois garde son premier total.
+ *
+ * Sans totaux dans la réponse mais avec des repères, on compte les repères :
+ * c'est un minimum (un étage type n'y est pas multiplié), d'où la confiance
+ * basse et la phrase qui le dit.
+ */
+function comptagesValides(
+  brut: unknown,
+  reperes: ElementRepere[],
+  envoyees: Map<number, PageEnvoyee>,
+  ecartees: ZoneEcartee[],
+): ComptageAnalyse[] {
+  const entrees: [unknown, unknown][] = Array.isArray(brut)
+    ? brut.map((c) => [c && typeof c === "object" ? (c as { categorie?: unknown }).categorie : undefined, c])
+    : brut && typeof brut === "object" ? Object.entries(brut as Record<string, unknown>) : [];
+  const sortie: ComptageAnalyse[] = [];
+  for (const [cle, c] of entrees.slice(0, 50)) {
+    const categorie = categorieLue(cle);
+    const ecarter = (raison: string) => ecartees.push({ page: null, libelle: typeof cle === "string" ? cle.slice(0, 40) : null, raison: `comptage : ${raison}` });
+    if (!categorie) { ecarter("catégorie inconnue"); continue; }
+    if (sortie.some((x) => x.categorie === categorie)) { ecarter("catégorie donnée deux fois"); continue; }
+    const o = c && typeof c === "object" && !Array.isArray(c) ? (c as Record<string, unknown>) : { nombre: c };
+    const n = nombre(o.nombre);
+    if (n === null) { ecarter("nombre illisible"); continue; }
+    if (n < 0) { ecarter(`nombre négatif (${n})`); continue; }
+    if (!Number.isInteger(n)) { ecarter(`nombre non entier (${String(n).replace(".", ",")})`); continue; }
+    if (n > NOMBRE_MAX) { ecarter(`nombre au-delà de ${NOMBRE_MAX} (${n})`); continue; }
+    const sf = categorie === "fenetre" ? nombre(o.surface) : null;
+    const pages = (Array.isArray(o.pages) ? o.pages : o.pages !== undefined ? [o.pages] : [])
+      .map(entier).filter((p): p is number => p !== null && envoyees.has(p));
+    sortie.push({
+      categorie,
+      nombre: n,
+      surface: sf !== null && sf > 0 && sf <= SURFACE_MAX ? Math.round(sf * 100) / 100 : null,
+      detail: texte(300).parse(o.detail) ?? null,
+      pages: [...new Set(pages)].sort((a, b) => a - b),
+      confiance: confianceLue(o.confiance),
+    });
+  }
+  if (sortie.length === 0 && reperes.length > 0) {
+    for (const categorie of CATEGORIES_COMPTEES) {
+      const siens = reperes.filter((r) => r.categorie === categorie);
+      if (siens.length === 0) continue;
+      const pages = [...new Set(siens.map((r) => r.page))].sort((a, b) => a - b);
+      sortie.push({
+        categorie,
+        nombre: siens.length,
+        surface: null,
+        detail: `${siens.length} repère${siens.length > 1 ? "s" : ""} sur ${pages.length > 1 ? "les pages" : "la page"} ${pages.join(", ")}, sans multiplication par des étages identiques`,
+        pages,
+        confiance: "basse",
+      });
+    }
+  }
+  return sortie.sort((a, b) => CATEGORIES_COMPTEES.indexOf(a.categorie) - CATEGORIES_COMPTEES.indexOf(b.categorie));
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  consigneAnalyse, dimensionsImage, presentationDePage, seRecoupe, tientDansLeModele, validerAnalyse, MAX_ZONES,
+  consigneAnalyse, dimensionsImage, presentationDePage, seRecoupe, tientDansLeModele, validerAnalyse, MAX_REPERES, MAX_ZONES,
   type PageEnvoyee,
 } from "./analyse-plans.js";
 
@@ -131,7 +131,7 @@ describe("les écarts de forme tolérés", () => {
   it("refuse ce qui n’a pas la forme d’une analyse", () => {
     expect(validerAnalyse(null, [PAGE], RELEVE)).toBeNull();
     expect(validerAnalyse([1, 2], [PAGE], RELEVE)).toBeNull();
-    expect(validerAnalyse({}, [PAGE], RELEVE)).toEqual({ pages: [], zones: [], ecartees: [], remarques: null });
+    expect(validerAnalyse({}, [PAGE], RELEVE)).toEqual({ pages: [], zones: [], elements: [], comptages: [], ecartees: [], remarques: null });
   });
 });
 
@@ -172,5 +172,106 @@ describe("la consigne", () => {
   it("détecte un contour en huit", () => {
     expect(seRecoupe([[0, 0], [10, 10], [10, 0], [0, 10]])).toBe(true);
     expect(seRecoupe([[0, 0], [10, 0], [10, 10], [0, 10]])).toBe(false);
+  });
+});
+
+describe("les éléments comptés", () => {
+  const PLAN: PageEnvoyee = { numero: 2, largeurImage: 2296, hauteurImage: 1623, largeurPt: 1190.55, hauteurPt: 841.89 };
+  const repere = (extra: Record<string, unknown> = {}) => ({ categorie: "porte_paliere", point: [800, 600], libelle: "Logement gauche", ...extra });
+  const analyse = (elements: unknown[], comptages?: unknown, pages: PageEnvoyee[] = [PLAN]) => validerAnalyse({
+    pages: [{ page: 2, type: "plan_etage", titre: "Étage type (1er au 3e)", zones: [], elements }],
+    ...(comptages !== undefined ? { comptages } : {}),
+  }, pages, [])!;
+
+  it("garde les repères dans leur page et les totaux avec leur calcul", () => {
+    const a = analyse(
+      [repere(), repere({ point: [1400, 600], libelle: "Logement droit" }), repere({ categorie: "fenetre", point: [300, 200] })],
+      [{ categorie: "porte_paliere", nombre: 6, detail: "2 par palier × 3 étages = 6", pages: [2, 7], confiance: "haute" }],
+    );
+    expect(a.elements).toEqual([
+      { page: 2, categorie: "porte_paliere", point: [800, 600], libelle: "Logement gauche" },
+      { page: 2, categorie: "porte_paliere", point: [1400, 600], libelle: "Logement droit" },
+      { page: 2, categorie: "fenetre", point: [300, 200], libelle: "Logement gauche" },
+    ]);
+    expect(a.comptages).toEqual([
+      { categorie: "porte_paliere", nombre: 6, surface: null, detail: "2 par palier × 3 étages = 6", pages: [2], confiance: "haute" },
+    ]);
+    expect(a.ecartees).toEqual([]);
+  });
+
+  it("écarte un repère de catégorie inconnue, hors de l'image ou en double", () => {
+    const a = analyse([
+      repere({ categorie: "ascenseur" }),
+      repere({ point: [3000, 600] }),
+      repere({ point: [-50, 600] }),
+      repere(),
+      repere({ point: [803, 602] }),
+      repere({ categorie: "fenetre", point: [803, 602] }),
+    ]);
+    expect(a.elements.map((e) => e.categorie)).toEqual(["porte_paliere", "fenetre"]);
+    expect(a.ecartees.map((e) => e.raison)).toEqual([
+      "repère : catégorie inconnue « ascenseur »",
+      expect.stringMatching(/^repère : un point tombe hors de l'image/),
+      expect.stringMatching(/^repère : un point tombe hors de l'image/),
+      "repère : en double, au même endroit qu'un autre repère",
+    ]);
+  });
+
+  it("plafonne les repères à quatre cents, en une seule ligne d'explication", () => {
+    const beaucoup = Array.from({ length: MAX_REPERES + 30 }, (_, i) => repere({ categorie: "fenetre", point: [20 + (i % 100) * 20, 20 + Math.floor(i / 100) * 40] }));
+    const a = analyse(beaucoup);
+    expect(a.elements).toHaveLength(MAX_REPERES);
+    expect(a.ecartees).toEqual([{ page: null, libelle: null, raison: `30 repères au-delà de ${MAX_REPERES}` }]);
+  });
+
+  it("écarte un total négatif, décimal, illisible, de catégorie inconnue ou donné deux fois", () => {
+    const a = analyse([], [
+      { categorie: "balcon", nombre: -1 },
+      { categorie: "cuisine", nombre: 2.5 },
+      { categorie: "porte_entree", nombre: "deux" },
+      { categorie: "piscine", nombre: 1 },
+      { categorie: "fenetre", nombre: 6000 },
+      { categorie: "porte_paliere", nombre: 6 },
+      { categorie: "porte_paliere", nombre: 8 },
+    ]);
+    expect(a.comptages.map((c) => [c.categorie, c.nombre])).toEqual([["porte_paliere", 6]]);
+    expect(a.ecartees.map((e) => e.raison)).toEqual([
+      "comptage : nombre négatif (-1)",
+      "comptage : nombre non entier (2,5)",
+      "comptage : nombre illisible",
+      "comptage : catégorie inconnue",
+      "comptage : nombre au-delà de 5000 (6000)",
+      "comptage : catégorie donnée deux fois",
+    ]);
+  });
+
+  it("lit les totaux rendus par clé, et ne garde la surface que des fenêtres", () => {
+    const a = analyse([], { fenetre: { nombre: 12, surface: 20.16, confiance: "moyenne" }, balcon: { nombre: 3, surface: 9 } });
+    expect(a.comptages).toEqual([
+      { categorie: "fenetre", nombre: 12, surface: 20.16, detail: null, pages: [], confiance: "moyenne" },
+      { categorie: "balcon", nombre: 3, surface: null, detail: null, pages: [], confiance: "basse" },
+    ]);
+  });
+
+  it("compte les repères quand la réponse ne donne pas de totaux, en confiance basse", () => {
+    const a = analyse([repere(), repere({ point: [1400, 600] })]);
+    expect(a.comptages).toEqual([{
+      categorie: "porte_paliere", nombre: 2, surface: null, pages: [2], confiance: "basse",
+      detail: "2 repères sur la page 2, sans multiplication par des étages identiques",
+    }]);
+  });
+
+  it("rend une analyse sans élément quand le modèle n'en parle pas", () => {
+    const a = validerAnalyse(reponse([zone()]), [PAGE], RELEVE)!;
+    expect(a.elements).toEqual([]);
+    expect(a.comptages).toEqual([]);
+  });
+
+  it("demande les repères et les totaux dans la consigne", () => {
+    const c = consigneAnalyse([PAGE], []);
+    expect(c).toContain("porte_paliere : porte d'un logement");
+    expect(c).toContain("étage type");
+    expect(c).toContain('"comptages"');
+    expect(c).not.toContain("—");
   });
 });

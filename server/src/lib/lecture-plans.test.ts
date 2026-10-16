@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   CLES_GRANDEURS, CONSIGNE_PLANS, MAX_IMAGE_ENCODEE, blocsDesPlans, echelleLue, nombreLu, repereDePage, validerLecturePlans,
 } from "./lecture-plans.js";
+import { CATEGORIES_COMPTEES } from "./comptages.js";
 
 const G = (valeur: unknown, extra: Record<string, unknown> = {}) => ({
   valeur, page: "F1 p. 1", methode: "cote lue", confiance: "haute", remarque: null, ...extra,
@@ -275,5 +276,99 @@ describe("la consigne", () => {
   it("demande chacune des grandeurs que la validation attend", () => {
     for (const cle of CLES_GRANDEURS) expect(CONSIGNE_PLANS).toContain(`"${cle}"`);
     expect(CONSIGNE_PLANS).toContain('"typeToit"');
+  });
+});
+
+describe("les éléments comptés", () => {
+  const E = (nombre: unknown, extra: Record<string, unknown> = {}) => ({
+    nombre, surface: null, pages: ["F1 p. 1"], methode: "compté sur le plan", confiance: "haute", detail: null, ...extra,
+  });
+  const avec = (elements: unknown) => validerLecturePlans({ ...lectureValide(), elements }, 2)!;
+
+  it("garde chaque compte avec ses pages, sa méthode, sa confiance et son calcul", () => {
+    const l = avec({
+      porte_paliere: E(6, { methode: "compté et multiplié par les étages identiques", detail: "2 par palier × 3 étages = 6", pages: ["F1 p. 2", "F1 p. 2", "F9 p. 1"] }),
+      fenetre: E(24, { surface: 40.32, pages: "F2 p. 2" }),
+    });
+    expect(l.elements.porte_paliere).toEqual({
+      nombre: 6, surface: null, pages: ["F1 p. 2"], methode: "compté et multiplié par les étages identiques",
+      confiance: "haute", detail: "2 par palier × 3 étages = 6", remarque: null,
+    });
+    expect(l.elements.fenetre.surface).toBe(40.32);
+    expect(l.elements.fenetre.pages).toEqual(["F2 p. 2"]);
+  });
+
+  it("rend toutes les catégories, à null celles que les plans ne permettent pas de compter", () => {
+    const l = avec({ balcon: { nombre: null, detail: "balcons non dessinés" } });
+    expect(Object.keys(l.elements).sort()).toEqual([...CATEGORIES_COMPTEES].sort());
+    expect(l.elements.balcon).toMatchObject({ nombre: null, detail: "balcons non dessinés" });
+    expect(l.elements.cuisine.nombre).toBeNull();
+    expect(validerLecturePlans({ estUnJeuDePlans: true }, 1)!.elements.porte_paliere.nombre).toBeNull();
+  });
+
+  it("écarte un nombre négatif, décimal, illisible ou au-delà de cinq mille", () => {
+    const l = avec({ porte_paliere: E(-2), cuisine: E(4.5), balcon: E("beaucoup"), appareil_sanitaire: E(6000) });
+    expect(l.elements.porte_paliere).toMatchObject({ nombre: null, remarque: expect.stringMatching(/négatif/) });
+    expect(l.elements.cuisine).toMatchObject({ nombre: null, remarque: expect.stringMatching(/non entier/) });
+    expect(l.elements.balcon).toMatchObject({ nombre: null, remarque: expect.stringMatching(/illisible/) });
+    expect(l.elements.appareil_sanitaire).toMatchObject({ nombre: null, remarque: expect.stringMatching(/au-delà de 5000/) });
+  });
+
+  it("accepte zéro, un nombre nu et un nombre écrit en texte", () => {
+    const l = avec({ balcon: E(0), cuisine: 8, porte_entree: E("2") });
+    expect(l.elements.balcon.nombre).toBe(0);
+    expect(l.elements.cuisine).toMatchObject({ nombre: 8, methode: "estimation", confiance: "basse" });
+    expect(l.elements.porte_entree.nombre).toBe(2);
+  });
+
+  it("écarte une catégorie inconnue, en le disant", () => {
+    const l = avec({ ascenseur: E(1), porte_paliere: E(6) });
+    expect(l.elements.porte_paliere.nombre).toBe(6);
+    expect(l.remarques).toMatch(/catégorie inconnue : « ascenseur »/);
+  });
+
+  it("lit aussi une liste, et garde la première lecture d'une catégorie donnée deux fois", () => {
+    // Accents, majuscules et espaces ne changent pas la catégorie : « Porte palière » est porte_paliere.
+    const l = avec([{ categorie: "Porte palière", ...E(6) }, { categorie: "porte_paliere", ...E(9) }, { categorie: "Balcon", ...E(4) }]);
+    expect(l.elements.porte_paliere.nombre).toBe(6);
+    expect(l.elements.balcon.nombre).toBe(4);
+  });
+
+  it("ne laisse jamais une estimation en confiance haute", () => {
+    const l = avec({ appareil_sanitaire: E(16, { methode: "estimation", confiance: "haute" }), balcon: E(4, { methode: "devinette" }) });
+    expect(l.elements.appareil_sanitaire.confiance).toBe("basse");
+    expect(l.elements.balcon).toMatchObject({ methode: "estimation", confiance: "basse", remarque: expect.stringMatching(/Méthode non indiquée/) });
+  });
+
+  it("ne garde une surface que pour les fenêtres, et l'écarte si elle est absurde", () => {
+    const l = avec({ balcon: E(4, { surface: 20 }), fenetre: E(10, { surface: -3 }) });
+    expect(l.elements.balcon.surface).toBeNull();
+    expect(l.elements.fenetre).toMatchObject({ nombre: 10, surface: null, remarque: expect.stringMatching(/Surface des fenêtres écartée/) });
+  });
+
+  it("met en doute plus de trois portes palières par logement", () => {
+    // 8 logements : 30 portes palières, c'est un étage compté plusieurs fois.
+    const l = avec({ porte_paliere: E(30), cuisine: E(8) });
+    expect(l.elements.porte_paliere.confiance).toBe("basse");
+    expect(l.elements.porte_paliere.remarque).toMatch(/plus de 3 par logement/);
+    expect(l.elements.cuisine.confiance).toBe("haute");
+  });
+
+  it("met en doute plus de portes d'entrée que les cages n'en portent, et plus de fenêtres que de façade", () => {
+    const l = avec({ porte_entree: E(9), fenetre: E(20, { surface: 900 }) });
+    expect(l.elements.porte_entree.confiance).toBe("basse");
+    expect(l.elements.fenetre.confiance).toBe("basse");
+    expect(l.elements.fenetre.remarque).toMatch(/fenêtres pour 700 m² de façade/);
+  });
+
+  it("retire le tiret cadratin du calcul", () => {
+    const l = avec({ porte_paliere: E(6, { detail: "2 par palier — 3 étages" }) });
+    expect(l.elements.porte_paliere.detail).toBe("2 par palier, 3 étages");
+  });
+
+  it("demande chaque catégorie dans la consigne", () => {
+    for (const c of CATEGORIES_COMPTEES) expect(CONSIGNE_PLANS).toContain(`"${c}": E`);
+    expect(CONSIGNE_PLANS).toContain("étage type");
+    expect(CONSIGNE_PLANS).not.toContain("—");
   });
 });

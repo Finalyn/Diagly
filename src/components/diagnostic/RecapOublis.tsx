@@ -4,6 +4,7 @@ import { Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import type { Oubli, ReleveIncomplet } from '@/lib/oublis'
 import { phraseDuGroupe, type GroupeSurface } from '@/lib/groupes-surface'
+import type { EtatRepartition } from '@/lib/base-cfc/comptages'
 import type { ApiDiagnosticItem } from '@/lib/api-types'
 
 /**
@@ -17,7 +18,7 @@ import type { ApiDiagnosticItem } from '@/lib/api-types'
  */
 
 export function RecapOublis({
-  incomplets, restants, groupesMalRepartis, onOuvrir, onFermer,
+  incomplets, restants, groupesMalRepartis, repartitionsIncompletes, onOuvrir, onFermer,
 }: {
   incomplets: ReleveIncomplet<ApiDiagnosticItem>[]
   /** Ouvrages du catalogue pas encore relevés. Ce n'est pas un oubli, mais ça compte pour clore. */
@@ -30,6 +31,12 @@ export function RecapOublis({
    * passe donc en tête du récapitulatif, avant ce qui manque.
    */
   groupesMalRepartis?: GroupeSurface[]
+  /**
+   * Catégories comptées dont les types ne font pas le compte : six portes
+   * palières sur les plans, cinq réparties entre les types relevés. Même
+   * gravité qu'une surface mal répartie, et pour la même raison.
+   */
+  repartitionsIncompletes?: EtatRepartition[]
   onOuvrir: (itemId: string) => void
   onFermer: () => void
 }) {
@@ -42,7 +49,8 @@ export function RecapOublis({
   const importants = incomplets.filter((r) => r.oublis.some((o) => o.gravite === 'importante'))
   const legers = incomplets.filter((r) => !r.oublis.some((o) => o.gravite === 'importante'))
   const malRepartis = groupesMalRepartis ?? []
-  const rienAsignaler = incomplets.length === 0 && restants === 0 && malRepartis.length === 0
+  const comptesFaux = repartitionsIncompletes ?? []
+  const rienAsignaler = incomplets.length === 0 && restants === 0 && malRepartis.length === 0 && comptesFaux.length === 0
 
   return (
     <div
@@ -105,6 +113,35 @@ export function RecapOublis({
                 {malRepartis.map((g) => (
                   <li key={g.nom} className="text-xs text-red-900">{phraseDuGroupe(g)}</li>
                 ))}
+              </ul>
+            </div>
+          )}
+
+          {comptesFaux.length > 0 && (
+            <div className={cn('mb-4 rounded-xl border border-red-200 bg-red-50 p-3', malRepartis.length > 0 && 'mt-3')}>
+              <p className="text-sm font-semibold text-red-900">Éléments comptés mal répartis</p>
+              <p className="mt-0.5 text-xs text-red-800">
+                Tant que les types ne font pas le compte, le devis chiffre trop ou trop peu d’éléments.
+              </p>
+              <ul className="mt-2 space-y-1">
+                {comptesFaux.map((r) => {
+                  // On ouvre le type qui n'a pas encore son nombre, ou le premier.
+                  const cible = r.types.find((t) => t.effectives == null) ?? r.types[0]
+                  return (
+                    <li key={r.categorie}>
+                      <button
+                        onClick={() => cible && onOuvrir(cible.id)}
+                        className="flex w-full items-start gap-2 rounded-lg px-1 py-1 text-left text-xs text-red-900 hover:bg-red-100"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">{r.phrase}</span>
+                          <span className="block">{r.detail}</span>
+                        </span>
+                        <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           )}

@@ -16,11 +16,16 @@ import { ChoixOuvrage } from '@/components/plans/ChoixOuvrage'
 import { useApercusPages, useRenduPlan, type ApercuPage } from '@/components/plans/rendu'
 import { useOuvragesDuProjet } from '@/components/plans/ouvrages'
 import { useAnalyseIA, type ResultatAnalyse } from '@/components/plans/analyse'
-import { AnalyseEnFond, ConfirmationEchelles, FenetreAnalyse, ListePropositions, MarqueDiagly } from '@/components/plans/AnalyseIA'
 import {
-  COULEUR_PROPOSITION, NOMS_CONFIANCE, NOMS_TYPES_ZONE, bilanDeFacade, ecartAuxCotes, mesureDeLaZone, validerProposition,
-  type EchelleDePage,
+  AnalyseEnFond, ConfirmationEchelles, ElementsDeLAnalyse, FenetreAnalyse, ListePropositions, MarqueDiagly,
+  type ReperesDeCategorie,
+} from '@/components/plans/AnalyseIA'
+import {
+  COULEUR_PROPOSITION, NOMS_CONFIANCE, NOMS_TYPES_ZONE, bilanDeFacade, ecartAuxCotes, mesureDeLaZone, nomDuRepere,
+  validerProposition, validerRepere, type EchelleDePage,
 } from '@/lib/plans/analyse-ia'
+import { CLES_CATEGORIES, comptagesDuDossier } from '@/lib/base-cfc/comptages'
+import { useEnregistrerComptages } from '@/components/comptages/enregistrer'
 import { fr } from '@/lib/plans/echelle-exacte'
 
 type Tool = 'pan' | 'select' | 'calibrate' | 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference'
@@ -118,6 +123,7 @@ const HINTS: Record<Tool, string> = {
 const NOMS: Record<PlanAnnotationType, string> = {
   measure: 'Cote', hatch: 'Zone', note: 'Note', arrow: 'Flèche', draw: 'Croquis',
   reference: 'Référence',
+  repere: 'Repère',
   // Le calque et la table d'échelles ne sont pas des tracés : ces noms ne servent
   // qu'aux panneaux, jamais à un libellé posé sur le plan.
   pages: 'Échelles par page',
@@ -212,7 +218,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   /** Fenêtre de l'analyse par l'IA, et ce que l'analyse a proposé d'échelles et dit en passant. */
   const [analyseOuverte, setAnalyseOuverte] = useState(false)
   const [echellesProposees, setEchellesProposees] = useState<EchelleDePage[] | null>(null)
-  const [suiteAnalyse, setSuiteAnalyse] = useState<Pick<ResultatAnalyse, 'ecartees' | 'remarques' | 'tronque' | 'pagesSansGeometrie'> | null>(null)
+  const [suiteAnalyse, setSuiteAnalyse] = useState<Pick<ResultatAnalyse, 'ecartees' | 'remarques' | 'tronque' | 'pagesSansGeometrie' | 'comptages'> | null>(null)
   /** Étalonnage mesuré, en attente du choix des pages auxquelles il s'applique. */
   const [echelleEnAttente, setEchelleEnAttente] = useState<number | null>(null)
   const [pagesRetenues, setPagesRetenues] = useState<number[]>([])
@@ -436,7 +442,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       let hitId: string | null = null
       for (let i = annotationsPage.length - 1; i >= 0 && !hitId; i--) {
         const a = annotationsPage[i]
-        if (a.type === 'note') { if (dist(sp, a.points[0]) < tol * 2) hitId = a.id }
+        if (a.type === 'note' || a.type === 'repere') { if (dist(sp, a.points[0]) < tol * 2) hitId = a.id }
         else if (a.type === 'measure' || a.type === 'arrow') { if (pointSegDist(sp, a.points[0], a.points[1]) < tol) hitId = a.id }
         else if (a.type === 'draw') { for (let j = 0; j < a.points.length - 1 && !hitId; j++) if (pointSegDist(sp, a.points[j], a.points[j + 1]) < tol) hitId = a.id }
         else if (a.type === 'hatch') { if (pointInPoly(sp, a.points)) hitId = a.id; else for (let j = 0; j < a.points.length && !hitId; j++) if (pointSegDist(sp, a.points[j], a.points[(j + 1) % a.points.length]) < tol) hitId = a.id }
@@ -661,7 +667,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   // Ouvrages du relevé : ils servent à nommer les zones rattachées, directement
   // sur le plan. Une zone qui n'affiche que « 142 m² » ne dit pas ce qu'elle
   // mesure, et c'est justement ce qu'on vient chercher en rouvrant le plan.
-  const { items: ouvrages } = useOuvragesDuProjet(plan.projectId)
+  const { items: ouvrages, project: projet } = useOuvragesDuProjet(plan.projectId)
   const libelleLie = useCallback((a: PlanAnnotation): string | null => {
     if (!a.itemId) return null
     const it = ouvrages.find((o) => o.id === a.itemId)
@@ -719,7 +725,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       setAnnotations((l) => [...l, ...r.annotations])
       setDirty(true)
     }
-    setSuiteAnalyse({ ecartees: r.ecartees, remarques: r.remarques, tronque: r.tronque, pagesSansGeometrie: r.pagesSansGeometrie })
+    setSuiteAnalyse({ ecartees: r.ecartees, remarques: r.remarques, tronque: r.tronque, pagesSansGeometrie: r.pagesSansGeometrie, comptages: r.comptages })
     // L'échelle se confirme avant tout : sans elle, les zones n'ont pas de mesure.
     if (r.echelles.some((e) => e.statut !== 'aucune')) setEchellesProposees(r.echelles)
   }
@@ -757,6 +763,18 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     retenir()
     setAnnotations((l) => l.map((a) => (ids.includes(a.id) ? validerProposition(a) : a)))
     setDirty(true)
+  }
+  /** Valider des repères d'éléments comptés : ils restent sur le plan, en trait plein. */
+  const validerReperes = (ids: string[]) => {
+    if (ids.length === 0) return
+    retenir()
+    setAnnotations((l) => l.map((a) => (ids.includes(a.id) ? validerRepere(a) : a)))
+    setDirty(true)
+  }
+  /** Les totaux comptés par l'IA, reportés au dossier : ils y remplacent la règle de quantité. */
+  const enregistrerComptages = useEnregistrerComptages(plan.projectId)
+  const reporterComptages = async (nouveaux: ReturnType<typeof comptagesDuDossier>) => {
+    await enregistrerComptages.mutateAsync((actuels) => ({ ...actuels, ...nouveaux }))
   }
   const retirerZones = (ids: string[]) => {
     if (ids.length === 0) return
@@ -1013,6 +1031,14 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
   /** Ce qui, sur cette page, porte une mesure : les zones et les cotes. */
   const zonesDeLaPage = annotationsPage.filter((a) => natureDe(a) !== 'aucune')
+
+  /** Les repères des éléments comptés sur cette page, par catégorie : la légende de leurs couleurs. */
+  const reperesPage = annotationsPage.filter((a) => a.type === 'repere' && a.repere)
+  const reperesParCategorie: ReperesDeCategorie[] = CLES_CATEGORIES.flatMap((categorie) => {
+    const siens = reperesPage.filter((a) => a.repere!.categorie === categorie)
+    return siens.length ? [{ categorie, total: siens.length, aValider: siens.filter((a) => a.repere!.aValider).length }] : []
+  })
+  const montrerElements = reperesPage.length > 0 || (suiteAnalyse?.comptages.length ?? 0) > 0
 
   /** Les zones proposées par l'analyse, en attente de validation, ici et sur les autres pages. */
   const propositionsPage = annotationsPage.filter((a) => a.proposition)
@@ -1287,7 +1313,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
             {/* À droite : les zones proposées par l'IA, à valider, puis les
                 mesures de la page, où l'on relit ce qui a été mesuré et ce qui
                 attend encore un ouvrage, sans ouvrir chaque forme. */}
-            {(zonesDeLaPage.length > 0 || propositionsPage.length > 0 || propositionsAutres.length > 0) && (
+            {(zonesDeLaPage.length > 0 || propositionsPage.length > 0 || propositionsAutres.length > 0 || montrerElements) && (
               <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 flex max-h-[45vh] flex-col items-end gap-2 sm:inset-x-auto sm:bottom-auto sm:right-3 sm:top-3 sm:max-h-[calc(100%-1.5rem)]">
                 {(propositionsPage.length > 0 || propositionsAutres.length > 0) && (
                   <ListePropositions
@@ -1311,6 +1337,21 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                     onSupprimerTout={() => retirerZones(propositionsPage.map((a) => a.id))}
                     onOuvrage={(id) => { setTool('select'); setSelectedAnn(id); setChoixOuvrage(true) }}
                     onAllerPage={(n) => { setSelectedAnn(null); setPageNum(n) }}
+                  />
+                )}
+                {montrerElements && (
+                  <ElementsDeLAnalyse
+                    // Une nouvelle analyse repart de ses propres totaux.
+                    key={suiteAnalyse?.comptages.map((c) => `${c.categorie}${c.nombre}`).join('-') ?? 'aucune'}
+                    reperes={reperesParCategorie}
+                    comptages={suiteAnalyse?.comptages ?? []}
+                    existants={comptagesDuDossier(projet?.comptages)}
+                    nomDuPlan={plan.name}
+                    enCours={enregistrerComptages.isPending}
+                    masqueeSurMobile={!!selAnn}
+                    onValiderReperes={() => validerReperes(reperesPage.filter((a) => a.repere!.aValider).map((a) => a.id))}
+                    onRetirerReperes={() => retirerZones(reperesPage.filter((a) => a.repere!.aValider).map((a) => a.id))}
+                    onReporter={reporterComptages}
                   />
                 )}
                 {zonesDeLaPage.length > 0 && (
@@ -1340,7 +1381,8 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                 quantite={selAnn.proposition ? mesureProposee(selAnn) : quantiteDe(selAnn)}
                 onLier={() => setChoixOuvrage(true)}
                 onEditerNote={editSelectedNote}
-                onValider={selAnn.proposition ? () => validerZones([selAnn.id]) : undefined}
+                onValider={selAnn.proposition ? () => validerZones([selAnn.id])
+                  : selAnn.repere?.aValider ? () => validerReperes([selAnn.id]) : undefined}
                 onSupprimer={() => { retenir(); setAnnotations((a) => a.filter((x) => x.id !== selectedAnn)); setSelectedAnn(null); setDirty(true) }}
               />
             )}
@@ -1844,6 +1886,7 @@ function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, o
   onSupprimer: () => void
 }) {
   const proposee = annotation.proposition
+  const repere = annotation.repere
   return (
     <div
       data-habillage
@@ -1853,7 +1896,9 @@ function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, o
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            {proposee ? `Zone proposée · ${NOMS_TYPES_ZONE[proposee.type]}` : NOMS[annotation.type]}
+            {proposee ? `Zone proposée · ${NOMS_TYPES_ZONE[proposee.type]}`
+              : repere ? `${repere.aValider ? 'Repère proposé' : 'Repère'} · ${nomDuRepere(annotation)}`
+                : NOMS[annotation.type]}
           </p>
           {proposee && <p className="truncate text-sm font-medium">{proposee.libelle}</p>}
           {quantite
@@ -1890,12 +1935,18 @@ function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, o
         </button>
       )}
 
-      {proposee && onValider && (
+      {repere && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Placé par l’IA là où elle a vu l’élément. Le repère ne compte dans aucun métré : il sert à vérifier le compte.
+        </p>
+      )}
+
+      {(proposee || repere) && onValider && (
         <button
           onClick={onValider}
           className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-sm font-semibold text-background transition-opacity hover:opacity-90"
         >
-          <Check className="h-4 w-4" />Valider la zone
+          <Check className="h-4 w-4" />{repere ? 'Valider le repère' : 'Valider la zone'}
         </button>
       )}
 
@@ -1972,6 +2023,22 @@ function Shape({ a, fmtLen, fmtArea, font, strokeW, lie, etiquette }: {
       <g>
         <circle cx={p.x} cy={p.y} r={6 * strokeW} fill={color} />
         <text x={p.x + 10 * strokeW} y={p.y + 4 * strokeW} fontSize={font} fill="#111827" stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{a.text}</text>
+      </g>
+    )
+  }
+  if (a.type === 'repere') {
+    // Une pastille numérotée, de la couleur de sa catégorie : pleine une fois
+    // validée, cerclée de pointillés tant qu'elle n'est qu'une proposition.
+    const p = a.points[0]
+    const r = 8 * strokeW
+    const aValider = !!a.repere?.aValider
+    return (
+      <g data-proposition={aValider ? '' : undefined}>
+        <circle cx={p.x} cy={p.y} r={r} fill={aValider ? '#ffffff' : color} fillOpacity={aValider ? 0.92 : 1}
+          stroke={color} strokeWidth={strokeW * 1.2} strokeDasharray={aValider ? `${2 * strokeW} ${1.5 * strokeW}` : undefined} />
+        <text x={p.x} y={p.y + font * 0.33} fontSize={font * 0.85} fontWeight="700" textAnchor="middle" fill={aValider ? color : '#ffffff'}>
+          {a.repere?.numero ?? ''}
+        </text>
       </g>
     )
   }

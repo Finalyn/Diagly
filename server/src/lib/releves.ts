@@ -36,6 +36,10 @@ export const itemBaseSchema = z.object({
   /// Le refuser faisait rejeter tout le releve, photos et etat compris.
   area: z.number().min(0).nullable().optional(),
   sharePct: z.number().min(0).max(100).nullable().optional(),
+  /// Unites de la categorie comptee qui reviennent a ce type (2 portes palieres
+  /// en bois sur 6). Zero passe : un releve renvoye par un appareil plus ancien
+  /// ne doit pas etre refuse en bloc pour cela, l'ecran ne le propose pas.
+  unites: z.number().int().min(0).max(5000).nullable().optional(),
   /// Verrous de saisie : une valeur reprise a la main ne doit plus etre recalculee.
   quantityManual: z.boolean().optional(),
   costManual: z.boolean().optional(),

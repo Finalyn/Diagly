@@ -413,6 +413,11 @@ model Project {
   /// Organisation de la visite : rendez-vous, créneaux proposés, préparation.
   /// Le rendez-vous est recopié dans un Event (calendrier) et dans visitDate.
   visitPlan             Json?         @map("visit_plan")
+  /// Elements comptes : portes, fenetres, balcons, cuisines, appareils sanitaires.
+  /// { "porte_paliere": { nombre, source, detail, pages, confiance, valide, majLe } }
+  /// Lus sur les plans, comptes dans l'outil Plan ou saisis au dossier, ils
+  /// l'emportent sur les regles de quantite de la base (src/lib/base-cfc/comptages.ts).
+  comptages             Json?         @map("comptages")
   createdAt             DateTime      @default(now()) @map("created_at")
   updatedAt             DateTime      @updatedAt @map("updated_at")
 
@@ -690,6 +695,10 @@ model DiagnosticItem {
   /// Part de la surface du groupe qui revient a ce type, en pourcent.
   /// null = pas encore repartie, ou ouvrage qui n'appartient a aucun groupe.
   sharePct         Float?        @map("share_pct")
+  /// Nombre d'elements de la categorie comptee qui reviennent a ce type (2 portes
+  /// palieres en bois sur 6). Remplace la part de surface quand le dossier a un
+  /// comptage. null = seul de sa categorie (il prend tout), ou pas encore precise.
+  unites           Int?          @map("unites")
   /// true = quantite saisie par le diagnostiqueur : elle ne doit plus etre recalculee.
   quantityManual   Boolean       @default(false) @map("quantity_manual")
   /// true = cout force a la main : il ne doit plus etre recalcule depuis le catalogue.

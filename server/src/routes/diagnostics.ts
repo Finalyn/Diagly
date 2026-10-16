@@ -191,6 +191,7 @@ router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
         photos: data.photos ?? [],
         area: data.area,
         sharePct: data.sharePct,
+        unites: data.unites,
         quantityManual: data.quantityManual ?? false,
         costManual: data.costManual ?? false,
         unit: data.unit,

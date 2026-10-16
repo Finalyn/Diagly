@@ -13,10 +13,11 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Link2, Loader2, Magnet, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { PlanAnnotation } from '@/lib/api-types'
+import type { ComptageAnalyse, PlanAnnotation } from '@/lib/api-types'
 import {
-  COULEUR_PROPOSITION, NOMS_CONFIANCE, NOMS_TYPES_PAGE, NOMS_TYPES_ZONE, type EchelleDePage,
+  COULEUR_PROPOSITION, COULEURS_CATEGORIE, NOMS_CONFIANCE, NOMS_TYPES_PAGE, NOMS_TYPES_ZONE, type EchelleDePage,
 } from '@/lib/plans/analyse-ia'
+import { CATEGORIE, NOMBRE_MAX, ceQuiChange, type CategorieComptee, type Comptages } from '@/lib/base-cfc/comptages'
 import { ecartRelatif, fr, type StatutEchelle } from '@/lib/plans/echelle-exacte'
 import { MAX_PAGES_ANALYSE, type EtatAnalyse } from './analyse'
 
@@ -77,7 +78,8 @@ export function FenetreAnalyse({ etat, pageCourante, nombrePages, estPdf, onLanc
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
               L’IA lit la page, propose l’échelle et dessine les zones à métrer : façades, fenêtres, portes,
-              toiture, emprise. Rien ne compte dans le métré tant que vous ne l’avez pas validé.
+              toiture, emprise. Elle compte aussi les portes, fenêtres, balcons et appareils sanitaires, étages
+              identiques compris. Rien ne compte dans le métré tant que vous ne l’avez pas validé.
             </p>
             {plusieurs && (
               <div className="space-y-1.5">
@@ -475,5 +477,205 @@ export function AnalyseEnFond({ onOuvrir }: { onOuvrir: () => void }) {
     >
       <Loader2 className="h-3.5 w-3.5 animate-spin" />Analyse en cours…
     </button>
+  )
+}
+
+// ---------------------------------------------------------------- éléments comptés
+
+/** Les repères d'une catégorie sur la page : combien, et combien attendent d'être regardés. */
+export interface ReperesDeCategorie { categorie: CategorieComptee; total: number; aValider: number }
+
+/**
+ * Ce que l'IA a compté : les repères posés sur la page, et les totaux du
+ * bâtiment par catégorie, à reporter au dossier.
+ *
+ * Les deux ne se confondent pas. Les repères montrent où l'IA a vu chaque
+ * porte sur cette feuille ; le total, lui, multiplie un plan d'étage type
+ * par le nombre d'étages qu'il représente, et c'est lui qui part au dossier.
+ * Chaque total se corrige avant le report, et le report dit ce qu'il
+ * remplace : un compte relu à la main ne disparaît pas sans qu'on l'ait vu.
+ */
+export function ElementsDeLAnalyse({
+  reperes, comptages, existants, nomDuPlan, enCours, masqueeSurMobile, onValiderReperes, onRetirerReperes, onReporter,
+}: {
+  reperes: ReperesDeCategorie[]
+  comptages: ComptageAnalyse[]
+  /** Les comptages déjà au dossier. */
+  existants: Comptages
+  nomDuPlan: string
+  enCours: boolean
+  masqueeSurMobile: boolean
+  onValiderReperes: () => void
+  onRetirerReperes: () => void
+  onReporter: (comptages: Comptages) => Promise<void>
+}) {
+  const [ouverte, setOuverte] = useState(true)
+  const [nombres, setNombres] = useState<Record<string, string>>(() => Object.fromEntries(comptages.map((c) => [c.categorie, String(c.nombre)])))
+  const [remplacements, setRemplacements] = useState<string[] | null>(null)
+  const [reporte, setReporte] = useState(false)
+  const [erreur, setErreur] = useState<string | null>(null)
+  const aValider = reperes.reduce((s, r) => s + r.aValider, 0)
+  const surLaPage = reperes.reduce((s, r) => s + r.total, 0)
+
+  /** Les totaux tels que corrigés, en comptages du dossier. */
+  const construire = (): Comptages => {
+    // Le nom du plan sans son extension, assez court pour tenir dans le repère de page.
+    const sansExtension = nomDuPlan.replace(/\.[a-z0-9]{2,4}$/i, '')
+    const plan = sansExtension.length > 28 ? `${sansExtension.slice(0, 27)}…` : sansExtension
+    const nouveaux: Comptages = {}
+    for (const c of comptages) {
+      const brut = (nombres[c.categorie] ?? '').trim()
+      const n = Number(brut)
+      if (!brut || !Number.isInteger(n) || n < 0 || n > NOMBRE_MAX) continue
+      const corrige = n !== c.nombre
+      nouveaux[c.categorie] = {
+        categorie: c.categorie,
+        nombre: n,
+        surface: CATEGORIE[c.categorie].unite === 'm2' && !corrige ? c.surface : null,
+        source: 'analyse',
+        detail: corrige ? `Corrigé à ${n} ; l’IA en comptait ${c.nombre}${c.detail ? ` (${c.detail})` : ''}` : c.detail,
+        pages: c.pages.map((p) => `${plan}, p. ${p}`),
+        confiance: corrige ? null : c.confiance,
+        valide: true,
+        majLe: new Date().toISOString(),
+      }
+    }
+    return nouveaux
+  }
+
+  const reporter = async (confirme: boolean) => {
+    setErreur(null)
+    const nouveaux = construire()
+    if (Object.keys(nouveaux).length === 0) { setErreur('Aucun nombre valable à reporter.'); return }
+    const change = ceQuiChange(existants, nouveaux)
+    if (change.length > 0 && !confirme) { setRemplacements(change); return }
+    try {
+      await onReporter(nouveaux)
+      setRemplacements(null)
+      setReporte(true)
+    } catch {
+      setErreur('Le report au dossier a échoué. Réessayez.')
+    }
+  }
+
+  return (
+    <div
+      data-habillage
+      className={cn('pointer-events-auto flex max-h-full w-full flex-col overflow-hidden rounded-xl border bg-background/95 shadow-lg backdrop-blur sm:w-80',
+        masqueeSurMobile && 'hidden sm:flex')}
+    >
+      <div className="border-b px-3 py-2">
+        <div className="flex items-center gap-2">
+          <MarqueDiagly className="h-4 w-4" />
+          <p className="min-w-0 flex-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Éléments comptés</p>
+          <button onClick={() => setOuverte((o) => !o)} className="rounded p-1 text-muted-foreground hover:bg-muted" title={ouverte ? 'Replier' : 'Déplier'}>
+            {ouverte ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        </div>
+        {surLaPage > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {surLaPage} repère{surLaPage > 1 ? 's' : ''} sur cette page
+            {aValider > 0 && <span className="text-amber-600"> · {aValider} à valider</span>}
+          </p>
+        )}
+      </div>
+
+      {ouverte && (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {reperes.length > 0 && (
+            <div className="border-b px-3 py-2">
+              <ul className="space-y-0.5 text-xs">
+                {reperes.map((r) => (
+                  <li key={r.categorie} className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: COULEURS_CATEGORIE[r.categorie] }} aria-hidden />
+                    <span className="min-w-0 flex-1 truncate">{CATEGORIE[r.categorie].libelle}</span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">{r.total}</span>
+                  </li>
+                ))}
+              </ul>
+              {aValider > 0 && (
+                <div className="mt-2 flex gap-1.5">
+                  <button onClick={onValiderReperes} className="flex-1 rounded-lg bg-foreground px-2.5 py-1.5 text-xs font-semibold text-background transition-opacity hover:opacity-90">
+                    Valider les repères
+                  </button>
+                  <button onClick={onRetirerReperes} className="rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-muted">
+                    Retirer
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {comptages.length > 0 && (
+            <div className="px-3 py-2">
+              <p className="mb-1.5 text-xs text-muted-foreground">
+                Totaux du bâtiment, étages identiques compris. Corrigez-les au besoin, puis reportez-les au dossier : ils y donnent la quantité des ouvrages comptés.
+              </p>
+              <ul className="space-y-2">
+                {comptages.map((c) => {
+                  const existant = existants[c.categorie]
+                  return (
+                    <li key={c.categorie} className="rounded-lg border px-2.5 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: COULEURS_CATEGORIE[c.categorie] }} aria-hidden />
+                        <span className="min-w-0 flex-1 text-sm font-medium leading-tight">{CATEGORIE[c.categorie].libelle}</span>
+                        <input
+                          type="number" inputMode="numeric" min={0} max={NOMBRE_MAX} step={1}
+                          value={nombres[c.categorie] ?? ''}
+                          onChange={(e) => { setNombres((t) => ({ ...t, [c.categorie]: e.target.value })); setReporte(false); setRemplacements(null) }}
+                          aria-label={`Nombre de ${CATEGORIE[c.categorie].pluriel}`}
+                          className="h-10 w-16 rounded-md border bg-background px-2 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-primary"
+                        />
+                      </div>
+                      {c.detail && <p className="mt-1 text-xs">{c.detail}</p>}
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {[
+                          c.pages.length ? `page${c.pages.length > 1 ? 's' : ''} ${c.pages.join(', ')}` : null,
+                          NOMS_CONFIANCE[c.confiance],
+                          c.surface != null ? `${fr(c.surface)} m²` : null,
+                        ].filter(Boolean).join(' · ')}
+                      </p>
+                      {existant && (
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">Au dossier : {existant.nombre}</p>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+
+              {remplacements ? (
+                <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
+                  <p className="font-medium">Ce report remplace :</p>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {remplacements.map((r) => <li key={r}>{r}</li>)}
+                  </ul>
+                  <div className="mt-2 flex gap-1.5">
+                    <button onClick={() => void reporter(true)} disabled={enCours} className="flex-1 rounded-lg bg-foreground px-2.5 py-1.5 text-xs font-semibold text-background hover:opacity-90 disabled:opacity-50">
+                      Remplacer
+                    </button>
+                    <button onClick={() => setRemplacements(null)} className="rounded-lg border bg-background px-2.5 py-1.5 text-xs font-medium hover:bg-muted">
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => void reporter(false)}
+                  disabled={enCours}
+                  className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {enCours ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  Reporter au dossier
+                </button>
+              )}
+              {reporte && !enCours && (
+                <p className="mt-1.5 text-xs text-emerald-700">Reporté au dossier : les quantités des relevés concernés suivent.</p>
+              )}
+              {erreur && <p className="mt-1.5 text-xs text-red-700">{erreur}</p>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

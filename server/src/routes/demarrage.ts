@@ -377,7 +377,9 @@ router.post("/plans", recevoirPlans, async (req, res) => {
   const id = LECTURES.lancer(req.auth!.sub, async (signal) => {
     const { json, tronque, refus } = await demanderAuModeleDesPlans(
       [...blocs, { type: "text", text: CONSIGNE_PLANS }],
-      { maxTokens: 16_000, signal, messages: MESSAGES_LECTURE },
+      // Les comptes d'éléments (portes, fenêtres…) allongent la réponse et la
+      // réflexion qui la précède : la marge est relevée en conséquence.
+      { maxTokens: 32_000, signal, messages: MESSAGES_LECTURE },
     );
     return { configured: true, tronque, refus, lecture: json ? validerLecturePlans(json, files.length) : null };
   });

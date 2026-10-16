@@ -16,6 +16,7 @@ import {
   surfaceFacade, surfaceFenetres,
   type DonneesBatiment, type RepartitionLogements,
 } from './quantites'
+import { comptagesDuDossier } from './comptages'
 
 /** Les champs de la fiche du dossier qui servent aux quantités. */
 export interface FicheDuBatiment {
@@ -35,6 +36,8 @@ export interface FicheDuBatiment {
   windowPct?: number | null
   /** Surface de parking, facultative : les sprinklers la prennent si elle existe. */
   parkingArea?: number | null
+  /** Les éléments comptés du dossier, tels que stockés (JSON). */
+  comptages?: unknown
 }
 
 /** Hauteur d'étage retenue faute de mieux, usage du bureau. */
@@ -101,6 +104,7 @@ export function donneesDuBatiment(fiche: FicheDuBatiment): DonneesBatiment {
     nombrePortesEntree: cages === null ? null : cages * ENTREES_PAR_CAGE,
     hauteur: etages === null ? null : etages * hauteurEtage,
     surfaceParking: valeur(fiche.parkingArea),
+    comptages: comptagesDuDossier(fiche.comptages),
   }
 }
 
@@ -126,6 +130,7 @@ export const LIBELLES_DU_BATIMENT: Record<keyof DonneesBatiment, string> = {
   nombrePortesEntree: "nombre de portes d'entrée",
   hauteur: 'hauteur du bâtiment',
   surfaceParking: 'surface de parking',
+  comptages: 'éléments comptés',
 }
 
 /**
@@ -136,7 +141,7 @@ export const LIBELLES_DU_BATIMENT: Record<keyof DonneesBatiment, string> = {
  * apprend au diagnostiqueur à ignorer les avertissements.
  */
 export function donneesManquantes(d: DonneesBatiment): string[] {
-  const facultatives = new Set<keyof DonneesBatiment>(['surfaceParking'])
+  const facultatives = new Set<keyof DonneesBatiment>(['surfaceParking', 'comptages'])
   return (Object.keys(LIBELLES_DU_BATIMENT) as (keyof DonneesBatiment)[])
     .filter((c) => !facultatives.has(c))
     .filter((c) => d[c] === null || d[c] === undefined)

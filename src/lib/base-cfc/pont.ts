@@ -29,6 +29,7 @@ import { cleDuReleve } from './etapes'
 import { prixUnitaire } from './prix'
 import { quantiteDeBase, type DonneesBatiment } from './quantites'
 import type { BaseQuantite, EtatArticle, Unite } from './normaliser'
+import { categorieDeLArticle, phraseDuComptage } from './comptages'
 
 /** Les quatre états que le diagnostiqueur constate, tels que l'app les nomme. */
 export type EtatConstate = 'TRES_BON' | 'BON' | 'MOYEN' | 'MAUVAIS'
@@ -223,6 +224,9 @@ export function resolutionDeQuantite(ouvrage: OuvrageSaisi, batiment: DonneesBat
   const base = ouvrage.baseQuantite
   const nom = BASES_EN_CLAIR[base]
 
+  const comptee = resolutionParComptage(ouvrage, batiment)
+  if (comptee) return comptee
+
   if (base === 'saisie_manuelle') {
     return {
       quantity: undefined,
@@ -238,6 +242,40 @@ export function resolutionDeQuantite(ouvrage: OuvrageSaisi, batiment: DonneesBat
   }
   if (base === 'forfait') return { quantity: 1, origin: 'forfait', basis: nom }
   return { quantity: quantite, origin: 'formule', basis: nom }
+}
+
+/**
+ * La quantité d'un ouvrage compté, quand le dossier a un comptage pour sa
+ * catégorie (portes, fenêtres, balcons…). null sinon : la règle de la base
+ * s'applique, comme avant que les comptages existent.
+ *
+ * Le comptage l'emporte sur la règle : six portes palières vues sur les
+ * plans valent mieux qu'un « une par logement » qui ne voit pas l'immeuble.
+ * La quantité rendue est celle de toute la catégorie ; ce qui revient à
+ * chaque type se règle ensuite par ses unités (comptages.ts,
+ * quantiteDuTypeCompte). Une quantité reprise à la main, elle, l'emporte
+ * toujours sur les deux, et c'est le relevé qui le sait.
+ *
+ * Au mètre carré (les fenêtres), le total est la surface mesurée avec le
+ * compte, ou à défaut celle de la règle de la base : le nombre sert alors à
+ * la partager entre les types.
+ */
+function resolutionParComptage(ouvrage: OuvrageSaisi, batiment: DonneesBatiment): QuantityResolution | null {
+  const categorie = categorieDeLArticle({ id: ouvrage.articleId, nom: ouvrage.description, uniteEntretien: ouvrage.unit })
+  const comptage = categorie ? batiment.comptages?.[categorie] : undefined
+  if (!comptage) return null
+  const basis = phraseDuComptage(comptage)
+  if (!/m2|m²/i.test(ouvrage.unit)) return { quantity: comptage.nombre, origin: 'comptage', basis }
+
+  if (comptage.surface != null) return { quantity: comptage.surface, origin: 'comptage', basis }
+  const nom = BASES_EN_CLAIR[ouvrage.baseQuantite]
+  const regle = ouvrage.baseQuantite === 'saisie_manuelle'
+    ? null
+    : quantiteDeBase({ baseQuantite: ouvrage.baseQuantite, coefficient: ouvrage.coefficient }, batiment)
+  if (regle === null) {
+    return { quantity: undefined, origin: 'manuelle', basis, reason: `${nom} non renseignée sur ce dossier` }
+  }
+  return { quantity: regle, origin: 'comptage', basis: `${nom} répartie selon ${basis}` }
 }
 
 /**

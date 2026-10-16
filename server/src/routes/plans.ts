@@ -211,10 +211,13 @@ router.post("/:id/analyse", aiLimiter, recevoirPages, async (req, res) => {
 
   const releveIds = donnees.ouvrages.map((o) => o.id);
   const id = ANALYSES.lancer(req.auth!.sub, async (signal) => {
-    const r = await demanderAuModeleDesPlans(contenu, { maxTokens: 48_000, signal, messages: MESSAGES_ANALYSE });
+    // Les repères des éléments comptés (jusqu'à quatre cents points) allongent
+    // la réponse : la marge suit, le modèle des plans en admet bien davantage.
+    const r = await demanderAuModeleDesPlans(contenu, { maxTokens: 64_000, signal, messages: MESSAGES_ANALYSE });
     const analyse = r.json ? validerAnalyse(r.json, pages, releveIds) : null;
     logger.info({
       plan: plan.id, pages: pages.length, zones: analyse?.zones.length ?? null, ecartees: analyse?.ecartees.length ?? null,
+      reperes: analyse?.elements.length ?? null, comptages: analyse?.comptages.length ?? null,
       tronque: r.tronque, refus: r.refus,
     }, "analyse de plan validée");
     return { configured: true as const, tronque: r.tronque, refus: r.refus, analyse };

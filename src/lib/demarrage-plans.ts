@@ -9,7 +9,8 @@
  * nombre d'étages non entier, une surface négative) ne remplit rien : le
  * champ reste à saisir plutôt que de faire échouer la création.
  */
-import type { CleGrandeurPlans, GrandeurLue, LecturePlans, RoofType } from './api-types'
+import type { CleGrandeurPlans, ElementCompteLu, GrandeurLue, LecturePlans, RoofType } from './api-types'
+import { CLES_CATEGORIES, NOMBRE_MAX, type CategorieComptee, type Comptages } from './base-cfc/comptages'
 
 /** Les champs du dossier que des plans remplissent, sous leurs noms du formulaire et du serveur. */
 export interface ChampsDesPlans {
@@ -59,14 +60,56 @@ export interface ValeursRetenues {
   grandeurs: Record<CleGrandeurPlans, number | null>
   typeToit: RoofType | null
   typologies: Record<string, number> | null
+  /** Le nombre retenu pour chaque catégorie d'éléments comptés ; null = non compté. */
+  elements: Partial<Record<CategorieComptee, number | null>>
+  /** Les comptes que le diagnostiqueur a vérifiés sans les changer. */
+  confirmes: CategorieComptee[]
 }
 
 export function valeursInitiales(l: LecturePlans): ValeursRetenues {
   const grandeurs = Object.fromEntries(
     GRANDEURS_DES_PLANS.map((g) => [g.cle, l.grandeurs[g.cle]?.valeur ?? null]),
   ) as Record<CleGrandeurPlans, number | null>
-  return { grandeurs, typeToit: l.typeToit.valeur, typologies: l.typologies.valeur }
+  const elements = Object.fromEntries(CLES_CATEGORIES.map((c) => [c, l.elements?.[c]?.nombre ?? null]))
+  return { grandeurs, typeToit: l.typeToit.valeur, typologies: l.typologies.valeur, elements, confirmes: [] }
 }
+
+/**
+ * Les éléments comptés à enregistrer au dossier, depuis ce qui a été relu.
+ *
+ * Un compte lu sur les plans y entre avec sa source, ses pages et son calcul,
+ * tenu pour « à vérifier » tant que le diagnostiqueur ne l'a ni confirmé ni
+ * corrigé. Corrigé, il perd le calcul de l'IA, qui ne décrit plus le nombre
+ * retenu, et le dit. Un nombre que les plans n'avaient pas donné est une
+ * saisie.
+ */
+export function comptagesDepuisPlans(l: LecturePlans, v: ValeursRetenues, noms: string[]): Comptages {
+  const r: Comptages = {}
+  const majLe = new Date().toISOString()
+  for (const cle of CLES_CATEGORIES) {
+    const n = v.elements[cle]
+    if (n === null || n === undefined || !Number.isInteger(n) || n < 0 || n > NOMBRE_MAX) continue
+    const lu: ElementCompteLu | undefined = l.elements?.[cle]
+    const luSurLesPlans = lu?.nombre != null
+    const corrige = luSurLesPlans && lu!.nombre !== n
+    r[cle] = {
+      categorie: cle,
+      nombre: n,
+      surface: cle === 'fenetre' && luSurLesPlans && !corrige ? lu!.surface : null,
+      source: luSurLesPlans ? 'plans' : 'saisie',
+      detail: corrige ? `Corrigé à la relecture ; lu sur les plans : ${lu!.nombre}` : luSurLesPlans ? lu!.detail : null,
+      pages: luSurLesPlans ? lu!.pages.map((pg) => lieuDeLaPage(pg, noms) ?? pg) : [],
+      confiance: luSurLesPlans && !corrige ? lu!.confiance : null,
+      valide: !luSurLesPlans || corrige || v.confirmes.includes(cle),
+      majLe,
+    }
+  }
+  return r
+}
+
+/** Un compte à regarder de près : estimé, ou lu avec une confiance basse. */
+export const elementAVerifier = (e: ElementCompteLu | undefined): boolean =>
+  !!e && e.nombre !== null && (e.methode === 'estimation' || e.confiance === 'basse')
 
 const positif = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
 const entierAuMoins = (v: number | null | undefined, min: number): v is number =>

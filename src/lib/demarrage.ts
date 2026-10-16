@@ -9,7 +9,9 @@
  * tant que le diagnostiqueur ne l'a pas vu.
  */
 import type { ApiBaseCfc, ApiDiagnosticItem, ApiProject, BatimentLu, ElementState, EnergieLue } from './api-types'
-import { ouvrageDeLArticle, resolutionDeQuantite } from './base-cfc/pont'
+import { ouvrageDeLArticle } from './base-cfc/pont'
+import { quantiteALAjout } from './base-cfc/quantite-comptee'
+import type { Comptages } from './base-cfc/comptages'
 import { donneesDuBatiment } from './base-cfc/batiment'
 import { localisationDeLaZone } from './base-cfc/catalogue'
 import { computeCost, workForState, STATE_PRIORITY } from './diagnostic-auto'
@@ -29,6 +31,8 @@ export const AVERTISSEMENT_VALEURS_PUBLIQUES =
 export interface PlansRetenus {
   fichiers: File[]
   champs: ChampsDesPlans
+  /** Les éléments comptés sur les plans et relus : portes, fenêtres, balcons… */
+  comptages: Comptages
 }
 
 /** Un relevé retenu à la relecture. */
@@ -97,12 +101,20 @@ export function relevesPourLeDiagnostic(imp: ImportPret, base: ApiBaseCfc, proje
 
   const origine = imp.source === 'cecb' ? `Mesure du certificat énergétique « ${imp.fichier} », à vérifier sur place.` : `Repris de « ${imp.fichier} ».`
   const items: Partial<ApiDiagnosticItem>[] = []
+  // Les relevés déjà construits, pour qu'un deuxième type d'une catégorie
+  // comptée arrive sans quantité, comme dans l'éditeur (quantite-comptee.ts).
+  const construits: { id: string; articleId: string; cfcLabel: string; unites?: number | null; rang: number }[] = []
   for (const { r, notes } of parCle.values()) {
     const article = base.articles.find((a) => a.id === r.articleId)
     if (!article) continue
     const etape = base.etapes.find((e) => e.numero === r.etapeNumero)
     const catalog = ouvrageDeLArticle(article, r.etapeNumero)
-    const quantity = resolutionDeQuantite(catalog, batiment).quantity
+    const { quantity, aFixer } = quantiteALAjout(catalog, batiment, construits, base.articles)
+    for (const f of aFixer) {
+      const deja = construits.find((c) => c.id === f.id)
+      if (deja) { deja.unites = f.unites; items[deja.rang].unites = f.unites }
+    }
+    construits.push({ id: `import-${items.length}`, articleId: catalog.articleId, cfcLabel: catalog.description, rang: items.length })
     const state = r.etat
     const cost = state ? computeCost(catalog, state, quantity) : undefined
     const work = state ? workForState(catalog, state) : null

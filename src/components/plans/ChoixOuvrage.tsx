@@ -23,7 +23,8 @@ import { cn } from '@/lib/utils'
 import { uniteCourte } from '@/lib/devis'
 import { natureDeLUnite, type NatureQuantite } from '@/lib/plan-quantites'
 import { useBaseCfc } from '@/lib/base-cfc/requete'
-import { ouvrageDeLArticle, resolutionDeQuantite, uniteEnClair } from '@/lib/base-cfc/pont'
+import { ouvrageDeLArticle, uniteEnClair } from '@/lib/base-cfc/pont'
+import { quantiteALAjout } from '@/lib/base-cfc/quantite-comptee'
 import { donneesDuBatiment } from '@/lib/base-cfc/batiment'
 import { localisationDeLaZone } from '@/lib/base-cfc/catalogue'
 import { stateLabels } from '@/data/mock'
@@ -56,7 +57,10 @@ export function ChoixOuvrage({ projectId, nature, choisi, onChoisir, onFermer }:
       // retrouvera en passant sur place.
       const etape = [...article.etapes].sort((a, b) => a.etapeNumero - b.etapeNumero)[0]?.etapeNumero ?? null
       const ouvrage = ouvrageDeLArticle(article, etape)
-      const quantite = resolutionDeQuantite(ouvrage, donneesDuBatiment(project ?? {})).quantity
+      // Dans une catégorie comptée, le deuxième type arrive sans quantité et le
+      // premier garde explicitement ses unités, comme depuis l'éditeur.
+      const { quantity: quantite, aFixer } = quantiteALAjout(ouvrage, donneesDuBatiment(project ?? {}), items, base.data?.articles ?? [])
+      for (const f of aFixer) await api.diagnostics.updateItem(f.id, { unites: f.unites })
       const zone = base.data?.etapes.find((e) => e.numero === etape)?.zone
       return api.diagnostics.createItem(diagnosticId!, {
         cfcCode: ouvrage.cfcCode,

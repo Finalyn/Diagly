@@ -157,7 +157,12 @@ function totalPieces(types: Record<string, number> | null | undefined): number {
 
 // ---------- Résolution de la quantité ----------
 
-export type QuantityOrigin = 'formule' | 'unite' | 'forfait' | 'manuelle'
+/**
+ * D'où vient une quantité. `comptage` : du nombre d'éléments compté sur les
+ * plans ou au dossier (portes, fenêtres, balcons…), qui l'emporte sur la
+ * règle de la base (voir base-cfc/comptages.ts).
+ */
+export type QuantityOrigin = 'formule' | 'unite' | 'forfait' | 'manuelle' | 'comptage'
 
 export interface QuantityResolution {
   /** undefined = à saisir à la main. */

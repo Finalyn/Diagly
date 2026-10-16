@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { aVerifier, champsDepuisPlans, GRANDEURS_DES_PLANS, lieuDeLaPage, valeursInitiales, type ValeursRetenues } from './demarrage-plans'
-import type { CleGrandeurPlans, GrandeurLue, LecturePlans } from './api-types'
+import {
+  aVerifier, champsDepuisPlans, comptagesDepuisPlans, elementAVerifier, GRANDEURS_DES_PLANS, lieuDeLaPage, valeursInitiales,
+  type ValeursRetenues,
+} from './demarrage-plans'
+import type { CleGrandeurPlans, ElementCompteLu, GrandeurLue, LecturePlans } from './api-types'
 
 const G = (valeur: number | null, extra: Partial<GrandeurLue> = {}): GrandeurLue =>
   ({ valeur, page: 'F1 p. 1', methode: 'cote lue', confiance: 'haute', remarque: null, ...extra })
@@ -93,5 +96,52 @@ describe('aVerifier', () => {
     expect(aVerifier(G(3, { confiance: 'basse' }))).toBe(true)
     expect(aVerifier(G(3))).toBe(false)
     expect(aVerifier(G(null, { confiance: 'basse' }))).toBe(false)
+  })
+})
+
+describe('comptagesDepuisPlans', () => {
+  const E = (nombre: number | null, extra: Partial<ElementCompteLu> = {}): ElementCompteLu => ({
+    nombre, surface: null, pages: ['F1 p. 2'], methode: 'compté et multiplié par les étages identiques', confiance: 'haute',
+    detail: '2 par palier × 3 étages = 6', remarque: null, ...extra,
+  })
+  const lu = (): LecturePlans => ({
+    ...lecture(),
+    elements: { porte_paliere: E(6), fenetre: E(36, { surface: 60.5, detail: '12 par étage × 3 = 36' }), balcon: E(null, { detail: 'balcons non dessinés' }) },
+  })
+
+  it('reprend chaque compte lu, avec sa source, ses pages et son calcul, à vérifier', () => {
+    const c = comptagesDepuisPlans(lu(), valeursInitiales(lu()), ['etage-type.pdf'])
+    expect(Object.keys(c)).toEqual(['porte_paliere', 'fenetre'])
+    expect(c.porte_paliere).toMatchObject({
+      nombre: 6, source: 'plans', detail: '2 par palier × 3 étages = 6', pages: ['etage-type.pdf, p. 2'],
+      confiance: 'haute', valide: false, surface: null,
+    })
+    expect(c.fenetre?.surface).toBe(60.5)
+  })
+
+  it('tient pour relu un compte confirmé, et pour corrigé un compte changé', () => {
+    const v = valeursInitiales(lu())
+    const c = comptagesDepuisPlans(lu(), { ...v, confirmes: ['porte_paliere'], elements: { ...v.elements, fenetre: 30 } }, [])
+    expect(c.porte_paliere?.valide).toBe(true)
+    expect(c.fenetre).toMatchObject({
+      nombre: 30, source: 'plans', valide: true, confiance: null, surface: null,
+      detail: 'Corrigé à la relecture ; lu sur les plans : 36',
+    })
+  })
+
+  it('fait d’un nombre que les plans n’avaient pas donné une saisie', () => {
+    const v = valeursInitiales(lu())
+    const c = comptagesDepuisPlans(lu(), { ...v, elements: { ...v.elements, balcon: 4 } }, [])
+    expect(c.balcon).toMatchObject({ nombre: 4, source: 'saisie', valide: true, detail: null, pages: [] })
+  })
+
+  it('n’enregistre rien d’une lecture d’avant les comptages', () => {
+    expect(comptagesDepuisPlans(lecture(), valeursInitiales(lecture()), [])).toEqual({})
+  })
+
+  it('signale une estimation ou une confiance basse', () => {
+    expect(elementAVerifier(E(6, { methode: 'estimation', confiance: 'basse' }))).toBe(true)
+    expect(elementAVerifier(E(6))).toBe(false)
+    expect(elementAVerifier(E(null, { confiance: 'basse' }))).toBe(false)
   })
 })

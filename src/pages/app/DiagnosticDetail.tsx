@@ -35,6 +35,14 @@ import {
   ouvrageDeLArticle, ouvrageDuReleve, resolutionDeQuantite, type OuvrageSaisi,
 } from '@/lib/base-cfc/pont'
 import { donneesDuBatiment } from '@/lib/base-cfc/batiment'
+// Les éléments comptés (portes, fenêtres…) : la quantité d'un type vient de
+// ses unités dans le comptage du dossier, et non plus de sa part de surface.
+import {
+  categorieDeLArticle, comptees, quantiteDuTypeCompte, repartitionsDuDossier, repartitionsIncompletes,
+  type Comptages, type EtatRepartition,
+} from '@/lib/base-cfc/comptages'
+import { patchDesUnites, quantiteALAjout } from '@/lib/base-cfc/quantite-comptee'
+import { RepartitionDuType } from '@/components/comptages/Compteur'
 import { cleDuReleve } from '@/lib/base-cfc/etapes'
 import type { DonneesBatiment } from '@/lib/base-cfc/quantites'
 // Les relevés d'avant la bascule portent encore une localisation au lieu d'une étape.
@@ -229,6 +237,9 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   const partPourUnAjout = (ligne: LigneDeVisite) => {
     const groupe = ligne.article.groupeAlternatives
     if (!groupe) return null
+    // Une catégorie comptée se répartit en unités : aucune part à poser.
+    const categorie = categorieDeLArticle(ligne.article)
+    if (categorie && comptages[categorie]) return null
     // Par étape : les sols de la cage d'escalier et ceux des appartements font
     // chacun leurs cent pour cent, et le premier type relevé de chaque côté
     // prend toute sa surface.
@@ -240,7 +251,13 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   const ajouterReleve = (input: { ligne: LigneDeVisite; state?: ElementState | null; sharePct?: number | null }) => {
     const { ligne, state } = input
     const catalog = ouvrageDeLArticle(ligne.article, ligne.etapeNumero)
-    const quantity = resolutionDeQuantite(catalog, batiment).quantity
+    // Dans une catégorie comptée, le premier type prend tout le comptage et le
+    // suivant arrive sans quantité ; le type déjà là garde alors explicitement
+    // ses unités (quantite-comptee.ts).
+    // Lus dans les requêtes plutôt que dans `items` et `articles`, déclarés
+    // plus bas : le compilateur React renonce sinon à mémoriser ces deux listes.
+    const { quantity, aFixer } = quantiteALAjout(catalog, batiment, itemsQuery.data?.items ?? [], baseQuery.data?.articles ?? [])
+    for (const f of aFixer) modifierReleve(f.id, { unites: f.unites })
     // Ajout « non évalué » par défaut : ni état, ni coût tant que le diagnostiqueur n'a pas choisi.
     const cost = state ? computeCost(catalog, state, quantity) : undefined
     const work = state ? workForState(catalog, state) : null
@@ -319,6 +336,18 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     projectQuery.data?.project?.buildingType,
   )
 
+  /** Les éléments comptés du dossier : portes, fenêtres, balcons… */
+  const comptages: Comptages = batiment.comptages ?? {}
+  /**
+   * La répartition de chaque catégorie comptée : six portes palières, et
+   * combien en bois, combien en métal. Calculée ici, où l'on voit tout le
+   * relevé ; l'éditeur reçoit celle de l'ouvrage ouvert.
+   */
+  const repartitions = repartitionsDuDossier(comptages, items, articles)
+  const repartitionDuReleve = (itemId: string) =>
+    repartitions.find((r) => r.types.some((t) => t.id === itemId)) ?? null
+  const malRepartis = repartitionsIncompletes(repartitions)
+
   /**
    * Les groupes d'alternatives du relevé.
    *
@@ -336,8 +365,13 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
       cleArticle: it.articleId && it.etapeNumero != null ? cleDuReleve(it.articleId, it.etapeNumero) : null,
       catalogItemId: it.catalogItemId,
     })),
+    // Un type d'une catégorie comptée quitte son groupe de surface : ses
+    // unités remplacent le pourcentage tant que le dossier a le comptage.
     parcours.etapes.flatMap((e) => e.domaines.flatMap((d) => d.lignes))
-      .map((l) => ({ id: l.cle, surfaceGroup: l.article.groupeAlternatives })),
+      .map((l) => {
+        const categorie = categorieDeLArticle(l.article)
+        return { id: l.cle, surfaceGroup: categorie && comptages[categorie] ? null : l.article.groupeAlternatives }
+      }),
   )
   const groupeDeLOuvrage = (itemId: string) =>
     groupesSurface.find((g) => g.membres.some((m) => m.id === itemId)) ?? null
@@ -489,7 +523,13 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
           total={avancementVisite.total}
           etapes={avancementVisite.etapes}
           etape={etape}
-          alerte={phraseDAlerte(bilanDesOublis(items))}
+          // Une répartition qui ne fait pas le compte se dit avec les oublis :
+          // c'est le même bouton qui mène au récapitulatif.
+          alerte={[
+            phraseDAlerte(bilanDesOublis(items)),
+            malRepartis.length === 1 ? malRepartis[0].phrase
+              : malRepartis.length > 1 ? `${malRepartis.length} éléments comptés à répartir` : null,
+          ].filter(Boolean).join(' · ') || null}
           onAlerte={() => setRecap(true)}
         />
 
@@ -547,6 +587,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 // Une saisie s'enregistre sur l'appareil, sans attendre le
                 // serveur : rien n'est jamais « en cours », aucun bouton ne se grise.
                 ajoutEnCours={false}
+                repartitions={repartitions}
               />
             ) : (
             <>
@@ -674,6 +715,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 batiment={batiment}
                 sousTitre={sousTitreDuReleve(selectedDiagItem)}
                 groupe={groupeDeLOuvrage(selectedDiagItem.id)}
+                repartition={repartitionDuReleve(selectedDiagItem.id)}
                 mobile
                 guideMode={guideMode}
                 projectId={projectId}
@@ -716,6 +758,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
               batiment={batiment}
               sousTitre={sousTitreDuReleve(selectedDiagItem)}
               groupe={groupeDeLOuvrage(selectedDiagItem.id)}
+              repartition={repartitionDuReleve(selectedDiagItem.id)}
               mobile={isMobile}
               guideMode={guideMode}
               projectId={projectId}
@@ -759,6 +802,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
           incomplets={relevesIncomplets(items)}
           restants={Math.max(0, avancementVisite.total - avancementVisite.faits)}
           groupesMalRepartis={groupesIncomplets(groupesSurface)}
+          repartitionsIncompletes={malRepartis}
           onOuvrir={(itemId) => { ouvrirReleve(itemId); setRecap(false) }}
           onFermer={() => setRecap(false)}
         />
@@ -1052,7 +1096,7 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte }: {
   )
 }
 
-function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvrir, onAjouter, ajoutEnCours }: {
+function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvrir, onAjouter, ajoutEnCours, repartitions }: {
   etapes: EtapeDuDiagnostic[]
   etape: EtapeChoisie
   onEtape: (n: EtapeChoisie) => void
@@ -1061,6 +1105,8 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
   onOuvrir: (itemId: string) => void
   onAjouter: (ligne: LigneDeVisite) => void
   ajoutEnCours: boolean
+  /** Les catégories comptées du dossier, pour dire sur chaque type ce qui lui revient. */
+  repartitions: EtatRepartition[]
 }) {
   // Le relevé voyage avec sa ligne, puisque le couple article et étape
   // l'identifie : chercher par le seul article renvoyait celui de l'autre côté
@@ -1177,6 +1223,27 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
 
   // --- Niveau 3 : les types de l'ouvrage choisi ---
   const a = avancement(choisie.lignes)
+  /**
+   * Ce que les plans ont compté, dit sur la ligne du type : « 2/6 » sur un
+   * type relevé, « 6 comptées » sur le premier type d'une catégorie dont
+   * aucun n'est encore relevé. Le diagnostiqueur voit, avant d'ouvrir quoi
+   * que ce soit, que les plans ont trouvé six portes palières.
+   */
+  const badgeDuComptage = (ligne: LigneDeVisite): { texte: string; aPreciser: boolean; origine: string } | null => {
+    const categorie = categorieDeLArticle(ligne.article)
+    const r = categorie ? repartitions.find((x) => x.categorie === categorie) : undefined
+    if (!r) return null
+    const N = r.comptage.nombre
+    const origine = r.comptage.source === 'saisie' ? 'au dossier' : 'sur les plans'
+    if (ligne.releve) {
+      const t = r.types.find((x) => x.id === ligne.releve!.id)
+      if (!t) return null
+      return { texte: t.effectives == null ? `?/${N}` : `${t.effectives}/${N}`, aPreciser: t.effectives == null || !r.complet, origine }
+    }
+    const premiere = choisie.lignes.find((l) => categorieDeLArticle(l.article) === categorie)
+    if (r.types.length > 0 || premiere?.cle !== ligne.cle) return null
+    return { texte: `${N} ${comptees(N, r.categorie)}`, aPreciser: false, origine }
+  }
   const seulOuvrage = courante.domaines.length === 1
   // L'ouvrage d'après, dans l'ordre de l'étape : on sort des fenêtres pour
   // entrer dans les portes extérieures sans remonter à la liste. Quand il n'y
@@ -1199,6 +1266,7 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
       {choisie.lignes.map((ligne) => {
         const c = ligne.article
         const existant = ligne.releve
+        const compte = badgeDuComptage(ligne)
         return (
           <button
             key={ligne.cle}
@@ -1214,8 +1282,19 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
                 <span className="mr-1.5 font-mono text-xs font-normal text-muted-foreground">{c.cfcCode}</span>
                 {c.nom}
               </span>
+              {compte && !existant && (
+                <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 text-[10px] font-medium text-primary">
+                  {compte.texte} {compte.origine}
+                </span>
+              )}
               {existant && (
                 <span className="mt-0.5 flex flex-wrap gap-1">
+                  {compte && (
+                    <span className={cn('rounded px-1.5 text-[10px] font-semibold tabular-nums',
+                      compte.aPreciser ? 'bg-amber-100 text-amber-800' : 'bg-primary/10 text-primary')}>
+                      {compte.texte}
+                    </span>
+                  )}
                   {existant.state ? (
                     <>
                       <span className={cn('rounded px-1.5 text-[10px] text-white', stateColors[existant.state])}>
@@ -1342,6 +1421,11 @@ interface ItemEditorProps {
   sousTitre?: string | null
   /** Groupe de surface de l'ouvrage, quand il en a un. */
   groupe?: GroupeSurface | null
+  /**
+   * Répartition de sa catégorie comptée, quand le dossier a un comptage pour
+   * elle : les unités du type remplacent alors la part de surface.
+   */
+  repartition?: EtatRepartition | null
   guideMode: GuideMode
   projectId?: string
   /** Année de construction : repli quand l'ouvrage n'a pas d'année de pose relevée. */
@@ -1615,7 +1699,7 @@ function PartDeSurface({ groupe, item, quantiteDuGroupe, unite, onPart }: {
   )
 }
 
-function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, suivant, cadreExterne }: ItemEditorProps) {
+function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, suivant, cadreExterne }: ItemEditorProps) {
   const [notes, setNotes] = useState(item.notes ?? '')
   const [showManual, setShowManual] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false) // options expertes repliées (mobile)
@@ -1648,9 +1732,14 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
    * moitié passerait au devis sans rien signaler.
    */
   const partDuGroupe = groupe ? partEffective(item, groupe.membres.length) : 100
-  const autoQty = groupe
-    ? quantiteDuType(qtyResolution.quantity, partDuGroupe)
-    : qtyResolution.quantity
+  // Un type d'une catégorie comptée prend ses unités du comptage : 2 portes
+  // sur 6, ou, pour les fenêtres, sa part de la surface au prorata du nombre.
+  const unitesDuType = repartition?.types.find((t) => t.id === item.id)?.effectives ?? null
+  const autoQty = repartition
+    ? quantiteDuTypeCompte(qtyResolution.quantity, unitesDuType, repartition.comptage, catalog?.unit)
+    : groupe
+      ? quantiteDuType(qtyResolution.quantity, partDuGroupe)
+      : qtyResolution.quantity
   /** Unité affichée à côté d'une quantité (« CHF/m² fenêtres » -> « m² fenêtres »). */
   const qtyUnit = catalog?.unit?.replace(/^CHF\s*\/?\s*/i, '') ?? ''
   const [qtyError, setQtyError] = useState<string | null>(null)
@@ -1673,6 +1762,22 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
             ? 'Quantité à saisir'
             : ''
 
+
+  /** Pose les unités du type, et recalcule la quantité et le coût qui en découlent. */
+  const appliquerUnites = (v: number) => {
+    vibrer('leger')
+    if (!repartition || !catalog) { onUpdate({ unites: v }); return }
+    onUpdate(patchDesUnites(item, v, catalog, batiment, repartition))
+  }
+  const blocRepartition = repartition && (
+    <RepartitionDuType
+      repartition={repartition}
+      releveId={item.id}
+      libelle={item.cfcLabel}
+      onUnites={appliquerUnites}
+      disabled={isMutating}
+    />
+  )
 
   /** Pose la part, et recalcule la quantité et le coût qui en découlent. */
   const appliquerPart = (valeur: number | null) => {
@@ -1884,6 +1989,15 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
             <StepHeader n={3} label="Année de pose" />
             <AnneeDePose item={item} yearBuilt={yearBuilt} onUpdate={onUpdate} isMutating={isMutating} />
           </section>
+
+          {/* Combien de ce type : c'est lui qui donne la quantité d'un ouvrage
+              compté, il se dit donc ici, pendant qu'on est devant les portes. */}
+          {blocRepartition && (
+            <section className="space-y-3">
+              <StepHeader n={4} label="Combien de ce type ?" />
+              {blocRepartition}
+            </section>
+          )}
 
           {/* Étape 3 — métré, seulement quand il ne se déduit pas du bâtiment.
               Sans ce champ, un élément facturé au mètre (garde-corps, modénature) ou à
@@ -2123,7 +2237,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
           </div>
           {/* La part de surface n'est pas une option experte : c'est elle qui
               donne la quantité, donc elle se lit avant elle, et sans déplier. */}
-          {groupe && groupe.membres.length > 1 && (
+          {blocRepartition ?? (groupe && groupe.membres.length > 1 && (
             <PartDeSurface
               groupe={groupe}
               item={item}
@@ -2131,7 +2245,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
               unite={qtyUnit}
               onPart={appliquerPart}
             />
-          )}
+          ))}
 
           <div className="grid grid-cols-3 gap-3 text-sm">
             <div>
@@ -2238,7 +2352,8 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, guideMode, pro
                 <div className="text-[11px] text-muted-foreground space-y-0.5">
                   <p>
                     Catalogue : {catalog.quantityFormula ?? 'aucune formule'}
-                    {qtyResolution.basis && qtyResolution.origin !== 'manuelle' && <> · quantité prise sur {qtyResolution.basis}</>}
+                    {qtyResolution.basis && qtyResolution.origin === 'comptage' && <> · quantité tirée du comptage : {qtyResolution.basis}</>}
+                    {qtyResolution.basis && qtyResolution.origin !== 'manuelle' && qtyResolution.origin !== 'comptage' && <> · quantité prise sur {qtyResolution.basis}</>}
                     {qtyResolution.origin === 'manuelle' && qtyResolution.reason && <> · à saisir ({qtyResolution.reason})</>}
                   </p>
                   {suggestedPrice && (
