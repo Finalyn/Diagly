@@ -6,23 +6,28 @@
  * affiché sur un calque et le devis continuait de travailler sur une estimation
  * déduite des dimensions du bâtiment.
  *
- * Le choix se fait parmi les ouvrages du relevé, mais aussi dans le catalogue :
- * on métré souvent les plans au bureau, avant d'être passé sur place. Choisir un
- * article du catalogue l'ajoute au relevé, sans état ni priorité, exactement
- * comme le ferait l'éditeur de diagnostic. L'ouvrage existe alors, la zone s'y
- * rattache, et la visite n'a plus qu'à lui donner son état.
+ * Le choix se fait parmi les ouvrages du relevé, mais aussi dans la base CFC du
+ * bureau : on métré souvent les plans au bureau, avant d'être passé sur place.
+ * Choisir un article de la base l'ajoute au relevé, sans état ni priorité,
+ * exactement comme le ferait l'éditeur de diagnostic : même article, même
+ * étape de visite, même quantité de départ tirée du bâtiment
+ * (`resolutionDeQuantite`). L'ouvrage existe alors, la zone s'y rattache, et
+ * la visite n'a plus qu'à lui donner son état.
  */
 import { useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Search, Link2Off, Check, Plus } from 'lucide-react'
 import { useOuvragesDuProjet } from './ouvrages'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { uniteCourte } from '@/lib/devis'
-import { buildQuantityContext, computeQuantity } from '@/lib/diagnostic-auto'
 import { natureDeLUnite, type NatureQuantite } from '@/lib/plan-quantites'
+import { useBaseCfc } from '@/lib/base-cfc/requete'
+import { ouvrageDeLArticle, resolutionDeQuantite, uniteEnClair } from '@/lib/base-cfc/pont'
+import { donneesDuBatiment } from '@/lib/base-cfc/batiment'
+import { localisationDeLaZone } from '@/lib/base-cfc/catalogue'
 import { stateLabels } from '@/data/mock'
-import type { ApiCatalogItem, ApiDiagnosticItem } from '@/lib/api-types'
+import type { ApiArticle, ApiDiagnosticItem } from '@/lib/api-types'
 
 /** Nombre d'articles du catalogue proposés : au-delà, la recherche sert mieux. */
 const MAX_CATALOGUE = 25
@@ -39,29 +44,32 @@ export function ChoixOuvrage({ projectId, nature, choisi, onChoisir, onFermer }:
   const { items, chargement, aucunDiagnostic, diagnosticId, project } = useOuvragesDuProjet(projectId)
   const [recherche, setRecherche] = useState('')
 
-  const catalogue = useQuery({
-    queryKey: ['cfc-items'],
-    queryFn: () => api.cfc.items(),
-    staleTime: 3.6e6,
-  })
+  const base = useBaseCfc()
 
   /** Ajoute l'article au relevé, puis rattache la zone à l'ouvrage créé. */
   const ajouter = useMutation({
-    mutationFn: async (article: ApiCatalogItem) => {
+    mutationFn: async (article: ApiArticle) => {
       // Même ajout que depuis l'éditeur de diagnostic : ni état, ni coût tant que
       // personne n'a jugé l'ouvrage. Seule la quantité déduite du bâtiment est
       // posée, et c'est justement elle que la mesure du plan viendra remplacer.
-      const quantite = computeQuantity(article, buildQuantityContext(project ?? {}))
+      // L'article se relève à sa première étape de visite : celle où on le
+      // retrouvera en passant sur place.
+      const etape = [...article.etapes].sort((a, b) => a.etapeNumero - b.etapeNumero)[0]?.etapeNumero ?? null
+      const ouvrage = ouvrageDeLArticle(article, etape)
+      const quantite = resolutionDeQuantite(ouvrage, donneesDuBatiment(project ?? {})).quantity
+      const zone = base.data?.etapes.find((e) => e.numero === etape)?.zone
       return api.diagnostics.createItem(diagnosticId!, {
-        cfcCode: article.cfcCode ?? 'N/A',
-        cfcLabel: article.description,
-        catalogItemId: article.id,
+        cfcCode: ouvrage.cfcCode,
+        cfcLabel: ouvrage.description,
+        articleId: ouvrage.articleId,
+        etapeNumero: etape,
+        localisation: zone ? localisationDeLaZone(zone) : null,
         state: null,
         priority: null,
         works: [],
         photos: [],
-        area: quantite,
-        unit: article.unit ?? undefined,
+        area: quantite ?? null,
+        unit: ouvrage.unit,
       })
     },
     onSuccess: (r) => {
@@ -84,25 +92,26 @@ export function ChoixOuvrage({ projectId, nature, choisi, onChoisir, onFermer }:
   }, [items, recherche, nature])
 
   const articles = useMemo(() => {
-    const tous = catalogue.data?.items ?? []
+    const tous = (base.data?.articles ?? []).filter((a) => a.actif)
     const q = recherche.trim().toLowerCase()
     // Un article déjà relevé n'est pas reproposé : il est dans la liste du dessus.
-    const dejaLa = new Set(items.map((i) => i.catalogItemId).filter((x): x is number => x != null))
-    const filtres = tous.filter((c) => !dejaLa.has(c.id)
-      && (!q || `${c.cfcCode ?? ''} ${c.description}`.toLowerCase().includes(q)))
-    // Sans recherche, on ne déroule pas 220 articles : on montre ceux dont
-    // l'unité correspond à ce qui vient d'être tracé, les plus utiles ici.
-    const pertinents = filtres.filter((c) => natureDeLUnite(c.unit) === nature)
-    const base = q ? filtres : pertinents
-    return [...base]
+    const dejaLa = new Set(items.map((i) => i.articleId).filter((x): x is string => !!x))
+    const filtres = tous.filter((a) => !dejaLa.has(a.id)
+      && (!q || `${a.cfcCode} ${a.nom}`.toLowerCase().includes(q)))
+    // Sans recherche, on ne déroule pas toute la base : on montre les articles
+    // dont l'unité correspond à ce qui vient d'être tracé, les plus utiles ici.
+    const unite = (a: ApiArticle) => natureDeLUnite(uniteEnClair(a.uniteEntretien))
+    const pertinents = filtres.filter((a) => unite(a) === nature)
+    const retenus = q ? filtres : pertinents
+    return [...retenus]
       .sort((a, b) => {
-        const ca = natureDeLUnite(a.unit) === nature ? 0 : 1
-        const cb = natureDeLUnite(b.unit) === nature ? 0 : 1
+        const ca = unite(a) === nature ? 0 : 1
+        const cb = unite(b) === nature ? 0 : 1
         if (ca !== cb) return ca - cb
-        return (a.cfcCode ?? '').localeCompare(b.cfcCode ?? '', undefined, { numeric: true })
+        return a.cfcCode.localeCompare(b.cfcCode, undefined, { numeric: true })
       })
       .slice(0, MAX_CATALOGUE)
-  }, [catalogue.data, items, recherche, nature])
+  }, [base.data, items, recherche, nature])
 
   const vide = !chargement && releve.length === 0 && articles.length === 0
 
@@ -156,7 +165,7 @@ export function ChoixOuvrage({ projectId, nature, choisi, onChoisir, onFermer }:
               {articles.length > 0 && (
                 <>
                   <Section>
-                    Dans le catalogue
+                    Dans la base CFC
                     <span className="ml-1.5 font-normal normal-case tracking-normal">
                       · l’article choisi est ajouté au relevé
                     </span>
@@ -240,13 +249,13 @@ function LigneOuvrage({ it, nature, actif, onChoisir }: {
 }
 
 function LigneArticle({ article, nature, enCours, onAjouter }: {
-  article: ApiCatalogItem
+  article: ApiArticle
   nature: NatureQuantite
   enCours: boolean
   onAjouter: () => void
 }) {
-  const unite = uniteCourte(article.unit)
-  const compatible = natureDeLUnite(article.unit) === nature
+  const unite = uniteEnClair(article.uniteEntretien)
+  const compatible = natureDeLUnite(unite) === nature
   return (
     <button
       onClick={onAjouter}
@@ -255,7 +264,7 @@ function LigneArticle({ article, nature, enCours, onAjouter }: {
     >
       <span className="mt-0.5 w-14 shrink-0 font-mono text-xs text-muted-foreground">{article.cfcCode}</span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">{article.description}</span>
+        <span className="block text-sm font-medium">{article.nom}</span>
         <span className="block text-xs text-muted-foreground">
           Pas encore relevé{unite ? ` · ${unite}` : ''}
           {!compatible && <span className="text-amber-600"> · unité incompatible</span>}

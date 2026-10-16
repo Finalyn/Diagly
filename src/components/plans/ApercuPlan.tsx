@@ -28,7 +28,9 @@ export function ApercuPlan({ plan, largeurCible = 640, zonesLiees, className }: 
   className?: string
 }) {
   const { rendu, erreur } = useRenduPlan(plan, largeurCible)
-  const zones = (plan.annotations ?? []).filter((a) => a.type === 'hatch' && a.points.length >= 3)
+  // L'aperçu montre la première page : on n'y pose que ses zones, et pas les
+  // propositions de l'IA, qui ne sont pas encore validées.
+  const zones = (plan.annotations ?? []).filter((a) => a.type === 'hatch' && a.points.length >= 3 && !a.proposition && (a.page ?? 1) === 1)
 
   if (erreur) {
     return (

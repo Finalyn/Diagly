@@ -382,6 +382,50 @@ export const api = {
     update: (id: string, body: { name?: string; scalePxPerM?: number | null; annotations?: unknown[] }) =>
       request<{ plan: ApiPlan }>(`/api/plans/${id}`, { method: 'PUT', body }),
     delete: (id: string) => request<void>(`/api/plans/${id}`, { method: 'DELETE' }),
+    /**
+     * Analyse du plan par l'IA : échelle, cote de contrôle, zones à valider.
+     *
+     * Les pages partent déjà rendues en image, avec la taille de leur feuille
+     * et les ouvrages du relevé. L'analyse se fait en tâche de fond côté
+     * serveur (une à trois minutes), comme la lecture des plans : l'envoi rend
+     * un numéro, puis on demande toutes les 3 s où elle en est. Un signal
+     * abandonné l'arrête côté serveur aussi.
+     */
+    analyser: async (
+      planId: string,
+      envoi: {
+        pages: { image: Blob; numero: number; largeurPt: number | null; hauteurPt: number | null }[]
+        ouvrages: { id: string; cfcCode: string | null; libelle: string; unite: string | null }[]
+      },
+      signal?: AbortSignal,
+    ) => {
+      type Resultat = { configured: boolean; tronque?: boolean; refus?: boolean; analyse?: import('./api-types').AnalysePlan | null }
+      const fd = new FormData()
+      fd.append('donnees', JSON.stringify({
+        pages: envoi.pages.map(({ numero, largeurPt, hauteurPt }) => ({ numero, largeurPt, hauteurPt })),
+        ouvrages: envoi.ouvrages,
+      }))
+      for (const p of envoi.pages) fd.append('pages', p.image, `page-${p.numero}.${p.image.type === 'image/jpeg' ? 'jpg' : 'png'}`)
+      const depart = await envoyerFormulaire<Resultat & { enCours?: string }>(`/api/plans/${planId}/analyse`, fd)
+      if (!depart.enCours) return depart
+      const id = depart.enCours
+      const arreter = () => { void request(`/api/plans/${planId}/analyse/${id}`, { method: 'DELETE' }).catch(() => undefined) }
+      if (signal?.aborted) { arreter(); throw new DOMException('Analyse abandonnée', 'AbortError') }
+      signal?.addEventListener('abort', arreter, { once: true })
+      try {
+        const limite = Date.now() + 15 * 60_000
+        while (Date.now() < limite) {
+          await new Promise((r) => setTimeout(r, 3000))
+          if (signal?.aborted) throw new DOMException('Analyse abandonnée', 'AbortError')
+          const etat = await request<Resultat & { etat: 'en_cours' | 'prete' }>(`/api/plans/${planId}/analyse/${id}`)
+          if (etat.etat === 'prete') return etat
+        }
+        arreter()
+        throw new Error('L’analyse prend trop de temps. Réessayez avec une seule page.')
+      } finally {
+        signal?.removeEventListener('abort', arreter)
+      }
+    },
     // Le serveur signe l'accès au fichier : on ne reconstruit plus l'URL à partir du
     // nom, sinon le téléchargement est refusé (403).
     fileUrl: (plan: ApiPlan) => `${BASE_URL}${plan.fileUrl}`,

@@ -69,11 +69,30 @@ export function echelleDePage(
   )
 }
 
-/** Ce que cette annotation sait mesurer. */
-export function natureDe(a: Pick<PlanAnnotation, 'type' | 'points'>): NatureQuantite {
+/**
+ * Ce que le tracé mesure, qu'il soit validé ou seulement proposé.
+ *
+ * Sert à l'éditeur, qui affiche la surface d'une zone proposée par l'IA avant
+ * qu'elle soit validée. Pour savoir ce qui compte dans le métré, c'est
+ * `natureDe` qu'il faut lire.
+ */
+export function natureDuTrace(a: Pick<PlanAnnotation, 'type' | 'points'>): NatureQuantite {
   if (a.type === 'hatch') return a.points.length >= 3 ? 'surface' : 'aucune'
   if (a.type === 'measure') return a.points.length >= 2 ? 'longueur' : 'aucune'
   return 'aucune'
+}
+
+/**
+ * Ce que cette annotation apporte au métré.
+ *
+ * Une zone proposée par l'analyse du plan n'apporte rien tant qu'elle n'est
+ * pas validée : une proposition de l'IA n'a pas à entrer dans un devis sans
+ * que personne ne l'ait regardée. Tout ce qui additionne des quantités passe
+ * par ici, et l'exclusion vaut donc partout d'un coup.
+ */
+export function natureDe(a: Pick<PlanAnnotation, 'type' | 'points' | 'proposition'>): NatureQuantite {
+  if (a.proposition) return 'aucune'
+  return natureDuTrace(a)
 }
 
 /**
@@ -82,7 +101,7 @@ export function natureDe(a: Pick<PlanAnnotation, 'type' | 'points'>): NatureQuan
  * `null` quand le plan n'est pas étalonné : des pixels ne sont pas des mètres, et
  * reporter un nombre de pixels dans un devis serait pire que ne rien reporter.
  */
-export function mesureDe(a: Pick<PlanAnnotation, 'type' | 'points'>, scalePxPerM: number | null): number | null {
+export function mesureDe(a: Pick<PlanAnnotation, 'type' | 'points' | 'proposition'>, scalePxPerM: number | null): number | null {
   const nature = natureDe(a)
   if (nature === 'aucune') return null
   if (!scalePxPerM || scalePxPerM <= 0) return null

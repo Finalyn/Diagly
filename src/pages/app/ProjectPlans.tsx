@@ -167,6 +167,8 @@ function VignettePlan({ plan, zonesLiees, onOuvrir, onSupprimer, repere }: {
 }) {
   const mesures = (plan.annotations ?? []).filter((a) => natureDe(a) !== 'aucune')
   const rattachees = mesures.filter((a) => zonesLiees.has(a.id)).length
+  // Les zones proposées par l'IA attendent d'être validées dans l'éditeur : on le dit sur la vignette.
+  const aValider = (plan.annotations ?? []).filter((a) => a.proposition).length
 
   return (
     /* La suppression est posée par-dessus la vignette et non dedans : un bouton
@@ -195,6 +197,11 @@ function VignettePlan({ plan, zonesLiees, onOuvrir, onSupprimer, repere }: {
             {mesures.length > 0 && (
               <Badge variant="outline" className="gap-1 text-[11px] font-normal">
                 <Link2 className="h-3 w-3" />{rattachees}/{mesures.length}
+              </Badge>
+            )}
+            {aValider > 0 && (
+              <Badge variant="outline" className="gap-1 text-[11px] font-normal text-teal-700">
+                {aValider} à valider
               </Badge>
             )}
           </div>
@@ -257,7 +264,8 @@ function Quantites({ projectId, apports }: { projectId: string; apports: Map<str
           <p className="mt-1 text-sm text-muted-foreground">
             Aucune zone n’est encore rattachée. Dans l’éditeur, tracez une zone ou une cote,
             sélectionnez-la, puis « Rattacher à un ouvrage » : sa surface ou sa longueur viendra
-            remplacer l’estimation déduite des dimensions du bâtiment.
+            remplacer l’estimation déduite des dimensions du bâtiment. « Analyser avec l’IA » propose
+            l’échelle et les zones d’un coup : façades, fenêtres, toiture, emprise, à valider.
           </p>
         </CardContent>
       </Card>

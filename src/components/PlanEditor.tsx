@@ -10,11 +10,18 @@ import { api } from '@/lib/api'
 import type { ApiPlan, PlanAnnotation, PlanAnnotationType, PlanPoint } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
 import { loadPdfjs } from '@/lib/pdf'
-import { airePolygone, echelleDansTable, natureDe } from '@/lib/plan-quantites'
+import { airePolygone, echelleDansTable, natureDe, natureDuTrace } from '@/lib/plan-quantites'
 import { useQuery } from '@tanstack/react-query'
 import { ChoixOuvrage } from '@/components/plans/ChoixOuvrage'
 import { useApercusPages, useRenduPlan, type ApercuPage } from '@/components/plans/rendu'
 import { useOuvragesDuProjet } from '@/components/plans/ouvrages'
+import { useAnalyseIA, type ResultatAnalyse } from '@/components/plans/analyse'
+import { AnalyseEnFond, ConfirmationEchelles, FenetreAnalyse, ListePropositions, MarqueDiagly } from '@/components/plans/AnalyseIA'
+import {
+  COULEUR_PROPOSITION, NOMS_CONFIANCE, NOMS_TYPES_ZONE, bilanDeFacade, ecartAuxCotes, mesureDeLaZone, validerProposition,
+  type EchelleDePage,
+} from '@/lib/plans/analyse-ia'
+import { fr } from '@/lib/plans/echelle-exacte'
 
 type Tool = 'pan' | 'select' | 'calibrate' | 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference'
 const TARGET_W = 1600
@@ -134,6 +141,14 @@ function surHabillage(e: React.PointerEvent): boolean {
   return !!cible?.closest?.('[data-habillage]')
 }
 
+/**
+ * Une zone proposée qu'on déplace à la main quitte les traits du dessin : elle
+ * n'est plus « aimantée », et sa mesure ne s'affiche plus au centième.
+ */
+function retouchee(a: PlanAnnotation): Partial<PlanAnnotation> {
+  return a.proposition?.aimantee ? { proposition: { ...a.proposition, aimantee: false } } : {}
+}
+
 interface View { zoom: number; tx: number; ty: number }
 
 export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => void }) {
@@ -194,6 +209,10 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const [selectedAnn, setSelectedAnn] = useState<string | null>(null)
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [choixOuvrage, setChoixOuvrage] = useState(false)
+  /** Fenêtre de l'analyse par l'IA, et ce que l'analyse a proposé d'échelles et dit en passant. */
+  const [analyseOuverte, setAnalyseOuverte] = useState(false)
+  const [echellesProposees, setEchellesProposees] = useState<EchelleDePage[] | null>(null)
+  const [suiteAnalyse, setSuiteAnalyse] = useState<Pick<ResultatAnalyse, 'ecartees' | 'remarques' | 'tronque' | 'pagesSansGeometrie'> | null>(null)
   /** Étalonnage mesuré, en attente du choix des pages auxquelles il s'applique. */
   const [echelleEnAttente, setEchelleEnAttente] = useState<number | null>(null)
   const [pagesRetenues, setPagesRetenues] = useState<number[]>([])
@@ -469,7 +488,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       const sp = toStage(e.clientX, e.clientY)
       const d = dragRef.current
       const dx = sp.x - d.lastX, dy = sp.y - d.lastY
-      setAnnotations((list) => list.map((a) => (a.id === d.id ? { ...a, points: a.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy })) } : a)))
+      setAnnotations((list) => list.map((a) => (a.id === d.id ? { ...a, points: a.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy })), ...retouchee(a) } : a)))
       d.lastX = sp.x; d.lastY = sp.y
       setDirty(true)
       return
@@ -477,7 +496,8 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     if (g.mode === 'dragPoint' && dragRef.current && dragRef.current.pointIndex != null) {
       const sp = toStage(e.clientX, e.clientY)
       const d = dragRef.current
-      setAnnotations((list) => list.map((a) => (a.id === d.id ? { ...a, points: a.points.map((pt, i) => (i === d.pointIndex ? sp : pt)) } : a)))
+      // Un point déplacé change la surface : elle n'est plus celle du dessin.
+      setAnnotations((list) => list.map((a) => (a.id === d.id ? { ...a, points: a.points.map((pt, i) => (i === d.pointIndex ? sp : pt)), ...retouchee(a), ...(a.mesureExacte ? { mesureExacte: false } : {}) } : a)))
       setDirty(true)
       return
     }
@@ -674,6 +694,78 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     setChoixOuvrage(false)
   }
 
+  // ---- Analyse par l'IA ----
+  /**
+   * Les annotations au moment où l'analyse rend sa réponse, et non au moment
+   * où elle a été lancée : entre les deux, une ou deux minutes ont pu passer
+   * à tracer, et l'historique doit retenir l'état d'avant l'arrivée des zones.
+   */
+  const annotationsActuelles = useRef(annotations)
+  useEffect(() => { annotationsActuelles.current = annotations }, [annotations])
+
+  const analyse = useAnalyseIA(plan, ouvrages)
+  const analyseEnCours = analyse.etat.etape === 'preparation' || analyse.etat.etape === 'analyse'
+  // Une erreur survenue fenêtre fermée doit se voir : la fenêtre se rouvre pour la dire.
+  useEffect(() => {
+    if (analyse.etat.etape === 'erreur' || analyse.etat.etape === 'non-configuree') setAnalyseOuverte(true)
+  }, [analyse.etat.etape])
+
+  const lancerAnalyse = async (pages: number[]) => {
+    const r = await analyse.lancer(pages, uid)
+    if (!r) return
+    setAnalyseOuverte(false)
+    if (r.annotations.length > 0) {
+      retenir(annotationsActuelles.current)
+      setAnnotations((l) => [...l, ...r.annotations])
+      setDirty(true)
+    }
+    setSuiteAnalyse({ ecartees: r.ecartees, remarques: r.remarques, tronque: r.tronque, pagesSansGeometrie: r.pagesSansGeometrie })
+    // L'échelle se confirme avant tout : sans elle, les zones n'ont pas de mesure.
+    if (r.echelles.some((e) => e.statut !== 'aucune')) setEchellesProposees(r.echelles)
+  }
+
+  /**
+   * Pose les échelles confirmées, page par page.
+   *
+   * Contrairement à l'étalonnage tracé, chaque page arrive avec sa propre
+   * échelle, calculée sur sa propre feuille : rien à reporter au prorata. Un
+   * plan étalonné d'un bloc, sans table par page, voit d'abord son échelle
+   * recopiée sur chaque page, sans quoi les pages non concernées la perdraient
+   * au moment où la table apparaît.
+   */
+  const poserEchelles = (choix: Record<number, number>) => {
+    const pages = Object.keys(choix).map(Number)
+    if (pages.length === 0) return
+    if (isPdf) {
+      setEchelles((t) => {
+        const suite: Record<string, number> = Object.keys(t).length === 0 && scale
+          ? Object.fromEntries(Array.from({ length: numPages }, (_, i) => [String(i + 1), scale]))
+          : { ...t }
+        for (const n of pages) suite[String(n)] = choix[n]
+        return suite
+      })
+      if (choix[1] != null) setScale(choix[1])
+    } else {
+      setScale(choix[pages[0]])
+    }
+    setDirty(true)
+  }
+
+  /** Valider des zones proposées : elles deviennent des annotations ordinaires, qui comptent au métré. */
+  const validerZones = (ids: string[]) => {
+    if (ids.length === 0) return
+    retenir()
+    setAnnotations((l) => l.map((a) => (ids.includes(a.id) ? validerProposition(a) : a)))
+    setDirty(true)
+  }
+  const retirerZones = (ids: string[]) => {
+    if (ids.length === 0) return
+    retenir()
+    setAnnotations((l) => l.filter((a) => !ids.includes(a.id)))
+    if (selectedAnn && ids.includes(selectedAnn)) setSelectedAnn(null)
+    setDirty(true)
+  }
+
   const onSave = async () => {
     setSaving(true)
     try {
@@ -749,7 +841,11 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       ctx.globalAlpha = 1
     }
     if (svgRef.current) {
-      const svgStr = new XMLSerializer().serializeToString(svgRef.current)
+      // Les zones proposées par l'IA ne sont pas encore validées : elles ne
+      // partent pas dans un plan qu'on transmet.
+      const copie = svgRef.current.cloneNode(true) as SVGSVGElement
+      copie.querySelectorAll('[data-proposition]').forEach((n) => n.remove())
+      const svgStr = new XMLSerializer().serializeToString(copie)
       const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr)
       await new Promise<void>((res) => {
         const img = new Image()
@@ -798,15 +894,20 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     return `${(m * UNIT_F[unit]).toFixed(LEN_DEC[unit])} ${unit}`
   }
   /**
-   * Surface d'une zone, toujours arrondie au demi-mètre carré.
+   * Surface d'une zone, arrondie au demi-mètre carré.
    *
    * Une zone est tracée au doigt sur un plan : annoncer « 24.75 m² » donne une
    * précision que le tracé n'a pas, et personne ne commande une façade au
    * centième de mètre carré. Le pas n'est pas réglable, contrairement aux cotes :
    * une surface lue dans un rapport doit être ronde.
+   *
+   * Exception : une zone dont la surface vient de la géométrie du plan
+   * (`mesureExacte`, aimantée puis validée) s'affiche au centième. Arrondie,
+   * une fenêtre de 1,68 m² devenait « 1.5 m² ».
    */
-  const fmtArea = (px2: number) => {
+  const fmtArea = (px2: number, exacte = false) => {
     if (!echelleCourante) return `${Math.round(px2)} px²`
+    if (exacte) return `${(px2 / (echelleCourante * echelleCourante) * UNIT_F[unit] ** 2).toFixed(2)} ${unit}²`
     const m2 = auPas(px2 / (echelleCourante * echelleCourante), PAS_SURFACE)
     const v = m2 * UNIT_F[unit] ** 2
     // Pas de « 25.0 » : la décimale ne paraît que lorsqu'elle dit quelque chose.
@@ -886,8 +987,8 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
   /** Mesure lisible d'une annotation, ou null si elle ne mesure rien. */
   const quantiteDe = (a: PlanAnnotation): string | null => {
-    const nature = natureDe(a)
-    if (nature === 'surface') return fmtArea(airePolygone(a.points))
+    const nature = natureDuTrace(a)
+    if (nature === 'surface') return fmtArea(airePolygone(a.points), a.mesureExacte)
     if (nature === 'longueur') return fmtLen(dist(a.points[0], a.points[1]))
     return null
   }
@@ -912,6 +1013,28 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
   /** Ce qui, sur cette page, porte une mesure : les zones et les cotes. */
   const zonesDeLaPage = annotationsPage.filter((a) => natureDe(a) !== 'aucune')
+
+  /** Les zones proposées par l'analyse, en attente de validation, ici et sur les autres pages. */
+  const propositionsPage = annotationsPage.filter((a) => a.proposition)
+  const propositionsAutres = (() => {
+    if (!isPdf) return []
+    const parPage = new Map<number, number>()
+    for (const a of annotations) {
+      if (!a.proposition || (a.page ?? 1) === pageNum) continue
+      parPage.set(a.page ?? 1, (parPage.get(a.page ?? 1) ?? 0) + 1)
+    }
+    return [...parPage].sort((x, y) => x[0] - y[0]).map(([page, nombre]) => ({ page, nombre }))
+  })()
+  /**
+   * Mesure d'une zone proposée, au centième quand elle est aimantée sur le
+   * dessin vectoriel (elle a alors la précision du dessin), approchée sinon.
+   */
+  const mesureProposee = (a: PlanAnnotation): string | null => {
+    const m = mesureDeLaZone(a, echelleCourante)
+    if (m == null) return null
+    const u = a.type === 'hatch' ? 'm²' : 'm'
+    return a.proposition?.aimantee ? `${fr(m, 2)} ${u}` : `≈ ${fr(m, 1)} ${u}`
+  }
 
   // Les pastilles de couleur agissent sur la selection quand il y en a une,
   // sinon sur le prochain trace : elles doivent montrer celle qui s'applique.
@@ -951,6 +1074,18 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
               {scale ? <span>échelle définie</span> : <span className="text-amber-600">pas d’échelle</span>}
             </p>
           </div>
+
+          {/* L'analyse par l'IA, signalée par le logo de Diagly : elle propose
+              l'échelle et les zones à métrer, que l'on valide ensuite. */}
+          <button
+            onClick={() => setAnalyseOuverte(true)}
+            data-visite="plan-analyse"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+            title="Analyser avec l’IA : échelle et zones à métrer"
+          >
+            {analyseEnCours ? <Loader2 className="h-4 w-4 animate-spin" /> : <MarqueDiagly className="h-4 w-4" />}
+            <span className="hidden md:inline">{analyseEnCours ? 'Analyse en cours…' : 'Analyser avec l’IA'}</span>
+          </button>
 
           <div className="flex shrink-0 items-center gap-0.5">
             <button onClick={() => zoomButton(1 / 1.25)} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Dézoomer"><ZoomOut className="h-4 w-4" /></button>
@@ -1057,7 +1192,8 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
               )}
             <svg ref={svgRef} viewBox={`0 0 ${stage.w} ${stage.h}`} width={stage.w} height={stage.h} className="absolute inset-0 pointer-events-none">
               {annotationsPage.map((a) => (
-                <Shape key={a.id} a={a} fmtLen={fmtLen} fmtArea={fmtArea} font={font} strokeW={strokeW} lie={libelleLie(a)} />
+                <Shape key={a.id} a={a} fmtLen={fmtLen} fmtArea={fmtArea} font={font} strokeW={strokeW} lie={libelleLie(a)}
+                  etiquette={a.proposition ? mesureProposee(a) : null} />
               ))}
 
               {/* Poignées de l'annotation sélectionnée */}
@@ -1148,16 +1284,51 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
               />
             )}
 
-            {/* Les zones de la page, à droite : on y relit ce qui a été mesuré
-                et ce qui attend encore un ouvrage, sans ouvrir chaque forme. */}
-            {zonesDeLaPage.length > 0 && (
-              <ListeDesZones
-                zones={zonesDeLaPage}
-                selection={selectedAnn}
-                mesure={quantiteDe}
-                lie={libelleLie}
-                onChoisir={(id) => { setTool('select'); setSelectedAnn(id); setChoixOuvrage(true) }}
-              />
+            {/* À droite : les zones proposées par l'IA, à valider, puis les
+                mesures de la page, où l'on relit ce qui a été mesuré et ce qui
+                attend encore un ouvrage, sans ouvrir chaque forme. */}
+            {(zonesDeLaPage.length > 0 || propositionsPage.length > 0 || propositionsAutres.length > 0) && (
+              <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 flex max-h-[45vh] flex-col items-end gap-2 sm:inset-x-auto sm:bottom-auto sm:right-3 sm:top-3 sm:max-h-[calc(100%-1.5rem)]">
+                {(propositionsPage.length > 0 || propositionsAutres.length > 0) && (
+                  <ListePropositions
+                    zones={propositionsPage}
+                    selection={selectedAnn}
+                    mesure={mesureProposee}
+                    ecartCotes={(a) => ecartAuxCotes(a, echelleCourante)}
+                    lie={libelleLie}
+                    bilan={bilanDeFacade(propositionsPage, echelleCourante)}
+                    autresPages={propositionsAutres}
+                    ecartees={(suiteAnalyse?.ecartees ?? []).filter((e) => !isPdf || e.page == null || e.page === pageNum)}
+                    remarques={suiteAnalyse?.remarques ?? null}
+                    tronque={suiteAnalyse?.tronque ?? false}
+                    sansGeometrie={!!suiteAnalyse?.pagesSansGeometrie.includes(pageNum)}
+                    etalonne={etalonne}
+                    masqueeSurMobile={!!selAnn}
+                    onChoisir={(id) => { setTool('select'); setSelectedAnn(id) }}
+                    onValider={(id) => validerZones([id])}
+                    onValiderTout={() => validerZones(propositionsPage.map((a) => a.id))}
+                    onSupprimer={(id) => retirerZones([id])}
+                    onSupprimerTout={() => retirerZones(propositionsPage.map((a) => a.id))}
+                    onOuvrage={(id) => { setTool('select'); setSelectedAnn(id); setChoixOuvrage(true) }}
+                    onAllerPage={(n) => { setSelectedAnn(null); setPageNum(n) }}
+                  />
+                )}
+                {zonesDeLaPage.length > 0 && (
+                  <ListeDesZones
+                    zones={zonesDeLaPage}
+                    selection={selectedAnn}
+                    mesure={quantiteDe}
+                    lie={libelleLie}
+                    onChoisir={(id) => { setTool('select'); setSelectedAnn(id); setChoixOuvrage(true) }}
+                  />
+                )}
+              </div>
+            )}
+
+            {analyseEnCours && !analyseOuverte && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3 sm:bottom-auto sm:top-14">
+                <AnalyseEnFond onOuvrir={() => setAnalyseOuverte(true)} />
+              </div>
             )}
 
             {selAnn && (
@@ -1166,9 +1337,10 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                 annotation={selAnn}
                 lie={libelleLie(selAnn)}
                 etalonne={!!scale}
-                quantite={quantiteDe(selAnn)}
+                quantite={selAnn.proposition ? mesureProposee(selAnn) : quantiteDe(selAnn)}
                 onLier={() => setChoixOuvrage(true)}
                 onEditerNote={editSelectedNote}
+                onValider={selAnn.proposition ? () => validerZones([selAnn.id]) : undefined}
                 onSupprimer={() => { retenir(); setAnnotations((a) => a.filter((x) => x.id !== selectedAnn)); setSelectedAnn(null); setDirty(true) }}
               />
             )}
@@ -1276,7 +1448,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       {choixOuvrage && selAnn && (
         <ChoixOuvrage
           projectId={plan.projectId}
-          nature={natureDe(selAnn)}
+          nature={natureDuTrace(selAnn)}
           choisi={selAnn.itemId ?? null}
           onChoisir={lierSelection}
           onFermer={() => setChoixOuvrage(false)}
@@ -1363,6 +1535,33 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
             })}
           </div>
         </Modal>
+      )}
+
+      {analyseOuverte && (
+        <FenetreAnalyse
+          etat={analyse.etat}
+          pageCourante={pageNum}
+          nombrePages={isPdf ? numPages : 1}
+          estPdf={isPdf}
+          onLancer={(pages) => { void lancerAnalyse(pages) }}
+          onArreter={analyse.arreter}
+          onFermer={() => { setAnalyseOuverte(false); if (analyse.etat.etape === 'erreur' || analyse.etat.etape === 'non-configuree') analyse.oublierErreur() }}
+        />
+      )}
+
+      {echellesProposees && (
+        <ConfirmationEchelles
+          echelles={echellesProposees}
+          actuelle={(n) => echelleDansTable(echelles, scale, n)}
+          onPoser={(choix) => {
+            poserEchelles(choix)
+            setEchellesProposees(null)
+            // L'échelle est posée : l'étalonnage n'a plus rien à faire, la
+            // sélection sert à relire et corriger les zones proposées.
+            if (tool === 'calibrate') setTool('select')
+          }}
+          onFermer={() => setEchellesProposees(null)}
+        />
       )}
 
       {/* Modale note */}
@@ -1579,7 +1778,7 @@ function ListeDesZones({ zones, selection, mesure, lie, onChoisir }: {
   return (
     <div
       data-habillage
-      className="absolute right-3 top-3 z-10 hidden w-64 overflow-hidden rounded-xl border bg-background/95 shadow-lg backdrop-blur sm:block"
+      className="pointer-events-auto hidden min-h-0 w-64 shrink overflow-hidden rounded-xl border bg-background/95 shadow-lg backdrop-blur sm:flex sm:flex-col"
     >
       <div className="border-b px-3 py-2">
         <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -1591,7 +1790,7 @@ function ListeDesZones({ zones, selection, mesure, lie, onChoisir }: {
         </p>
         <p className="mt-0.5 text-[11px] text-muted-foreground">Touchez une ligne pour la rattacher.</p>
       </div>
-      <ul className="max-h-[45vh] overflow-y-auto">
+      <ul className="max-h-[45vh] min-h-0 overflow-y-auto">
         {zones.map((z) => {
           const nom = lie(z)
           return (
@@ -1631,7 +1830,7 @@ function ListeDesZones({ zones, selection, mesure, lie, onChoisir }: {
  * rapporte. Les couleurs ont rejoint le rail d'outils, où elles valent aussi
  * bien pour le prochain tracé.
  */
-function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, onEditerNote, onSupprimer }: {
+function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, onEditerNote, onValider, onSupprimer }: {
   /** Hauteur dans la scène : le panneau s'ouvre en face de son outil. */
   haut: number
   annotation: PlanAnnotation
@@ -1640,8 +1839,11 @@ function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, o
   quantite: string | null
   onLier: () => void
   onEditerNote: () => void
+  /** Pour une zone proposée par l'IA : la valider. */
+  onValider?: () => void
   onSupprimer: () => void
 }) {
+  const proposee = annotation.proposition
   return (
     <div
       data-habillage
@@ -1651,8 +1853,9 @@ function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, o
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            {NOMS[annotation.type]}
+            {proposee ? `Zone proposée · ${NOMS_TYPES_ZONE[proposee.type]}` : NOMS[annotation.type]}
           </p>
+          {proposee && <p className="truncate text-sm font-medium">{proposee.libelle}</p>}
           {quantite
             ? <p className="text-lg font-semibold tabular-nums">{quantite}</p>
             : <p className="truncate text-sm">{annotation.text || 'Sans texte'}</p>}
@@ -1672,9 +1875,27 @@ function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, o
         </p>
       )}
 
+      {proposee && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {NOMS_CONFIANCE[proposee.confiance]}
+          {proposee.aimantee ? ' · aimantée sur le dessin' : ' · non aimantée, placée à l’œil'}
+          {proposee.remarque ? ` · ${proposee.remarque}` : ''}
+          <span className="mt-0.5 block">Glissez ses poignées pour la corriger, puis validez-la : elle ne compte pas avant.</span>
+        </p>
+      )}
+
       {annotation.type === 'note' && (
         <button onClick={onEditerNote} className="mt-2 w-full rounded-lg border px-3 py-2 text-sm transition-colors hover:bg-muted">
           Éditer le texte
+        </button>
+      )}
+
+      {proposee && onValider && (
+        <button
+          onClick={onValider}
+          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-sm font-semibold text-background transition-opacity hover:opacity-90"
+        >
+          <Check className="h-4 w-4" />Valider la zone
         </button>
       )}
 
@@ -1725,14 +1946,26 @@ function Modal({ title, children, onCancel, onConfirm, confirmLabel, large }: {
   )
 }
 
-function Shape({ a, fmtLen, fmtArea, font, strokeW, lie }: {
-  a: PlanAnnotation; fmtLen: (px: number) => string; fmtArea: (px2: number) => string
+function Shape({ a, fmtLen, fmtArea, font, strokeW, lie, etiquette }: {
+  a: PlanAnnotation; fmtLen: (px: number) => string; fmtArea: (px2: number, exacte?: boolean) => string
   font: number; strokeW: number; lie: string | null
+  /**
+   * Mesure à afficher à la place de celle calculée ici : une zone proposée
+   * par l'IA, aimantée sur le dessin, s'affiche au centième, comme dans la
+   * liste où on la valide.
+   */
+  etiquette?: string | null
 }) {
   // Le calque de référence est une image posée sous les annotations, pas un tracé.
   if (a.type === 'reference') return null
-  const color = a.color ?? '#ef4444'
+  const color = a.proposition ? COULEUR_PROPOSITION : (a.color ?? '#ef4444')
   const halo = 3 * strokeW
+  // Une zone proposée par l'IA se dessine en pointillé, dans une couleur à
+  // part : elle ne se confond pas avec ce qui est validé. Placée à l'œil,
+  // faute de dessin vectoriel où s'accrocher, elle passe en tirets courts.
+  const tirets = a.proposition
+    ? (a.proposition.aimantee ? `${6 * strokeW} ${4 * strokeW}` : `${2 * strokeW} ${3 * strokeW}`)
+    : undefined
   if (a.type === 'note') {
     const p = a.points[0]
     return (
@@ -1757,13 +1990,13 @@ function Shape({ a, fmtLen, fmtArea, font, strokeW, lie }: {
       head = <polygon points={`${e.x},${e.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`} fill={color} />
     }
     return (
-      <g>
-        <line x1={s.x} y1={s.y} x2={e.x} y2={e.y} stroke={color} strokeWidth={strokeW} />
+      <g data-proposition={a.proposition ? '' : undefined}>
+        <line x1={s.x} y1={s.y} x2={e.x} y2={e.y} stroke={color} strokeWidth={strokeW} strokeDasharray={tirets} />
         {head}
         {a.type === 'measure' && (
-          <text x={m.x} y={m.y - 6 * strokeW} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{fmtLen(dist(s, e))}</text>
+          <text x={m.x} y={m.y - 6 * strokeW} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{etiquette ?? fmtLen(dist(s, e))}</text>
         )}
-        {a.type === 'measure' && lie && (
+        {a.type === 'measure' && lie && !a.proposition && (
           <text x={m.x} y={m.y + font * 0.9} fontSize={font * 0.8} textAnchor="middle" fill="#111827" stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{lie}</text>
         )}
       </g>
@@ -1771,13 +2004,24 @@ function Shape({ a, fmtLen, fmtArea, font, strokeW, lie }: {
   }
   // hatch
   const c = centroid(a.points)
+  // Le nom de l'ouvrage ne s'écrit que si la zone est assez large pour le
+  // porter : sur une façade aux quinze fenêtres rattachées, quinze libellés
+  // qui débordent les uns sur les autres ne se lisent plus.
+  const largeurZone = Math.max(...a.points.map((p) => p.x)) - Math.min(...a.points.map((p) => p.x))
+  const lieLisible = lie && lie.length * font * 0.8 * 0.55 <= largeurZone * 1.1
+  // Même règle pour la mesure d'une zone proposée : quinze fenêtres vues de
+  // loin ne laissent pas la place à quinze étiquettes, et la liste les donne.
+  const mesure = etiquette ?? fmtArea(airePolygone(a.points), a.mesureExacte)
+  const mesureLisible = !a.proposition || mesure.length * font * 0.55 <= largeurZone * 1.1
   return (
-    <g>
+    <g data-proposition={a.proposition ? '' : undefined}>
       {/* Un aplat clair plutôt que des hachures : les diagonales se superposaient
           aux traits du plan et on ne lisait plus ni l'un ni l'autre. */}
-      <polygon points={a.points.map((p) => `${p.x},${p.y}`).join(' ')} fill={color} fillOpacity={0.18} stroke={color} strokeWidth={strokeW} />
-      <text x={c.x} y={c.y} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{fmtArea(airePolygone(a.points))}</text>
-      {lie && (
+      <polygon points={a.points.map((p) => `${p.x},${p.y}`).join(' ')} fill={color} fillOpacity={a.proposition ? 0.1 : 0.18} stroke={color} strokeWidth={strokeW} strokeDasharray={tirets} />
+      {mesureLisible && (
+        <text x={c.x} y={c.y} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{mesure}</text>
+      )}
+      {lieLisible && !a.proposition && (
         <text x={c.x} y={c.y + font * 1.05} fontSize={font * 0.8} textAnchor="middle" fill="#111827" stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{lie}</text>
       )}
     </g>

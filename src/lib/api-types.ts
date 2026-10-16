@@ -396,6 +396,96 @@ export interface PlanAnnotation {
    * absentes de cette table.
    */
   pageScales?: Record<string, number>
+
+  // ---- Zone proposée par l'analyse du plan ----
+  /**
+   * Présent tant que la zone n'est qu'une proposition de l'IA, en attente de
+   * validation. Une proposition ne compte dans aucun métré (voir `natureDe`) :
+   * la valider retire ce champ, et la zone devient une annotation comme une
+   * autre, avec son ouvrage.
+   */
+  proposition?: PropositionIA
+  /**
+   * La surface vient de la géométrie même du plan : zone proposée par l'IA,
+   * aimantée sur les traits du PDF, puis validée. Elle s'affiche alors au
+   * centième au lieu du demi-mètre carré des zones tracées à la main. Déplacer
+   * un de ses points à la main lui retire ce statut.
+   */
+  mesureExacte?: boolean
+}
+
+// ---- Analyse d'un plan par l'IA (voir server/src/lib/analyse-plans.ts) ----
+export type TypePageAnalysee = 'plan_etage' | 'elevation' | 'coupe' | 'toiture' | 'situation' | 'autre'
+export type TypeZoneIA = 'facade' | 'fenetre' | 'porte' | 'toiture' | 'emprise' | 'dalle' | 'mur' | 'autre'
+export type ConfianceZone = 'haute' | 'moyenne' | 'basse'
+/** Un point en pixels de l'image envoyée au modèle, origine en haut à gauche. */
+export type PointImage = [number, number]
+
+/** Une cote imprimée, lue pour contrôler l'échelle. */
+export interface CoteDeControle {
+  texte: string
+  longueurM: number
+  p1: PointImage
+  p2: PointImage
+}
+
+export interface PageAnalysee {
+  page: number
+  type: TypePageAnalysee
+  titre: string | null
+  orientation: string | null
+  /** Échelle imprimée, ramenée à « 1:100 ». */
+  echelle: string | null
+  /** Où elle a été lue : « cartouche », « sous le titre ». */
+  echelleOu: string | null
+  cote: CoteDeControle | null
+  remarque: string | null
+}
+
+export interface ZoneAnalysee {
+  page: number
+  type: TypeZoneIA
+  libelle: string
+  orientation: string | null
+  mesure: 'surface' | 'longueur'
+  points: PointImage[]
+  /** Ouvrage du relevé suggéré, vérifié contre la liste envoyée. */
+  releveId: string | null
+  confiance: ConfianceZone
+  /** Surface (m²) ou longueur (m) que donnent les cotes imprimées, si elles suffisent. */
+  valeurCotee: number | null
+  cotes: string | null
+  remarque: string | null
+}
+
+/** Ce que la validation a écarté de la réponse du modèle, et pourquoi. */
+export interface ZoneEcartee {
+  page: number | null
+  libelle: string | null
+  raison: string
+}
+
+export interface AnalysePlan {
+  pages: PageAnalysee[]
+  zones: ZoneAnalysee[]
+  ecartees: ZoneEcartee[]
+  remarques: string | null
+}
+
+/** Ce qu'une zone proposée garde de l'analyse, le temps d'être validée. */
+export interface PropositionIA {
+  type: TypeZoneIA
+  libelle: string
+  orientation: string | null
+  confiance: ConfianceZone
+  /** Tous les sommets se sont accrochés au dessin vectoriel. */
+  aimantee: boolean
+  sommetsAimantes: number
+  /** Part des côtés qui suivent un trait du dessin, de 0 à 1. */
+  couverture: number
+  valeurCotee: number | null
+  cotes: string | null
+  remarque: string | null
 }
 
 export interface ApiPlan {

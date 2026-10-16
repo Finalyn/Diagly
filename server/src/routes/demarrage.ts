@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { randomUUID } from "node:crypto";
 import multer from "multer";
 import { z } from "zod";
 import ExcelJS from "exceljs";
@@ -9,9 +8,11 @@ import { requireAuth } from "../middlewares/auth.js";
 import { aiLimiter } from "../middlewares/rate-limit.js";
 import { env } from "../lib/env.js";
 import { logger } from "../lib/logger.js";
-import { HttpError, badRequest, notFound } from "../lib/http-error.js";
-import { AssembleurDeFlux, objetJson } from "../lib/flux-messages.js";
-import { CONSIGNE_PLANS, blocsDesPlans, validerLecturePlans, type BlocPlan } from "../lib/lecture-plans.js";
+import { badRequest } from "../lib/http-error.js";
+import { objetJson } from "../lib/flux-messages.js";
+import { CONSIGNE_PLANS, blocsDesPlans, validerLecturePlans } from "../lib/lecture-plans.js";
+import { demanderAuModeleDesPlans } from "../lib/modele-plans.js";
+import { TachesDeFond } from "../lib/taches-de-fond.js";
 
 /**
  * Démarrer un diagnostic à partir d'un fichier.
@@ -333,93 +334,38 @@ Réponds UNIQUEMENT par un objet JSON valide, sans texte autour :
 
 // ---------------------------------------------------------------- plans
 
-/**
- * Demande la lecture des plans, réponse en flux.
- *
- * Mêmes en-têtes que les autres lectures ; ce qui change, c'est le modèle et
- * sa réflexion. Pas de température ni de budget de réflexion : ce modèle les
- * refuse, l'effort en tient lieu.
- */
-async function lireLesPlans(blocs: BlocPlan[], signal: AbortSignal) {
-  const debut = Date.now();
-  let r: Awaited<ReturnType<typeof fetch>>;
-  try {
-    r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
-        model: env.ANTHROPIC_MODEL_PLANS,
-        max_tokens: 16_000,
-        thinking: { type: "adaptive" },
-        output_config: { effort: "high" },
-        stream: true,
-        messages: [{ role: "user", content: [...blocs, { type: "text", text: CONSIGNE_PLANS }] }],
-      }),
-      signal,
-    });
-  } catch {
-    throw badRequest("Lecture momentanément indisponible (réseau).");
-  }
-  if (!r.ok || !r.body) {
-    const txt = await r.text().catch(() => "");
-    logger.warn({ status: r.status, body: txt.slice(0, 300) }, "anthropic plans error");
-    if (r.status === 413) throw badRequest("Ces plans sont trop lourds pour être lus en une fois. Retirez les pages inutiles ou allégez les PDF.");
-    throw badRequest("Lecture momentanément indisponible.");
-  }
-
-  const flux = new AssembleurDeFlux();
-  const decodeur = new TextDecoder();
-  try {
-    for await (const morceau of r.body) flux.pousser(decodeur.decode(morceau as Uint8Array, { stream: true }));
-    flux.pousser(decodeur.decode());
-  } catch {
-    throw badRequest("La lecture a été interrompue. Réessayez.");
-  }
-  const { texte, arret, erreur } = flux.terminer();
-  logger.info({ arret, erreur, secondes: Math.round((Date.now() - debut) / 1000) }, "lecture des plans");
-  if (erreur) throw badRequest("Lecture momentanément indisponible.");
-  return { json: objetJson(texte), tronque: arret === "max_tokens", refus: arret === "refusal" };
-}
+/** Les messages de la lecture des plans, quand l'appel au modèle échoue. */
+const MESSAGES_LECTURE = {
+  reseau: "Lecture momentanément indisponible (réseau).",
+  indisponible: "Lecture momentanément indisponible.",
+  tropLourd: "Ces plans sont trop lourds pour être lus en une fois. Retirez les pages inutiles ou allégez les PDF.",
+  interrompue: "La lecture a été interrompue. Réessayez.",
+  journal: "lecture des plans",
+};
 
 /**
  * Les plans d'architecte : la façon de commencer par défaut.
  *
- * Ici seulement, un modèle plus fort et qui réfléchit (ANTHROPIC_MODEL_PLANS) :
- * lire des cotes, retrouver une hauteur d'étage sur une coupe, sommer les
- * ouvertures d'une élévation demande plus qu'une extraction de texte, et une
- * erreur se propagerait à tous les métrés du dossier. La lecture est validée
- * par lecture-plans.ts ; rien n'est créé ici, et les fichiers ne sont pas
- * gardés : l'écran les range dans les Plans du dossier une fois celui-ci créé.
+ * Ici seulement, un modèle plus fort et qui réfléchit (ANTHROPIC_MODEL_PLANS,
+ * voir lib/modele-plans.ts) : lire des cotes, retrouver une hauteur d'étage
+ * sur une coupe, sommer les ouvertures d'une élévation demande plus qu'une
+ * extraction de texte, et une erreur se propagerait à tous les métrés du
+ * dossier. La lecture est validée par lecture-plans.ts ; rien n'est créé ici,
+ * et les fichiers ne sont pas gardés : l'écran les range dans les Plans du
+ * dossier une fois celui-ci créé.
  *
- * Si le navigateur abandonne en cours de route, la lecture s'arrête aussi :
- * personne n'en attend plus la réponse.
+ * La lecture se fait en tâche de fond (lib/taches-de-fond.ts) : l'envoi
+ * répond tout de suite avec un numéro, et le navigateur demande où elle en est
+ * (GET /plans/:id) jusqu'à ce qu'elle soit prête. Si le navigateur abandonne
+ * en cours de route, la lecture s'arrête aussi : personne n'en attend plus la
+ * réponse.
  */
-/**
- * La lecture des plans se fait en tâche de fond. Elle prend une à trois
- * minutes : une requête qui attend aussi longtemps peut être coupée par le
- * relais placé devant le serveur en production, et la lecture serait payée puis
- * perdue. L'envoi répond donc tout de suite avec un numéro, et le navigateur
- * demande où elle en est (GET /plans/:id) jusqu'à ce qu'elle soit prête.
- *
- * Les lectures vivent en mémoire : le serveur tourne en un seul processus. Une
- * lecture non réclamée est oubliée au bout de 30 minutes.
- */
-interface LectureEnCours {
-  proprietaire: string;
-  debut: number;
-  abandon: AbortController;
-  etat: "en_cours" | "prete" | "erreur";
-  resultat?: Record<string, unknown>;
-  erreur?: string;
-}
-const LECTURES = new Map<string, LectureEnCours>();
-const OUBLI_APRES = 30 * 60_000;
-
-function oublierLesVieilles(): void {
-  for (const [id, l] of LECTURES) {
-    if (Date.now() - l.debut > OUBLI_APRES) { l.abandon.abort(); LECTURES.delete(id); }
-  }
-}
+const LECTURES = new TachesDeFond<Record<string, unknown>>({
+  introuvable: "Lecture introuvable : elle a peut-être expiré. Relancez-la.",
+  dejaEnCours: "Une lecture de plans est déjà en cours. Attendez qu'elle se termine.",
+  echec: "La lecture des plans a échoué. Réessayez.",
+  journal: "lecture des plans",
+});
 
 router.post("/plans", recevoirPlans, async (req, res) => {
   if (!env.ANTHROPIC_API_KEY) { res.json({ configured: false }); return; }
@@ -428,42 +374,25 @@ router.post("/plans", recevoirPlans, async (req, res) => {
   if (files.reduce((s, f) => s + f.size, 0) > MAX_PLANS_TOTAL) throw badRequest("Plans trop lourds : 30 Mo au total.");
   const blocs = blocsDesPlans(files.map((f) => ({ nom: f.originalname, type: f.mimetype, contenu: f.buffer })));
 
-  oublierLesVieilles();
-  const proprietaire = req.auth!.sub;
-  // Une lecture à la fois par compte : chacune coûte, et une deuxième ne
-  // ferait que doubler la première.
-  for (const l of LECTURES.values()) {
-    if (l.proprietaire === proprietaire && l.etat === "en_cours") throw badRequest("Une lecture de plans est déjà en cours. Attendez qu'elle se termine.");
-  }
-  const id = randomUUID();
-  const lecture: LectureEnCours = { proprietaire, debut: Date.now(), abandon: new AbortController(), etat: "en_cours" };
-  LECTURES.set(id, lecture);
-  void lireLesPlans(blocs, lecture.abandon.signal)
-    .then(({ json, tronque, refus }) => {
-      lecture.etat = "prete";
-      lecture.resultat = { configured: true, tronque, refus, lecture: json ? validerLecturePlans(json, files.length) : null };
-    })
-    .catch((e: unknown) => {
-      lecture.etat = "erreur";
-      lecture.erreur = e instanceof HttpError ? e.message : "La lecture des plans a échoué. Réessayez.";
-      if (!(e instanceof HttpError)) logger.warn({ err: e }, "lecture des plans en échec");
-    });
+  const id = LECTURES.lancer(req.auth!.sub, async (signal) => {
+    const { json, tronque, refus } = await demanderAuModeleDesPlans(
+      [...blocs, { type: "text", text: CONSIGNE_PLANS }],
+      { maxTokens: 16_000, signal, messages: MESSAGES_LECTURE },
+    );
+    return { configured: true, tronque, refus, lecture: json ? validerLecturePlans(json, files.length) : null };
+  });
   res.status(202).json({ configured: true, enCours: id });
 });
 
 router.get("/plans/:id", (req, res) => {
-  const lecture = LECTURES.get(req.params.id);
-  if (!lecture || lecture.proprietaire !== req.auth!.sub) throw notFound("Lecture introuvable : elle a peut-être expiré. Relancez-la.");
-  if (lecture.etat === "en_cours") { res.json({ etat: "en_cours" }); return; }
-  LECTURES.delete(req.params.id);
-  if (lecture.etat === "erreur") throw badRequest(lecture.erreur ?? "La lecture des plans a échoué.");
-  res.json({ etat: "prete", ...lecture.resultat });
+  const suivi = LECTURES.suivre(req.params.id, req.auth!.sub);
+  if (suivi.etat === "en_cours") { res.json({ etat: "en_cours" }); return; }
+  res.json({ etat: "prete", ...suivi.resultat });
 });
 
 // Quitter l'écran pendant la lecture l'arrête : personne ne la relira.
 router.delete("/plans/:id", (req, res) => {
-  const lecture = LECTURES.get(req.params.id);
-  if (lecture && lecture.proprietaire === req.auth!.sub) { lecture.abandon.abort(); LECTURES.delete(req.params.id); }
+  LECTURES.arreter(req.params.id, req.auth!.sub);
   res.status(204).end();
 });
 

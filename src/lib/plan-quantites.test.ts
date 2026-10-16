@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  airePolygone, longueurPolyligne, natureDe, mesureDe, natureDeLUnite,
+  airePolygone, longueurPolyligne, natureDe, natureDuTrace, mesureDe, natureDeLUnite,
   apportsDesPlans, reportPossible, echelleDansTable, echelleDePage, type PlanMesurable,
 } from './plan-quantites'
 import type { PlanAnnotation } from './api-types'
@@ -207,5 +207,30 @@ describe('mesures réparties sur plusieurs pages', () => {
     const a = apportsDesPlans(plans).get('i1')!
     expect(a.zones.map((z) => z.page)).toEqual([1, 2])
     expect(a.total).toBe(125)
+  })
+})
+
+describe('les zones proposées par l’analyse du plan', () => {
+  const proposition = {
+    type: 'facade' as const, libelle: 'Façade sud', orientation: 'sud', confiance: 'haute' as const,
+    aimantee: true, sommetsAimantes: 4, couverture: 1, valeurCotee: null, cotes: null, remarque: null,
+  }
+  const proposee = (id: string, cote: number, itemId: string): PlanAnnotation => ({ ...zone(id, cote, itemId), proposition })
+
+  it('ne mesurent rien tant qu’elles ne sont pas validées', () => {
+    expect(natureDe(proposee('p', 10, 'it'))).toBe('aucune')
+    expect(natureDuTrace(proposee('p', 10, 'it'))).toBe('surface')
+    expect(mesureDe(proposee('p', 10, 'it'), 1)).toBeNull()
+  })
+
+  it('ne comptent dans aucun apport, même rattachées à un ouvrage', () => {
+    const plans: PlanMesurable[] = [{
+      id: 'p1', name: 'Façade', scalePxPerM: 10,
+      annotations: [proposee('a', 100, 'facade'), zone('b', 50, 'facade')],
+    }]
+    const apport = apportsDesPlans(plans).get('facade')!
+    // Seule la zone validée (50 px = 5 m de côté) compte : 25 m², pas 125.
+    expect(apport.total).toBe(25)
+    expect(apport.zones.map((z) => z.annotationId)).toEqual(['b'])
   })
 })
