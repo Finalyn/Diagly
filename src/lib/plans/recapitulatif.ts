@@ -20,7 +20,7 @@
  */
 import type { ApiPlan, FeuillesPlan, PlanAnnotation, TypePageAnalysee, TypeZoneIA } from '../api-types'
 import { CATEGORIE, CLES_CATEGORIES, type CategorieComptee } from '../base-cfc/comptages'
-import { airePolygone, echelleDePage, longueurPolyligne, natureDe } from '../plan-quantites'
+import { aireDeLaForme, echelleDePage, longueurPolyligne, natureDe } from '../plan-quantites'
 import { enAttente, estPdf, feuilleDe, multiplicateur, NOMS_VUES } from './feuilles'
 
 export type UniteRecap = 'm²' | 'ml' | 'pce'
@@ -240,5 +240,5 @@ export function recapitulatifDuJeu(jeu: PlanPourRecap[]): Recapitulatif {
 
 function mesureDe(a: PlanAnnotation, nature: 'surface' | 'longueur', pxParM: number | null): number | null {
   if (!pxParM || pxParM <= 0) return null
-  return nature === 'surface' ? airePolygone(a.points) / (pxParM * pxParM) : longueurPolyligne(a.points) / pxParM
+  return nature === 'surface' ? aireDeLaForme(a) / (pxParM * pxParM) : longueurPolyligne(a.points) / pxParM
 }

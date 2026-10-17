@@ -87,7 +87,8 @@ export function enAttente(a: PlanAnnotation): boolean {
  * tout » ne la repaie pas sans qu'on le demande.
  */
 export function porteUneAnalyse(annotations: PlanAnnotation[], page: number, pdf: boolean): boolean {
-  return annotations.some((a) => surLaPage(a, page, pdf) && (!!a.proposition || !!a.repere || !!a.mesureExacte || !!a.typeZone))
+  // Ce qui a été posé à la main dans les Métrés a un type sans venir de l'IA.
+  return annotations.some((a) => surLaPage(a, page, pdf) && !a.origine && (!!a.proposition || !!a.repere || !!a.mesureExacte || !!a.typeZone))
 }
 
 export type EtatAnalyse = StatutAnalyseFeuille | 'aucune'
@@ -284,16 +285,85 @@ export function multiplicateur(x: FeuillePlan): number {
   return n != null && Number.isInteger(n) && n >= 1 ? n : 1
 }
 
-export type StatutEchelleFeuille = 'posee' | 'a_verifier' | 'aucune'
+export type StatutEchelleFeuille = 'verifiee' | 'posee' | 'a_verifier' | 'incoherente' | 'aucune'
+
+/** Écart en deçà duquel l'échelle posée est bien celle que l'analyse a vérifiée. */
+const MEME_ECHELLE = 0.001
 
 /**
- * L'échelle d'une feuille : posée (étalonnée à la main ou confirmée dans
- * l'éditeur), proposée par l'analyse et à vérifier, ou absente.
+ * L'échelle d'une feuille, telle que le navigateur la montre :
+ *
+ * - `verifiee` : posée, et c'est celle que l'analyse a vérifiée (échelle
+ *   imprimée confirmée par une cote) ;
+ * - `posee` : posée autrement, étalonnée à la main ou confirmée sans cote ;
+ * - `a_verifier` : proposée par l'analyse, pas encore posée ;
+ * - `incoherente` : l'échelle imprimée et la cote ne concordent pas, rien
+ *   n'est posé tant qu'on n'a pas choisi laquelle croire ;
+ * - `aucune` : rien ne permet d'étalonner.
  */
 export function statutEchelle(plan: Pick<ApiPlan, 'scalePxPerM' | 'annotations'>, x: FeuillePlan, page: number): StatutEchelleFeuille {
-  if (echelleDePage(plan, page) != null) return 'posee'
-  if (x.echelle && x.echelle.statut !== 'aucune') return 'a_verifier'
-  return 'aucune'
+  const posee = echelleDePage(plan, page)
+  const e = x.echelle
+  if (posee != null) {
+    return e?.statut === 'verifiee' && e.pxParM && Math.abs(posee - e.pxParM) / e.pxParM < MEME_ECHELLE ? 'verifiee' : 'posee'
+  }
+  if (!e || e.statut === 'aucune') return 'aucune'
+  if (e.statut === 'conflit') return 'incoherente'
+  return 'a_verifier'
+}
+
+/**
+ * Les échelles proposées que l'on peut poser sur un plan, page par page : la
+ * valeur que l'analyse retient (l'échelle imprimée, ou la cote faute
+ * d'échelle imprimée), sur les pages qui n'en ont pas encore. Une échelle
+ * déjà posée, à la main ou non, n'est jamais remplacée d'ici : c'est la
+ * confirmation de l'éditeur qui le fait, case cochée.
+ *
+ * `seulementVerifiees` : pour la pose d'office à l'arrivée des résultats,
+ * seules les échelles vérifiées sur une cote, celles qu'on poserait sans
+ * hésiter.
+ */
+export function echellesAPoser(
+  plan: Pick<ApiPlan, 'scalePxPerM' | 'annotations'>, f: FeuillesPlan, options: { seulementVerifiees?: boolean } = {},
+): Record<number, number> {
+  const choix: Record<number, number> = {}
+  for (const [cle, x] of Object.entries(f.pages)) {
+    const page = Number(cle)
+    const e = x.echelle
+    if (!e || !e.pxParM || !(e.pxParM > 0)) continue
+    if (e.statut === 'conflit' || e.statut === 'aucune') continue
+    if (options.seulementVerifiees && e.statut !== 'verifiee') continue
+    if (echelleDePage(plan, page) != null) continue
+    choix[page] = e.pxParM
+  }
+  return choix
+}
+
+/**
+ * La table des échelles d'un plan, une fois les échelles choisies posées.
+ *
+ * Même règle que l'éditeur (PlanEditor, poserEchelles) : un PDF étalonné d'un
+ * bloc, sans table par page, voit d'abord son échelle recopiée sur chacune de
+ * ses pages, sans quoi elles la perdraient au moment où la table apparaît ;
+ * la page 1 porte aussi l'échelle du plan. Une image n'a qu'une échelle.
+ */
+export function poserDansLaTable(
+  plan: Pick<ApiPlan, 'mimeType' | 'scalePxPerM' | 'annotations'>, nombrePages: number, choix: Record<number, number>,
+): { scalePxPerM: number | null; annotations: PlanAnnotation[] } {
+  const pages = Object.keys(choix).map(Number)
+  const avant = plan.annotations ?? []
+  if (!estPdf(plan)) {
+    return { scalePxPerM: pages.length ? choix[pages[0]] : plan.scalePxPerM, annotations: avant }
+  }
+  const table = avant.find((a) => a.type === 'pages')?.pageScales ?? {}
+  const suite: Record<string, number> = Object.keys(table).length === 0 && plan.scalePxPerM
+    ? Object.fromEntries(Array.from({ length: nombrePages }, (_, i) => [String(i + 1), plan.scalePxPerM!]))
+    : { ...table }
+  for (const n of pages) suite[String(n)] = choix[n]
+  return {
+    scalePxPerM: choix[1] ?? plan.scalePxPerM,
+    annotations: [...avant.filter((a) => a.type !== 'pages'), { id: 'pages', type: 'pages', points: [], pageScales: suite }],
+  }
 }
 
 // ---------------------------------------------------------------- bâtiment

@@ -9,9 +9,14 @@
  * aussi là qu'on corrige ce que l'IA a lu (titre, type, étage, étages
  * identiques) et qu'on relance une feuille, et jamais ailleurs : relancer
  * coûte une analyse, le geste doit être délibéré.
+ *
+ * L'échelle se lit d'un coup d'œil : vérifiée (imprimée et confirmée par une
+ * cote, posée d'office), posée, à vérifier, ou incohérente quand l'échelle
+ * imprimée et la cote se contredisent. Un bouton pose en un geste toutes les
+ * échelles proposées qui restent, après confirmation.
  */
 import { useState } from 'react'
-import { AlertTriangle, Check, Loader2, Pencil, RotateCcw, X } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Pencil, RotateCcw, Ruler, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ApiPlan, ChampCorrigeable, FeuillePlan, TypePageAnalysee } from '@/lib/api-types'
 import { useApercusPages, useRenduPlan } from '@/components/plans/rendu'
@@ -35,10 +40,12 @@ export interface GroupeDeFeuilles {
   feuilles: FeuilleVue[]
 }
 
-const ECHELLES: Record<StatutEchelleFeuille, { libelle: string; classe: string }> = {
-  posee: { libelle: 'Échelle posée', classe: 'bg-emerald-50 text-emerald-700' },
-  a_verifier: { libelle: 'Échelle à vérifier', classe: 'bg-amber-50 text-amber-700' },
-  aucune: { libelle: 'Sans échelle', classe: 'bg-muted text-muted-foreground' },
+const ECHELLES: Record<StatutEchelleFeuille, { libelle: string; classe: string; titre: string }> = {
+  verifiee: { libelle: 'Échelle vérifiée', classe: 'bg-emerald-50 text-emerald-700', titre: 'Échelle imprimée confirmée par une cote, posée d’office' },
+  posee: { libelle: 'Échelle posée', classe: 'bg-sky-50 text-sky-700', titre: 'Échelle posée à la main ou confirmée' },
+  a_verifier: { libelle: 'À vérifier', classe: 'bg-amber-50 text-amber-700', titre: 'Échelle proposée, pas encore posée' },
+  incoherente: { libelle: 'Incohérente', classe: 'bg-red-50 text-red-700', titre: 'L’échelle imprimée et la cote ne concordent pas : choisissez dans l’éditeur' },
+  aucune: { libelle: 'Sans échelle', classe: 'bg-muted text-muted-foreground', titre: 'Ni échelle lue ni posée' },
 }
 
 const ANALYSES: Record<EtatAnalyse, string> = {
@@ -49,7 +56,7 @@ const ANALYSES: Record<EtatAnalyse, string> = {
   erreur: 'bg-red-50 text-red-700',
 }
 
-export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir, onAnalyser, onCorriger }: {
+export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir, onAnalyser, onCorriger, echellesAPoser = 0, onPoserEchelles }: {
   groupes: GroupeDeFeuilles[]
   selection: RefFeuille | null
   /** Sur téléphone : on regarde l'état des feuilles, on ne les corrige pas. */
@@ -57,9 +64,42 @@ export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir
   onChoisir?: (f: RefFeuille) => void
   onAnalyser?: (f: RefFeuille, relance: boolean) => void
   onCorriger?: (f: RefFeuille, patch: Partial<Pick<FeuillePlan, ChampCorrigeable>>) => void
+  /** Feuilles dont l'échelle proposée attend d'être posée. */
+  echellesAPoser?: number
+  onPoserEchelles?: () => void
 }) {
+  const [confirmer, setConfirmer] = useState(false)
+  const incoherentes = groupes.reduce((s, g) => s + g.feuilles.filter((f) => f.echelle === 'incoherente').length, 0)
   return (
     <div className="space-y-4">
+      {!lectureSeule && onPoserEchelles && echellesAPoser > 0 && (
+        confirmer ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950">
+            <p>
+              Poser l’échelle proposée sur {echellesAPoser} feuille{echellesAPoser > 1 ? 's' : ''} ? Les échelles déjà posées ne
+              changent pas{incoherentes ? `, et les ${incoherentes} incohérente${incoherentes > 1 ? 's' : ''} attendent votre choix dans l’éditeur` : ''}.
+            </p>
+            <div className="mt-2 flex gap-1.5">
+              <button
+                onClick={() => { setConfirmer(false); onPoserEchelles() }}
+                className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg bg-foreground font-semibold text-background hover:opacity-90 pointer-coarse:h-11"
+              >
+                <Check className="h-3.5 w-3.5" />Poser
+              </button>
+              <button onClick={() => setConfirmer(false)} className="flex h-9 flex-1 items-center justify-center rounded-lg border bg-background font-medium hover:bg-muted pointer-coarse:h-11">
+                Annuler
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmer(true)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 py-2 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-11"
+          >
+            <Ruler className="h-3.5 w-3.5" />Poser les échelles proposées ({echellesAPoser})
+          </button>
+        )
+      )}
       {groupes.map((g) => (
         <GroupePlan
           key={g.plan.id}
@@ -161,14 +201,18 @@ function CarteFeuille({ vue, nomDuPlan, vignette, choisie, lectureSeule, onChois
             : <span className="flex h-full items-center justify-center"><Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /></span>}
         </button>
         <div className="min-w-0 flex-1">
-          <button onClick={onChoisir} disabled={!onChoisir} className="block w-full text-left">
+          <button onClick={onChoisir} disabled={!onChoisir} className="block w-full text-left pointer-coarse:min-h-11">
             <span className="block truncate text-[13px] font-medium leading-tight" title={libelleFeuille(feuille, page, nomDuPlan)}>
               {libelleFeuille(feuille, page, nomDuPlan)}
             </span>
             <span className="block truncate text-[11px] text-muted-foreground">{description || `Page ${page}`}</span>
           </button>
           <div className="mt-1 flex flex-wrap gap-1">
-            <Pastille classe={ECHELLES[echelle].classe}>{ECHELLES[echelle].libelle}</Pastille>
+            <Pastille classe={ECHELLES[echelle].classe} titre={ECHELLES[echelle].titre}>
+              {echelle === 'verifiee' && <Check className="h-2.5 w-2.5" />}
+              {echelle === 'incoherente' && <AlertTriangle className="h-2.5 w-2.5" />}
+              {ECHELLES[echelle].libelle}
+            </Pastille>
             <Pastille classe={ANALYSES[etat]} titre={etat === 'erreur' ? feuille.analyse?.message ?? undefined : undefined}>
               {etat === 'en_cours' && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
               {etat === 'erreur' && <AlertTriangle className="h-2.5 w-2.5" />}
@@ -181,7 +225,7 @@ function CarteFeuille({ vue, nomDuPlan, vignette, choisie, lectureSeule, onChois
           <div className="flex shrink-0 flex-col gap-0.5">
             <button
               onClick={() => setEdition((e) => !e)}
-              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground pointer-coarse:p-[15px]"
               title="Corriger le titre, le type, l’étage"
               aria-pressed={edition}
             >
@@ -190,7 +234,7 @@ function CarteFeuille({ vue, nomDuPlan, vignette, choisie, lectureSeule, onChois
             {analysable && onAnalyser && (
               <button
                 onClick={() => onAnalyser(etat === 'prete')}
-                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground pointer-coarse:p-[15px]"
                 title={etat === 'prete' ? 'Relancer l’analyse de cette feuille' : 'Analyser cette feuille'}
               >
                 {etat === 'prete' ? <RotateCcw className="h-3.5 w-3.5" /> : <MarqueDiagly className="h-3.5 w-3.5" />}

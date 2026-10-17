@@ -62,6 +62,8 @@ export const feuilleSchema = z.object({
   type: z.enum(TYPES_VUE).nullable().optional(),
   niveau: texte(40),
   etagesIdentiques: z.number().int().min(1).max(60).nullable().optional(),
+  /** Hauteur d'étage choisie dans le panneau des quantités, en mètres : la surface des murs en dépend. */
+  hauteurEtage: z.number().min(1).max(20).nullable().optional(),
   orientation: texte(30),
   corrige: z.array(z.enum(CHAMPS_CORRIGEABLES)).max(CHAMPS_CORRIGEABLES.length).optional(),
   analyse: analyseSchema.nullable().optional(),

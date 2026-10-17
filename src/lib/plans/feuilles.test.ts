@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   apresUnePerte, appliquerAnalyse, completerBatiment, corrigerFeuille, enCoursParTache, etatAnalyse, libelleFeuille,
   lotDeLaPage, mettreEnCours, mettreEnFile, multiplicateur, nomProvisoire, prochainLot, retirerDeLaFile, statutEchelle,
+  echellesAPoser, poserDansLaTable,
   type FeuilleEnFile,
 } from './feuilles'
 import type { ApiPlan, FeuillesPlan, PageAnalysee, PlanAnnotation } from '../api-types'
@@ -106,13 +107,52 @@ describe('la lecture d’une feuille', () => {
     expect(libelleFeuille({}, 3, 'Jeu complet')).toBe('Jeu complet, page 3')
   })
 
-  it('dit si l’échelle est posée, proposée ou absente', () => {
+  it('dit si l’échelle est vérifiée, posée, proposée, incohérente ou absente', () => {
     const plan: Pick<ApiPlan, 'scalePxPerM' | 'annotations'> = {
       scalePxPerM: null, annotations: [{ id: 'pages', type: 'pages', points: [], pageScales: { 1: 38.1 } }],
     }
     expect(statutEchelle(plan, {}, 1)).toBe('posee')
+    expect(statutEchelle(plan, { echelle: { ...echelle(1), statut: 'verifiee' } }, 1)).toBe('verifiee')
+    expect(statutEchelle(plan, { echelle: { ...echelle(1), statut: 'verifiee', pxParM: 40 } }, 1)).toBe('posee')
     expect(statutEchelle(plan, { echelle: echelle(2) }, 2)).toBe('a_verifier')
+    expect(statutEchelle(plan, { echelle: { ...echelle(2), statut: 'conflit', pxParM: null } }, 2)).toBe('incoherente')
     expect(statutEchelle(plan, { echelle: { ...echelle(2), statut: 'aucune' } }, 2)).toBe('aucune')
+  })
+})
+
+describe('les échelles posées en lot', () => {
+  const f: FeuillesPlan = {
+    nombre: 4,
+    pages: {
+      1: { echelle: { ...echelle(1), statut: 'verifiee', pxParM: 38.1 } },
+      2: { echelle: { ...echelle(2), statut: 'non-verifiee', pxParM: 76.2 } },
+      3: { echelle: { ...echelle(3), statut: 'conflit', pxParM: null } },
+      4: { echelle: { ...echelle(4), statut: 'verifiee', pxParM: 38.1 } },
+    },
+  }
+  const plan: Pick<ApiPlan, 'mimeType' | 'scalePxPerM' | 'annotations'> = {
+    mimeType: 'application/pdf', scalePxPerM: null,
+    annotations: [{ id: 'pages', type: 'pages', points: [], pageScales: { 4: 50 } }],
+  }
+
+  it('posent d’office les seules échelles vérifiées, jamais par-dessus une échelle posée', () => {
+    expect(echellesAPoser(plan, f, { seulementVerifiees: true })).toEqual({ 1: 38.1 })
+  })
+
+  it('posent sur demande toutes les échelles proposées, sauf celles qui se contredisent', () => {
+    expect(echellesAPoser(plan, f)).toEqual({ 1: 38.1, 2: 76.2 })
+  })
+
+  it('complètent la table du plan sans toucher aux autres pages', () => {
+    const r = poserDansLaTable(plan, 4, { 1: 38.1, 2: 76.2 })
+    expect(r.scalePxPerM).toBe(38.1)
+    expect(r.annotations.find((a) => a.type === 'pages')!.pageScales).toEqual({ 1: 38.1, 2: 76.2, 4: 50 })
+  })
+
+  it('recopient d’abord l’échelle d’un plan étalonné d’un bloc sur chacune de ses pages', () => {
+    const r = poserDansLaTable({ ...plan, scalePxPerM: 20, annotations: [] }, 3, { 2: 76.2 })
+    expect(r.annotations.find((a) => a.type === 'pages')!.pageScales).toEqual({ 1: 20, 2: 76.2, 3: 20 })
+    expect(r.scalePxPerM).toBe(20)
   })
 })
 

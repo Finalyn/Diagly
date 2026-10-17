@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  airePolygone, longueurPolyligne, natureDe, natureDuTrace, mesureDe, natureDeLUnite,
+  aireDeLaForme, airePolygone, longueurPolyligne, natureDe, natureDuTrace, mesureDe, natureDeLUnite,
   apportsDesPlans, reportPossible, echelleDansTable, echelleDePage, type PlanMesurable,
 } from './plan-quantites'
 import type { PlanAnnotation } from './api-types'
@@ -26,6 +26,12 @@ describe('géométrie', () => {
 
   it('ne donne pas d’aire à moins de trois points', () => {
     expect(airePolygone([{ x: 0, y: 0 }, { x: 5, y: 5 }])).toBe(0)
+  })
+
+  it('retire les découpes de la surface d’une zone, sans jamais passer sous zéro', () => {
+    expect(aireDeLaForme({ points: carre(10), trous: [carre(2), carre(3)] })).toBe(100 - 4 - 9)
+    expect(aireDeLaForme({ points: carre(2), trous: [carre(10)] })).toBe(0)
+    expect(mesureDe({ type: 'hatch', points: carre(100), trous: [carre(50)] }, 10)).toBe(100 - 25)
   })
 
   it('additionne les segments d’une polyligne', () => {
@@ -207,6 +213,16 @@ describe('mesures réparties sur plusieurs pages', () => {
     const a = apportsDesPlans(plans).get('i1')!
     expect(a.zones.map((z) => z.page)).toEqual([1, 2])
     expect(a.total).toBe(125)
+  })
+
+  it('une zone d’étage type compte pour chaque étage qu’elle représente', () => {
+    const plans: PlanMesurable[] = [{
+      id: 'p', name: 'Étages', scalePxPerM: 100,
+      annotations: [{ ...zone('z1', 500, 'i1'), page: 1 }, { ...zone('z2', 500, 'i1'), page: 2 }],
+    }]
+    const a = apportsDesPlans(plans, (_plan, page) => (page === 2 ? 3 : 1)).get('i1')!
+    expect(a.zones.map((z) => z.multiplicateur)).toEqual([1, 3])
+    expect(a.total).toBe(25 + 75)
   })
 })
 

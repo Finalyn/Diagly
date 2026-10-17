@@ -5,15 +5,15 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   X, Hand, MousePointer2, Crosshair, Ruler, ArrowUpRight, StickyNote, Hash, Pencil,
   ZoomIn, ZoomOut, Undo2, Redo2, Check, Trash2, Loader2, ChevronLeft, ChevronRight, Maximize, Download, Link2, Layers,
-  AlertTriangle,
+  AlertTriangle, PaintBucket, CircleDot, Tags, Scissors, ScanSearch,
 } from 'lucide-react'
 import { api, type CorpsMajPlan } from '@/lib/api'
-import type { ApiPlan, PlanAnnotation, PlanAnnotationType, PlanPoint } from '@/lib/api-types'
+import type { ApiPlan, PlanAnnotation, PlanAnnotationType, PlanPoint, TypeZoneIA } from '@/lib/api-types'
 import type { PoigneeEditeur } from '@/components/metres/moteur'
 import { remplacerPropositions } from '@/lib/plans/feuilles'
 import { cn } from '@/lib/utils'
 import { loadPdfjs } from '@/lib/pdf'
-import { airePolygone, echelleDansTable, natureDe, natureDuTrace } from '@/lib/plan-quantites'
+import { aireDeLaForme, airePolygone, echelleDansTable, longueurPolyligne, natureDe, natureDuTrace } from '@/lib/plan-quantites'
 import { useQuery } from '@tanstack/react-query'
 import { ChoixOuvrage } from '@/components/plans/ChoixOuvrage'
 import { useApercusPages, useRenduPlan, type ApercuPage } from '@/components/plans/rendu'
@@ -24,14 +24,21 @@ import {
   type ReperesDeCategorie,
 } from '@/components/plans/AnalyseIA'
 import {
-  COULEUR_PROPOSITION, NOMS_CONFIANCE, NOMS_TYPES_ZONE, bilanDeFacade, ecartAuxCotes, mesureDeLaZone, nomDuRepere,
-  validerProposition, validerRepere, type EchelleDePage,
+  COULEUR_PROPOSITION, COULEURS_CATEGORIE, COULEURS_PAR_TYPE, NOMS_CONFIANCE, NOMS_TYPES_ZONE, bilanDeFacade, ecartAuxCotes,
+  mesureDeLaZone, nomDuRepere, validerProposition, validerRepere, type EchelleDePage,
 } from '@/lib/plans/analyse-ia'
-import { CLES_CATEGORIES, comptagesDuDossier } from '@/lib/base-cfc/comptages'
+import { CATEGORIE, CLES_CATEGORIES, comptagesDuDossier, type CategorieComptee } from '@/lib/base-cfc/comptages'
+import { IndexGeometrie, extraireSegments, type ListeOperateurs, type OpsPdf } from '@/lib/plans/geometrie-vectorielle'
+import {
+  RAISONS_REFUS, masqueDesPixels, masqueDesTraits, nomDansLaZone, remplirDepuis, textesEnCanevas,
+  type ElementDeTexte, type Masque, type TexteDeLaPage,
+} from '@/lib/plans/remplissage'
+import { boiteDe, centreDeSurface, pointPourEtiquette } from '@/lib/plans/formes'
+import { gabaritDansLeCadre, type Gabarit } from '@/lib/plans/symboles'
 import { useEnregistrerComptages } from '@/components/comptages/enregistrer'
 import { fr } from '@/lib/plans/echelle-exacte'
 
-type Tool = 'pan' | 'select' | 'calibrate' | 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference'
+type Tool = 'pan' | 'select' | 'calibrate' | 'measure' | 'arrow' | 'note' | 'hatch' | 'draw' | 'reference' | 'fill' | 'count' | 'cut' | 'symbole'
 const TARGET_W = 1600
 const MIN_ZOOM = 0.05
 const MAX_ZOOM = 20
@@ -71,9 +78,6 @@ const uid = () => `a${Date.now()}_${_c++}`
 const dist = (a: PlanPoint, b: PlanPoint) => Math.hypot(b.x - a.x, b.y - a.y)
 const mid = (a: PlanPoint, b: PlanPoint) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
-function centroid(pts: PlanPoint[]) {
-  return { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length }
-}
 /** Distance d'un point au segment [a,b] (pour sélectionner une annotation). */
 function pointSegDist(p: PlanPoint, a: PlanPoint, b: PlanPoint) {
   const dx = b.x - a.x, dy = b.y - a.y
@@ -90,17 +94,69 @@ function pointInPoly(p: PlanPoint, pts: PlanPoint[]) {
   return inside
 }
 
-const TOOLS: { key: Tool; icon: typeof Ruler; label: string }[] = [
-  { key: 'pan', icon: Hand, label: 'Déplacer' },
-  { key: 'select', icon: MousePointer2, label: 'Sélection' },
+/**
+ * Les outils, avec leur touche. Une seule action par touche, comme le veulent
+ * les métreurs habitués à Togal ou Bluebeam : V la sélection, A la surface,
+ * L la longueur, C le comptage, F le remplissage d'une pièce, et Espace
+ * maintenu pour déplacer le plan sans quitter l'outil en cours.
+ */
+const TOOLS: { key: Tool; icon: typeof Ruler; label: string; touche?: string }[] = [
+  { key: 'pan', icon: Hand, label: 'Déplacer', touche: 'Espace' },
+  { key: 'select', icon: MousePointer2, label: 'Sélection', touche: 'V' },
   { key: 'calibrate', icon: Crosshair, label: 'Étalonner' },
-  { key: 'measure', icon: Ruler, label: 'Mesurer' },
+  { key: 'hatch', icon: Hash, label: 'Zone', touche: 'A' },
+  { key: 'fill', icon: PaintBucket, label: 'Remplir', touche: 'F' },
+  { key: 'measure', icon: Ruler, label: 'Mesurer', touche: 'L' },
+  { key: 'count', icon: CircleDot, label: 'Compter', touche: 'C' },
+  { key: 'cut', icon: Scissors, label: 'Découper', touche: 'X' },
+  // Seulement dans les Métrés : la recherche parcourt tout le jeu de plans.
+  { key: 'symbole', icon: ScanSearch, label: 'Symbole' },
   { key: 'draw', icon: Pencil, label: 'Dessiner' },
   { key: 'arrow', icon: ArrowUpRight, label: 'Flèche' },
   { key: 'note', icon: StickyNote, label: 'Note' },
-  { key: 'hatch', icon: Hash, label: 'Zone' },
   { key: 'reference', icon: Layers, label: 'Référence' },
 ]
+
+/** Les touches des outils, en minuscules. */
+const TOUCHES: Record<string, Tool> = { v: 'select', a: 'hatch', l: 'measure', c: 'count', f: 'fill', x: 'cut' }
+
+/** Deux touchers plus rapprochés que cela, dans le temps et à l'écran, font un double toucher. */
+const DOUBLE_TOUCHER_MS = 320
+const DOUBLE_TOUCHER_PX = 24
+
+/**
+ * Le point visé, contraint à l'horizontale, à la verticale ou à 45° depuis
+ * l'ancre quand Maj est enfoncée : un mur droit se trace droit, même au doigt.
+ */
+function contraindre(ancre: PlanPoint | null | undefined, p: PlanPoint, actif: boolean): PlanPoint {
+  if (!actif || !ancre) return p
+  const dx = p.x - ancre.x, dy = p.y - ancre.y
+  if (!dx && !dy) return p
+  const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4)
+  const k = dx * Math.cos(angle) + dy * Math.sin(angle)
+  return { x: ancre.x + k * Math.cos(angle), y: ancre.y + k * Math.sin(angle) }
+}
+
+/** Retire les points posés deux fois au même endroit : un double-clic pose deux sommets avant de terminer. */
+function sansDoublons(pts: PlanPoint[], ecart: number): PlanPoint[] {
+  return pts.filter((p, i) => i === 0 || dist(p, pts[i - 1]) > ecart)
+}
+
+/** Le point à mi-longueur d'une polyligne : là où s'écrit sa mesure. */
+function milieuDeLaLigne(pts: PlanPoint[]): PlanPoint {
+  if (pts.length < 2) return pts[0] ?? { x: 0, y: 0 }
+  const moitie = longueurPolyligne(pts) / 2
+  let parcouru = 0
+  for (let i = 1; i < pts.length; i++) {
+    const l = dist(pts[i - 1], pts[i])
+    if (parcouru + l >= moitie && l > 0) {
+      const t = (moitie - parcouru) / l
+      return { x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t }
+    }
+    parcouru += l
+  }
+  return pts[pts.length - 1]
+}
 
 /** Teintes du calque de référence : claires, pour que les traits restent noirs. */
 const TEINTES: { valeur: string | null; nom: string }[] = [
@@ -112,12 +168,16 @@ const TEINTES: { valeur: string | null; nom: string }[] = [
 
 const HINTS: Record<Tool, string> = {
   pan: 'Glisse pour déplacer le plan, molette/pincer pour zoomer.',
-  select: 'Touche une annotation pour la sélectionner : déplace-la, glisse ses poignées, change sa couleur / son texte, ou supprime (Suppr).',
+  select: 'Touche une forme pour la sélectionner : glisse-la ou ses poignées, tire le point milieu d’un côté pour ajouter un sommet, double-clic sur un sommet pour le retirer. Suppr efface.',
   calibrate: 'Trace un trait sur une distance connue (glisse), puis saisis sa longueur réelle.',
-  measure: 'Glisse d’un point à l’autre pour mesurer une distance.',
+  measure: 'Glisse pour une cote, ou touche chaque point d’une longueur puis Entrée ou double-clic. Maj : 0, 45 ou 90°.',
   arrow: 'Glisse pour tracer une flèche.',
   note: 'Touche le plan pour poser une note.',
-  hatch: 'Glisse pour une zone rectangulaire, ou touche chaque sommet puis « Fermer la zone ».',
+  hatch: 'Glisse pour un rectangle, ou touche chaque sommet puis Entrée ou double-clic. Maj : 0, 45 ou 90°.',
+  fill: 'Touche l’intérieur d’une pièce fermée : la zone suit les traits du plan.',
+  count: 'Touche chaque élément à compter : un repère par toucher, dans la catégorie choisie.',
+  cut: 'Trace la découpe dans une zone (glisse pour un rectangle, ou touche chaque sommet) : sa surface est retirée.',
+  symbole: 'Encadre un symbole (glisse) : il sera cherché sur toutes les feuilles vectorielles du jeu.',
   draw: 'Dessine à main levée en gardant le doigt / la souris appuyé.',
   reference: 'Pose un autre plan du dossier en transparence, puis glisse pour le recaler sur celui-ci.',
 }
@@ -192,6 +252,62 @@ export interface EncastrementEditeur {
   definirPoignee: (p: PoigneeEditeur | null) => void
   /** Les annotations et échelles à jour, pour le récapitulatif du jeu. */
   onEtat?: (etat: { planId: string; annotations: PlanAnnotation[]; echelles: Record<string, number>; scale: number | null }) => void
+  /** La forme en cours de tracé : le panneau des quantités la compte déjà. */
+  onBrouillon?: (b: BrouillonEditeur | null) => void
+  /** La forme sélectionnée sur le plan : le panneau éclaire sa ligne. */
+  onSelection?: (id: string | null) => void
+  /**
+   * Une forme à montrer : l'éditeur la sélectionne et centre la vue dessus.
+   * Le jeton change à chaque demande, même pour la même forme. Sans forme
+   * (une occurrence de symbole), `points` dit seulement où cadrer.
+   */
+  cible?: { id: string; jeton: number; points?: PlanPoint[] } | null
+  /** Les formes d'une classification masquée dans le panneau ne se dessinent pas. */
+  masquee?: (a: PlanAnnotation) => boolean
+  /**
+   * « Dessiner dans » une classification du panneau : la prochaine forme en
+   * prend le type et la couleur, avec l'outil qui lui convient.
+   */
+  classement?: ClassementActif | null
+  /** Quitter le dessin dans une classification. */
+  onFinClassement?: () => void
+  /** La revue des éléments à valider tient le clavier et la carte de la forme. */
+  revue?: boolean
+  /** Un symbole encadré, à chercher sur tout le jeu ; sans ce rappel, l'outil n'est pas proposé. */
+  onSymbole?: (s: { planId: string; page: number; gabarit: Gabarit }) => void
+  /** Les occurrences d'un symbole sur cette page, encadrées sur le plan. */
+  marques?: { id: string; x: number; y: number; largeur: number; hauteur: number; actif: boolean }[]
+}
+
+/** La classification dans laquelle on dessine, depuis le panneau des quantités. */
+export interface ClassementActif {
+  libelle: string
+  couleur: string
+  outil: 'surface' | 'longueur' | 'comptage'
+  /** Le type que prend la forme ; null pour une mesure libre. */
+  typeZone: TypeZoneIA | null
+  /** Pour un comptage : la catégorie des repères posés. */
+  categorie?: CategorieComptee
+  jeton: number
+}
+
+/** La forme en cours de tracé, telle que le panneau des quantités la compte. */
+export interface BrouillonEditeur {
+  planId: string
+  page: number
+  nature: 'surface' | 'longueur'
+  points: PlanPoint[]
+  typeZone: TypeZoneIA | null
+}
+
+/** Ce que l'éditeur garde de la page affichée pour le remplissage d'un clic. */
+interface PageDuPdf {
+  numero: number
+  page: {
+    getOperatorList: () => Promise<ListeOperateurs>
+    getTextContent: () => Promise<{ items: unknown[] }>
+  }
+  transform: number[]
 }
 
 export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose?: () => void; encastre?: EncastrementEditeur }) {
@@ -279,6 +395,31 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
   const [passe, setPasse] = useState<PlanAnnotation[][]>([])
   const [futur, setFutur] = useState<PlanAnnotation[][]>([])
 
+  /** La catégorie des repères que pose l'outil Compter. */
+  const [categorieComptage, setCategorieComptage] = useState<CategorieComptee>('porte_interieure')
+  /** Nom et quantité écrits au centre de chaque zone validée. */
+  const [etiquettes, setEtiquettes] = useState(true)
+  /** Un message bref posé sur la scène : un remplissage refusé, par exemple. */
+  const [avisScene, setAvisScene] = useState<string | null>(null)
+  const avisMinuterie = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const montrerAvis = (texte: string) => {
+    setAvisScene(texte)
+    if (avisMinuterie.current) clearTimeout(avisMinuterie.current)
+    avisMinuterie.current = setTimeout(() => setAvisScene(null), 4500)
+  }
+  useEffect(() => () => { if (avisMinuterie.current) clearTimeout(avisMinuterie.current) }, [])
+  const [remplissageEnCours, setRemplissageEnCours] = useState(false)
+  /** Espace maintenu : le plan se déplace, quel que soit l'outil. */
+  const [espace, setEspace] = useState(false)
+  const espaceRef = useRef(false)
+  /** Maj maintenue : les tracés suivent 0, 45 ou 90°. */
+  const [maj, setMaj] = useState(false)
+  /** La page du PDF affichée, pour en lire les traits et les textes au premier remplissage. */
+  const pageDuPdf = useRef<PageDuPdf | null>(null)
+  const geometrieRemplissage = useRef<{ numero: number; masque: Masque; index: IndexGeometrie | null; textes: TexteDeLaPage[] } | null>(null)
+  /** Le dernier toucher, pour reconnaître un double toucher sur iPad. */
+  const dernierToucher = useRef<{ t: number; x: number; y: number } | null>(null)
+
   /**
    * Calque de référence : un autre plan du dossier, posé par-dessus celui-ci.
    *
@@ -346,6 +487,9 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
         canvas.width = viewport.width; canvas.height = viewport.height
         await page.render({ canvasContext: ctx, viewport }).promise
         if (cancelled) return
+        // Les traits et les textes de la page ne se lisent qu'au premier remplissage.
+        pageDuPdf.current = { numero: pageNum, page: page as unknown as PageDuPdf['page'], transform: viewport.transform }
+        geometrieRemplissage.current = null
         setStage({ w: viewport.width, h: viewport.height })
       } else {
         const img = new Image()
@@ -356,6 +500,8 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
         const w = Math.round(img.width * s), h = Math.round(img.height * s)
         canvas.width = w; canvas.height = h
         ctx.drawImage(img, 0, 0, w, h)
+        pageDuPdf.current = null
+        geometrieRemplissage.current = null
         setStage({ w, h })
       }
       setLoading(false)
@@ -424,17 +570,172 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
     return id
   }
 
+  /** Le type d'une forme dessinée « dans » une classification du panneau des quantités. */
+  const classementDuTrace = (): Partial<PlanAnnotation> => {
+    const c = encastreRef.current?.classement
+    return c?.typeZone ? { typeZone: c.typeZone, origine: 'main' } : {}
+  }
+  const classementActif = encastre?.classement ?? null
+  const couleurDuTrace = classementActif && classementActif.outil !== 'comptage' ? classementActif.couleur : color
+
   /**
    * Une zone tout juste fermée demande aussitôt à quel ouvrage elle se rapporte.
    *
    * Une zone qui ne se rapporte à rien ne fait que décorer le plan. La question
    * se pose quand on vient de la tracer, pas plus tard, quand on ne sait plus
-   * laquelle mesurait quoi.
+   * laquelle mesurait quoi. Dans les Métrés, on enchaîne les pièces d'une
+   * feuille : la question attendrait à chaque zone, et le rattachement se fait
+   * depuis la sélection.
    */
   const poserZone = (points: PlanPoint[]) => {
-    const id = addAnn({ type: 'hatch', points, color })
+    const id = addAnn({ type: 'hatch', points, color: couleurDuTrace, ...classementDuTrace() })
     setSelectedAnn(id)
-    setChoixOuvrage(true)
+    if (!encastre) setChoixOuvrage(true)
+  }
+  /**
+   * Une découpe : le contour tracé se retire de la zone qui le contient, la
+   * sélectionnée si elle le contient, sinon la plus petite de la page. Une
+   * trémie dans une dalle, un poteau dans une pièce : la surface nette suit.
+   */
+  const decouper = (points: PlanPoint[]) => {
+    const c = centreDeSurface(points)
+    const dans = annotationsVisibles
+      .filter((a) => a.type === 'hatch' && !a.proposition && pointInPoly(c, a.points) && !(a.trous ?? []).some((t) => pointInPoly(c, t)))
+      .sort((x, y) => airePolygone(x.points) - airePolygone(y.points))
+    const zone = dans.find((a) => a.id === selectedAnn) ?? dans[0]
+    if (!zone) { montrerAvis('Tracez la découpe à l’intérieur d’une zone validée.'); return }
+    retenir()
+    // Découpée à la main, la surface n'est plus seulement celle du dessin.
+    setAnnotations((l) => l.map((a) => (a.id === zone.id ? { ...a, trous: [...(a.trous ?? []), points], mesureExacte: false } : a)))
+    setDirty(true)
+    setSelectedAnn(zone.id)
+  }
+  /** Le cadre tracé autour d'un symbole : ses traits deviennent le gabarit cherché sur tout le jeu. */
+  const encadrerSymbole = async (a: PlanPoint, b: PlanPoint) => {
+    const g = await geometriePourRemplir()
+    if (!g?.index) { montrerAvis('La recherche de symbole demande un PDF vectoriel : cette feuille n’a pas de traits lisibles.'); return }
+    const cadre = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), largeur: Math.abs(b.x - a.x), hauteur: Math.abs(b.y - a.y) }
+    const gabarit = gabaritDansLeCadre(g.index.geo, cadre)
+    if (!gabarit) { montrerAvis('Encadrez un seul symbole : ses traits doivent tenir entièrement dans le cadre.'); return }
+    encastreRef.current?.onSymbole?.({ planId: plan.id, page: pageNum, gabarit })
+  }
+
+  /** Un contour fermé : une zone, ou une découpe avec l'outil Découper. */
+  const fermerContour = (points: PlanPoint[]) => {
+    if (tool === 'cut') decouper(points)
+    else poserZone(points)
+  }
+
+  /** Une longueur tracée point par point : un mur, une plinthe, un linéaire de façade. */
+  const poserLongueur = (points: PlanPoint[]) => {
+    addAnn({ type: 'measure', points, color: couleurDuTrace, ...classementDuTrace() })
+  }
+
+  /** Un repère de comptage, numéroté à la suite des autres de sa catégorie sur la page. */
+  const poserRepere = (sp: PlanPoint) => {
+    const categorie = (classementActif?.outil === 'comptage' ? classementActif.categorie : null) ?? categorieComptage
+    const numeros = annotationsPage.filter((a) => a.repere?.categorie === categorie).map((a) => a.repere!.numero)
+    addAnn({
+      type: 'repere', points: [sp], color: COULEURS_CATEGORIE[categorie],
+      repere: { categorie, numero: Math.max(0, ...numeros) + 1 }, origine: 'main',
+    })
+  }
+
+  /**
+   * Les traits de la page pour le remplissage, lus une fois par page : la
+   * géométrie vectorielle avec ses courbes aplaties (l'arc d'une porte ferme
+   * la pièce) et ses textes, qui nomment la pièce remplie. Un scan ou une
+   * image n'ont pas de traits : ce sont alors leurs pixels sombres.
+   */
+  const geometriePourRemplir = async () => {
+    const deja = geometrieRemplissage.current
+    if (deja && deja.numero === pageNum) return deja
+    let r: typeof deja = null
+    const p = pageDuPdf.current
+    if (isPdf && p && p.numero === pageNum) {
+      try {
+        const pdfjsLib = await loadPdfjs()
+        const liste = await p.page.getOperatorList()
+        const geo = extraireSegments(liste, pdfjsLib.OPS as unknown as OpsPdf, p.transform, undefined, { courbes: true })
+        if (geo.nombre > 0) {
+          let textes: TexteDeLaPage[] = []
+          try { textes = textesEnCanevas((await p.page.getTextContent()).items as ElementDeTexte[], p.transform) } catch { textes = [] }
+          r = { numero: pageNum, masque: masqueDesTraits(geo.segments, geo.nombre, stage.w, stage.h), index: new IndexGeometrie(geo), textes }
+        }
+      } catch {
+        r = null
+      }
+    }
+    if (!r) {
+      const c = canvasRef.current
+      const ctx = c?.getContext('2d')
+      if (!c || !ctx) return null
+      try {
+        const img = ctx.getImageData(0, 0, c.width, c.height)
+        r = { numero: pageNum, masque: masqueDesPixels(img.data, c.width, c.height), index: null, textes: [] }
+      } catch {
+        return null
+      }
+    }
+    geometrieRemplissage.current = r
+    return r
+  }
+
+  /** Remplir d'un clic la pièce autour du point touché. */
+  const remplir = async (sp: PlanPoint) => {
+    if (remplissageEnCours) return
+    setRemplissageEnCours(true)
+    try {
+      const g = await geometriePourRemplir()
+      if (!g) { montrerAvis('Le remplissage n’est pas possible sur ce document.'); return }
+      const r = remplirDepuis(g.masque, sp, g.index)
+      if (!r.ok) { montrerAvis(RAISONS_REFUS[r.raison]); return }
+      const nom = nomDansLaZone(g.textes, r.points)
+      const c = encastreRef.current?.classement
+      const type = c && c.outil !== 'comptage' && c.typeZone ? { typeZone: c.typeZone } : {}
+      const avant = annotationsActuelles.current
+      retenir(avant)
+      const id = uid()
+      setAnnotations((l) => [...l, {
+        id, type: 'hatch', points: r.points, page: isPdf ? pageNum : undefined,
+        color: c && c.outil !== 'comptage' ? c.couleur : color, origine: 'remplissage', ...type,
+        ...(nom ? { text: nom } : {}),
+        // Accrochée aux traits du dessin, sa surface est celle du plan : au centième.
+        ...(r.aimantee ? { mesureExacte: true } : {}),
+      }])
+      setDirty(true)
+      setSelectedAnn(id)
+    } finally {
+      setRemplissageEnCours(false)
+    }
+  }
+
+  /** Termine le tracé en cours, au clavier (Entrée) ou au double-clic. Rend vrai s'il y en avait un. */
+  const terminerTrace = (): boolean => {
+    const pts = sansDoublons(draft, 3 / viewRef.current.zoom)
+    if ((tool === 'hatch' || tool === 'cut') && pts.length >= 3) { fermerContour(pts); setDraft([]); return true }
+    if (tool === 'measure' && pts.length >= 2) { poserLongueur(pts); setDraft([]); return true }
+    return false
+  }
+
+  /** Retire un sommet de la forme sélectionnée, s'il en reste assez pour qu'elle mesure encore. */
+  const retirerSommet = (sp: PlanPoint, tol: number): boolean => {
+    const a = annotations.find((x) => x.id === selectedAnn)
+    if (!a || (a.type !== 'hatch' && a.type !== 'measure')) return false
+    const idx = a.points.findIndex((p) => dist(sp, p) < tol)
+    if (idx < 0 || a.points.length <= (a.type === 'hatch' ? 3 : 2)) return false
+    retenir()
+    setAnnotations((l) => l.map((x) => (x.id === a.id
+      ? { ...x, points: x.points.filter((_, i) => i !== idx), ...retouchee(x), ...(x.mesureExacte ? { mesureExacte: false } : {}) }
+      : x)))
+    setDirty(true)
+    return true
+  }
+
+  /** Double-clic : termine un tracé, ou retire le sommet visé de la forme sélectionnée. */
+  const surDoubleClic = (sp: PlanPoint, tol: number) => {
+    if (tool === 'hatch' || tool === 'cut' || tool === 'measure') { terminerTrace(); return }
+    if (tool === 'select') retirerSommet(sp, tol)
   }
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -448,6 +749,7 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
     const el = containerRef.current!
     el.setPointerCapture(e.pointerId)
     ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (e.shiftKey !== maj) setMaj(e.shiftKey)
 
     // Bouton du milieu (molette) maintenu = déplacer, quel que soit l'outil.
     if (e.button === 1) {
@@ -473,24 +775,44 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
     gesture.current.startY = e.clientY
     gesture.current.moved = false
     const sp = toStage(e.clientX, e.clientY)
+    // Au doigt, on vise moins juste qu'à la souris : les poignées se prennent de plus loin.
+    const tol = (e.pointerType === 'touch' ? 22 : 12) / view.zoom
 
-    if (tool === 'pan') { gesture.current.mode = 'pan' }
+    if (tool === 'pan' || espaceRef.current) { gesture.current.mode = 'pan' }
     else if (tool === 'select') {
-      const tol = 12 / view.zoom
       // 1. Poignée de l'annotation déjà sélectionnée -> déplace ce point seul.
       if (selectedAnn) {
         const a = annotations.find((x) => x.id === selectedAnn)
         const idx = a ? a.points.findIndex((p) => dist(sp, p) < tol) : -1
         if (a && idx >= 0) { avantGeste.current = annotations; dragRef.current = { id: a.id, lastX: sp.x, lastY: sp.y, pointIndex: idx }; gesture.current.mode = 'dragPoint'; return }
+        // 1 bis. Point milieu d'un côté -> un nouveau sommet, qu'on tire aussitôt.
+        if (a && (a.type === 'hatch' || a.type === 'measure')) {
+          const nb = a.points.length
+          const cotes = a.type === 'hatch' ? nb : nb - 1
+          for (let i = 0; i < cotes; i++) {
+            const m = mid(a.points[i], a.points[(i + 1) % nb])
+            if (dist(sp, m) >= tol * 0.8) continue
+            retenir(annotations)
+            setAnnotations((l) => l.map((x) => (x.id === a.id
+              ? { ...x, points: [...x.points.slice(0, i + 1), m, ...x.points.slice(i + 1)], ...retouchee(x), ...(x.mesureExacte ? { mesureExacte: false } : {}) }
+              : x)))
+            setDirty(true)
+            // L'historique a déjà retenu l'état d'avant l'ajout : le glissement qui suit en fait partie.
+            avantGeste.current = null
+            dragRef.current = { id: a.id, lastX: sp.x, lastY: sp.y, pointIndex: i + 1 }
+            gesture.current.mode = 'dragPoint'
+            return
+          }
+        }
       }
       // 2. Sinon, sélectionne l'annotation touchée -> déplace l'ensemble ; si rien, on déplace le plan.
       let hitId: string | null = null
-      for (let i = annotationsPage.length - 1; i >= 0 && !hitId; i--) {
-        const a = annotationsPage[i]
+      for (let i = annotationsVisibles.length - 1; i >= 0 && !hitId; i--) {
+        const a = annotationsVisibles[i]
         if (a.type === 'note' || a.type === 'repere') { if (dist(sp, a.points[0]) < tol * 2) hitId = a.id }
-        else if (a.type === 'measure' || a.type === 'arrow') { if (pointSegDist(sp, a.points[0], a.points[1]) < tol) hitId = a.id }
-        else if (a.type === 'draw') { for (let j = 0; j < a.points.length - 1 && !hitId; j++) if (pointSegDist(sp, a.points[j], a.points[j + 1]) < tol) hitId = a.id }
-        else if (a.type === 'hatch') { if (pointInPoly(sp, a.points)) hitId = a.id; else for (let j = 0; j < a.points.length && !hitId; j++) if (pointSegDist(sp, a.points[j], a.points[(j + 1) % a.points.length]) < tol) hitId = a.id }
+        else if (a.type === 'arrow') { if (pointSegDist(sp, a.points[0], a.points[1]) < tol) hitId = a.id }
+        else if (a.type === 'measure' || a.type === 'draw') { for (let j = 0; j < a.points.length - 1 && !hitId; j++) if (pointSegDist(sp, a.points[j], a.points[j + 1]) < tol) hitId = a.id }
+        else if (a.type === 'hatch') { if (pointInPoly(sp, a.points) && !(a.trous ?? []).some((t) => pointInPoly(sp, t))) hitId = a.id; else for (let j = 0; j < a.points.length && !hitId; j++) if (pointSegDist(sp, a.points[j], a.points[(j + 1) % a.points.length]) < tol) hitId = a.id }
       }
       if (hitId) { setSelectedAnn(hitId); avantGeste.current = annotations; dragRef.current = { id: hitId, lastX: sp.x, lastY: sp.y }; gesture.current.mode = 'dragAnn' }
       else { setSelectedAnn(null); gesture.current.mode = 'pan' }
@@ -502,11 +824,14 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
     }
     else if (tool === 'draw') { gesture.current.mode = 'draw'; setDraft([sp]) }
     else if (tool === 'measure' || tool === 'arrow' || tool === 'calibrate') { gesture.current.mode = 'segment'; setPending(sp); setCursor(sp) }
-    else if (tool === 'hatch') { gesture.current.mode = 'hatch'; setPending(sp); setCursor(sp) }
+    else if (tool === 'hatch' || tool === 'cut' || tool === 'symbole') { gesture.current.mode = 'hatch'; setPending(sp); setCursor(sp) }
+    // Remplir et compter se font d'un toucher, au relâchement ; glisser déplace le plan.
+    else if (tool === 'fill' || tool === 'count') { gesture.current.mode = 'pan' }
     else { gesture.current.mode = 'none' } // note : géré au relâchement (tap)
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (e.shiftKey !== maj) setMaj(e.shiftKey)
     if (!ptrs.current.has(e.pointerId)) {
       if (ptrs.current.size === 0 && tool !== 'pan') setCursor(toStage(e.clientX, e.clientY))
       return
@@ -539,7 +864,10 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
       const sp = toStage(e.clientX, e.clientY)
       const d = dragRef.current
       const dx = sp.x - d.lastX, dy = sp.y - d.lastY
-      setAnnotations((list) => list.map((a) => (a.id === d.id ? { ...a, points: a.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy })), ...retouchee(a) } : a)))
+      setAnnotations((list) => list.map((a) => (a.id === d.id ? {
+        ...a, points: a.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy })), ...retouchee(a),
+        ...(a.trous ? { trous: a.trous.map((t) => t.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }))) } : {}),
+      } : a)))
       d.lastX = sp.x; d.lastY = sp.y
       setDirty(true)
       return
@@ -582,26 +910,47 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
     vitX.current.reset()
     vitY.current.reset()
     const sp = toStage(e.clientX, e.clientY)
+    const premierRelache = ptrs.current.size === 1
     ptrs.current.delete(e.pointerId)
+    const contraint = e.shiftKey
+
+    // Un double toucher, sur iPad : le navigateur n'y voit pas de double-clic
+    // sur une scène qui garde ses gestes pour elle.
+    let doubleToucher = false
+    if (e.pointerType === 'touch' && wasTap && premierRelache && g.mode !== 'pinch') {
+      const avant = dernierToucher.current
+      const t = performance.now()
+      doubleToucher = !!avant && t - avant.t < DOUBLE_TOUCHER_MS && Math.hypot(e.clientX - avant.x, e.clientY - avant.y) < DOUBLE_TOUCHER_PX
+      dernierToucher.current = doubleToucher ? null : { t, x: e.clientX, y: e.clientY }
+    }
 
     if (g.mode === 'segment' && pending) {
-      if (dist(pending, sp) > 4) {
-        if (tool === 'calibrate') { setCalibrateSeg([pending, sp]); setCalibrateVal('') }
-        else if (tool === 'measure') addAnn({ type: 'measure', points: [pending, sp], color })
-        else if (tool === 'arrow') addAnn({ type: 'arrow', points: [pending, sp], color })
+      if (tool === 'measure' && (draft.length > 0 || wasTap)) {
+        // Une longueur point par point : chaque toucher pose un sommet.
+        setDraft((d) => (d.length ? [...d, contraindre(d[d.length - 1], sp, contraint)] : [sp]))
+      } else {
+        const fin = contraindre(pending, sp, contraint)
+        if (dist(pending, fin) > 4) {
+          if (tool === 'calibrate') { setCalibrateSeg([pending, fin]); setCalibrateVal('') }
+          else if (tool === 'measure') poserLongueur([pending, fin])
+          else if (tool === 'arrow') addAnn({ type: 'arrow', points: [pending, fin], color })
+        }
       }
       setPending(null)
     } else if (g.mode === 'draw') {
       if (draft.length >= 2) addAnn({ type: 'draw', points: draft, color })
       setDraft([])
     } else if (g.mode === 'hatch' && pending) {
-      if (g.moved && dist(pending, sp) > 4) {
+      if (tool === 'symbole') {
+        // Le symbole s'encadre d'un glissement : un toucher n'encadre rien.
+        if (g.moved && dist(pending, sp) > 4) void encadrerSymbole(pending, sp)
+      } else if (g.moved && dist(pending, sp) > 4 && draft.length === 0) {
         // glisser = zone rectangulaire
-        poserZone([pending, { x: sp.x, y: pending.y }, sp, { x: pending.x, y: sp.y }])
+        fermerContour([pending, { x: sp.x, y: pending.y }, sp, { x: pending.x, y: sp.y }])
         setDraft([])
       } else {
         // tap = sommet (zone point par point)
-        setDraft((d) => [...d, sp])
+        setDraft((d) => [...d, contraindre(d[d.length - 1], sp, contraint)])
       }
       setPending(null)
     } else if (g.mode === 'dragAnn' || g.mode === 'dragPoint') {
@@ -610,8 +959,12 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
       avantGeste.current = null
       dragRef.current = null
     } else if (wasTap && ptrs.current.size === 0) {
-      if (tool === 'note') { setNotePoint(sp); setNoteVal('') }
+      if (tool === 'note' && !espaceRef.current) { setNotePoint(sp); setNoteVal('') }
+      if (tool === 'fill' && !espaceRef.current) void remplir(sp)
+      if (tool === 'count' && !espaceRef.current) poserRepere(sp)
     }
+
+    if (doubleToucher) surDoubleClic(sp, 22 / view.zoom)
 
     if (ptrs.current.size === 0) gesture.current.mode = 'none'
     else if (ptrs.current.size === 1) {
@@ -621,7 +974,7 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
     }
   }
 
-  const closeHatch = () => { if (draft.length >= 3) { poserZone(draft); setDraft([]) } }
+  const closeHatch = () => { terminerTrace() }
   const annuler = useCallback(() => {
     if (passe.length === 0) return
     setFutur((l) => [...l, annotations])
@@ -724,17 +1077,23 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
    *
    * Relever une surface sur un plan sans échelle produit des pixels, et un
    * nombre de pixels n'a aucun sens dans un devis. On laisse donc regarder et
-   * étalonner, rien d'autre, jusqu'à ce qu'un mètre soit défini.
+   * étalonner, rien d'autre, jusqu'à ce qu'un mètre soit défini. Compter ne
+   * mesure rien : un repère se pose sans échelle.
    */
-  const outilAutorise = (k: Tool) => etalonne || k === 'pan' || k === 'calibrate'
+  const outilAutorise = (k: Tool) => etalonne || k === 'pan' || k === 'calibrate' || k === 'count'
 
   /** Choisir un outil abandonne ce qui était en cours de tracé. */
   const choisirOutil = (k: Tool) => {
     if (!outilAutorise(k)) return
+    if (k !== tool) setDraft([])
     setTool(k)
     setPending(null)
     setSelectedAnn(null)
-    if (k !== 'hatch') setDraft([])
+    // Compter pendant qu'on dessine des murs, c'est quitter les murs : la
+    // classification active ne doit pas rester affichée sur un autre outil.
+    const nature = k === 'hatch' || k === 'fill' ? 'surface' : k === 'measure' ? 'longueur' : k === 'count' ? 'comptage' : null
+    const c = encastreRef.current?.classement
+    if (c && nature && nature !== c.outil) encastreRef.current?.onFinClassement?.()
   }
 
   const lierSelection = (itemId: string | null) => {
@@ -842,12 +1201,57 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
       setDirty(true)
     }
   })
+  /**
+   * Ce que l'espace de travail demande à l'éditeur ouvert, toujours avec l'état
+   * du dernier rendu : poser les échelles vérifiées à leur arrivée, valider ou
+   * rejeter depuis la revue, modifier une forme depuis le panneau.
+   */
+  const ordres = useRef<Omit<PoigneeEditeur, 'planId' | 'recevoir'>>({})
+  useEffect(() => {
+    ordres.current = {
+      poserEchelles: (choix) => {
+        // Une échelle déjà posée, à la main ou non, ne se remplace jamais d'ici.
+        const libres = Object.fromEntries(Object.entries(choix).filter(([n]) => echelleDansTable(echelles, scale, Number(n)) == null))
+        if (!Object.keys(libres).length) return
+        poserEchelles(Object.fromEntries(Object.entries(libres).map(([n, v]) => [Number(n), v])))
+        if (libres[String(pageNum)] != null && tool === 'calibrate') setTool('select')
+      },
+      valider: (ids) => {
+        const cibles = annotationsActuelles.current.filter((a) => ids.includes(a.id))
+        validerZones(cibles.filter((a) => a.proposition).map((a) => a.id))
+        validerReperes(cibles.filter((a) => a.repere?.aValider).map((a) => a.id))
+      },
+      rejeter: (ids) => retirerZones(ids),
+      modifier: (id, patch) => {
+        if (!annotationsActuelles.current.some((a) => a.id === id)) return
+        retenir(annotationsActuelles.current)
+        setAnnotations((l) => l.map((a) => (a.id === id ? { ...a, ...patch } : a)))
+        setDirty(true)
+      },
+      ajouter: (nouvelles) => {
+        retenir(annotationsActuelles.current)
+        setAnnotations((l) => [...l, ...nouvelles])
+        setDirty(true)
+      },
+    }
+  })
   const definirPoignee = encastre?.definirPoignee
   useEffect(() => {
     if (!definirPoignee) return
-    definirPoignee({ planId: plan.id, recevoir: (pages, nouvelles) => recevoir.current(pages, nouvelles) })
+    definirPoignee({
+      planId: plan.id,
+      recevoir: (pages, nouvelles) => recevoir.current(pages, nouvelles),
+      poserEchelles: (choix) => ordres.current.poserEchelles?.(choix),
+      valider: (ids) => ordres.current.valider?.(ids),
+      rejeter: (ids) => ordres.current.rejeter?.(ids),
+      modifier: (id, patch) => ordres.current.modifier?.(id, patch),
+      ajouter: (nouvelles) => ordres.current.ajouter?.(nouvelles),
+    })
     return () => definirPoignee(null)
   }, [definirPoignee, plan.id])
+
+  // Le panneau des quantités suit la sélection du plan, et la ligne s'éclaire.
+  useEffect(() => { encastreRef.current?.onSelection?.(selectedAnn) }, [selectedAnn])
 
   // Le récapitulatif du jeu suit ce qu'on valide ici, sans attendre l'enregistrement.
   useEffect(() => {
@@ -1009,7 +1413,7 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
     // conversion donnerait un pas de 5 cm différent selon qu'on affiche des
     // mètres ou des millimètres.
     const m = auPas(px / echelleCourante, arrondi)
-    return `${(m * UNIT_F[unit]).toFixed(LEN_DEC[unit])} ${unit}`
+    return `${fr(m * UNIT_F[unit], LEN_DEC[unit])} ${unit}`
   }
   /**
    * Surface d'une zone, arrondie au demi-mètre carré.
@@ -1025,11 +1429,11 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
    */
   const fmtArea = (px2: number, exacte = false) => {
     if (!echelleCourante) return `${Math.round(px2)} px²`
-    if (exacte) return `${(px2 / (echelleCourante * echelleCourante) * UNIT_F[unit] ** 2).toFixed(2)} ${unit}²`
+    if (exacte) return `${fr(px2 / (echelleCourante * echelleCourante) * UNIT_F[unit] ** 2, 2)} ${unit}²`
     const m2 = auPas(px2 / (echelleCourante * echelleCourante), PAS_SURFACE)
     const v = m2 * UNIT_F[unit] ** 2
     // Pas de « 25.0 » : la décimale ne paraît que lorsqu'elle dit quelque chose.
-    return `${v.toFixed(Number.isInteger(v) ? 0 : 1)} ${unit}²`
+    return `${fr(v, Number.isInteger(v) ? 0 : 1)} ${unit}²`
   }
   /**
    * Ce qui est posé sur la page affichée.
@@ -1043,6 +1447,9 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
     [isPdf, pageNum],
   )
   const annotationsPage = annotations.filter(surLaPage)
+  /** Ce qui se dessine et se touche : la page, moins les classifications masquées dans le panneau. */
+  const masquee = encastre?.masquee
+  const annotationsVisibles = masquee ? annotationsPage.filter((a) => !masquee(a)) : annotationsPage
 
   /** Échelle de la page affichée, selon la même règle que le calcul des quantités. */
   const echelleCourante = echelleDansTable(echelles, scale, pageNum)
@@ -1064,27 +1471,63 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
     setDraft([])
   }, [loading, etalonne, pageNum])
 
-  // Ctrl+Z / Ctrl+Maj+Z : l'historique. Suppr : l'annotation sélectionnée.
-  // Échap : abandonne le geste en cours et rend la main à la sélection.
+  /**
+   * Le clavier, une seule action par touche : V, A, L, C et F choisissent
+   * l'outil ; Espace maintenu déplace le plan ; Entrée termine un tracé ; Maj
+   * le contraint à 0, 45 ou 90° ; Échap abandonne le geste en cours ;
+   * Ctrl+Z et Ctrl+Maj+Z parcourent l'historique ; Suppr efface la sélection.
+   *
+   * Les gestionnaires lisent l'état du dernier rendu par une référence : la
+   * souscription ne change pas à chaque point posé.
+   */
+  const clavier = useRef({ terminerTrace, choisirOutil, annuler, refaire, retenir, selectedAnn, etalonne })
+  useEffect(() => { clavier.current = { terminerTrace, choisirOutil, annuler, refaire, retenir, selectedAnn, etalonne } })
   useEffect(() => {
+    const relacherEspace = () => {
+      if (espaceRef.current) { espaceRef.current = false; setEspace(false) }
+      setMaj(false)
+    }
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      const cible = e.target as HTMLElement | null
+      const tag = cible?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || cible?.isContentEditable) return
+      const k = clavier.current
+
+      if (e.key === 'Shift') setMaj(true)
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault()
+        // Un bouton qui a le focus se cliquerait au relâchement de la barre d'espace.
+        if (tag === 'BUTTON') (cible as HTMLButtonElement).blur()
+        if (!espaceRef.current) { espaceRef.current = true; setEspace(true) }
+        return
+      }
+      // La revue des éléments à valider tient Entrée, Suppr, les flèches et Échap.
+      if (encastreRef.current?.revue) return
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault()
-        if (e.shiftKey) refaire()
-        else annuler()
+        if (e.shiftKey) k.refaire()
+        else k.annuler()
         return
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
         e.preventDefault()
-        refaire()
+        k.refaire()
+        return
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+
+      const outil = TOUCHES[e.key.toLowerCase()]
+      if (outil) { e.preventDefault(); k.choisirOutil(outil); return }
+
+      if (e.key === 'Enter') {
+        if (k.terminerTrace()) e.preventDefault()
         return
       }
 
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedAnn) {
-        retenir(); setAnnotations((a) => a.filter((x) => x.id !== selectedAnn)); setSelectedAnn(null); setDirty(true)
+      if ((e.key === 'Delete' || e.key === 'Backspace') && k.selectedAnn) {
+        const id = k.selectedAnn
+        k.retenir(); setAnnotations((a) => a.filter((x) => x.id !== id)); setSelectedAnn(null); setDirty(true)
         return
       }
 
@@ -1095,19 +1538,103 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
         setPending(null)
         setDraft([])
         setSelectedAnn(null)
-        if (etalonne) setTool('select')
+        if (k.etalonne) setTool('select')
       }
     }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setMaj(false)
+      if (e.key === ' ' || e.code === 'Space') relacherEspace()
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [selectedAnn, etalonne, retenir, annuler, refaire])
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', relacherEspace)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', relacherEspace)
+    }
+  }, [])
+
+  /**
+   * La forme en cours de tracé, telle que le panneau des quantités la compte :
+   * les sommets posés, plus le point visé.
+   */
+  const curseurContraint = cursor ? contraindre(draft.length ? draft[draft.length - 1] : pending, cursor, maj) : null
+  const brouillon: BrouillonEditeur | null = (() => {
+    if (!curseurContraint) return null
+    const typeZone = classementActif?.outil !== 'comptage' ? classementActif?.typeZone ?? null : null
+    if (tool === 'hatch') {
+      if (draft.length >= 2) return { planId: plan.id, page: pageNum, nature: 'surface', points: [...draft, curseurContraint], typeZone }
+      if (pending && dist(pending, cursor!) > 5 / view.zoom) {
+        return { planId: plan.id, page: pageNum, nature: 'surface', typeZone, points: [pending, { x: cursor!.x, y: pending.y }, cursor!, { x: pending.x, y: cursor!.y }] }
+      }
+    }
+    if (tool === 'measure') {
+      if (draft.length >= 1) return { planId: plan.id, page: pageNum, nature: 'longueur', points: [...draft, curseurContraint], typeZone }
+      if (pending && dist(pending, cursor!) > 4) return { planId: plan.id, page: pageNum, nature: 'longueur', points: [pending, curseurContraint], typeZone }
+    }
+    return null
+  })()
+  const cleBrouillon = brouillon ? `${brouillon.nature}:${brouillon.points.map((q) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(';')}` : ''
+  useEffect(() => {
+    encastreRef.current?.onBrouillon?.(brouillon)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- la clé résume la forme : un nouvel objet à chaque rendu ne doit rien relancer
+  }, [cleBrouillon])
+  useEffect(() => () => encastreRef.current?.onBrouillon?.(null), [])
+
+  /**
+   * Centre la vue sur une forme, assez près pour la lire, sans perdre ce qui
+   * l'entoure : sa boîte occupe environ la moitié de la scène.
+   */
+  const cadrer = useCallback((pts: PlanPoint[]) => {
+    const el = containerRef.current
+    if (!el || !pts.length) return
+    const r = el.getBoundingClientRect()
+    const b = boiteDe(pts)
+    // Un repère n'a pas de taille : on garde autour de lui de quoi le situer.
+    const l = Math.max(b.largeur, 160), h = Math.max(b.hauteur, 160)
+    const z = clamp(Math.min(r.width / (l * 2.2), r.height / (h * 2.2)), MIN_ZOOM, 4)
+    stopElan()
+    const suivante = { zoom: z, tx: r.width / 2 - (b.x + b.largeur / 2) * z, ty: r.height / 2 - (b.y + b.hauteur / 2) * z }
+    viewRef.current = suivante
+    setView(suivante)
+  }, [])
+
+  // Une forme désignée depuis le panneau ou la revue : sélectionnée et cadrée,
+  // une fois la page chargée.
+  const cible = encastre?.cible ?? null
+  useEffect(() => {
+    if (!cible || loading || !stage.w) return
+    const a = annotationsActuelles.current.find((x) => x.id === cible.id)
+    if (!a && cible.points?.length) { cadrer(cible.points); return }
+    if (!a || (isPdf && (a.page ?? 1) !== pageNum)) return
+    setTool('select')
+    setPending(null)
+    setDraft([])
+    setSelectedAnn(a.id)
+    cadrer(a.points)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- le jeton dit qu'une nouvelle demande est arrivée
+  }, [cible?.jeton, loading, stage.w, pageNum])
+
+  // « Dessiner dans » une classification : l'outil qui lui convient, aussitôt.
+  useEffect(() => {
+    if (!classementActif) return
+    const outil: Tool = classementActif.outil === 'longueur' ? 'measure' : classementActif.outil === 'comptage' ? 'count' : 'hatch'
+    if (classementActif.categorie) setCategorieComptage(classementActif.categorie)
+    if (!(etalonne || outil === 'count')) return
+    setTool(outil)
+    setPending(null)
+    setDraft([])
+    setSelectedAnn(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- le jeton dit qu'une nouvelle classification a été choisie
+  }, [classementActif?.jeton])
 
 
   /** Mesure lisible d'une annotation, ou null si elle ne mesure rien. */
   const quantiteDe = (a: PlanAnnotation): string | null => {
     const nature = natureDuTrace(a)
-    if (nature === 'surface') return fmtArea(airePolygone(a.points), a.mesureExacte)
-    if (nature === 'longueur') return fmtLen(dist(a.points[0], a.points[1]))
+    if (nature === 'surface') return fmtArea(aireDeLaForme(a), a.mesureExacte)
+    if (nature === 'longueur') return fmtLen(longueurPolyligne(a.points))
     return null
   }
   /**
@@ -1234,6 +1761,23 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
   const font = 13 / view.zoom // labels lisibles quel que soit le zoom
   const strokeW = 2 / view.zoom
 
+  /** Le nom qu'une étiquette écrit sur une forme validée : son libellé, sinon son type. */
+  const nomAffiche = (a: PlanAnnotation): string | null => {
+    if (a.proposition || a.type === 'repere') return null
+    const t = a.text?.trim()
+    if (t) return t
+    return a.typeZone && a.typeZone !== 'autre' ? NOMS_TYPES_ZONE[a.typeZone] : null
+  }
+  /** Où ajouter un sommet : le milieu de chaque côté de la forme sélectionnée. */
+  const formeSelectionnee = selectedAnn ? annotations.find((x) => x.id === selectedAnn) ?? null : null
+  const milieux = formeSelectionnee && tool === 'select' && (formeSelectionnee.type === 'hatch' || formeSelectionnee.type === 'measure')
+    ? formeSelectionnee.points
+      .slice(0, formeSelectionnee.type === 'hatch' ? undefined : -1)
+      .map((p, i, pts) => mid(p, formeSelectionnee.points[(i + 1) % formeSelectionnee.points.length] ?? pts[i]))
+    : []
+  const outilsProposes = TOOLS.filter((t) => t.key !== 'symbole' || !!encastre?.onSymbole)
+  const couleurBrouillon = tool === 'cut' ? '#dc2626' : tool === 'symbole' ? '#d97706' : couleurDuTrace
+
   return (
     /* L'éditeur reprend la mise en page de l'app : barres claires, texte presque
        noir, coins arrondis. Il était jusqu'ici en gris anthracite avec ses propres
@@ -1320,7 +1864,7 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
             l'écran : ses dernières pastilles s'arrêtent au-dessus de la barre
             d'accueil de l'iPad, qui se superpose à la page dans l'app. */}
         <nav ref={railRef} className="hidden w-20 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2 pb-[calc(var(--safe-bottom)+0.5rem)] sm:flex" aria-label="Outils">
-          {TOOLS.map((t) => (
+          {outilsProposes.map((t) => (
             <BoutonOutil key={t.key} outil={t} actif={tool === t.key} bloque={!outilAutorise(t.key)} onChoisir={choisirOutil} />
           ))}
           <div className="mt-3 border-t pt-3">
@@ -1344,11 +1888,15 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
             ref={containerRef}
             style={{ background: bgColor }}
             className={cn('relative min-h-0 flex-1 touch-none overflow-hidden',
-              tool === 'pan' ? 'cursor-grab active:cursor-grabbing' : tool === 'select' ? 'cursor-default' : 'cursor-crosshair')}
+              tool === 'pan' || espace ? 'cursor-grab active:cursor-grabbing' : tool === 'select' ? 'cursor-default' : 'cursor-crosshair')}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onDoubleClick={(e) => {
+              if ((e.target as HTMLElement | null)?.closest?.('[data-habillage]')) return
+              surDoubleClic(toStage(e.clientX, e.clientY), 12 / view.zoom)
+            }}
           >
             {loading && (
               <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -1392,36 +1940,53 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
                 </div>
               )}
             <svg ref={svgRef} viewBox={`0 0 ${stage.w} ${stage.h}`} width={stage.w} height={stage.h} className="absolute inset-0 pointer-events-none">
-              {annotationsPage.map((a) => (
+              {annotationsVisibles.map((a) => (
                 <Shape key={a.id} a={a} fmtLen={fmtLen} fmtArea={fmtArea} font={font} strokeW={strokeW} lie={libelleLie(a)}
-                  etiquette={a.proposition ? mesureProposee(a) : null} />
+                  etiquette={a.proposition ? mesureProposee(a) : null} etiquettes={etiquettes} nom={nomAffiche(a)} />
               ))}
 
-              {/* Poignées de l'annotation sélectionnée */}
-              {selectedAnn && (() => {
-                const a = annotations.find((x) => x.id === selectedAnn)
-                if (!a) return null
-                return <g>{a.points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={6 / view.zoom} fill="#fff" stroke="#2563eb" strokeWidth={2.5 / view.zoom} />)}</g>
-              })()}
+              {(encastre?.marques ?? []).map((m) => (
+                <rect
+                  key={m.id}
+                  x={m.x - m.largeur / 2 - 3 * strokeW} y={m.y - m.hauteur / 2 - 3 * strokeW}
+                  width={m.largeur + 6 * strokeW} height={m.hauteur + 6 * strokeW} rx={3 * strokeW}
+                  fill={m.actif ? '#f59e0b' : 'none'} fillOpacity={0.12}
+                  stroke={m.actif ? '#d97706' : '#9ca3af'} strokeWidth={1.5 * strokeW} strokeDasharray={`${4 * strokeW} ${3 * strokeW}`}
+                />
+              ))}
 
-              {pending && cursor && (
-                <line x1={pending.x} y1={pending.y} x2={cursor.x} y2={cursor.y} stroke={color} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} />
+              {/* Poignées de l'annotation sélectionnée, et le point milieu de
+                  chaque côté, d'où l'on tire un nouveau sommet. */}
+              {formeSelectionnee && (
+                <g>
+                  {milieux.map((m, i) => (
+                    <circle key={`m${i}`} cx={m.x} cy={m.y} r={4 / view.zoom} fill="#fff" fillOpacity={0.85} stroke="#2563eb" strokeOpacity={0.7} strokeWidth={1.5 / view.zoom} />
+                  ))}
+                  {formeSelectionnee.points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={6 / view.zoom} fill="#fff" stroke="#2563eb" strokeWidth={2.5 / view.zoom} />)}
+                </g>
+              )}
+
+              {pending && cursor && draft.length === 0 && (
+                <line x1={pending.x} y1={pending.y} x2={curseurContraint!.x} y2={curseurContraint!.y} stroke={couleurBrouillon} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} />
               )}
               {tool === 'draw' && draft.length > 0 && (
                 <polyline points={draft.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" />
               )}
-              {tool === 'hatch' && pending && cursor && dist(pending, cursor) > 5 / view.zoom && (
+              {(tool === 'hatch' || tool === 'cut' || tool === 'symbole') && pending && cursor && draft.length === 0 && dist(pending, cursor) > 5 / view.zoom && (
                 <rect
                   x={Math.min(pending.x, cursor.x)} y={Math.min(pending.y, cursor.y)}
                   width={Math.abs(cursor.x - pending.x)} height={Math.abs(cursor.y - pending.y)}
-                  fill={color} fillOpacity={0.15} stroke={color} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`}
+                  fill={couleurBrouillon} fillOpacity={0.15} stroke={couleurBrouillon} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`}
                 />
               )}
-              {tool === 'hatch' && draft.length > 0 && (
+              {(tool === 'hatch' || tool === 'cut' || tool === 'measure') && draft.length > 0 && (
                 <>
-                  <polyline points={draft.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={color} strokeWidth={strokeW} />
-                  {cursor && <line x1={draft[draft.length - 1].x} y1={draft[draft.length - 1].y} x2={cursor.x} y2={cursor.y} stroke={color} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} />}
-                  {draft.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={5 / view.zoom} fill={color} />)}
+                  {(tool === 'hatch' || tool === 'cut') && draft.length >= 2 && curseurContraint && (
+                    <polygon points={[...draft, curseurContraint].map((p) => `${p.x},${p.y}`).join(' ')} fill={couleurBrouillon} fillOpacity={0.12} stroke="none" />
+                  )}
+                  <polyline points={draft.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={couleurBrouillon} strokeWidth={strokeW} />
+                  {curseurContraint && <line x1={draft[draft.length - 1].x} y1={draft[draft.length - 1].y} x2={curseurContraint.x} y2={curseurContraint.y} stroke={couleurBrouillon} strokeWidth={strokeW} strokeDasharray={`${6 / view.zoom} ${4 / view.zoom}`} />}
+                  {draft.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={5 / view.zoom} fill={couleurBrouillon} />)}
                 </>
               )}
             </svg>
@@ -1437,14 +2002,42 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
               </div>
             )}
 
-            {tool === 'hatch' && draft.length >= 3 && (
+            {(((tool === 'hatch' || tool === 'cut') && draft.length >= 3) || (tool === 'measure' && draft.length >= 2)) && (
               <button
                 onClick={closeHatch}
                 data-habillage
-                className="absolute left-1/2 top-14 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-xs font-semibold text-background shadow-lg"
+                className="absolute left-1/2 top-14 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-xs font-semibold text-background shadow-lg pointer-coarse:min-h-11 pointer-coarse:px-5"
+                title="Entrée ou double-clic"
               >
-                Fermer la zone
+                {tool === 'hatch' ? 'Fermer la zone' : tool === 'cut' ? 'Découper' : 'Terminer la longueur'}
               </button>
+            )}
+
+            {/* Le dessin dans une classification du panneau : on voit dans
+                quoi tombera la prochaine forme, et on en sort d'un geste. */}
+            {classementActif && !loading && (
+              <div data-habillage className="absolute bottom-3 left-3 z-10 flex items-center gap-2 rounded-full border bg-background/95 py-1 pl-3 pr-1 text-xs shadow-sm backdrop-blur">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: classementActif.outil === 'comptage' ? COULEURS_CATEGORIE[categorieComptage] : classementActif.couleur }} aria-hidden />
+                <span>Dessin dans <span className="font-semibold">{classementActif.outil === 'comptage' ? CATEGORIE[categorieComptage].libelle : classementActif.libelle}</span></span>
+                {encastre?.onFinClassement && (
+                  <button onClick={encastre.onFinClassement} className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-muted pointer-coarse:h-9 pointer-coarse:w-9" title="Ne plus dessiner dans cette classification">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Compter : la catégorie des repères posés à chaque toucher. */}
+            {tool === 'count' && !loading && !(classementActif?.outil === 'comptage' && classementActif.categorie) && (
+              <ChoixCategorie haut={hautDuPanneau} choisie={categorieComptage} onChoisir={setCategorieComptage} />
+            )}
+
+            {(avisScene || remplissageEnCours) && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-16 z-20 flex justify-center px-3">
+                <p className="max-w-md rounded-xl border bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
+                  {remplissageEnCours ? <span className="flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" />Lecture des traits de la page…</span> : avisScene}
+                </p>
+              </div>
             )}
 
             {/* Tant que la page n'a pas d'échelle, rien de ce qu'on relèverait
@@ -1519,8 +2112,9 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
               </div>
             )}
 
-            {selAnn && (
+            {selAnn && !encastre?.revue && (
               <PanneauSelection
+                key={selAnn.id}
                 haut={hautDuPanneau}
                 annotation={selAnn}
                 lie={libelleLie(selAnn)}
@@ -1531,6 +2125,7 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
                 onValider={selAnn.proposition ? () => validerZones([selAnn.id])
                   : selAnn.repere?.aValider ? () => validerReperes([selAnn.id]) : undefined}
                 onSupprimer={() => { retenir(); setAnnotations((a) => a.filter((x) => x.id !== selectedAnn)); setSelectedAnn(null); setDirty(true) }}
+                onModifier={(patch) => { retenir(); setAnnotations((l) => l.map((a) => (a.id === selAnn.id ? { ...a, ...patch } : a))); setDirty(true) }}
               />
             )}
           </div>
@@ -1541,7 +2136,7 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
               glissement du doigt renvoie à l'écran d'accueil. */}
           <div className="shrink-0 border-t pb-[var(--safe-bottom)]">
             <div className="flex gap-1 overflow-x-auto p-2 sm:hidden">
-              {TOOLS.map((t) => (
+              {outilsProposes.map((t) => (
                 <BoutonOutil key={t.key} outil={t} actif={tool === t.key} bloque={!outilAutorise(t.key)} onChoisir={choisirOutil} compact />
               ))}
             </div>
@@ -1556,6 +2151,18 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
                   />
                 ))}
               </div>
+
+              {/* Nom et quantité au centre de chaque zone validée : on relit le
+                  métré sur le plan, sans ouvrir chaque forme. */}
+              <button
+                onClick={() => setEtiquettes((v) => !v)}
+                aria-pressed={etiquettes}
+                className={cn('flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 font-medium transition-colors pointer-coarse:min-h-11',
+                  etiquettes ? 'bg-foreground text-background' : 'bg-muted hover:text-foreground')}
+                title="Écrire le nom et la quantité sur chaque zone"
+              >
+                <Tags className="h-3.5 w-3.5" />Étiquettes
+              </button>
 
               <div className="flex shrink-0 items-center gap-1.5">
                 <span className="hidden sm:inline">Unité</span>
@@ -1781,7 +2388,7 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
 }
 
 function BoutonOutil({ outil, actif, bloque, onChoisir, compact }: {
-  outil: { key: Tool; icon: typeof Ruler; label: string }
+  outil: { key: Tool; icon: typeof Ruler; label: string; touche?: string }
   actif: boolean
   /** Outil indisponible tant que la page n'a pas d'échelle. */
   bloque?: boolean
@@ -1794,7 +2401,7 @@ function BoutonOutil({ outil, actif, bloque, onChoisir, compact }: {
       onClick={() => onChoisir(outil.key)}
       data-outil={outil.key}
       disabled={bloque}
-      title={bloque ? `${outil.label} (étalonnez d’abord la page)` : outil.label}
+      title={bloque ? `${outil.label} (étalonnez d’abord la page)` : outil.touche ? `${outil.label} (${outil.touche})` : outil.label}
       aria-pressed={actif}
       className={cn('flex shrink-0 items-center rounded-lg transition-colors',
         compact ? 'gap-1.5 px-3 py-2' : 'flex-col gap-1 px-1 py-2',
@@ -1805,6 +2412,43 @@ function BoutonOutil({ outil, actif, bloque, onChoisir, compact }: {
       <Icon className="h-4 w-4 shrink-0" />
       <span className={cn('font-medium', compact ? 'text-xs' : 'text-[10px] leading-tight')}>{outil.label}</span>
     </button>
+  )
+}
+
+/**
+ * La catégorie des repères que pose l'outil Compter.
+ *
+ * Les mêmes catégories que celles que l'IA compte (base-cfc/comptages.ts) :
+ * un repère posé à la main rejoint les siens dans le panneau des quantités,
+ * et part avec eux au dossier.
+ */
+function ChoixCategorie({ haut, choisie, onChoisir }: {
+  haut: number
+  choisie: CategorieComptee
+  onChoisir: (c: CategorieComptee) => void
+}) {
+  return (
+    <div
+      data-habillage
+      style={{ ['--haut' as string]: `${haut}px` }}
+      className="absolute inset-x-3 bottom-3 z-10 rounded-xl border bg-background/95 p-1.5 shadow-lg backdrop-blur sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-[var(--haut)] sm:w-56"
+    >
+      <p className="px-1.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Compter</p>
+      <div className="grid grid-cols-2 gap-0.5 sm:grid-cols-1">
+        {CLES_CATEGORIES.map((c) => (
+          <button
+            key={c}
+            onClick={() => onChoisir(c)}
+            aria-pressed={choisie === c}
+            className={cn('flex items-center gap-2 rounded-lg px-2 py-1 text-left text-xs transition-colors pointer-coarse:min-h-11',
+              choisie === c ? 'bg-foreground font-semibold text-background' : 'hover:bg-muted')}
+          >
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/60" style={{ background: COULEURS_CATEGORIE[c] }} aria-hidden />
+            <span className="min-w-0 truncate">{CATEGORIE[c].libelle}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -2032,7 +2676,7 @@ function ListeDesZones({ zones, selection, mesure, lie, onChoisir }: {
  * rapporte. Les couleurs ont rejoint le rail d'outils, où elles valent aussi
  * bien pour le prochain tracé.
  */
-function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, onEditerNote, onValider, onSupprimer }: {
+function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, onEditerNote, onValider, onSupprimer, onModifier }: {
   /** Hauteur dans la scène : le panneau s'ouvre en face de son outil. */
   haut: number
   annotation: PlanAnnotation
@@ -2044,9 +2688,17 @@ function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, o
   /** Pour une zone proposée par l'IA : la valider. */
   onValider?: () => void
   onSupprimer: () => void
+  /** Renommer une forme validée, ou la ranger dans une autre classification. */
+  onModifier?: (patch: Partial<PlanAnnotation>) => void
 }) {
   const proposee = annotation.proposition
   const repere = annotation.repere
+  const mesurable = !proposee && (annotation.type === 'hatch' || annotation.type === 'measure')
+  const [nom, setNom] = useState(annotation.text ?? '')
+  const enregistrerNom = () => {
+    const t = nom.trim()
+    if (t !== (annotation.text ?? '').trim()) onModifier?.({ text: t || undefined })
+  }
   return (
     <div
       data-habillage
@@ -2093,6 +2745,45 @@ function PanneauSelection({ haut, annotation, lie, etalonne, quantite, onLier, o
         <button onClick={onEditerNote} className="mt-2 w-full rounded-lg border px-3 py-2 text-sm transition-colors hover:bg-muted">
           Éditer le texte
         </button>
+      )}
+
+      {!!annotation.trous?.length && onModifier && (
+        <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-muted px-2.5 py-1.5 text-xs">
+          <span className="flex items-center gap-1.5"><Scissors className="h-3.5 w-3.5" />{annotation.trous.length} découpe{annotation.trous.length > 1 ? 's' : ''} retirée{annotation.trous.length > 1 ? 's' : ''}</span>
+          <button onClick={() => onModifier({ trous: undefined })} className="font-medium underline-offset-2 hover:underline pointer-coarse:min-h-11">Retirer</button>
+        </div>
+      )}
+
+      {/* Le nom du local et sa classification : c'est par le nom que la pièce
+          trouve sa catégorie SIA 416, par la classification qu'elle se range
+          dans le panneau des quantités. */}
+      {mesurable && onModifier && (
+        <div className="mt-2 grid grid-cols-[1fr_auto] gap-1.5">
+          <input
+            value={nom}
+            onChange={(e) => setNom(e.target.value)}
+            onBlur={enregistrerNom}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            maxLength={80}
+            placeholder="Nom (séjour, couloir…)"
+            aria-label="Nom de la forme"
+            className="h-9 min-w-0 rounded-lg border bg-background px-2.5 text-sm outline-none focus:ring-2 focus:ring-primary pointer-coarse:h-11"
+          />
+          <select
+            value={annotation.typeZone ?? ''}
+            onChange={(e) => {
+              const t = (e.target.value || null) as TypeZoneIA | null
+              onModifier(t ? { typeZone: t, color: COULEURS_PAR_TYPE[t] } : { typeZone: undefined })
+            }}
+            aria-label="Classification"
+            className="h-9 max-w-[8.5rem] rounded-lg border bg-background px-1.5 text-sm outline-none focus:ring-2 focus:ring-primary pointer-coarse:h-11"
+          >
+            <option value="">Mesure libre</option>
+            {(Object.keys(NOMS_TYPES_ZONE) as TypeZoneIA[]).filter((t) => t !== 'autre').map((t) => (
+              <option key={t} value={t}>{NOMS_TYPES_ZONE[t]}</option>
+            ))}
+          </select>
+        </div>
       )}
 
       {repere && (
@@ -2157,7 +2848,7 @@ function Modal({ title, children, onCancel, onConfirm, confirmLabel, large }: {
   )
 }
 
-function Shape({ a, fmtLen, fmtArea, font, strokeW, lie, etiquette }: {
+function Shape({ a, fmtLen, fmtArea, font, strokeW, lie, etiquette, etiquettes = true, nom = null }: {
   a: PlanAnnotation; fmtLen: (px: number) => string; fmtArea: (px2: number, exacte?: boolean) => string
   font: number; strokeW: number; lie: string | null
   /**
@@ -2166,6 +2857,10 @@ function Shape({ a, fmtLen, fmtArea, font, strokeW, lie, etiquette }: {
    * liste où on la valide.
    */
   etiquette?: string | null
+  /** Écrire le nom et la quantité sur la forme ; sans, le plan reste nu. */
+  etiquettes?: boolean
+  /** Le nom à écrire sur une forme validée : son libellé, sinon son type. */
+  nom?: string | null
 }) {
   // Le calque de référence est une image posée sous les annotations, pas un tracé.
   if (a.type === 'reference') return null
@@ -2205,51 +2900,64 @@ function Shape({ a, fmtLen, fmtArea, font, strokeW, lie, etiquette }: {
   if (a.type === 'draw') {
     return <polyline points={a.points.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round" />
   }
-  if (a.type === 'measure' || a.type === 'arrow') {
+  if (a.type === 'arrow') {
     const [s, e] = a.points
-    const m = mid(s, e)
-    let head = null
-    if (a.type === 'arrow') {
-      const ang = Math.atan2(e.y - s.y, e.x - s.x)
-      const L = 12 * strokeW
-      const p1 = { x: e.x - L * Math.cos(ang - 0.4), y: e.y - L * Math.sin(ang - 0.4) }
-      const p2 = { x: e.x - L * Math.cos(ang + 0.4), y: e.y - L * Math.sin(ang + 0.4) }
-      head = <polygon points={`${e.x},${e.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`} fill={color} />
-    }
+    const ang = Math.atan2(e.y - s.y, e.x - s.x)
+    const L = 12 * strokeW
+    const p1 = { x: e.x - L * Math.cos(ang - 0.4), y: e.y - L * Math.sin(ang - 0.4) }
+    const p2 = { x: e.x - L * Math.cos(ang + 0.4), y: e.y - L * Math.sin(ang + 0.4) }
+    return (
+      <g>
+        <line x1={s.x} y1={s.y} x2={e.x} y2={e.y} stroke={color} strokeWidth={strokeW} />
+        <polygon points={`${e.x},${e.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`} fill={color} />
+      </g>
+    )
+  }
+  if (a.type === 'measure') {
+    // Une cote de deux points, ou une longueur tracée point par point : la
+    // mesure s'écrit à mi-longueur, le nom dessous.
+    const m = milieuDeLaLigne(a.points)
     return (
       <g data-proposition={a.proposition ? '' : undefined}>
-        <line x1={s.x} y1={s.y} x2={e.x} y2={e.y} stroke={color} strokeWidth={strokeW} strokeDasharray={tirets} />
-        {head}
-        {a.type === 'measure' && (
-          <text x={m.x} y={m.y - 6 * strokeW} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{etiquette ?? fmtLen(dist(s, e))}</text>
+        <polyline points={a.points.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={color} strokeWidth={strokeW} strokeDasharray={tirets} strokeLinejoin="round" />
+        {etiquettes && (
+          <text x={m.x} y={m.y - 6 * strokeW} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{etiquette ?? fmtLen(longueurPolyligne(a.points))}</text>
         )}
-        {a.type === 'measure' && lie && !a.proposition && (
-          <text x={m.x} y={m.y + font * 0.9} fontSize={font * 0.8} textAnchor="middle" fill="#111827" stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{lie}</text>
+        {etiquettes && (nom || lie) && !a.proposition && (
+          <text x={m.x} y={m.y + font * 0.9} fontSize={font * 0.8} textAnchor="middle" fill="#111827" stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{[nom, lie].filter(Boolean).join(' · ')}</text>
         )}
       </g>
     )
   }
   // hatch
-  const c = centroid(a.points)
-  // Le nom de l'ouvrage ne s'écrit que si la zone est assez large pour le
-  // porter : sur une façade aux quinze fenêtres rattachées, quinze libellés
-  // qui débordent les uns sur les autres ne se lisent plus.
   const largeurZone = Math.max(...a.points.map((p) => p.x)) - Math.min(...a.points.map((p) => p.x))
-  const lieLisible = lie && lie.length * font * 0.8 * 0.55 <= largeurZone * 1.1
-  // Même règle pour la mesure d'une zone proposée : quinze fenêtres vues de
-  // loin ne laissent pas la place à quinze étiquettes, et la liste les donne.
-  const mesure = etiquette ?? fmtArea(airePolygone(a.points), a.mesureExacte)
-  const mesureLisible = !a.proposition || mesure.length * font * 0.55 <= largeurZone * 1.1
+  // Les étiquettes s'écrivent au cœur de la zone, pas à la moyenne de ses
+  // sommets : celle d'un séjour en L tombe dans la pièce voisine.
+  const c = etiquettes ? pointPourEtiquette(a.points) : { x: 0, y: 0 }
+  // Un texte ne s'écrit que si la zone est assez large pour le porter : sur
+  // une façade aux quinze fenêtres, quinze libellés qui débordent les uns sur
+  // les autres ne se lisent plus, et le panneau des quantités les donne.
+  const tient = (t: string, taille: number) => t.length * taille * 0.55 <= largeurZone * 1.1
+  const mesure = etiquette ?? fmtArea(aireDeLaForme(a), a.mesureExacte)
+  const mesureLisible = etiquettes && (!a.proposition || tient(mesure, font)) && tient(mesure, font * 0.7)
+  const nomLisible = etiquettes && !a.proposition && !!nom && tient(nom, font * 0.85)
+  const lieLisible = etiquettes && !a.proposition && !!lie && tient(lie, font * 0.8)
   return (
     <g data-proposition={a.proposition ? '' : undefined}>
       {/* Un aplat clair plutôt que des hachures : les diagonales se superposaient
           aux traits du plan et on ne lisait plus ni l'un ni l'autre. */}
-      <polygon points={a.points.map((p) => `${p.x},${p.y}`).join(' ')} fill={color} fillOpacity={a.proposition ? 0.1 : 0.18} stroke={color} strokeWidth={strokeW} strokeDasharray={tirets} />
-      {mesureLisible && (
-        <text x={c.x} y={c.y} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{mesure}</text>
+      {a.trous?.length
+        // Les découpes restent vides : un seul chemin, rempli pair-impair.
+        ? <path d={[a.points, ...a.trous].map((c) => `M${c.map((p) => `${p.x},${p.y}`).join('L')}Z`).join('')} fillRule="evenodd" fill={color} fillOpacity={0.18} stroke={color} strokeWidth={strokeW} />
+        : <polygon points={a.points.map((p) => `${p.x},${p.y}`).join(' ')} fill={color} fillOpacity={a.proposition ? 0.1 : 0.18} stroke={color} strokeWidth={strokeW} strokeDasharray={tirets} />}
+      {nomLisible && (
+        <text x={c.x} y={c.y - font * 0.55} fontSize={font * 0.85} fontWeight="600" textAnchor="middle" fill="#111827" stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{nom}</text>
       )}
-      {lieLisible && !a.proposition && (
-        <text x={c.x} y={c.y + font * 1.05} fontSize={font * 0.8} textAnchor="middle" fill="#111827" stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{lie}</text>
+      {mesureLisible && (
+        <text x={c.x} y={nomLisible ? c.y + font * 0.6 : c.y + font * 0.35} fontSize={font} fontWeight="600" textAnchor="middle" fill={color} stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{mesure}</text>
+      )}
+      {lieLisible && (
+        <text x={c.x} y={c.y + font * (nomLisible ? 1.6 : 1.4)} fontSize={font * 0.8} textAnchor="middle" fill="#111827" stroke="white" strokeWidth={halo} style={{ paintOrder: 'stroke' }}>{lie}</text>
       )}
     </g>
   )

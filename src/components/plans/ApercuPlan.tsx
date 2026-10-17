@@ -61,9 +61,11 @@ export function ApercuPlan({ plan, largeurCible = 640, zonesLiees, className }: 
             const liee = zonesLiees?.has(z.id) ?? false
             const couleur = z.color ?? '#ef4444'
             return (
-              <polygon
+              <path
                 key={z.id}
-                points={z.points.map((p) => `${p.x},${p.y}`).join(' ')}
+                // Les découpes d'une zone restent vides : remplissage pair-impair.
+                d={[z.points, ...(z.trous ?? [])].map((c) => `M${c.map((p) => `${p.x},${p.y}`).join('L')}Z`).join('')}
+                fillRule="evenodd"
                 fill={couleur}
                 fillOpacity={liee ? 0.28 : 0.08}
                 stroke={couleur}

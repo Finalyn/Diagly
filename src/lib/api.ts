@@ -551,6 +551,9 @@ export const api = {
         method: 'POST',
         body: { format: opts.format, template: opts.template, sheet: opts.sheet },
       }),
+    // Le métré d'un jeu de plans, calculé dans le navigateur, mis en classeur par le serveur.
+    metres: (projectId: string, metre: import('./plans/export-metres').ExportMetres) =>
+      requestBlob(`/api/export/metres/${projectId}`, { method: 'POST', body: metre }),
   },
 
   support: {

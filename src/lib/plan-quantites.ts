@@ -28,6 +28,16 @@ export function airePolygone(pts: PlanPoint[]): number {
   return Math.abs(s) / 2
 }
 
+/**
+ * Surface d'une zone, découpes retirées, en pixels carrés. Une découpe qui
+ * déborde de sa zone ne peut pas la rendre négative.
+ */
+export function aireDeLaForme(a: Pick<PlanAnnotation, 'points' | 'trous'>): number {
+  const brute = airePolygone(a.points)
+  const trous = (a.trous ?? []).reduce((s, t) => s + airePolygone(t), 0)
+  return Math.max(0, brute - trous)
+}
+
 /** Longueur d'une polyligne ouverte, en pixels. */
 export function longueurPolyligne(pts: PlanPoint[]): number {
   let s = 0
@@ -101,12 +111,12 @@ export function natureDe(a: Pick<PlanAnnotation, 'type' | 'points' | 'propositio
  * `null` quand le plan n'est pas étalonné : des pixels ne sont pas des mètres, et
  * reporter un nombre de pixels dans un devis serait pire que ne rien reporter.
  */
-export function mesureDe(a: Pick<PlanAnnotation, 'type' | 'points' | 'proposition'>, scalePxPerM: number | null): number | null {
+export function mesureDe(a: Pick<PlanAnnotation, 'type' | 'points' | 'proposition' | 'trous'>, scalePxPerM: number | null): number | null {
   const nature = natureDe(a)
   if (nature === 'aucune') return null
   if (!scalePxPerM || scalePxPerM <= 0) return null
   return nature === 'surface'
-    ? airePolygone(a.points) / (scalePxPerM * scalePxPerM)
+    ? aireDeLaForme(a) / (scalePxPerM * scalePxPerM)
     : longueurPolyligne(a.points) / scalePxPerM
 }
 
@@ -133,8 +143,10 @@ export interface ZoneLiee {
   page: number
   label: string | null
   nature: NatureQuantite
-  /** En m² ou en m. null si le plan n'est pas étalonné. */
+  /** En m² ou en m, étages identiques compris. null si le plan n'est pas étalonné. */
   valeur: number | null
+  /** Étages identiques que représente la feuille de la zone. */
+  multiplicateur: number
 }
 
 /** Ce que les plans apportent pour un ouvrage donné. */
@@ -164,8 +176,15 @@ export interface PlanMesurable {
  * Une zone et un trait liés au même ouvrage ne s'additionnent pas : on ne mélange
  * pas des mètres carrés et des mètres. La première nature rencontrée gagne, et la
  * suivante est ignorée plutôt que de fabriquer un total qui ne veut rien dire.
+ *
+ * Une zone tracée sur un plan d'étage type vaut pour chaque étage qu'il
+ * représente (outil Métrés, feuilles.ts) : `multiplicateurDe` le dit, page par
+ * page. Sans lui, chaque zone compte une fois.
  */
-export function apportsDesPlans(plans: PlanMesurable[]): Map<string, ApportPlan> {
+export function apportsDesPlans(
+  plans: PlanMesurable[],
+  multiplicateurDe: (planId: string, page: number) => number = () => 1,
+): Map<string, ApportPlan> {
   const parOuvrage = new Map<string, ApportPlan>()
 
   for (const plan of plans) {
@@ -182,7 +201,9 @@ export function apportsDesPlans(plans: PlanMesurable[]): Map<string, ApportPlan>
       }
       if (apport.nature !== nature) continue
 
-      const valeur = mesureDe(a, echelleDePage(plan, a.page))
+      const multiplicateur = multiplicateurDe(plan.id, a.page ?? 1)
+      const mesure = mesureDe(a, echelleDePage(plan, a.page))
+      const valeur = mesure == null ? null : mesure * multiplicateur
       apport.zones.push({
         planId: plan.id,
         planName: plan.name,
@@ -191,6 +212,7 @@ export function apportsDesPlans(plans: PlanMesurable[]): Map<string, ApportPlan>
         label: a.text?.trim() || null,
         nature,
         valeur,
+        multiplicateur,
       })
       if (valeur == null) apport.nonEtalonnees++
       else apport.total += valeur

@@ -29,7 +29,7 @@ function swissDate(iso: string | null): string {
  * l'ouverture du CSV, y compris des appels externes du type =HYPERLINK(...) ou DDE.
  * Le prefixe apostrophe force la cellule en texte. Les nombres negatifs restent intacts.
  */
-function neutralizeFormula(s: string): string {
+export function neutralizeFormula(s: string): string {
   if (!/^[=+@\t\r]/.test(s) && !(s.startsWith("-") && Number.isNaN(Number(s)))) return s;
   return `'${s}`;
 }

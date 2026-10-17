@@ -444,9 +444,28 @@ export interface PlanAnnotation {
   /**
    * Ce que mesure une zone proposée par l'IA, gardé une fois validée : une
    * façade, une fenêtre, une pièce. Le récapitulatif des Métrés range les
-   * quantités par là ; une zone tracée à la main n'en a pas.
+   * quantités par là. Une zone tracée à la main en reçoit un quand on la
+   * dessine « dans » une classification du panneau des quantités.
    */
   typeZone?: TypeZoneIA
+  /**
+   * Posée à la main dans l'outil Métrés : tracée, remplie d'un clic ou
+   * comptée. Une telle forme a un type sans venir de l'IA : elle ne fait pas
+   * passer sa feuille pour analysée (feuilles.ts, porteUneAnalyse), et la
+   * provenance l'indique à l'export.
+   */
+  origine?: 'main' | 'remplissage' | 'symbole'
+  /**
+   * Catégorie SIA 416 choisie pour une pièce (SUP, SUS, SD, SI), quand le nom
+   * du local ne suffit pas à la deviner ou la devine mal (sia416.ts).
+   */
+  sia416?: 'SUP' | 'SUS' | 'SD' | 'SI'
+  /**
+   * Les découpes d'une zone : une trémie dans une dalle, un poteau dans une
+   * pièce, une piscine dans une terrasse. Chacune est un contour fermé, posé
+   * dans la zone, et sa surface est retirée de celle de la zone.
+   */
+  trous?: PlanPoint[][]
 }
 
 // ---- Analyse d'un plan par l'IA (voir server/src/lib/analyse-plans.ts) ----
@@ -595,6 +614,11 @@ export interface FeuillePlan {
   niveau?: string | null
   /** Étages identiques représentés : le multiplicateur d'un étage type. */
   etagesIdentiques?: number | null
+  /**
+   * Hauteur d'étage en mètres, pour la surface des murs tracés en longueur.
+   * Absente : celle de la fiche du dossier, sinon 2,70 m.
+   */
+  hauteurEtage?: number | null
   orientation?: string | null
   corrige?: ChampCorrigeable[]
   analyse?: {

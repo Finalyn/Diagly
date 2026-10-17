@@ -683,7 +683,7 @@ export function pdfJeuMetres(): Uint8Array {
  * demande, dans l'édition de pdf.js prévue pour Node : seuls les tests et le
  * script d'essai s'en servent.
  */
-export async function geometrieDePdf(octets: Uint8Array, numeroPage = 1, largeurCanevas = 1600) {
+export async function geometrieDePdf(octets: Uint8Array, numeroPage = 1, largeurCanevas = 1600, options: { courbes?: boolean } = {}) {
   const { extraireSegments, IndexGeometrie } = await import('./geometrie-vectorielle')
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const pdf = await pdfjs.getDocument({ data: octets.slice(), isEvalSupported: false, verbosity: 0 }).promise
@@ -691,7 +691,7 @@ export async function geometrieDePdf(octets: Uint8Array, numeroPage = 1, largeur
   const base = page.getViewport({ scale: 1 })
   const vue = page.getViewport({ scale: largeurCanevas / base.width })
   const liste = await page.getOperatorList()
-  const geo = extraireSegments(liste, pdfjs.OPS as unknown as import('./geometrie-vectorielle').OpsPdf, vue.transform)
+  const geo = extraireSegments(liste, pdfjs.OPS as unknown as import('./geometrie-vectorielle').OpsPdf, vue.transform, undefined, options)
   return {
     geo,
     index: new IndexGeometrie(geo),

@@ -21,15 +21,15 @@ import {
 import { Button, Card, CardContent, Badge } from '@/components/ui'
 import { PlanEditor } from '@/components/PlanEditor'
 import { ApercuPlan } from '@/components/plans/ApercuPlan'
-import { useOuvragesDuProjet } from '@/components/plans/ouvrages'
+import { reporterSurLOuvrage, useOuvragesDuProjet } from '@/components/plans/ouvrages'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { uniteCourte } from '@/lib/devis'
-import { computeCost, getMarketCoeff } from '@/lib/diagnostic-auto'
 import {
   apportsDesPlans, reportPossible, arrondiQuantite, natureDe,
   type ApportPlan,
 } from '@/lib/plan-quantites'
+import { VIDE, feuilleDe, multiplicateur } from '@/lib/plans/feuilles'
 import type { ApiPlan, ApiDiagnosticItem } from '@/lib/api-types'
 
 function formatTaille(octets: number): string {
@@ -74,8 +74,10 @@ export function ProjectPlans() {
   }
 
   // Tout ce qui est rattaché, sur l'ensemble des plans : quatre façades relevées
-  // sur quatre documents donnent bien une seule quantité pour l'ouvrage.
-  const apports = useMemo(() => apportsDesPlans(plans), [plans])
+  // sur quatre documents donnent bien une seule quantité pour l'ouvrage. Une
+  // zone d'étage type (outil Métrés) vaut pour chaque étage qu'il représente.
+  const apports = useMemo(() => apportsDesPlans(plans, (planId, page) =>
+    multiplicateur(feuilleDe(plans.find((p) => p.id === planId)?.feuilles ?? VIDE, page))), [plans])
   const zonesLiees = useMemo(() => {
     const s = new Set<string>()
     for (const a of apports.values()) for (const z of a.zones) s.add(z.annotationId)
@@ -231,18 +233,7 @@ function Quantites({ projectId, apports }: { projectId: string; apports: Map<str
   const { items } = useOuvragesDuProjet(projectId)
 
   const reporter = useMutation({
-    mutationFn: async ({ it, quantite }: { it: ApiDiagnosticItem; quantite: number }) => {
-      // Même règle qu'à la saisie : la quantité passe en « relevée », et le coût
-      // suit, sauf s'il a été forcé à la main.
-      const patch: Partial<ApiDiagnosticItem> = { area: quantite, quantityManual: true }
-      if (!it.costManual && it.state) {
-        const catalogue = it.catalogItemId != null ? (await api.cfc.item(it.catalogItemId)).item : null
-        const cout = computeCost(catalogue, it.state, quantite)
-        patch.estimatedCost = (cout ?? null) as unknown as string | null
-        patch.costIndex = getMarketCoeff()
-      }
-      return api.diagnostics.updateItem(it.id, patch)
-    },
+    mutationFn: ({ it, quantite }: { it: ApiDiagnosticItem; quantite: number }) => reporterSurLOuvrage(it, quantite),
     onSuccess: (r) => {
       queryClient.invalidateQueries({ queryKey: ['diagnostic-items', r.item.diagnosticId] })
       queryClient.invalidateQueries({ queryKey: ['project', projectId] })

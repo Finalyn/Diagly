@@ -10,7 +10,10 @@
  * plan, « à valider », le cartouche et l'échelle proposée dans ses feuilles.
  * Un onglet fermé ne perd donc que le lot en cours, et pas même lui : le
  * numéro de sa tâche est gardé avec les feuilles, et la file en reprend le
- * résultat à la réouverture.
+ * résultat à la réouverture. Une échelle vérifiée (l'échelle imprimée
+ * confirmée par une cote) est posée d'office à l'arrivée du résultat : c'est
+ * celle qu'on poserait sans hésiter, et une feuille sans échelle n'a pas de
+ * mesure. Jamais par-dessus une échelle déjà posée.
  *
  * Le moteur vit hors de React, un par dossier, le temps de la page : on peut
  * quitter l'espace de travail et y revenir sans relancer ni perdre le lot en
@@ -34,16 +37,28 @@ import { api, ApiError, type CorpsMajPlan, type ResultatAnalyseServeur } from '@
 import type { ApiPlan, ApiProject, ApiDiagnostic, FeuillePlan, FeuillesPlan, PlanAnnotation } from '@/lib/api-types'
 import { propositionsDeLAnalyse } from '@/lib/plans/analyse-ia'
 import {
-  PAGES_PAR_LOT, VIDE, apresUnePerte, appliquerAnalyse, ordonnerPlans, completerBatiment, corrigerFeuille, enCoursParTache, estPdf,
-  etatAnalyse, mettreEnCours, mettreEnErreur, mettreEnFile, nomProvisoire, nombreDePages, prochainLot, retirerDeLaFile,
-  type FeuilleEnFile, type RefFeuille,
+  PAGES_PAR_LOT, VIDE, apresUnePerte, appliquerAnalyse, ordonnerPlans, completerBatiment, corrigerFeuille, echellesAPoser, enCoursParTache,
+  estPdf, etatAnalyse, feuilleDe, mettreEnCours, mettreEnErreur, mettreEnFile, nomProvisoire, nombreDePages, poserDansLaTable, prochainLot,
+  retirerDeLaFile, type FeuilleEnFile, type RefFeuille,
 } from '@/lib/plans/feuilles'
+import { echelleDePage } from '@/lib/plan-quantites'
 import { preparerPages, type PageAEnvoyer } from '@/components/plans/analyse'
 
-/** Ce que l'éditeur ouvert expose à la file : son plan, et de quoi lui remettre des propositions. */
+/**
+ * Ce que l'éditeur ouvert expose à l'espace de travail : son plan, de quoi lui
+ * remettre des propositions et des échelles, et de quoi agir sur ses formes
+ * (la revue valide ou rejette, le panneau renomme ou affecte). C'est lui qui
+ * tient les annotations de son plan : tout passe par lui tant qu'il est ouvert.
+ */
 export interface PoigneeEditeur {
   planId: string
   recevoir: (pages: number[], annotations: PlanAnnotation[]) => void
+  /** Pose des échelles sur des pages qui n'en ont pas ; une échelle posée n'est jamais remplacée. */
+  poserEchelles?: (choix: Record<number, number>) => void
+  valider?: (ids: string[]) => void
+  rejeter?: (ids: string[]) => void
+  modifier?: (id: string, patch: Partial<PlanAnnotation>) => void
+  ajouter?: (annotations: PlanAnnotation[]) => void
 }
 
 export interface OuvrageEnvoye { id: string; cfcCode: string | null; libelle: string; unite: string | null }
@@ -162,6 +177,26 @@ export class MoteurMetres {
     return suivante
   }
 
+  /**
+   * Une écriture dont le contenu se calcule au moment où vient son tour, sur
+   * le plan tel que la liste en cache le tient alors : ce qui s'écrit avant
+   * elle sur ce plan n'est pas écrasé. Rien ne part si le calcul rend null.
+   */
+  private ecrireDepuis(planId: string, corps: (plan: ApiPlan) => CorpsMajPlan | null): Promise<ApiPlan | null> {
+    const precedente = this.chaines.get(planId) ?? Promise.resolve()
+    const suivante = precedente.catch(() => undefined).then(async () => {
+      const actuel = this.plans().find((p) => p.id === planId)
+      const c = actuel ? corps(actuel) : null
+      if (!c) return null
+      const { plan } = await api.plans.update(planId, c)
+      this.queryClient?.setQueryData<{ plans: ApiPlan[]; count: number }>(['plans', this.projectId], (avant) =>
+        avant ? { ...avant, plans: avant.plans.map((p) => (p.id === plan.id ? plan : p)) } : avant)
+      return plan
+    })
+    this.chaines.set(planId, suivante)
+    return suivante
+  }
+
   /** Les feuilles d'un plan changent ici tout de suite, et partent au serveur dans l'ordre. */
   private async ecrireFeuilles(planId: string, maj: (f: FeuillesPlan) => FeuillesPlan): Promise<void> {
     const plan = this.plans().find((p) => p.id === planId)
@@ -188,6 +223,73 @@ export class MoteurMetres {
   /** Corriger ce que dit une feuille : titre, type de vue, niveau, étages identiques. */
   corriger(planId: string, page: number, patch: Parameters<typeof corrigerFeuille>[2]) {
     void this.ecrireFeuilles(planId, (f) => corrigerFeuille(f, page, patch))
+  }
+
+  /** Un réglage de la feuille qui ne vient pas de l'analyse : la hauteur d'étage, pour les murs. */
+  reglerFeuille(planId: string, page: number, patch: Pick<FeuillePlan, 'hauteurEtage'>) {
+    void this.ecrireFeuilles(planId, (f) => ({ ...f, pages: { ...f.pages, [String(page)]: { ...feuilleDe(f, page), ...patch } } }))
+  }
+
+  /**
+   * Une forme d'un plan, modifiée depuis le panneau des quantités (son nom, sa
+   * catégorie SIA 416) : par l'éditeur s'il a ce plan ouvert, puisque c'est
+   * lui qui en tient les annotations ; sinon directement.
+   */
+  async modifierAnnotation(planId: string, id: string, patch: Partial<PlanAnnotation>) {
+    const ouvert = this.poignee
+    if (ouvert?.planId === planId && ouvert.modifier) { ouvert.modifier(id, patch); return }
+    await this.ecrireDepuis(planId, (plan) => {
+      if (!(plan.annotations ?? []).some((a) => a.id === id)) return null
+      return { annotations: plan.annotations.map((a) => (a.id === id ? { ...a, ...patch } : a)) }
+    })
+    this.maj({})
+  }
+
+  /** Des formes ajoutées à un plan (les repères d'une recherche de symbole) : par l'éditeur s'il l'a ouvert. */
+  async ajouterAnnotations(planId: string, annotations: PlanAnnotation[]) {
+    if (!annotations.length) return
+    const ouvert = this.poignee
+    if (ouvert?.planId === planId && ouvert.ajouter) { ouvert.ajouter(annotations); return }
+    await this.ecrireDepuis(planId, (plan) => ({ annotations: [...(plan.annotations ?? []), ...annotations] }))
+    this.maj({})
+  }
+
+  /**
+   * Pose des échelles sur des pages d'un plan, sans jamais remplacer une
+   * échelle déjà posée : par l'éditeur s'il a ce plan ouvert, sinon dans la
+   * table des échelles du plan, comme l'éditeur l'aurait fait.
+   */
+  async poserEchelles(planId: string, choix: Record<number, number>) {
+    if (!Object.keys(choix).length) return
+    const ouvert = this.poignee
+    if (ouvert?.planId === planId && ouvert.poserEchelles) { ouvert.poserEchelles(choix); return }
+    await this.ecrireDepuis(planId, (plan) => {
+      const libres = Object.fromEntries(Object.entries(choix).filter(([n]) => echelleDePage(plan, Number(n)) == null).map(([n, v]) => [Number(n), v]))
+      if (!Object.keys(libres).length) return null
+      const nombre = nombreDePages(plan, this.feuillesDe(plan)) ?? Math.max(...Object.keys(libres).map(Number))
+      return poserDansLaTable(plan, nombre, libres)
+    }).catch(() => null)
+    this.maj({})
+  }
+
+  /** Combien de feuilles ont une échelle proposée qui attend d'être posée. */
+  echellesEnAttente(): number {
+    return this.plans().reduce((s, plan) => s + Object.keys(echellesAPoser(plan, this.feuillesDe(plan))).length, 0)
+  }
+
+  /**
+   * Pose en un geste toutes les échelles proposées qui restent : vérifiées,
+   * ou lues sans cote pour les confirmer. Celles qui se contredisent attendent
+   * qu'on choisisse dans l'éditeur ; celles déjà posées ne bougent pas.
+   */
+  async poserLesEchellesProposees(): Promise<number> {
+    let n = 0
+    for (const plan of this.plans()) {
+      const choix = echellesAPoser(plan, this.feuillesDe(plan))
+      n += Object.keys(choix).length
+      await this.poserEchelles(plan.id, choix)
+    }
+    return n
   }
 
   /** Combien de feuilles « Analyser tout » mettrait en file : jamais analysées, ou en erreur. */
@@ -372,6 +474,11 @@ export class MoteurMetres {
       le,
     }))
     this.echecsDeSuite = 0
+    // Les échelles vérifiées se posent d'elles-mêmes, sur les pages du lot qui n'en ont pas.
+    const actuel = this.plans().find((p) => p.id === plan.id) ?? plan
+    const verifiees = echellesAPoser(actuel, this.feuillesDe(actuel), { seulementVerifiees: true })
+    const duLot = Object.fromEntries(Object.entries(verifiees).filter(([n]) => pages.includes(Number(n))))
+    await this.poserEchelles(plan.id, duLot)
     await this.completerLeBatiment(r.analyse.projet ?? null).catch(() => undefined)
   }
 

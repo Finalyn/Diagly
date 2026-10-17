@@ -4,11 +4,13 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { validateQuery, validateBody } from "../middlewares/validate.js";
-import { badRequest } from "../lib/http-error.js";
+import { badRequest, notFound } from "../lib/http-error.js";
 import { buildDiagnosticExport, type DiagnosticExport } from "../lib/diagnostic-export.js";
 import { fireEvent } from "../lib/webhook.js";
 import { applyTemplate, resolveTemplate, DEFAULT_TEMPLATE, type ExportTemplate } from "../lib/export-template.js";
 import { toCsv, toXlsx } from "../lib/export-formats.js";
+import { classeurDuMetre, exportMetresSchema, type ExportMetres } from "../lib/export-metres.js";
+import { ownerScopeFor } from "../lib/org-context.js";
 
 // Export structuré d'un diagnostic. La sérialisation (buildDiagnosticExport) est la
 // même couche que la future API ; ici on ajoute la projection (mapping) et les formats.
@@ -98,6 +100,19 @@ router.post("/projects/:id", validateBody(postBody), async (req, res) => {
   const template = b.template ?? (await templateFromPrefs(req.auth!.sub, b.templateId));
   if (b.format !== "json") fireEvent(req.auth!.sub, "rapport.genere", { projectId: req.params.id, egid: payload.building.egid, kind: "export", format: b.format });
   await emit(res, payload, b.format, template, b.sheet);
+});
+
+// Le métré d'un jeu de plans (outil Métrés) : le navigateur le calcule, le
+// serveur en fait le classeur (lib/export-metres.ts). Une lecture, même si
+// elle passe par POST : ce routeur ne bloque pas les comptes en lecture seule.
+router.post("/metres/:projectId", validateBody(exportMetresSchema), async (req, res) => {
+  const projet = await prisma.project.findFirst({ where: { id: req.params.projectId, ...(await ownerScopeFor(req.auth!.sub)) } });
+  if (!projet) throw notFound("Project not found");
+  const m = req.body as ExportMetres;
+  const buffer = await classeurDuMetre(m);
+  res.setHeader("Content-Type", XLSX_MIME);
+  res.setHeader("Content-Disposition", `attachment; filename="metre-${slug(projet.name)}-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  res.send(buffer);
 });
 
 export default router;

@@ -20,7 +20,7 @@ import type {
 import { CATEGORIE, type CategorieComptee } from '../base-cfc/comptages'
 import { aimanter, type IndexGeometrie } from './geometrie-vectorielle'
 import { proposerEchelle, type PropositionEchelle } from './echelle-exacte'
-import { airePolygone, longueurPolyligne } from '../plan-quantites'
+import { aireDeLaForme, longueurPolyligne } from '../plan-quantites'
 
 // ---------------------------------------------------------------- image envoyée
 
@@ -292,7 +292,7 @@ export function validerProposition(a: PlanAnnotation): PlanAnnotation {
 /** Mesure réelle d'une zone, en m² ou en m ; null sans échelle. */
 export function mesureDeLaZone(a: PlanAnnotation, pxParM: number | null): number | null {
   if (!pxParM || pxParM <= 0) return null
-  if (a.type === 'hatch') return airePolygone(a.points) / (pxParM * pxParM)
+  if (a.type === 'hatch') return aireDeLaForme(a) / (pxParM * pxParM)
   if (a.type === 'measure') return longueurPolyligne(a.points) / pxParM
   return null
 }

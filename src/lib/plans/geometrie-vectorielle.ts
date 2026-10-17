@@ -89,6 +89,20 @@ export interface Geometrie {
 /** Au-delà, la page est un fond hachuré ou une image vectorisée : l'aimantation n'y gagne rien. */
 export const MAX_SEGMENTS = 250_000
 
+/** Traits par courbe aplatie : un quart de cercle de porte reste lisse à 1 % près de sa surface. */
+const TRAITS_PAR_COURBE = 8
+
+export interface OptionsExtraction {
+  /**
+   * Aplatir les courbes en traits plutôt que n'en garder que les extrémités.
+   *
+   * L'aimantation n'en veut pas : un arc découpé en huit offrirait huit faux
+   * sommets. Le remplissage d'une pièce, lui, en a besoin : c'est l'arc de la
+   * porte, avec son vantail, qui ferme la pièce sur un plan d'architecte.
+   */
+  courbes?: boolean
+}
+
 /**
  * Extrait les traits peints d'une liste d'opérateurs pdf.js.
  *
@@ -103,6 +117,7 @@ export function extraireSegments(
   ops: OpsPdf,
   transformVue: readonly number[],
   maxSegments = MAX_SEGMENTS,
+  options: OptionsExtraction = {},
 ): Geometrie {
   let tampon = new Float64Array(4096)
   let nombre = 0
@@ -135,6 +150,23 @@ export function extraireSegments(
   const fermer = () => {
     if (cx !== dx || cy !== dy) segment(cx, cy, dx, dy)
     cx = dx; cy = dy
+  }
+  /** Une courbe de Bézier : ses deux extrémités, ou toute sa ligne aplatie en traits. */
+  const courbe = (x1: number, y1: number, x2: number, y2: number, x3: number, y3: number) => {
+    if (!options.courbes) {
+      segment(cx, cy, cx, cy)
+      segment(x3, y3, x3, y3)
+      return
+    }
+    let px = cx, py = cy
+    for (let k = 1; k <= TRAITS_PAR_COURBE; k++) {
+      const t = k / TRAITS_PAR_COURBE, u = 1 - t
+      const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t
+      const qx = a * cx + b * x1 + c * x2 + d * x3
+      const qy = a * cy + b * y1 + c * y2 + d * y3
+      segment(px, py, qx, qy)
+      px = qx; py = qy
+    }
   }
   const peindre = (fermerAvant: boolean) => {
     if (fermerAvant) fermer()
@@ -189,17 +221,19 @@ export function extraireSegments(
           }
           cx = dx = x; cy = dy = y
         } else if (op === ops.curveTo) {
-          // Une courbe n'est pas un côté à suivre : seules ses extrémités comptent.
+          // Une courbe n'est pas un côté à suivre : seules ses extrémités
+          // comptent, sauf si l'on a demandé de l'aplatir.
           const x = valeurs[j + 4], y = valeurs[j + 5]
+          courbe(valeurs[j], valeurs[j + 1], valeurs[j + 2], valeurs[j + 3], x, y)
           j += 6
-          segment(cx, cy, cx, cy)
-          segment(x, y, x, y)
           cx = x; cy = y
         } else if (op === ops.curveTo2 || op === ops.curveTo3) {
+          // « v » : le premier point de contrôle est le point courant ;
+          // « y » : le second est le point d'arrivée.
           const x = valeurs[j + 2], y = valeurs[j + 3]
+          if (op === ops.curveTo2) courbe(cx, cy, valeurs[j], valeurs[j + 1], x, y)
+          else courbe(valeurs[j], valeurs[j + 1], x, y, x, y)
           j += 4
-          segment(cx, cy, cx, cy)
-          segment(x, y, x, y)
           cx = x; cy = y
         } else if (op === ops.closePath) {
           fermer()
