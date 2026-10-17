@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
   Home, ClipboardCheck, Database, Building2, Settings, Plus, ChevronRight, Plug, LifeBuoy, Handshake,
-  CircleUser, LogOut, ShieldCheck,
+  CircleUser, LogOut, ShieldCheck, Ruler,
 } from 'lucide-react'
 import { useAuth } from '@/stores/auth'
 import { logout as endSession, confirmerDeconnexion } from '@/lib/session'
@@ -22,6 +22,7 @@ type NavEntry = {
 const NAV: NavEntry[] = [
   { to: '/app/dashboard', label: 'Accueil', icon: Home, end: true, visite: 'nav-accueil' },
   { to: '/app/projects', label: 'Diagnostics', icon: ClipboardCheck, visite: 'nav-projects' },
+  { to: '/app/metres', label: 'Métrés', icon: Ruler, visite: 'nav-metres' },
   { to: '/app/cfc', label: 'Base de données', icon: Database, visite: 'nav-cfc' },
   { to: '/app/integrations', label: 'Intégrations', icon: Plug, visite: 'nav-integrations' },
   { to: '/app/buildings', label: 'Parc immobilier', icon: Building2, visite: 'nav-buildings' },
@@ -51,7 +52,9 @@ export function Sidebar() {
       </NavLink>
 
       {/* Navigation principale */}
-      <nav className="mt-4 space-y-1.5">
+      {/* Sur un écran bas, la liste défile plutôt que de pousser le compte et
+          l'assistant hors de la carte. */}
+      <nav className="-mx-1 mt-4 min-h-0 space-y-1.5 overflow-y-auto px-1">
         {NAV.map((n) => {
           const inner = (
             <>
