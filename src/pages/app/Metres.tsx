@@ -5,14 +5,21 @@
  * faits, un par dossier qui a des plans : le bâtiment, le nombre de feuilles,
  * où en est leur analyse, ce qui attend d'être validé. Un clic ouvre
  * l'espace de travail du bâtiment.
+ *
+ * En tête aussi, de quoi apprendre l'outil : la visite guidée, qui entoure
+ * les boutons au fur et à mesure, et le tutoriel écrit. Le téléphone n'a pas
+ * de visite guidée (la bulle n'y tiendrait pas à côté de ce qu'elle montre) :
+ * il ouvre le tutoriel.
  */
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, ChevronRight, Loader2, MapPin } from 'lucide-react'
+import { AlertCircle, ChevronRight, Compass, GraduationCap, Loader2, MapPin } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { ApiMetre } from '@/lib/api-types'
 import { cn, formatDate } from '@/lib/utils'
+import { useIsMobile } from '@/lib/use-mobile'
+import { useVisite } from '@/stores/visite'
 import { ApercuPlan } from '@/components/plans/ApercuPlan'
 import { DepotPlans } from '@/components/metres/DepotPlans'
 import { etatAnalyse, feuillesDe, nombreDePages, ordonnerPlans } from '@/lib/plans/feuilles'
@@ -43,17 +50,32 @@ function etatDuMetre(m: ApiMetre): { feuilles: number | null; libelle: string; c
 export function Metres() {
   const { data, isLoading, isError } = useQuery({ queryKey: ['metres'], queryFn: () => api.plans.metres() })
   const metres = useMemo(() => data?.metres ?? [], [data])
+  const telephone = useIsMobile()
+  const demarrer = useVisite((s) => s.demarrer)
+  const lien = 'inline-flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-white px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted pointer-coarse:min-h-11'
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-6">
-      <div>
-        <h1 className="text-[32px] font-normal leading-none tracking-tight text-foreground">Métrés</h1>
-        <p className="mt-2 text-[15px] text-muted-foreground">Un jeu de plans, toutes ses quantités, feuille par feuille.</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-[32px] font-normal leading-none tracking-tight text-foreground">Métrés</h1>
+          <p className="mt-2 text-[15px] text-muted-foreground">Un jeu de plans, toutes ses quantités, feuille par feuille.</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {!telephone && (
+            <button onClick={() => demarrer('metres')} className={lien} data-visite="metres-aide">
+              <Compass className="h-4 w-4" />Visite guidée
+            </button>
+          )}
+          <Link to="/app/support/tuto/metres" className={lien}>
+            <GraduationCap className="h-4 w-4" />{telephone ? 'Comment ça marche' : 'Tutoriel'}
+          </Link>
+        </div>
       </div>
 
       <DepotPlans />
 
-      <section>
+      <section data-visite="metres-liste">
         <h2 className="mb-3 text-[16px] font-semibold text-foreground">Vos métrés</h2>
         {isLoading ? (
           <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Chargement…</p>
@@ -65,7 +87,7 @@ export function Metres() {
           </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {metres.map((m) => <CarteMetre key={m.projectId} metre={m} />)}
+            {metres.map((m, i) => <CarteMetre key={m.projectId} metre={m} visite={i === 0 ? 'metres-carte' : undefined} />)}
           </div>
         )}
       </section>
@@ -73,7 +95,8 @@ export function Metres() {
   )
 }
 
-function CarteMetre({ metre }: { metre: ApiMetre }) {
+/** `visite` : repère désigné par la visite guidée, posé sur la première carte. */
+function CarteMetre({ metre, visite }: { metre: ApiMetre; visite?: string }) {
   const etat = etatDuMetre(metre)
   const premier = ordonnerPlans(metre.plans)[0]
   const aValider = metre.plans.reduce((s, p) => s + p.aValider, 0)
@@ -81,6 +104,7 @@ function CarteMetre({ metre }: { metre: ApiMetre }) {
   return (
     <Link
       to={`/app/metres/${metre.projectId}`}
+      data-visite={visite}
       className="group flex flex-col overflow-hidden rounded-2xl border bg-card transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_40px_-16px_rgba(0,0,0,0.22)]"
     >
       {premier && <ApercuPlan plan={premier} largeurCible={480} className="aspect-[16/9] w-full border-b" />}

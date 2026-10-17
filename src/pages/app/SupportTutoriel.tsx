@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import { Check, ChevronRight, Clock, Compass, GraduationCap, ListChecks, MapPin, Play, RotateCcw } from 'lucide-react'
 import { Card, CardContent, Button, Badge } from '@/components/ui'
-import { ARTICLES, TUTORIELS, type Article, type Tutoriel } from '@/data/documentation'
+import { ARTICLES, TUTORIELS, TUTORIELS_DEPLACES, type Article, type Tutoriel } from '@/data/documentation'
 import { visitesDuTutoriel } from '@/data/visites'
 import { useVisite } from '@/stores/visite'
 import { cn } from '@/lib/utils'
@@ -35,6 +35,14 @@ function lireAvancement(slug: string): number[] {
 
 export function SupportTutoriel() {
   const { slug } = useParams()
+  // Un tutoriel remplacé mène à celui qui a pris sa place.
+  const remplacant = slug && !TUTORIELS.some((t) => t.slug === slug) ? TUTORIELS_DEPLACES[slug] : undefined
+  if (remplacant) return <Navigate to={`/app/support/tuto/${remplacant}`} replace />
+  // Une page par tutoriel : l'avancement lu pour l'un ne doit pas suivre dans l'autre.
+  return <PageTutoriel key={slug} slug={slug} />
+}
+
+function PageTutoriel({ slug }: { slug: string | undefined }) {
   const tuto = TUTORIELS.find((t) => t.slug === slug)
   const [faites, setFaites] = useState<number[]>(() => (slug ? lireAvancement(slug) : []))
   const demarrer = useVisite((s) => s.demarrer)

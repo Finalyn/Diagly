@@ -3,8 +3,9 @@ import {
   normaliser, texteDeLArticle, texteDuTutoriel, minutesDeLecture,
   extraitAutour, chercherDansLAide, type SourcesAide,
 } from './recherche-aide'
-import { ARTICLES, TUTORIELS, type Article, type Tutoriel } from '@/data/documentation'
+import { ARTICLES, TUTORIELS, TUTORIELS_DEPLACES, type Article, type Tutoriel } from '@/data/documentation'
 import { FAQ, type FaqCategory } from '@/data/support'
+import { VISITES, visitesDuTutoriel } from '@/data/visites'
 
 const article = (slug: string, titre: string, resume: string, corps: string): Article => ({
   slug, titre, resume, categorie: 'essai',
@@ -157,5 +158,29 @@ describe('le contenu livré', () => {
   it('n’emploie pas de tiret cadratin dans les textes livrés', () => {
     const tout = [...ARTICLES.map(texteDeLArticle), ...TUTORIELS.map(texteDuTutoriel)].join(' ')
     expect(tout).not.toContain('—')
+  })
+
+  it('met le tutoriel des Métrés en tête d’une recherche sur les métrés', () => {
+    const r = chercherDansLAide('métrés', vraies)
+    expect(r[0].lien).toBe('/app/support/tuto/metres')
+    expect(chercherDansLAide('SIA 416', vraies).length).toBeGreaterThan(0)
+  })
+
+  it('ne parle plus de l’ancien outil Plans du dossier', () => {
+    const tout = [...ARTICLES.map(texteDeLArticle), ...TUTORIELS.map(texteDuTutoriel), ...FAQ.flatMap((c) => c.items.map((i) => `${i.q} ${i.a}`))].join(' ')
+    expect(tout).not.toMatch(/Dossier > Plans|Ouvrez Plans|onglet Plans|outil Plans/)
+  })
+
+  it('relie chaque visite guidée à un tutoriel qui existe', () => {
+    const slugs = new Set(TUTORIELS.map((t) => t.slug))
+    for (const v of VISITES) if (v.tutoriel) expect(slugs.has(v.tutoriel), `${v.id} → ${v.tutoriel}`).toBe(true)
+    expect(visitesDuTutoriel('metres').map((v) => v.id)).toEqual(['metres'])
+  })
+
+  it('mène un tutoriel remplacé vers un tutoriel qui existe', () => {
+    for (const [ancien, nouveau] of Object.entries(TUTORIELS_DEPLACES)) {
+      expect(TUTORIELS.some((t) => t.slug === ancien), ancien).toBe(false)
+      expect(TUTORIELS.some((t) => t.slug === nouveau), nouveau).toBe(true)
+    }
   })
 })

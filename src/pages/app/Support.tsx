@@ -31,7 +31,7 @@ const ICONES: Record<CategorieDoc['icone'], typeof Rocket> = {
 
 const ICONES_VISITE: Record<Visite['icone'], typeof Compass> = {
   boussole: Compass, dossier: FolderPlus, onglets: LayoutGrid, aide: LifeBuoy,
-  releve: ClipboardCheck, agenda: CalendarCheck,
+  releve: ClipboardCheck, agenda: CalendarCheck, metres: Ruler,
 }
 
 const NIVEAUX: Record<Tutoriel['niveau'], string> = {

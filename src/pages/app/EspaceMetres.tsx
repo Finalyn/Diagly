@@ -43,13 +43,18 @@
  * au plan. Sur téléphone, l'écran n'est pas un outil de tracé : il montre les
  * quantités, le tableau en cartes et l'état des feuilles, et renvoie à l'iPad
  * ou à l'ordinateur pour corriger.
+ *
+ * L'espace prend tout l'écran, hors de la mise en page de l'application : il
+ * monte donc lui-même la visite guidée, qu'elle y arrive depuis la page des
+ * métrés ou qu'elle s'y propose à la première ouverture. Les deux écrans ne
+ * sont jamais montés ensemble : la visite n'apparaît qu'une fois.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertCircle, AlertTriangle, ChevronLeft, FileSpreadsheet, FolderOpen, Layers, ListChecks, Loader2, Map as Carte, Plus, ScanLine, SendHorizontal,
-  Square, Table2, X,
+  AlertCircle, AlertTriangle, ChevronLeft, Compass, FileSpreadsheet, FolderOpen, Layers, ListChecks, Loader2, Map as Carte, Plus, ScanLine,
+  SendHorizontal, Square, Table2, X,
 } from 'lucide-react'
 import { api, saveBlob } from '@/lib/api'
 import type { ApiPlan, ChampCorrigeable, FeuillePlan, PlanAnnotation } from '@/lib/api-types'
@@ -71,6 +76,9 @@ import { ReportDossier } from '@/components/metres/ReportDossier'
 import { CartesTableau, TableauMetres, type ActionsTableau } from '@/components/metres/TableauMetres'
 import { ScannerPlans } from '@/components/metres/ScannerPlans'
 import { useEnregistrerComptages } from '@/components/comptages/enregistrer'
+import { VisiteGuidee } from '@/components/visite/VisiteGuidee'
+import { useVisiteAuto } from '@/components/visite/useVisiteAuto'
+import { useVisite } from '@/stores/visite'
 import {
   NOMS_VUES, aValiderSurLaPage, echellesAPoser, enAttente, estPdf, etatAnalyse, feuilleDe, libelleFeuille, lotDeLaPage, nombreDePages,
   ordonnerPlans, statutEchelle, type RefFeuille,
@@ -152,6 +160,8 @@ export function EspaceMetres() {
   const queryClient = useQueryClient()
   const telephone = useIsMobile()
   const tiroir = useTiroir()
+  // La visite des Métrés se propose aussi ici, à qui y entre par le menu d'un dossier.
+  useVisiteAuto(location.pathname, !telephone)
   const [params, setParams] = useSearchParams()
   // La vue (plan ou tableau) et le regroupement du tableau, gardés dans l'adresse comme la feuille.
   const vue: 'plan' | 'tableau' = params.get('vue') === 'tableau' ? 'tableau' : 'plan'
@@ -785,13 +795,13 @@ export function EspaceMetres() {
   )
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background">
+    <div className="flex h-dvh flex-col overflow-hidden bg-background" data-visite="metres-espace">
       {compteursDePages}
       {barre}
       {bandeauAvis}
       <div className="safe-sides relative flex min-h-0 flex-1">
         {/* Navigateur : colonne fixe à l'horizontale, tiroir sur iPad debout. */}
-        {!tiroir && <aside className="w-72 shrink-0 border-r bg-muted/30">{navigateur}</aside>}
+        {!tiroir && <aside className="w-72 shrink-0 border-r bg-muted/30" data-visite="metres-feuilles">{navigateur}</aside>}
         {tiroir && tiroirOuvert && (
           <div className="absolute inset-0 z-[55] flex" role="dialog" aria-label="Feuilles">
             <aside className="w-80 max-w-[85%] border-r bg-background shadow-2xl">{navigateur}</aside>
@@ -874,10 +884,10 @@ export function EspaceMetres() {
             </main>
 
             {/* À droite : les quantités du jeu, et ce qui attend d'être validé sur la feuille. */}
-            <aside className="flex w-80 shrink-0 flex-col border-l bg-muted/30 xl:w-[23rem]">
+            <aside className="flex w-80 shrink-0 flex-col border-l bg-muted/30 xl:w-[23rem]" data-visite="metres-quantites">
               <div className="flex shrink-0 gap-1 border-b p-2">
                 <Onglet actif={onglet === 'quantites'} onClick={() => setOnglet('quantites')}>Quantités</Onglet>
-                <Onglet actif={onglet === 'feuille'} onClick={() => setOnglet('feuille')}>
+                <Onglet actif={onglet === 'feuille'} onClick={() => setOnglet('feuille')} visite="metres-cette-feuille">
                   Cette feuille{aValiderFeuille > 0 && <span className="ml-1 rounded-full bg-teal-100 px-1.5 text-[10px] text-teal-800">{aValiderFeuille}</span>}
                 </Onglet>
               </div>
@@ -919,6 +929,9 @@ export function EspaceMetres() {
           onFermer={() => setReport(null)}
         />
       )}
+
+      {/* Hors de la mise en page de l'application, la visite guidée est montée ici. */}
+      <VisiteGuidee />
     </div>
   )
 }
@@ -962,11 +975,18 @@ function CompteurDePages({ plan, moteur }: { plan: ApiPlan; moteur: MoteurMetres
   return null
 }
 
-function Onglet({ actif, onClick, children }: { actif: boolean; onClick: () => void; children: React.ReactNode }) {
+function Onglet({ actif, onClick, visite, children }: {
+  actif: boolean
+  onClick: () => void
+  /** Repère désigné par la visite guidée. */
+  visite?: string
+  children: React.ReactNode
+}) {
   return (
     <button
       onClick={onClick}
       aria-pressed={actif}
+      data-visite={visite}
       className={cn('flex flex-1 items-center justify-center rounded-lg px-2 py-1.5 text-xs font-medium transition-colors pointer-coarse:min-h-11',
         actif ? 'bg-background text-foreground shadow-sm ring-1 ring-black/5' : 'text-muted-foreground hover:text-foreground')}
     >
@@ -1019,6 +1039,7 @@ function BarreDuHaut({
     else navigate('/app/metres')
   }
   const bouton = 'flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-40 pointer-coarse:min-h-11'
+  const demarrerVisite = useVisite((s) => s.demarrer)
 
   return (
     <header className="safe-top safe-sides shrink-0 border-b bg-background">
@@ -1035,7 +1056,7 @@ function BarreDuHaut({
 
         {/* Le plan et sa colonne, ou toutes les formes du jeu en tableau. */}
         {!telephone && (
-          <div className="flex shrink-0 rounded-lg bg-muted p-0.5" role="group" aria-label="Vue">
+          <div className="flex shrink-0 rounded-lg bg-muted p-0.5" role="group" aria-label="Vue" data-visite="metres-vue">
             {([['plan', 'Plan', Carte], ['tableau', 'Tableau', Table2]] as const).map(([cle, libelle, Icone]) => (
               <button
                 key={cle}
@@ -1054,13 +1075,13 @@ function BarreDuHaut({
         )}
 
         {tiroir && (
-          <button onClick={onTiroir} className={bouton}>
+          <button onClick={onTiroir} className={bouton} data-visite="metres-feuilles">
             <Layers className="h-4 w-4" />Feuilles
           </button>
         )}
 
         {/* L'avancement de l'analyse du jeu entier. */}
-        <div className={cn('min-w-0 shrink-0', telephone ? 'order-last w-full' : 'w-48 xl:w-56')}>
+        <div className={cn('min-w-0 shrink-0', telephone ? 'order-last w-full' : 'w-48 xl:w-56')} data-visite="metres-progression">
           <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
             {etat.lot ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <MarqueDiagly className="h-3.5 w-3.5" />}
             {etat.lot
@@ -1087,6 +1108,7 @@ function BarreDuHaut({
             <button
               onClick={onRevoir}
               disabled={revueActive}
+              data-visite="metres-revoir"
               className={cn(bouton, 'border-teal-300 bg-teal-50 text-teal-900 hover:bg-teal-100')}
               title="Revoir un à un tous les éléments à valider du jeu (Entrée valide, Suppr rejette)"
             >
@@ -1094,13 +1116,13 @@ function BarreDuHaut({
             </button>
           )}
           {!telephone && (
-            <button onClick={onExporter} disabled={exportEtat === 'en-cours' || rienAExporter} className={bouton} title="Exporter le métré en Excel : récapitulatif, détail, SIA 416">
+            <button onClick={onExporter} disabled={exportEtat === 'en-cours' || rienAExporter} className={bouton} title="Exporter le métré en Excel : récapitulatif, détail, SIA 416" data-visite="metres-excel">
               {exportEtat === 'en-cours' ? <Loader2 className="h-4 w-4 animate-spin" /> : exportEtat === 'erreur' ? <AlertTriangle className="h-4 w-4 text-red-600" /> : <FileSpreadsheet className="h-4 w-4" />}
               <span className="hidden xl:inline">Excel</span>
             </button>
           )}
           {!telephone && (
-            <button onClick={onReporter} disabled={rienAExporter} className={bouton} title="Reporter au dossier : éléments comptés et quantités des ouvrages rattachés">
+            <button onClick={onReporter} disabled={rienAExporter} className={bouton} title="Reporter au dossier : éléments comptés et quantités des ouvrages rattachés" data-visite="metres-reporter">
               <SendHorizontal className="h-4 w-4" /><span className="hidden xl:inline">Reporter au dossier</span>
             </button>
           )}
@@ -1120,8 +1142,14 @@ function BarreDuHaut({
               <span className={cn(!telephone && compteurs.aAnalyser === 0 && 'hidden xl:inline')}>Analyser tout</span>{compteurs.aAnalyser ? ` (${compteurs.aAnalyser})` : ''}
             </button>
           )}
+          {/* La visite guidée se relance d'ici ; le téléphone n'en a pas. */}
           {!telephone && (
-            <Link to={`/app/projects/${projectId}`} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground pointer-coarse:p-3" title="Ouvrir le dossier">
+            <button onClick={() => demarrerVisite('metres')} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground pointer-coarse:p-3" title="Visite guidée des Métrés">
+              <Compass className="h-4 w-4" />
+            </button>
+          )}
+          {!telephone && (
+            <Link to={`/app/projects/${projectId}`} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground pointer-coarse:p-3" title="Ouvrir le dossier" data-visite="metres-dossier">
               <FolderOpen className="h-4 w-4" />
             </Link>
           )}

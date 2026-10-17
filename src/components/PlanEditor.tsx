@@ -1863,7 +1863,7 @@ export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose
             scène sur mobile, à portée de pouce. Il descend jusqu'au bas de
             l'écran : ses dernières pastilles s'arrêtent au-dessus de la barre
             d'accueil de l'iPad, qui se superpose à la page dans l'app. */}
-        <nav ref={railRef} className="hidden w-20 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2 pb-[calc(var(--safe-bottom)+0.5rem)] sm:flex" aria-label="Outils">
+        <nav ref={railRef} className="hidden w-20 shrink-0 flex-col gap-0.5 overflow-y-auto border-r p-2 pb-[calc(var(--safe-bottom)+0.5rem)] sm:flex" aria-label="Outils" data-visite={encastre ? 'metres-outils' : undefined}>
           {outilsProposes.map((t) => (
             <BoutonOutil key={t.key} outil={t} actif={tool === t.key} bloque={!outilAutorise(t.key)} onChoisir={choisirOutil} />
           ))}

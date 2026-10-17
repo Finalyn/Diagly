@@ -43,11 +43,21 @@ export interface Visite {
   objectif: string
   duree: string
   /** Icône, résolue à l'affichage. */
-  icone: 'boussole' | 'dossier' | 'onglets' | 'aide' | 'releve' | 'agenda'
+  icone: 'boussole' | 'dossier' | 'onglets' | 'aide' | 'releve' | 'agenda' | 'metres'
   etapes: EtapeVisite[]
   /** Tutoriel écrit correspondant, pour qui préfère lire. */
   tutoriel?: string
 }
+
+/**
+ * L'espace de travail des Métrés, présent ou non.
+ *
+ * La visite des Métrés passe par la page des métrés, puis entre dans l'espace
+ * de travail d'un bâtiment, qui prend tout l'écran. Lancée depuis l'espace de
+ * travail, ou proposée à son ouverture, elle saute ce qui se montre sur la
+ * page : on ne demande pas d'ouvrir un métré à qui est dedans.
+ */
+const ESPACE_METRES = '[data-visite="metres-espace"]'
 
 export const VISITES: Visite[] = [
   {
@@ -120,6 +130,12 @@ export const VISITES: Visite[] = [
         cote: 'droite',
         titre: 'Vos diagnostics',
         texte: 'La liste de vos dossiers. Un diagnostic, c’est un bâtiment : son relevé, son chiffrage, ses rapports. Un dossier s’ouvre directement sur son relevé.',
+      },
+      {
+        cible: '[data-visite="nav-metres"]',
+        cote: 'droite',
+        titre: 'Les métrés',
+        texte: 'Déposez les plans d’un bâtiment : l’IA lit chaque feuille et propose ce qu’elle y mesure, vous validez, et les quantités partent dans le dossier. La visite « Métrés » vous montre l’outil.',
       },
       {
         cible: '[data-visite="nouveau"]',
@@ -414,14 +430,14 @@ export const VISITES: Visite[] = [
   {
     id: 'dossier',
     titre: 'Tout ce que contient un dossier',
-    objectif: 'Faire le tour des outils du menu de gauche, outil Plans compris.',
+    objectif: 'Faire le tour des outils du menu de gauche, jusqu’aux Métrés.',
     duree: '4 min',
     icone: 'onglets',
     tutoriel: 'premier-diagnostic',
     etapes: [
       {
         titre: 'Le menu du dossier',
-        texte: 'Un dossier s’ouvre sur son relevé, et ses outils sont rangés dans le menu de gauche : le bâtiment, l’analyse, les documents. Je vous les montre un par un, puis nous descendrons dans l’outil Plans, qui est le plus riche.',
+        texte: 'Un dossier s’ouvre sur son relevé, et ses outils sont rangés dans le menu de gauche : le bâtiment, l’analyse, les documents. Je vous les montre un par un, jusqu’aux Métrés, l’outil des plans.',
       },
       {
         route: '/app/projects',
@@ -484,11 +500,138 @@ export const VISITES: Visite[] = [
         cible: '[data-visite="onglet-plans"]',
         cote: 'droite',
         titre: 'Métrés, et c’est là que ça devient intéressant',
-        texte: 'Déposez les plans du bâtiment : l’IA lit chaque feuille, pose l’échelle, dessine pièces, façades et fenêtres, et compte les portes. Vous validez ce qu’elle propose, les quantités s’additionnent étage par étage, puis se reportent dans le relevé. L’outil s’ouvre en plein écran.',
+        texte: 'Déposez les plans du bâtiment : l’IA lit chaque feuille, vérifie l’échelle sur une cote, propose pièces, façades, fenêtres et portes, et compte les éléments. Vous validez ce qu’elle propose, les quantités s’additionnent étage par étage, puis se reportent dans le dossier. L’outil s’ouvre en plein écran ; la visite « Métrés » le montre en détail.',
       },
       {
         titre: 'Voilà le dossier',
         texte: 'Relevez, vérifiez les quantités, contrôlez le chiffrage, comparez les variantes, éditez le rapport. Toutes ces visites restent disponibles dans Aide et support.',
+      },
+    ],
+  },
+
+  {
+    id: 'metres',
+    titre: 'Métrés',
+    objectif: 'Déposer des plans, valider ce que l’IA y mesure, lire les quantités et les reporter au dossier.',
+    duree: '4 min',
+    icone: 'metres',
+    tutoriel: 'metres',
+    etapes: [
+      {
+        titre: 'Des plans aux quantités',
+        texte: 'Déposez les plans d’un bâtiment : l’IA lit chaque feuille et propose ce qu’elle y mesure. Vous validez, les quantités s’additionnent étage par étage, puis partent dans le dossier. Je vous montre le chemin.',
+      },
+      {
+        // Dans un dossier, son menu remplace celui de l'application : son entrée Métrés y mène aussi.
+        cible: '[data-visite="nav-metres"], [data-visite="onglet-plans"]',
+        cote: 'droite',
+        sauterSi: `[data-visite="metres-depot"], ${ESPACE_METRES}`,
+        titre: 'Ouvrez Métrés',
+        texte: 'Dans le menu de gauche, ou par la tuile Métrés de l’accueil ; dans un dossier, son entrée Métrés ouvre directement ses plans. Cliquez dessus.',
+        avanceAuClic: true,
+      },
+      {
+        route: '/app/metres',
+        cible: '[data-visite="metres-depot"]',
+        cote: 'bas',
+        sauterSi: ESPACE_METRES,
+        titre: 'Déposez les plans',
+        texte: 'Glissez ici les PDF ou les images d’un bâtiment, ou choisissez-les. Diagly demande pour quel bâtiment : un nouveau, créé tout de suite, ou un dossier existant. L’espace de travail s’ouvre ensuite, et l’analyse démarre seule.',
+      },
+      {
+        cible: '[data-visite="metres-scanner"]',
+        cote: 'bas',
+        sauterSi: ESPACE_METRES,
+        titre: 'Un plan papier ? Scannez-le',
+        texte: 'Dans l’app iPhone et iPad, le scanner de documents redresse la feuille ; ailleurs, une photo dont vous vérifiez les coins. Le format de la feuille, A3 par défaut, donne l’échelle. Sur un scan, rien ne s’aimante aux traits : vérifiez chaque zone.',
+      },
+      {
+        cible: '[data-visite="metres-liste"]',
+        cote: 'haut',
+        sauterSi: ESPACE_METRES,
+        titre: 'Vos métrés',
+        texte: 'Un métré par bâtiment, avec où en est son analyse et ce qui attend d’être validé.',
+      },
+      {
+        cible: '[data-visite="metres-carte"]',
+        cote: 'droite',
+        sauterSi: ESPACE_METRES,
+        titre: 'Entrez dans un métré',
+        texte: 'Cliquez sur un métré pour ouvrir son espace de travail. Si vous n’en avez pas encore, continuez : je vous décris ce qui vous y attend.',
+        avanceAuClic: true,
+      },
+      {
+        cible: '[data-visite="metres-feuilles"]',
+        cote: 'droite',
+        titre: 'Les feuilles du jeu',
+        texte: 'Dans l’espace de travail, à gauche (derrière Feuilles sur iPad debout) : toutes les pages de tous les plans, avec ce que l’IA a lu au cartouche, numéro, titre, type de vue, étage, étages identiques. Le crayon corrige ce qu’elle a lu, la flèche relance une feuille.',
+      },
+      {
+        // Le bouton des échelles à poser, s'il y en a ; sinon la première feuille et ses pastilles.
+        cible: '[data-visite="metres-echelles"], [data-visite="metres-feuille"]',
+        cote: 'droite',
+        titre: 'L’échelle d’abord',
+        texte: 'Chaque feuille porte ses pastilles : l’échelle, l’analyse, ce qui reste à valider. Échelle vérifiée : confirmée par une cote, posée d’office. À vérifier : à poser après un coup d’œil, une à une ou toutes ensemble. Sans échelle, rien ne se mesure.',
+      },
+      {
+        cible: '[data-visite="metres-progression"]',
+        cote: 'bas',
+        titre: 'L’analyse avance seule',
+        texte: 'Feuille après feuille : vous travaillez sur une feuille prête pendant que les autres se traitent. L’IA propose pièces, façades, fenêtres et portes, et compte les éléments. Rien de ce qu’elle propose ne compte avant votre validation.',
+      },
+      {
+        cible: '[data-visite="metres-cette-feuille"]',
+        cote: 'gauche',
+        titre: 'Valider une feuille',
+        texte: 'L’onglet Cette feuille liste ce que l’IA propose sur la feuille ouverte, avec la mesure, la confiance et l’accord des cotes. Validez une à une, ou tout d’un coup avec Tout valider.',
+      },
+      {
+        cible: '[data-visite="metres-revoir"]',
+        cote: 'bas',
+        titre: 'Revoir tout le jeu',
+        texte: 'Revoir apparaît en haut dès que quelque chose attend : il passe tout en revue, du moins sûr au plus sûr, la vue cadrée sur chaque élément. Entrée valide, Suppr rejette, les flèches avancent ; sur iPad, de gros boutons.',
+      },
+      {
+        cible: '[data-visite="metres-outils"]',
+        cote: 'droite',
+        titre: 'Corriger à la main',
+        texte: 'V sélectionne, A trace une zone, F remplit une pièce d’un clic, L mesure, C compte, X découpe. Symbole cherche un symbole sur tout le jeu. La barre d’espace maintenue déplace le plan, Ctrl+Z annule.',
+      },
+      {
+        cible: '[data-visite="metres-quantites"]',
+        cote: 'gauche',
+        titre: 'Les quantités du jeu',
+        texte: 'Par classification, puis par étage et par forme. Un étage type compte autant de fois qu’il a d’étages identiques. L’œil masque une classification, le crayon fait dessiner dedans, une ligne montre sa forme sur le plan.',
+      },
+      {
+        cible: '[data-visite="metres-sia416"]',
+        cote: 'gauche',
+        titre: 'Surfaces SIA 416, à vérifier',
+        texte: 'Sous les pièces : SP, SN et SC par étage, puis la SN rangée en SUP, SUS, SD et SI d’après le nom de chaque local. Ces surfaces sont à vérifier : l’affectation se corrige pièce par pièce.',
+      },
+      {
+        cible: '[data-visite="metres-vue"]',
+        cote: 'bas',
+        titre: 'Plan ou Tableau',
+        texte: 'Le Tableau met toutes les formes du jeu en lignes, regroupées par classification, étage, ouvrage ou feuille, avec leurs sous-totaux. Plusieurs lignes se valident ou se rattachent d’un geste ; une ligne touchée revient au plan.',
+      },
+      {
+        cible: '[data-visite="metres-excel"]',
+        cote: 'bas',
+        titre: 'L’export Excel',
+        texte: 'Un classeur en trois onglets : le récapitulatif, le détail forme par forme, et les surfaces SIA 416.',
+      },
+      {
+        cible: '[data-visite="metres-reporter"]',
+        cote: 'bas',
+        titre: 'Reporter au dossier',
+        texte: 'Dans le dossier du bâtiment : les éléments comptés, et la quantité des ouvrages auxquels des zones sont rattachées. La fenêtre montre ce qui sera écrit et remplacé ; rien ne part sans votre confirmation.',
+      },
+      {
+        cible: '[data-visite="metres-dossier"]',
+        cote: 'bas',
+        titre: 'Puis pendant la visite',
+        texte: 'Le dossier s’ouvre d’ici ; les éléments comptés y sont sous Coûts. Sur place, chaque type relevé reçoit ses unités : 2/6 portes palières en bois, 4/6 en métal. La quantité et le coût suivent.',
       },
     ],
   },

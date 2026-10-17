@@ -432,7 +432,7 @@ function RelecturePlans({ lecture, noms, fichiers, onRecommencer, onPret }: {
           <CardHeader className="space-y-0 border-b border-black/[0.06] px-5 py-3.5">
             <CardTitle className="text-base">Pages lues</CardTitle>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              L’échelle imprimée n’étalonne pas les plans : dans l’onglet Plans du dossier, tracez une cote connue pour mesurer dessus.
+              L’échelle imprimée n’étalonne pas encore les plans : dans Métrés, l’analyse la vérifie sur une cote avant de la poser, ou vous tracez une cote connue.
             </p>
           </CardHeader>
           <CardContent className="divide-y divide-black/[0.05] p-0">

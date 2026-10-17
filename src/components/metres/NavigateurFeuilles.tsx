@@ -76,7 +76,7 @@ export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir
     <div className="space-y-4">
       {!lectureSeule && onPoserEchelles && echellesAPoser > 0 && (
         confirmer ? (
-          <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950">
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950" data-visite="metres-echelles">
             <p>
               Poser l’échelle proposée sur {echellesAPoser} feuille{echellesAPoser > 1 ? 's' : ''} ? Les échelles déjà posées ne
               changent pas{incoherentes ? `, et les ${incoherentes} incohérente${incoherentes > 1 ? 's' : ''} attendent votre choix dans l’éditeur` : ''}.
@@ -96,16 +96,18 @@ export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir
         ) : (
           <button
             onClick={() => setConfirmer(true)}
+            data-visite="metres-echelles"
             className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 py-2 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-11"
           >
             <Ruler className="h-3.5 w-3.5" />Poser les échelles proposées ({echellesAPoser})
           </button>
         )
       )}
-      {groupes.map((g) => (
+      {groupes.map((g, i) => (
         <GroupePlan
           key={g.plan.id}
           groupe={g}
+          premier={i === 0}
           plusieurs={groupes.length > 1}
           selection={selection}
           lectureSeule={lectureSeule}
@@ -119,8 +121,10 @@ export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir
   )
 }
 
-function GroupePlan({ groupe, plusieurs, selection, lectureSeule, onChoisir, onAnalyser, onCorriger, onSupprimer }: {
+function GroupePlan({ groupe, premier, plusieurs, selection, lectureSeule, onChoisir, onAnalyser, onCorriger, onSupprimer }: {
   groupe: GroupeDeFeuilles
+  /** Le premier document du jeu : sa première feuille sert de repère à la visite guidée. */
+  premier: boolean
   plusieurs: boolean
   selection: RefFeuille | null
   lectureSeule?: boolean
@@ -162,10 +166,11 @@ function GroupePlan({ groupe, plusieurs, selection, lectureSeule, onChoisir, onA
         </p>
       ) : (
         <ul className="space-y-1.5">
-          {feuilles.map((f) => (
+          {feuilles.map((f, j) => (
             <CarteFeuille
               key={f.page}
               vue={f}
+              repere={premier && j === 0}
               nomDuPlan={plan.name}
               vignette={vignette(f.page)}
               choisie={selection?.planId === f.planId && selection.page === f.page}
@@ -181,8 +186,10 @@ function GroupePlan({ groupe, plusieurs, selection, lectureSeule, onChoisir, onA
   )
 }
 
-function CarteFeuille({ vue, nomDuPlan, vignette, choisie, lectureSeule, onChoisir, onAnalyser, onCorriger }: {
+function CarteFeuille({ vue, repere, nomDuPlan, vignette, choisie, lectureSeule, onChoisir, onAnalyser, onCorriger }: {
   vue: FeuilleVue
+  /** La feuille que montre la visite guidée, avec ses pastilles. */
+  repere: boolean
   nomDuPlan: string
   vignette: string | null
   choisie: boolean
@@ -203,6 +210,7 @@ function CarteFeuille({ vue, nomDuPlan, vignette, choisie, lectureSeule, onChois
 
   return (
     <li
+      data-visite={repere ? 'metres-feuille' : undefined}
       className={cn('rounded-xl border bg-background transition-colors',
         choisie ? 'border-foreground ring-1 ring-foreground' : 'hover:border-foreground/30')}
     >

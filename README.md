@@ -62,8 +62,8 @@ récents à éprouver :
   adresses ramènent à la liste des diagnostics.
 - Affichent « Bientôt disponible » : le parc immobilier (bâtiments,
   appartements), le détail d'un rapport (`/app/reports/:id`) et les appels
-  d'offres. Les plans se travaillent dans le dossier, onglet Plans, ou dans
-  l'outil Métrés (`/app/metres`, où mène aussi l'ancienne adresse `/app/plans`).
+  d'offres. Les plans se travaillent dans l'outil Métrés (`/app/metres`, où
+  mènent aussi les anciennes adresses `/app/plans` et `/app/projects/:id/plans`).
 - Le calendrier n'a plus d'entrée dans les menus : le calendrier global
   (`/app/planning`, vue mois) ne s'ouvre que par son adresse ou par un rappel
   de visite, et ce rappel, touché sur téléphone, ramène à la liste des

@@ -17,6 +17,9 @@ import { useVisite } from '@/stores/visite'
 /** Du plus précis au plus général : la première route qui correspond gagne. */
 const DECLENCHEURS: { route: RegExp; visite: string }[] = [
   { route: /^\/app\/projects\/new$/, visite: 'creation' },
+  // La page des métrés, ou l'espace de travail d'un bâtiment quand on y entre
+  // par le menu d'un dossier : la visite saute alors ce qui se montre sur la page.
+  { route: /^\/app\/metres(\/[^/]+)?$/, visite: 'metres' },
   // Un dossier s'ouvre sur son relevé : c'est là que se propose la visite du relevé.
   { route: /^\/app\/projects\/[^/]+\/diagnostic$/, visite: 'releve' },
   { route: /^\/app\/projects\/[^/]+(\/|$)/, visite: 'dossier' },

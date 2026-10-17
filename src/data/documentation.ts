@@ -77,11 +77,11 @@ export const ARTICLES: Article[] = [
             items: [
               'Accueil : le dernier diagnostic à reprendre, vos dossiers récents et l’activité du moment.',
               'Diagnostics : la liste de vos dossiers, et la création d’un nouveau.',
+              'Métrés : les plans d’un bâtiment, lus feuille par feuille par l’IA, et leurs quantités.',
               'Base de données : le catalogue d’ouvrages CFC, ses prix et ses textes.',
               'Paramètres : votre compte, votre entreprise, et votre équipe (membres, invitations, rôles).',
               'Intégrations : clés d’API, webhooks, connecteurs.',
               'Parc immobilier : vos bâtiments, vus comme un patrimoine plutôt que dossier par dossier.',
-              'Paramètres : votre profil, votre entreprise, votre sécurité.',
             ],
           },
           { type: 'astuce', texte: 'L’assistant Diagly, en bas du menu, répond en langage courant sur vos diagnostics et sur le fonctionnement de l’application.' },
@@ -96,7 +96,7 @@ export const ARTICLES: Article[] = [
             items: [
               'Créer le diagnostic avec l’adresse du bâtiment : Diagly va chercher seul les données publiques disponibles.',
               'Relever les ouvrages un par un, avec leur état et leurs photos.',
-              'Vérifier les quantités, à la main ou depuis les plans.',
+              'Vérifier les quantités, à la main ou depuis les plans, dans Métrés.',
               'Contrôler le chiffrage, les honoraires, la réserve et la TVA.',
               'Comparer les variantes de rénovation.',
               'Éditer le rapport et le transmettre au client.',
@@ -128,7 +128,7 @@ export const ARTICLES: Article[] = [
               'Coûts : le chiffrage détaillé, les honoraires, la réserve, la TVA.',
               'Variantes : les scénarios de rénovation comparés.',
               'Rapports : les documents à éditer et le lien de partage.',
-              'Plans : les plans du bâtiment, leur étalonnage et les mesures.',
+              'Métrés : les plans du bâtiment, lus feuille par feuille, et leurs quantités. L’outil s’ouvre en plein écran.',
               'Étiquette énergétique : la performance du bâtiment et l’import d’un certificat.',
             ],
           },
@@ -273,7 +273,7 @@ export const ARTICLES: Article[] = [
         id: 'origine',
         titre: 'D’où vient une quantité',
         blocs: [
-          { type: 'texte', texte: 'Une quantité peut arriver de trois façons : estimée depuis la géométrie du bâtiment (emprise et volume issus du registre fédéral), saisie à la main, ou reportée depuis une mesure faite sur un plan.' },
+          { type: 'texte', texte: 'Une quantité peut arriver de trois façons : estimée depuis la géométrie du bâtiment (emprise et volume issus du registre fédéral), saisie à la main, ou reportée depuis les plans par Métrés.' },
           { type: 'texte', texte: 'La quantité saisie l’emporte toujours sur l’estimation : dès que vous entrez une valeur, Diagly cesse d’estimer cet ouvrage.' },
         ],
       },
@@ -371,7 +371,7 @@ export const ARTICLES: Article[] = [
   {
     slug: 'etalonner',
     titre: 'Étalonner un plan',
-    resume: 'Pourquoi l’échelle est demandée avant tout, et comment l’appliquer à un document de plusieurs pages.',
+    resume: 'Pourquoi l’échelle est demandée avant tout, comment l’IA la vérifie, et comment la poser à la main.',
     categorie: 'plans',
     sections: [
       {
@@ -380,6 +380,24 @@ export const ARTICLES: Article[] = [
         blocs: [
           { type: 'texte', texte: 'Un plan importé est une image : Diagly y voit des pixels, pas des mètres. L’étalonnage est le geste qui fait le lien, une fois pour toutes, entre les deux.' },
           { type: 'texte', texte: 'Tant qu’une page n’a pas d’échelle, les outils de mesure restent inaccessibles et l’éditeur s’ouvre directement sur l’étalonnage. C’est volontaire : une surface relevée sur un plan non étalonné serait fausse sans que rien ne le signale.' },
+        ],
+      },
+      {
+        id: 'ia',
+        titre: 'L’échelle lue par l’IA',
+        blocs: [
+          { type: 'texte', texte: 'Dans Métrés, l’analyse lit l’échelle imprimée sur chaque feuille et la contrôle sur une cote. La liste des feuilles, à gauche de l’espace de travail, en donne l’état.' },
+          {
+            type: 'liste',
+            items: [
+              'Échelle vérifiée : l’échelle imprimée est confirmée par une cote, elle est posée d’office.',
+              'À vérifier : proposée, pas encore posée. Ouvrez la feuille et choisissez Vérifier et poser, ou posez toutes celles qui restent avec Poser les échelles proposées.',
+              'Incohérente : l’échelle imprimée et la cote se contredisent. C’est à vous de choisir, dans l’éditeur.',
+              'Échelle posée : posée à la main, ou confirmée par vous.',
+              'Sans échelle : rien n’a été lu, la feuille s’étalonne à la main.',
+            ],
+          },
+          { type: 'astuce', texte: 'Un plan papier scanné tient son échelle du format choisi au scan (A4 à A0) : prenez celui de la feuille photographiée, le cartouche l’indique souvent.' },
         ],
       },
       {
@@ -411,8 +429,8 @@ export const ARTICLES: Article[] = [
   },
   {
     slug: 'mesurer-reporter',
-    titre: 'Mesurer, zoner et reporter dans le diagnostic',
-    resume: 'Les outils de l’éditeur de plans, le rattachement d’une zone à un ouvrage, et le report des quantités.',
+    titre: 'Mesurer, valider et reporter dans le dossier',
+    resume: 'Les outils de l’éditeur de Métrés, la validation de ce que l’IA propose, le rattachement d’une zone à un ouvrage et le report des quantités.',
     categorie: 'plans',
     sections: [
       {
@@ -422,25 +440,36 @@ export const ARTICLES: Article[] = [
           {
             type: 'liste',
             items: [
-              'Déplacer : faire glisser le plan, zoomer à la molette ou au pincement.',
-              'Sélection : reprendre une annotation posée, la déplacer, changer sa couleur, la supprimer.',
-              'Étalonner : donner l’échelle de la page.',
-              'Mesurer : une cote entre deux points, affichée en mètres.',
-              'Dessiner et Flèche : annoter librement.',
-              'Note : poser un commentaire sur un point du plan.',
-              'Zone : délimiter une surface, au glisser pour un rectangle ou point par point pour une forme libre.',
-              'Référence : superposer un second plan en transparence pour comparer deux états.',
+              'Déplacer (barre d’espace maintenue) : faire glisser le plan, zoomer à la molette ou au pincement.',
+              'Sélection (V) : reprendre une forme, la déplacer, tirer ses sommets, la supprimer.',
+              'Étalonner : donner l’échelle de la feuille.',
+              'Zone (A) : délimiter une surface, au glisser pour un rectangle ou point par point pour une forme libre.',
+              'Remplir (F) : un clic à l’intérieur d’une pièce fermée, la zone suit les traits du plan.',
+              'Mesurer (L) : une cote, ou une longueur point par point.',
+              'Compter (C) : un repère par clic, dans la catégorie choisie (portes, fenêtres, balcons…).',
+              'Découper (X) : retirer une surface d’une zone, une trémie dans une dalle par exemple.',
+              'Symbole : encadrer un symbole pour le chercher sur toutes les feuilles vectorielles du jeu, puis compter ses occurrences.',
+              'Dessiner, Flèche et Note : annoter librement.',
+              'Référence : superposer un autre plan du dossier en transparence pour comparer deux états.',
             ],
           },
-          { type: 'astuce', texte: 'Ctrl+Z annule le dernier geste et Ctrl+Maj+Z le rejoue, y compris un déplacement ou un changement de couleur. Échap abandonne le tracé en cours et revient à la sélection, sans rien effacer de ce qui est posé.' },
+          { type: 'astuce', texte: 'Ctrl+Z annule le dernier geste et Ctrl+Maj+Z le rejoue. Maj maintenue garde le trait à 0, 45 ou 90°. Échap abandonne le tracé en cours et revient à la sélection, sans rien effacer de ce qui est posé.' },
+        ],
+      },
+      {
+        id: 'valider',
+        titre: 'Valider ce que l’IA propose',
+        blocs: [
+          { type: 'texte', texte: 'Ce que l’analyse propose arrive à valider : listé, mais hors des totaux tant que vous ne l’avez pas accepté.' },
+          { type: 'texte', texte: 'L’onglet Cette feuille, à droite du plan, liste les zones proposées sur la feuille ouverte, avec leur mesure, leur confiance et l’accord de leurs cotes. Validez-les une à une, ou toutes avec Tout valider. Revoir, en haut de l’espace de travail, parcourt tout le jeu du moins sûr au plus sûr : Entrée valide, Suppr rejette.' },
         ],
       },
       {
         id: 'rattacher',
         titre: 'Rattacher une zone à un ouvrage',
         blocs: [
-          { type: 'texte', texte: 'Une surface mesurée ne vaut que si l’on sait de quoi elle est la surface. Dès qu’une zone est tracée, Diagly propose donc de la rattacher à un ouvrage du diagnostic.' },
-          { type: 'texte', texte: 'La liste des mesures de la page, à droite de l’éditeur, montre ce qui est rattaché et ce qui ne l’est pas. Un clic sur une ligne ouvre le choix de l’ouvrage.' },
+          { type: 'texte', texte: 'Une surface mesurée ne vaut que si l’on sait de quoi elle est la surface. Sélectionnez la zone : son panneau propose Rattacher à un ouvrage du relevé.' },
+          { type: 'texte', texte: 'Mesures de la page, dans l’onglet Cette feuille, signale celles qui ne sont rattachées à rien : touchez une ligne pour la rattacher. Dans la vue Tableau, plusieurs formes cochées se rattachent d’un geste.' },
           { type: 'texte', texte: 'Le rattachement est possible avant même que l’ouvrage soit relevé : vous pouvez préparer les surfaces sur plan, puis faire le relevé ensuite.' },
         ],
       },
@@ -448,8 +477,8 @@ export const ARTICLES: Article[] = [
         id: 'report',
         titre: 'Reporter les quantités',
         blocs: [
-          { type: 'texte', texte: 'Les zones et les cotes rattachées à un même ouvrage s’additionnent, y compris à travers plusieurs plans et plusieurs pages. Le total est proposé comme quantité de cet ouvrage, et le coût se recalcule avec elle.' },
-          { type: 'texte', texte: 'Le report reste un geste explicite : Diagly vous montre ce qu’il a mesuré et ce que cela changerait, et vous décidez. Une quantité ne change jamais toute seule sous un dossier en cours.' },
+          { type: 'texte', texte: 'Les zones et les cotes rattachées à un même ouvrage s’additionnent à travers toutes les feuilles du jeu, étages identiques compris. Reporter au dossier, en haut de l’espace de travail, écrit ce total comme quantité de l’ouvrage, et son coût suit, sauf s’il a été saisi à la main. Les éléments comptés partent en même temps.' },
+          { type: 'texte', texte: 'Le report reste un geste explicite : la fenêtre montre ce qui sera écrit et ce qui sera remplacé, et rien ne part avant votre confirmation. Une quantité ne change jamais toute seule sous un dossier en cours.' },
         ],
       },
     ],
@@ -693,7 +722,7 @@ export const TUTORIELS: Tutoriel[] = [
       { titre: 'Laisser les données publiques arriver', detail: 'En choisissant l’adresse dans la liste proposée, Diagly interroge les registres fédéraux et cantonaux et remplit seul l’EGID, l’emprise, le volume, l’affectation et les contraintes. Vérifiez la fiche du bâtiment : si le bâtiment identifié n’est pas le bon, corrigez l’adresse avant d’aller plus loin.', ecran: 'Dossier > Fiche du bâtiment' },
       { titre: 'Organiser la visite', detail: 'Enregistrez la gérance et le concierge, fixez le rendez-vous et envoyez la demande puis la confirmation : chaque mail est pré-rempli avec le dossier. Le rendez-vous entre dans votre calendrier.', ecran: 'Dossier > Visite' },
       { titre: 'Relever les ouvrages', detail: 'Le dossier s’ouvre sur son relevé. Suivez les étapes dans l’ordre de la visite et donnez à chaque ouvrage son état. Ajoutez une photo et une observation là où l’état se discute, c’est-à-dire partout où vous relevez Moyen ou Mauvais.', ecran: 'Dossier > Relevé' },
-      { titre: 'Vérifier les quantités', detail: 'Les quantités estimées depuis la géométrie sont des ordres de grandeur. Reprenez à la main celles qui pèsent dans le budget, et répartissez les parts des groupes de surface signalés comme incomplets.', ecran: 'Dossier > Relevé' },
+      { titre: 'Vérifier les quantités', detail: 'Les quantités estimées depuis la géométrie sont des ordres de grandeur. Mesurez sur les plans, dans Métrés, ou reprenez à la main celles qui pèsent dans le budget, et répartissez les parts des groupes de surface signalés comme incomplets.', ecran: 'Dossier > Relevé' },
       { titre: 'Contrôler le chiffrage', detail: 'Coûts montre le détail du calcul. Ajustez le pourcentage d’honoraires et celui de réserve selon votre pratique, et relisez le total TTC.', ecran: 'Dossier > Coûts' },
       { titre: 'Comparer des variantes', detail: 'Pour chaque autre façon de faire (isoler par l’intérieur, changer d’agent énergétique), créez une variante : elle remplace les ouvrages que vous désignez et se compare au diagnostic de base. C’est la vue qui sert à la discussion avec le propriétaire.', ecran: 'Dossier > Variantes' },
       { titre: 'Éditer le rapport', detail: 'Choisissez Complet pour un document de référence. Relisez-le à l’écran : il est paginé en A4, ce que vous voyez est ce qui sera imprimé.', ecran: 'Dossier > Rapports' },
@@ -767,20 +796,30 @@ export const TUTORIELS: Tutoriel[] = [
     pourAllerPlusLoin: ['terrain', 'etats-priorites'],
   },
   {
-    slug: 'plan-quantites',
-    titre: 'Mesurer sur un plan et reporter les quantités',
-    objectif: 'Passer d’un PDF d’architecte à des surfaces justes dans le relevé.',
+    slug: 'metres',
+    titre: 'Métrés : de vos plans aux quantités',
+    objectif: 'Déposer les plans d’un bâtiment, valider ce que l’IA y mesure, puis reporter les quantités dans le dossier.',
     duree: '20 min',
     niveau: 'Intermédiaire',
-    prerequis: ['Un plan du bâtiment en PDF ou en image.', 'Un diagnostic existant, même partiellement relevé.'],
+    prerequis: [
+      'Les plans du bâtiment en PDF ou en images (PNG, JPEG, WebP), 30 Mo au plus par fichier, ou les plans papier à scanner.',
+      'Un ordinateur ou un iPad pour valider et corriger : sur iPhone, les métrés se lisent sans se corriger.',
+    ],
     etapes: [
-      { titre: 'Importer le plan', detail: 'Ouvrez Plans, dans le menu du dossier, et déposez votre fichier. Les PDF de plusieurs pages sont gérés tels quels, chaque page gardant ses propres mesures.', ecran: 'Dossier > Plans' },
-      { titre: 'Étalonner la page', detail: 'L’éditeur s’ouvre sur l’étalonnage tant qu’il n’y a pas d’échelle. Tracez un trait sur la cote connue la plus longue du plan et saisissez sa longueur réelle.' },
-      { titre: 'Étendre l’échelle aux autres pages', detail: 'Si le document porte la même échelle sur plusieurs pages, cochez-les dans l’aperçu proposé. Décochez les pages à une autre échelle, un détail au 1:20 par exemple, pour les étalonner séparément.' },
-      { titre: 'Tracer les zones', detail: 'Avec l’outil Zone, délimitez une surface au glisser pour un rectangle, ou point par point pour une forme libre. La surface s’affiche en direct, arrondie au demi mètre carré.' },
-      { titre: 'Rattacher chaque zone à son ouvrage', detail: 'Le choix de l’ouvrage est proposé dès la zone tracée. La liste des mesures, à droite, signale en orange celles qui ne sont rattachées à rien : un clic sur la ligne ouvre le choix.' },
-      { titre: 'Comparer deux états', detail: 'L’outil Référence superpose un second plan en transparence, par exemple le projet par-dessus l’existant. Vous choisissez la page à superposer et vous la faites glisser pour l’aligner.' },
-      { titre: 'Reporter dans le relevé', detail: 'De retour dans le relevé, les ouvrages dont les plans portent des mesures proposent le report. Diagly affiche la quantité mesurée, le total des zones concernées et ce que cela change au coût. Vous validez.', ecran: 'Dossier > Relevé' },
+      { titre: 'Déposer les plans et choisir le bâtiment', detail: 'Ouvrez Métrés, dans le menu de gauche ou par la tuile de l’accueil, et glissez vos PDF ou vos images sur la zone de dépôt. Diagly demande pour quel bâtiment : un nouveau, créé tout de suite sous un nom provisoire que le cartouche complétera, ou un dossier existant, dont les plans s’ajoutent aux siens. Depuis un dossier, l’entrée Métrés de son menu ouvre directement ses plans.', ecran: 'Métrés' },
+      { titre: 'Ou scanner un plan papier', detail: 'Scanner un plan ouvre, dans l’app iPhone et iPad, le scanner de documents d’iOS, qui trouve et redresse la feuille. Ailleurs, prenez une photo ou choisissez-en une, puis vérifiez ses quatre coins. Indiquez le format de la feuille, A3 par défaut : c’est lui qui donne l’échelle. Le PDF obtenu suit le même chemin qu’un dépôt.', ecran: 'Métrés > Scanner un plan' },
+      { titre: 'Laisser l’IA lire chaque feuille', detail: 'L’espace de travail s’ouvre et l’analyse démarre seule, feuille après feuille : travaillez sur une feuille prête pendant que les autres se traitent, ou revenez plus tard. L’IA lit le numéro et le titre au cartouche, le type de vue, l’étage et les étages identiques représentés, et l’échelle imprimée, qu’elle vérifie sur une cote. Elle propose les pièces, les façades, les fenêtres et les portes, et compte les éléments : portes, fenêtres, balcons, cuisines, appareils sanitaires. Tout arrive à valider : rien ne compte dans les totaux avant votre validation.', ecran: 'Métrés > Espace de travail' },
+      { titre: 'Vérifier les échelles', detail: 'Dans la liste des feuilles, à gauche, une pastille donne l’état de chaque échelle. Vérifiée : confirmée par une cote, posée d’office. À vérifier : ouvrez la feuille et choisissez Vérifier et poser, ou posez toutes celles qui restent avec Poser les échelles proposées. Incohérente : l’échelle imprimée et la cote se contredisent, à vous de choisir. Sans échelle, tracez un trait sur une cote connue avec l’outil Étalonner : rien ne se mesure sur une feuille qui n’en a pas.', ecran: 'Métrés > Feuilles' },
+      { titre: 'Corriger ce que l’IA a lu', detail: 'Le crayon d’une feuille corrige son titre, son type de vue, son étage et le nombre d’étages identiques qu’elle représente : un étage type valable pour trois étages compte trois fois. La flèche relance l’analyse d’une feuille, ce qui est déjà validé restant en place ; la corbeille retire un document et tous ses métrés.', ecran: 'Métrés > Feuilles' },
+      { titre: 'Valider ce qui est juste', detail: 'L’onglet Cette feuille, à droite, liste les zones proposées sur la feuille ouverte avec leur mesure, leur confiance et l’accord de leurs cotes : validez-les une à une, ou toutes avec Tout valider. Revoir, en haut, passe en revue tout le jeu, du moins sûr au plus sûr, la vue cadrée sur chaque élément. Au clavier, Entrée valide, Suppr rejette, les flèches passent à l’élément précédent ou suivant, Échap quitte ; sur iPad, de gros boutons Valider et Rejeter.', ecran: 'Métrés > Revoir' },
+      { titre: 'Corriger avec les outils', detail: 'Chaque outil a sa touche : V sélectionne, A trace une zone (au glisser pour un rectangle, ou sommet par sommet puis Entrée), F remplit d’un clic une pièce fermée, L mesure une longueur, C pose un repère de comptage, X découpe une surface dans une zone. Symbole encadre un symbole et le cherche sur toutes les feuilles vectorielles du jeu. La barre d’espace maintenue déplace le plan, Maj garde le trait à 0, 45 ou 90°, Ctrl+Z annule. Étiquettes, sous le plan, écrit le nom et la quantité sur chaque zone.', ecran: 'Métrés > Plan' },
+      { titre: 'Lire les quantités, étages types compris', detail: 'Le panneau Quantités additionne tout le jeu par classification (pièces, façades, fenêtres, portes, murs, éléments comptés…), puis par étage et par forme. Un étage type compte autant de fois qu’il a d’étages identiques. Une ligne touchée montre sa forme sur le plan ; l’œil masque une classification, un appui long ou Ctrl+clic l’isole ; le crayon fait tomber la prochaine forme tracée dans cette classification.', ecran: 'Métrés > Quantités' },
+      { titre: 'Passer à la vue Tableau', detail: 'Plan | Tableau, en haut, met toutes les formes du jeu en lignes : local, feuille, étage, classification, quantité, ouvrage CFC, SIA 416, provenance, confiance et statut. Regroupez par classification, étage, ouvrage ou feuille pour lire les sous-totaux, et cochez plusieurs lignes pour les valider, les rattacher à un ouvrage ou les supprimer d’un geste. Une ligne touchée revient au plan, sa forme cadrée.', ecran: 'Métrés > Tableau' },
+      { titre: 'Contrôler les surfaces SIA 416', detail: 'Sous les pièces, le panneau donne la SP, la SN et la SC par étage, puis la SN rangée en SUP, SUS, SD et SI d’après le nom de chaque local. Ces surfaces sont à vérifier : la SP vient de l’emprise au nu extérieur (Dalles et emprise), la SN des pièces validées, la SC de la différence. Corrigez l’affectation pièce par pièce dans Affectation des pièces.', ecran: 'Métrés > Quantités > Surfaces SIA 416' },
+      { titre: 'Exporter en Excel', detail: 'Le bouton Excel sort un classeur en trois onglets : Récapitulatif, par classification et par étage ; Détail, une ligne par forme mesurée ; SIA 416. Les quantités y sont en m², ml et pièces.', ecran: 'Métrés > Excel' },
+      { titre: 'Reporter au dossier', detail: 'Reporter au dossier écrit dans le dossier du bâtiment de ces plans : ses éléments comptés, et la quantité des ouvrages du relevé auxquels des zones sont rattachées (sélectionnez une zone, puis Rattacher à un ouvrage). La fenêtre montre d’abord ce qui sera écrit et ce qui sera remplacé : rien ne part avant votre confirmation.', ecran: 'Métrés > Reporter au dossier' },
+      { titre: 'Répartir les types pendant la visite', detail: 'Dans le dossier, les éléments comptés se retrouvent sous Coûts. Six portes palières comptées ne disent pas lesquelles sont en bois : sur place, ouvrez le type au relevé et donnez-lui ses unités avec les boutons plus et moins, 2/6 en bois, puis 4/6 sur le type en métal. La quantité et le coût de chaque type suivent.', ecran: 'Dossier > Relevé' },
+      { titre: 'Pour des métrés justes', detail: 'Préférez le PDF vectoriel exporté par l’architecte : les zones s’aimantent aux traits du dessin. Un plan papier se scanne bien à plat, de face, sur un fond plus sombre que le papier et sans reflet, avec le bon format de feuille ; sur un scan, rien ne s’aimante : vérifiez chaque zone. Corrigez sur iPad ou sur ordinateur : sur iPhone, quantités, tableau et feuilles se lisent sans se corriger.' },
     ],
     pourAllerPlusLoin: ['etalonner', 'mesurer-reporter', 'quantites'],
   },
@@ -866,3 +905,13 @@ export const TUTORIELS: Tutoriel[] = [
     pourAllerPlusLoin: ['export-api', 'egid-donnees'],
   },
 ]
+
+/**
+ * Les tutoriels remplacés, vers celui qui en a pris la place.
+ *
+ * L'outil Plans du dossier est devenu Métrés, et son tutoriel avec lui : une
+ * ancienne adresse gardée en favori mène au nouveau plutôt qu'à une page vide.
+ */
+export const TUTORIELS_DEPLACES: Record<string, string> = {
+  'plan-quantites': 'metres',
+}

@@ -426,7 +426,7 @@ function SectionSia416({ sia, ouverte, onBasculer, lectureSeule, onAffecter }: {
 }) {
   const t = sia.total
   return (
-    <section className="overflow-hidden rounded-xl border bg-background">
+    <section className="overflow-hidden rounded-xl border bg-background" data-visite="metres-sia416">
       <button onClick={onBasculer} className="flex w-full items-center gap-2 px-2.5 py-2 text-left hover:bg-muted/60 pointer-coarse:min-h-11" aria-expanded={ouverte}>
         {ouverte ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
         <span className="flex h-3 w-3 shrink-0 items-center justify-center rounded-sm bg-slate-700 text-[7px] font-bold text-white" aria-hidden>S</span>

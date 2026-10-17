@@ -525,7 +525,7 @@ export function ProjectNew() {
         <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm">
           {importPret.plans ? (
             <p className="min-w-0 text-blue-900">
-              Pré-rempli depuis vos plans ({importPret.fichier}). Les mesures lues portent la mention « plans » ; vérifiez chaque champ. En choisissant l’adresse dans la liste proposée, les registres fédéraux complètent l’année et la parcelle sans remplacer vos mesures. Les plans seront rangés dans l’onglet Plans du dossier.
+              Pré-rempli depuis vos plans ({importPret.fichier}). Les mesures lues portent la mention « plans » ; vérifiez chaque champ. En choisissant l’adresse dans la liste proposée, les registres fédéraux complètent l’année et la parcelle sans remplacer vos mesures. Les plans rejoindront le dossier, dans Métrés.
             </p>
           ) : (
             <p className="min-w-0 text-blue-900">
@@ -847,8 +847,8 @@ export function ProjectNew() {
             {importPret?.plans && importPret.plans.fichiers.length > 0 && (
               <p className="border-t pt-3 text-sm text-muted-foreground">
                 {importPret.plans.fichiers.length > 1
-                  ? `${importPret.plans.fichiers.length} plans seront rangés dans l’onglet Plans du dossier.`
-                  : 'Le plan sera rangé dans l’onglet Plans du dossier.'}
+                  ? `${importPret.plans.fichiers.length} plans rejoindront le dossier, dans Métrés.`
+                  : 'Le plan rejoindra le dossier, dans Métrés.'}
               </p>
             )}
           </CardContent>

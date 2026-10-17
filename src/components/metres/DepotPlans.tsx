@@ -77,6 +77,7 @@ export function DepotPlans() {
           </button>
           <button
             onClick={() => setScanner(true)}
+            data-visite="metres-scanner"
             className="inline-flex h-11 items-center gap-2 rounded-xl border border-black/15 bg-white px-5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
           >
             <ScanLine className="h-4 w-4" />Scanner un plan

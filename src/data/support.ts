@@ -42,6 +42,18 @@ export const FAQ: FaqCategory[] = [
     ],
   },
   {
+    id: 'metres',
+    label: 'Métrés',
+    description: "Des plans du bâtiment aux quantités.",
+    icone: 'plan',
+    items: [
+      { q: 'Comment mesurer les plans d\'un bâtiment ?', a: "Ouvrez Métrés, déposez les PDF ou les images (ou scannez un plan papier) et choisissez le bâtiment. L'IA lit chaque feuille, propose pièces, façades, fenêtres et portes, et compte les éléments. Vous validez, et les quantités s'additionnent, étages types compris. Le tutoriel « Métrés : de vos plans aux quantités » suit chaque étape." },
+      { q: "Pourquoi mes quantités ne changent-elles pas après l'analyse ?", a: "Ce que l'IA propose reste « à valider », hors des totaux, tant que vous ne l'avez pas validé : une à une ou avec « Tout valider » dans l'onglet Cette feuille, ou pour tout le jeu avec « Revoir ». Une feuille sans échelle ne mesure rien non plus : posez son échelle d'abord." },
+      { q: 'Les surfaces SIA 416 sont-elles fiables ?', a: "Elles sont à vérifier : la SP vient de l'emprise au nu extérieur, la SN des pièces validées, la SC de la différence, et l'affectation en SUP, SUS, SD ou SI est déduite du nom de chaque local. Corrigez-la pièce par pièce dans le panneau des quantités, rubrique Surfaces SIA 416." },
+      { q: 'Puis-je corriger un métré sur iPhone ?', a: "Non. Sur iPhone, vous pouvez déposer ou scanner des plans et lire les quantités, le tableau et l'état des feuilles. Pour valider et corriger, ouvrez le métré sur iPad ou sur ordinateur." },
+    ],
+  },
+  {
     id: 'couts',
     label: 'Coûts & variantes',
     description: "Du prix unitaire au budget, et les variantes.",
