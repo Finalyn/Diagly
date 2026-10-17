@@ -215,6 +215,29 @@ export function saveBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+/** Ce qu'on peut écrire d'un plan. */
+export interface CorpsMajPlan {
+  name?: string
+  scalePxPerM?: number | null
+  annotations?: unknown[]
+  feuilles?: import('./api-types').FeuillesPlan | null
+  /** Remplace les propositions de l'IA en attente sur ces pages (voir server/src/lib/feuilles-plans.ts). */
+  propositions?: { pages: number[]; annotations: unknown[] }
+}
+
+/** Les pages rendues d'un plan, et les ouvrages du relevé, pour l'analyse par l'IA. */
+export interface EnvoiAnalyse {
+  pages: { image: Blob; numero: number; largeurPt: number | null; hauteurPt: number | null }[]
+  ouvrages: { id: string; cfcCode: string | null; libelle: string; unite: string | null }[]
+}
+
+export type ResultatAnalyseServeur = {
+  configured: boolean
+  tronque?: boolean
+  refus?: boolean
+  analyse?: import('./api-types').AnalysePlan | null
+}
+
 // ---------------- API surface ----------------
 
 export const api = {
@@ -379,9 +402,11 @@ export const api = {
       if (!res.ok) throw new ApiError(res.status, data?.error ?? `HTTP ${res.status}`, data?.details)
       return data
     },
-    update: (id: string, body: { name?: string; scalePxPerM?: number | null; annotations?: unknown[] }) =>
+    update: (id: string, body: CorpsMajPlan) =>
       request<{ plan: ApiPlan }>(`/api/plans/${id}`, { method: 'PUT', body }),
     delete: (id: string) => request<void>(`/api/plans/${id}`, { method: 'DELETE' }),
+    /** Les métrés du compte : un par dossier qui a des plans, sans les annotations. */
+    metres: () => request<{ metres: import('./api-types').ApiMetre[]; count: number }>('/api/plans/metres'),
     /**
      * Analyse du plan par l'IA : échelle, cote de contrôle, zones à valider.
      *
@@ -391,25 +416,38 @@ export const api = {
      * un numéro, puis on demande toutes les 3 s où elle en est. Un signal
      * abandonné l'arrête côté serveur aussi.
      */
-    analyser: async (
-      planId: string,
-      envoi: {
-        pages: { image: Blob; numero: number; largeurPt: number | null; hauteurPt: number | null }[]
-        ouvrages: { id: string; cfcCode: string | null; libelle: string; unite: string | null }[]
-      },
-      signal?: AbortSignal,
-    ) => {
-      type Resultat = { configured: boolean; tronque?: boolean; refus?: boolean; analyse?: import('./api-types').AnalysePlan | null }
+    analyser: async (planId: string, envoi: EnvoiAnalyse, signal?: AbortSignal): Promise<ResultatAnalyseServeur> => {
+      const depart = await api.plans.lancerAnalyse(planId, envoi)
+      if (!depart.enCours) return depart
+      return api.plans.suivreAnalyse(planId, depart.enCours, { signal, arreterAuServeur: true })
+    },
+    /**
+     * Le départ seul : rend le numéro de la tâche de fond. L'outil Métrés le
+     * garde avec la feuille, pour reprendre le résultat si l'onglet se ferme
+     * avant la fin.
+     */
+    lancerAnalyse: (planId: string, envoi: EnvoiAnalyse) => {
       const fd = new FormData()
       fd.append('donnees', JSON.stringify({
         pages: envoi.pages.map(({ numero, largeurPt, hauteurPt }) => ({ numero, largeurPt, hauteurPt })),
         ouvrages: envoi.ouvrages,
       }))
       for (const p of envoi.pages) fd.append('pages', p.image, `page-${p.numero}.${p.image.type === 'image/jpeg' ? 'jpg' : 'png'}`)
-      const depart = await envoyerFormulaire<Resultat & { enCours?: string }>(`/api/plans/${planId}/analyse`, fd)
-      if (!depart.enCours) return depart
-      const id = depart.enCours
-      const arreter = () => { void request(`/api/plans/${planId}/analyse/${id}`, { method: 'DELETE' }).catch(() => undefined) }
+      return envoyerFormulaire<ResultatAnalyseServeur & { enCours?: string }>(`/api/plans/${planId}/analyse`, fd)
+    },
+    /**
+     * Le suivi d'une tâche lancée, toutes les 3 s jusqu'à ce qu'elle soit prête.
+     *
+     * `arreterAuServeur` : un signal abandonné arrête aussi la tâche côté
+     * serveur. L'éditeur le veut (fermer l'éditeur, c'est renoncer) ; l'outil
+     * Métrés non, quand on quitte l'écran : la tâche continue et son résultat
+     * se reprend au retour.
+     */
+    suivreAnalyse: async (
+      planId: string, tache: string, options: { signal?: AbortSignal; arreterAuServeur?: boolean } = {},
+    ): Promise<ResultatAnalyseServeur> => {
+      const { signal, arreterAuServeur = false } = options
+      const arreter = () => { if (arreterAuServeur) api.plans.arreterAnalyse(planId, tache) }
       if (signal?.aborted) { arreter(); throw new DOMException('Analyse abandonnée', 'AbortError') }
       signal?.addEventListener('abort', arreter, { once: true })
       try {
@@ -417,14 +455,19 @@ export const api = {
         while (Date.now() < limite) {
           await new Promise((r) => setTimeout(r, 3000))
           if (signal?.aborted) throw new DOMException('Analyse abandonnée', 'AbortError')
-          const etat = await request<Resultat & { etat: 'en_cours' | 'prete' }>(`/api/plans/${planId}/analyse/${id}`)
+          const etat = await request<ResultatAnalyseServeur & { etat: 'en_cours' | 'prete' }>(`/api/plans/${planId}/analyse/${tache}`)
           if (etat.etat === 'prete') return etat
         }
-        arreter()
+        api.plans.arreterAnalyse(planId, tache)
         throw new Error('L’analyse prend trop de temps. Réessayez avec une seule page.')
       } finally {
         signal?.removeEventListener('abort', arreter)
       }
+    },
+    /** La tâche lancée sur ce plan et pas encore réclamée, si le serveur en tient une. */
+    tacheEnCours: (planId: string) => request<{ enCours: string | null }>(`/api/plans/${planId}/analyse`),
+    arreterAnalyse: (planId: string, tache: string) => {
+      void request(`/api/plans/${planId}/analyse/${tache}`, { method: 'DELETE' }).catch(() => undefined)
     },
     // Le serveur signe l'accès au fichier : on ne reconstruit plus l'URL à partir du
     // nom, sinon le téléchargement est refusé (403).

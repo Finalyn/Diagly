@@ -26,7 +26,8 @@ describe("une analyse valide", () => {
 
   it("garde la page, son échelle ramenée à « 1:100 » et sa cote de contrôle", () => {
     expect(a.pages).toEqual([{
-      page: 1, type: "elevation", titre: "Façade sud", orientation: "sud", echelle: "1:100", echelleOu: "cartouche",
+      page: 1, type: "elevation", feuille: null, titre: "Façade sud", niveau: null, etagesIdentiques: null,
+      orientation: "sud", echelle: "1:100", echelleOu: "cartouche",
       cote: { texte: "12.40", longueurM: 12.4, p1: [400, 1200], p2: [1090, 1200] }, remarque: null,
     }]);
     expect(a.remarques).toBe("Pas de coupe.");
@@ -131,7 +132,61 @@ describe("les écarts de forme tolérés", () => {
   it("refuse ce qui n’a pas la forme d’une analyse", () => {
     expect(validerAnalyse(null, [PAGE], RELEVE)).toBeNull();
     expect(validerAnalyse([1, 2], [PAGE], RELEVE)).toBeNull();
-    expect(validerAnalyse({}, [PAGE], RELEVE)).toEqual({ pages: [], zones: [], elements: [], comptages: [], ecartees: [], remarques: null });
+    expect(validerAnalyse({}, [PAGE], RELEVE)).toEqual({ pages: [], projet: null, zones: [], elements: [], comptages: [], ecartees: [], remarques: null });
+  });
+});
+
+describe("les feuilles d'un jeu de plans", () => {
+  const PLAN: PageEnvoyee = { ...PAGE, numero: 2 };
+  const lire = (page: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    validerAnalyse({ pages: [{ page: 2, zones: [], ...page }], ...extra }, [PAGE, PLAN], RELEVE)!;
+
+  it("lit le numéro de feuille, le niveau et les étages identiques d'un plan d'étage type", () => {
+    const a = lire({ type: "plan_etage", feuille: "A-102", titre: "Étage type (1er au 3e)", niveau: "1er au 3e", etagesIdentiques: "3" });
+    expect(a.pages[0]).toMatchObject({ page: 2, type: "plan_etage", feuille: "A-102", niveau: "1er au 3e", etagesIdentiques: 3 });
+  });
+
+  it("ne garde ni niveau ni étages identiques pour une vue qui n'est pas un plan d'étage", () => {
+    const a = lire({ type: "elevation", feuille: 201, niveau: "Rez", etagesIdentiques: 3 });
+    expect(a.pages[0]).toMatchObject({ feuille: "201", niveau: null, etagesIdentiques: null });
+  });
+
+  it("écarte un nombre d'étages identiques absurde plutôt que de multiplier tout l'étage", () => {
+    expect(lire({ type: "plan_etage", etagesIdentiques: 0 }).pages[0].etagesIdentiques).toBeNull();
+    expect(lire({ type: "plan_etage", etagesIdentiques: 2.5 }).pages[0].etagesIdentiques).toBeNull();
+    expect(lire({ type: "plan_etage", etagesIdentiques: 80 }).pages[0].etagesIdentiques).toBeNull();
+    expect(lire({ type: "plan_etage", etagesIdentiques: "trois" }).pages[0].etagesIdentiques).toBeNull();
+  });
+
+  it("lit le bâtiment au cartouche, sans garder un NPA ou un canton mal formés", () => {
+    const a = lire({ type: "plan_etage" }, { projet: { nom: "Immeuble Les Essais", adresse: "Chemin du Contrôle 12", npa: "1004", localite: "Lausanne", canton: "vd" } });
+    expect(a.projet).toEqual({ nom: "Immeuble Les Essais", adresse: "Chemin du Contrôle 12", npa: "1004", localite: "Lausanne", canton: "VD" });
+    const b = lire({ type: "plan_etage" }, { projet: { nom: null, adresse: null, npa: "10045", localite: null, canton: "Vaud" } });
+    expect(b.projet).toBeNull();
+  });
+
+  it("garde les pièces avec leur nom et la surface imprimée", () => {
+    const a = validerAnalyse(reponse([zone({
+      type: "piece", libelle: "Logement A, Séjour", orientation: null, releveId: null, valeurCotee: "24,15", cotes: "surface imprimée",
+      points: [[100, 100], [600, 100], [600, 500], [100, 500]],
+    })], { type: "plan_etage" }), [PAGE], RELEVE)!;
+    expect(a.ecartees).toEqual([]);
+    expect(a.zones[0]).toMatchObject({ type: "piece", libelle: "Logement A, Séjour", valeurCotee: 24.15, cotes: "surface imprimée" });
+  });
+
+  it("donne un libellé par défaut à une pièce sans nom", () => {
+    const a = validerAnalyse(reponse([zone({ type: "Pièce", libelle: null })]), [PAGE], RELEVE)!;
+    expect(a.zones[0]).toMatchObject({ type: "piece", libelle: "Pièce" });
+  });
+
+  it("demande feuilles, niveaux, étages identiques, pièces et bâtiment dans la consigne", () => {
+    const c = consigneAnalyse([PAGE], []);
+    expect(c).toContain('"feuille"');
+    expect(c).toContain('"niveau"');
+    expect(c).toContain('"etagesIdentiques"');
+    expect(c).toContain('"piece"');
+    expect(c).toContain('"projet"');
+    expect(c).not.toContain("\u2014");
   });
 });
 

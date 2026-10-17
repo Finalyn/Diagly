@@ -559,6 +559,11 @@ model Plan {
   scalePxPerM Float?   @map("scale_px_per_m")
   /// Annotations (cotes, notes, hachures…) sérialisées en JSON.
   annotations Json     @default("[]")
+  /// Ce que l'outil Métrés sait de chaque feuille (page) du document : numéro
+  /// et titre lus au cartouche, type de vue, niveau, étages identiques, état de
+  /// l'analyse par l'IA. null tant que le plan n'est pas passé par les Métrés.
+  /// Voir server/src/lib/feuilles-plans.ts.
+  feuilles    Json?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 

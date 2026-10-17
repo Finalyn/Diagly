@@ -104,12 +104,15 @@ export const COULEURS_PAR_TYPE: Record<TypeZoneIA, string> = {
   emprise: '#22c55e',
   dalle: '#22c55e',
   mur: '#a855f7',
+  // Un indigo à part : sur un plan d'étage, les pièces couvrent presque tout,
+  // et elles ne doivent se confondre ni avec la dalle ni avec les murs.
+  piece: '#6366f1',
   autre: '#111827',
 }
 
 export const NOMS_TYPES_ZONE: Record<TypeZoneIA, string> = {
   facade: 'Façade', fenetre: 'Fenêtre', porte: 'Porte', toiture: 'Toiture',
-  emprise: 'Emprise', dalle: 'Dalle', mur: 'Mur', autre: 'Autre',
+  emprise: 'Emprise', dalle: 'Dalle', mur: 'Mur', piece: 'Pièce', autre: 'Autre',
 }
 
 export const NOMS_TYPES_PAGE: Record<TypePageAnalysee, string> = {
@@ -147,12 +150,13 @@ export function nomDuRepere(a: Pick<PlanAnnotation, 'repere'>): string {
  *
  * Une ouverture se mesure au vide de maçonnerie, donc au cadre extérieur ; une
  * façade, une toiture, une emprise au nu extérieur. Une dalle se mesure à
- * l'intérieur des murs de façade. Pour un mur ou le reste, rien n'est
- * préféré : seuls les traits suivis décident.
+ * l'intérieur des murs de façade, une pièce au nu intérieur de ses murs et
+ * cloisons. Pour un mur ou le reste, rien n'est préféré : seuls les traits
+ * suivis décident.
  */
 const PREFERENCE: Record<TypeZoneIA, 'exterieur' | 'interieur' | null> = {
   facade: 'exterieur', fenetre: 'exterieur', porte: 'exterieur', toiture: 'exterieur', emprise: 'exterieur',
-  dalle: 'interieur', mur: null, autre: null,
+  dalle: 'interieur', piece: 'interieur', mur: null, autre: null,
 }
 
 // ---------------------------------------------------------------- propositions
@@ -268,7 +272,8 @@ export function validerRepere(a: PlanAnnotation): PlanAnnotation {
  * Même forme qu'une zone tracée à la main, son ouvrage compris : le report
  * vers le relevé la traite dès lors comme n'importe quelle autre. Elle prend
  * la couleur de son type, pour qu'on distingue encore, d'un coup d'œil, les
- * façades des fenêtres.
+ * façades des fenêtres, et garde ce type : le récapitulatif des Métrés range
+ * les quantités par là.
  */
 export function validerProposition(a: PlanAnnotation): PlanAnnotation {
   if (!a.proposition) return a
@@ -277,6 +282,7 @@ export function validerProposition(a: PlanAnnotation): PlanAnnotation {
     ...reste,
     color: COULEURS_PAR_TYPE[proposition.type],
     text: proposition.libelle,
+    typeZone: proposition.type,
     // Aimantée sur le dessin, sa surface est celle du plan : elle reste
     // affichée au centième une fois validée.
     ...(proposition.aimantee ? { mesureExacte: true } : {}),

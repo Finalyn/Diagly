@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { spring, projeterElan, suiviVitesse, mouvementReduit, RESSORTS, type SpringHandle } from '@/lib/motion'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -6,8 +7,10 @@ import {
   ZoomIn, ZoomOut, Undo2, Redo2, Check, Trash2, Loader2, ChevronLeft, ChevronRight, Maximize, Download, Link2, Layers,
   AlertTriangle,
 } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, type CorpsMajPlan } from '@/lib/api'
 import type { ApiPlan, PlanAnnotation, PlanAnnotationType, PlanPoint } from '@/lib/api-types'
+import type { PoigneeEditeur } from '@/components/metres/moteur'
+import { remplacerPropositions } from '@/lib/plans/feuilles'
 import { cn } from '@/lib/utils'
 import { loadPdfjs } from '@/lib/pdf'
 import { airePolygone, echelleDansTable, natureDe, natureDuTrace } from '@/lib/plan-quantites'
@@ -157,7 +160,41 @@ function retouchee(a: PlanAnnotation): Partial<PlanAnnotation> {
 
 interface View { zoom: number; tx: number; ty: number }
 
-export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => void }) {
+/** Ce que la dernière analyse a dit de la page : écartées, remarques, totaux comptés. */
+export type SuiteAnalyse = Pick<ResultatAnalyse, 'ecartees' | 'remarques' | 'tronque' | 'pagesSansGeometrie' | 'comptages'>
+
+/**
+ * L'éditeur encastré dans l'espace de travail des Métrés.
+ *
+ * Plein écran dans le dossier, l'éditeur se pose ici au centre, entre le
+ * navigateur des feuilles et le panneau de droite : c'est le navigateur qui
+ * choisit la page, l'analyse tourne dans la file du jeu entier et non depuis
+ * l'éditeur, et les panneaux de la feuille (zones à valider, éléments
+ * comptés, mesures) rejoignent la colonne de droite au lieu de flotter sur
+ * le plan. Sans encastrement, rien ne change.
+ */
+export interface EncastrementEditeur {
+  /** La page affichée, choisie dans le navigateur des feuilles. */
+  page: number
+  /** L'éditeur voudrait une autre page (« sur les autres pages ») : le navigateur décide. */
+  onPage: (page: number) => void
+  /** Le nom de la feuille, à la place du nom du fichier. */
+  titre: string
+  /** Enregistre le plan après les écritures de la file sur le même document. */
+  enregistrer: (corps: CorpsMajPlan) => Promise<unknown>
+  /** Où poser les panneaux de la feuille ; null tant que la colonne n'est pas montée. */
+  panneau: HTMLElement | null
+  /** Ce que la dernière analyse a dit de cette page. */
+  suite: SuiteAnalyse | null
+  /** Les échelles proposées par l'analyse pour les pages de ce plan, en attente de confirmation. */
+  echellesProposees: EchelleDePage[]
+  /** L'éditeur se déclare à la file d'analyse, qui lui remet les propositions de son plan. */
+  definirPoignee: (p: PoigneeEditeur | null) => void
+  /** Les annotations et échelles à jour, pour le récapitulatif du jeu. */
+  onEtat?: (etat: { planId: string; annotations: PlanAnnotation[]; echelles: Record<string, number>; scale: number | null }) => void
+}
+
+export function PlanEditor({ plan, onClose, encastre }: { plan: ApiPlan; onClose?: () => void; encastre?: EncastrementEditeur }) {
   const queryClient = useQueryClient()
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -196,7 +233,15 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   const [cursor, setCursor] = useState<PlanPoint | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [pageNum, setPageNum] = useState(1)
+  // Encastré, la page vient du navigateur des feuilles ; seul, l'éditeur la tient.
+  const [pageInterne, setPageInterne] = useState(1)
+  const pageNum = encastre ? encastre.page : pageInterne
+  const encastreRef = useRef(encastre)
+  useEffect(() => { encastreRef.current = encastre })
+  const allerPage = (n: number) => {
+    if (encastreRef.current) encastreRef.current.onPage(n)
+    else setPageInterne(n)
+  }
   const [numPages, setNumPages] = useState(1)
   const [calibrateSeg, setCalibrateSeg] = useState<[PlanPoint, PlanPoint] | null>(null)
   const [calibrateVal, setCalibrateVal] = useState('')
@@ -784,20 +829,75 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     setDirty(true)
   }
 
+  /**
+   * Encastré, l'éditeur reçoit les propositions que la file d'analyse range
+   * pour son plan pendant qu'il est ouvert : il tient les annotations, c'est
+   * à lui de les poser (et à son enregistrement de les garder).
+   */
+  const recevoir = useRef<PoigneeEditeur['recevoir']>(() => undefined)
+  useEffect(() => {
+    recevoir.current = (pages, nouvelles) => {
+      retenir(annotationsActuelles.current)
+      setAnnotations((l) => remplacerPropositions(l, pages, nouvelles))
+      setDirty(true)
+    }
+  })
+  const definirPoignee = encastre?.definirPoignee
+  useEffect(() => {
+    if (!definirPoignee) return
+    definirPoignee({ planId: plan.id, recevoir: (pages, nouvelles) => recevoir.current(pages, nouvelles) })
+    return () => definirPoignee(null)
+  }, [definirPoignee, plan.id])
+
+  // Le récapitulatif du jeu suit ce qu'on valide ici, sans attendre l'enregistrement.
+  useEffect(() => {
+    encastreRef.current?.onEtat?.({ planId: plan.id, annotations, echelles, scale })
+  }, [plan.id, annotations, echelles, scale])
+
+  // Encastré, la page change depuis le navigateur : ce qui était sélectionné ou
+  // en cours de tracé appartenait à la page d'avant.
+  const pagePrecedente = useRef(pageNum)
+  useEffect(() => {
+    if (!encastreRef.current || pagePrecedente.current === pageNum) return
+    pagePrecedente.current = pageNum
+    setSelectedAnn(null)
+    setPending(null)
+    setDraft([])
+  }, [pageNum])
+
+  // La table d'échelles voyage avec les annotations : un seul bloc JSON,
+  // relu d'une pièce, sans colonne supplémentaire en base.
+  const corpsASauver = (): CorpsMajPlan => {
+    const sansTable = annotations.filter((a) => a.type !== 'pages')
+    const aEnvoyer = Object.keys(echelles).length
+      ? [...sansTable, { id: 'pages', type: 'pages' as const, points: [], pageScales: echelles }]
+      : sansTable
+    return { scalePxPerM: scale, annotations: aEnvoyer }
+  }
+
   const onSave = async () => {
     setSaving(true)
     try {
-      // La table d'échelles voyage avec les annotations : un seul bloc JSON,
-      // relu d'une pièce, sans colonne supplémentaire en base.
-      const sansTable = annotations.filter((a) => a.type !== 'pages')
-      const aEnvoyer = Object.keys(echelles).length
-        ? [...sansTable, { id: 'pages', type: 'pages' as const, points: [], pageScales: echelles }]
-        : sansTable
-      await api.plans.update(plan.id, { scalePxPerM: scale, annotations: aEnvoyer })
+      const corps = corpsASauver()
+      // Encastré, l'écriture passe après celles de la file sur ce plan.
+      await (encastre ? encastre.enregistrer(corps) : api.plans.update(plan.id, corps))
       queryClient.invalidateQueries({ queryKey: ['plans', plan.projectId] })
       setDirty(false)
     } finally { setSaving(false) }
   }
+
+  /**
+   * Encastré, on passe d'un document à l'autre d'un clic dans le navigateur :
+   * l'éditeur se démonte avant que l'enregistrement différé n'ait eu lieu. Ce
+   * qui n'était pas encore parti part au démontage.
+   */
+  const enAttenteDeSauvegarde = useRef<{ dirty: boolean; corps: CorpsMajPlan } | null>(null)
+  useEffect(() => { enAttenteDeSauvegarde.current = { dirty, corps: corpsASauver() } })
+  useEffect(() => () => {
+    const e = encastreRef.current
+    const derniere = enAttenteDeSauvegarde.current
+    if (e && derniere?.dirty) void e.enregistrer(derniere.corps).catch(() => undefined)
+  }, [])
 
   // Auto-save : enregistre automatiquement 1s après la dernière modification.
   useEffect(() => {
@@ -969,7 +1069,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault()
@@ -1038,7 +1138,9 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     const siens = reperesPage.filter((a) => a.repere!.categorie === categorie)
     return siens.length ? [{ categorie, total: siens.length, aValider: siens.filter((a) => a.repere!.aValider).length }] : []
   })
-  const montrerElements = reperesPage.length > 0 || (suiteAnalyse?.comptages.length ?? 0) > 0
+  // Encastré, ce que l'analyse a dit vient des feuilles du jeu, pas d'une analyse lancée ici.
+  const suite = encastre ? encastre.suite : suiteAnalyse
+  const montrerElements = reperesPage.length > 0 || (suite?.comptages.length ?? 0) > 0
 
   /** Les zones proposées par l'analyse, en attente de validation, ici et sur les autres pages. */
   const propositionsPage = annotationsPage.filter((a) => a.proposition)
@@ -1062,6 +1164,69 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
     return a.proposition?.aimantee ? `${fr(m, 2)} ${u}` : `≈ ${fr(m, 1)} ${u}`
   }
 
+  /**
+   * Les panneaux de la feuille : zones à valider, éléments comptés, mesures.
+   * Seul, l'éditeur les fait flotter à droite du plan ; encastré dans les
+   * Métrés, ils rejoignent la colonne de droite de l'espace de travail.
+   */
+  const panneauxDeLaFeuille = (
+    <>
+      {(propositionsPage.length > 0 || propositionsAutres.length > 0) && (
+        <ListePropositions
+          zones={propositionsPage}
+          selection={selectedAnn}
+          mesure={mesureProposee}
+          ecartCotes={(a) => ecartAuxCotes(a, echelleCourante)}
+          lie={libelleLie}
+          bilan={bilanDeFacade(propositionsPage, echelleCourante)}
+          autresPages={propositionsAutres}
+          ecartees={(suite?.ecartees ?? []).filter((e) => !isPdf || e.page == null || e.page === pageNum)}
+          remarques={suite?.remarques ?? null}
+          tronque={suite?.tronque ?? false}
+          sansGeometrie={!!suite?.pagesSansGeometrie.includes(pageNum)}
+          etalonne={etalonne}
+          masqueeSurMobile={!!selAnn}
+          onChoisir={(id) => { setTool('select'); setSelectedAnn(id) }}
+          onValider={(id) => validerZones([id])}
+          onValiderTout={() => validerZones(propositionsPage.map((a) => a.id))}
+          onSupprimer={(id) => retirerZones([id])}
+          onSupprimerTout={() => retirerZones(propositionsPage.map((a) => a.id))}
+          onOuvrage={(id) => { setTool('select'); setSelectedAnn(id); setChoixOuvrage(true) }}
+          onAllerPage={(n) => { setSelectedAnn(null); allerPage(n) }}
+        />
+      )}
+      {montrerElements && (
+        <ElementsDeLAnalyse
+          // Une nouvelle analyse repart de ses propres totaux.
+          key={suite?.comptages.map((c) => `${c.categorie}${c.nombre}`).join('-') ?? 'aucune'}
+          reperes={reperesParCategorie}
+          comptages={suite?.comptages ?? []}
+          existants={comptagesDuDossier(projet?.comptages)}
+          nomDuPlan={plan.name}
+          enCours={enregistrerComptages.isPending}
+          masqueeSurMobile={!!selAnn}
+          onValiderReperes={() => validerReperes(reperesPage.filter((a) => a.repere!.aValider).map((a) => a.id))}
+          onRetirerReperes={() => retirerZones(reperesPage.filter((a) => a.repere!.aValider).map((a) => a.id))}
+          onReporter={reporterComptages}
+        />
+      )}
+      {zonesDeLaPage.length > 0 && (
+        <ListeDesZones
+          zones={zonesDeLaPage}
+          selection={selectedAnn}
+          mesure={quantiteDe}
+          lie={libelleLie}
+          onChoisir={(id) => { setTool('select'); setSelectedAnn(id); setChoixOuvrage(true) }}
+        />
+      )}
+    </>
+  )
+
+  /** Encastré : l'échelle que l'analyse propose pour cette page, et celles du plan qui attendent. */
+  const echellesAVerifier = (encastre?.echellesProposees ?? [])
+    .filter((e) => e.statut !== 'aucune' && echelleDansTable(echelles, scale, e.page) == null)
+  const echelleDeLaPage = echellesAVerifier.find((e) => e.page === pageNum) ?? null
+
   // Les pastilles de couleur agissent sur la selection quand il y en a une,
   // sinon sur le prochain trace : elles doivent montrer celle qui s'applique.
   const couleurActive = selAnn ? (selAnn.color ?? COLORS[0]) : color
@@ -1075,21 +1240,26 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
        gris, si bien qu'on changeait d'application en ouvrant un plan, et l'outil
        actif, posé en `bg-primary` sur un fond déjà sombre, ne se voyait pas. Seule
        la scène garde un fond neutre réglable : c'est lui qui détache la feuille. */
-    <div className="fixed inset-0 z-50 flex select-none flex-col bg-background">
+    <div className={cn('flex select-none flex-col bg-background', encastre ? 'relative h-full min-h-0 w-full' : 'fixed inset-0 z-50')}>
       {/* Dans l'app iPhone et iPad, la page passe sous la barre d'état (heure,
           réseau, batterie) : sans marge, la croix et le nom du plan se
           retrouvaient dessous. La marge est dans la barre elle-même, et non
           autour de l'éditeur, pour que son fond monte jusqu'en haut de l'écran
           sans bande vide. Sur ordinateur, ces marges valent zéro. */}
-      <header className="safe-top safe-sides shrink-0 border-b">
-        <div className="flex h-14 items-center gap-2 px-2 sm:px-3">
-          <button onClick={onClose} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Fermer">
-            <X className="h-5 w-5" />
-          </button>
-          <img src="/diagly-logo.svg" alt="Diagly" className="hidden h-7 shrink-0 sm:block" />
-          <div className="hidden h-6 w-px shrink-0 bg-border sm:block" aria-hidden />
+      <header className={cn('shrink-0 border-b', !encastre && 'safe-top safe-sides')}>
+        <div className={cn('flex items-center gap-2 px-2 sm:px-3', encastre ? 'h-12' : 'h-14')}>
+          {/* Encastré, la barre de l'espace de travail porte le logo et le retour. */}
+          {!encastre && (
+            <>
+              <button onClick={onClose} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Fermer">
+                <X className="h-5 w-5" />
+              </button>
+              <img src="/diagly-logo.svg" alt="Diagly" className="hidden h-7 shrink-0 sm:block" />
+              <div className="hidden h-6 w-px shrink-0 bg-border sm:block" aria-hidden />
+            </>
+          )}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{plan.name}</p>
+            <p className="truncate text-sm font-semibold">{encastre ? encastre.titre : plan.name}</p>
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               {saving
                 ? <><Loader2 className="h-3 w-3 animate-spin" />Enregistrement…</>
@@ -1097,21 +1267,26 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                   ? 'Modifications en cours…'
                   : <><Check className="h-3 w-3 text-emerald-600" />Enregistré</>}
               <span aria-hidden>·</span>
-              {scale ? <span>échelle définie</span> : <span className="text-amber-600">pas d’échelle</span>}
+              {encastre
+                ? (etalonne ? <span>échelle posée</span> : <span className="text-amber-600">pas d’échelle</span>)
+                : scale ? <span>échelle définie</span> : <span className="text-amber-600">pas d’échelle</span>}
             </p>
           </div>
 
           {/* L'analyse par l'IA, signalée par le logo de Diagly : elle propose
-              l'échelle et les zones à métrer, que l'on valide ensuite. */}
-          <button
-            onClick={() => setAnalyseOuverte(true)}
-            data-visite="plan-analyse"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
-            title="Analyser avec l’IA : échelle et zones à métrer"
-          >
-            {analyseEnCours ? <Loader2 className="h-4 w-4 animate-spin" /> : <MarqueDiagly className="h-4 w-4" />}
-            <span className="hidden md:inline">{analyseEnCours ? 'Analyse en cours…' : 'Analyser avec l’IA'}</span>
-          </button>
+              l'échelle et les zones à métrer, que l'on valide ensuite. Encastré,
+              c'est la file du jeu entier qui analyse, depuis le navigateur. */}
+          {!encastre && (
+            <button
+              onClick={() => setAnalyseOuverte(true)}
+              data-visite="plan-analyse"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+              title="Analyser avec l’IA : échelle et zones à métrer"
+            >
+              {analyseEnCours ? <Loader2 className="h-4 w-4 animate-spin" /> : <MarqueDiagly className="h-4 w-4" />}
+              <span className="hidden md:inline">{analyseEnCours ? 'Analyse en cours…' : 'Analyser avec l’IA'}</span>
+            </button>
+          )}
 
           <div className="flex shrink-0 items-center gap-0.5">
             <button onClick={() => zoomButton(1 / 1.25)} className="rounded-lg p-2 transition-colors hover:bg-muted" title="Dézoomer"><ZoomOut className="h-4 w-4" /></button>
@@ -1139,7 +1314,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
       {/* Mêmes marges sur les côtés : en paysage, l'iPhone a son encoche à
           gauche ou à droite, et le rail d'outils comme la scène doivent rester
           hors de sa portée. */}
-      <div className="safe-sides flex min-h-0 flex-1">
+      <div className={cn('flex min-h-0 flex-1', !encastre && 'safe-sides')}>
         {/* Rail d'outils : vertical sur grand écran, il repasse en bande sous la
             scène sur mobile, à portée de pouce. Il descend jusqu'au bas de
             l'écran : ses dernières pastilles s'arrêtent au-dessus de la barre
@@ -1274,7 +1449,26 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
 
             {/* Tant que la page n'a pas d'échelle, rien de ce qu'on relèverait
                 n'aurait de sens : on le dit, et on n'ouvre que l'étalonnage. */}
-            {!loading && !etalonne && (
+            {!loading && !etalonne && echelleDeLaPage && (
+              <div className="pointer-events-none absolute inset-x-0 top-14 flex justify-center px-3">
+                <div
+                  data-habillage
+                  className="pointer-events-auto flex max-w-full items-center gap-3 rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 shadow-sm"
+                >
+                  <MarqueDiagly className="h-4 w-4" />
+                  <p className="min-w-0 text-xs text-sky-950">
+                    <span className="font-medium">Échelle proposée :</span> {echelleDeLaPage.resume}.
+                  </p>
+                  <button
+                    onClick={() => setEchellesProposees(echellesAVerifier)}
+                    className="shrink-0 rounded-lg bg-sky-700 px-2.5 py-1.5 text-xs font-semibold text-white"
+                  >
+                    Vérifier et poser
+                  </button>
+                </div>
+              </div>
+            )}
+            {!loading && !etalonne && !echelleDeLaPage && (
               <div className="pointer-events-none absolute inset-x-0 top-14 flex justify-center px-3">
                 <div
                   data-habillage
@@ -1313,60 +1507,13 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
             {/* À droite : les zones proposées par l'IA, à valider, puis les
                 mesures de la page, où l'on relit ce qui a été mesuré et ce qui
                 attend encore un ouvrage, sans ouvrir chaque forme. */}
-            {(zonesDeLaPage.length > 0 || propositionsPage.length > 0 || propositionsAutres.length > 0 || montrerElements) && (
+            {!encastre && (zonesDeLaPage.length > 0 || propositionsPage.length > 0 || propositionsAutres.length > 0 || montrerElements) && (
               <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 flex max-h-[45vh] flex-col items-end gap-2 sm:inset-x-auto sm:bottom-auto sm:right-3 sm:top-3 sm:max-h-[calc(100%-1.5rem)]">
-                {(propositionsPage.length > 0 || propositionsAutres.length > 0) && (
-                  <ListePropositions
-                    zones={propositionsPage}
-                    selection={selectedAnn}
-                    mesure={mesureProposee}
-                    ecartCotes={(a) => ecartAuxCotes(a, echelleCourante)}
-                    lie={libelleLie}
-                    bilan={bilanDeFacade(propositionsPage, echelleCourante)}
-                    autresPages={propositionsAutres}
-                    ecartees={(suiteAnalyse?.ecartees ?? []).filter((e) => !isPdf || e.page == null || e.page === pageNum)}
-                    remarques={suiteAnalyse?.remarques ?? null}
-                    tronque={suiteAnalyse?.tronque ?? false}
-                    sansGeometrie={!!suiteAnalyse?.pagesSansGeometrie.includes(pageNum)}
-                    etalonne={etalonne}
-                    masqueeSurMobile={!!selAnn}
-                    onChoisir={(id) => { setTool('select'); setSelectedAnn(id) }}
-                    onValider={(id) => validerZones([id])}
-                    onValiderTout={() => validerZones(propositionsPage.map((a) => a.id))}
-                    onSupprimer={(id) => retirerZones([id])}
-                    onSupprimerTout={() => retirerZones(propositionsPage.map((a) => a.id))}
-                    onOuvrage={(id) => { setTool('select'); setSelectedAnn(id); setChoixOuvrage(true) }}
-                    onAllerPage={(n) => { setSelectedAnn(null); setPageNum(n) }}
-                  />
-                )}
-                {montrerElements && (
-                  <ElementsDeLAnalyse
-                    // Une nouvelle analyse repart de ses propres totaux.
-                    key={suiteAnalyse?.comptages.map((c) => `${c.categorie}${c.nombre}`).join('-') ?? 'aucune'}
-                    reperes={reperesParCategorie}
-                    comptages={suiteAnalyse?.comptages ?? []}
-                    existants={comptagesDuDossier(projet?.comptages)}
-                    nomDuPlan={plan.name}
-                    enCours={enregistrerComptages.isPending}
-                    masqueeSurMobile={!!selAnn}
-                    onValiderReperes={() => validerReperes(reperesPage.filter((a) => a.repere!.aValider).map((a) => a.id))}
-                    onRetirerReperes={() => retirerZones(reperesPage.filter((a) => a.repere!.aValider).map((a) => a.id))}
-                    onReporter={reporterComptages}
-                  />
-                )}
-                {zonesDeLaPage.length > 0 && (
-                  <ListeDesZones
-                    zones={zonesDeLaPage}
-                    selection={selectedAnn}
-                    mesure={quantiteDe}
-                    lie={libelleLie}
-                    onChoisir={(id) => { setTool('select'); setSelectedAnn(id); setChoixOuvrage(true) }}
-                  />
-                )}
+                {panneauxDeLaFeuille}
               </div>
             )}
 
-            {analyseEnCours && !analyseOuverte && (
+            {analyseEnCours && !analyseOuverte && !encastre && (
               <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3 sm:bottom-auto sm:top-14">
                 <AnalyseEnFond onOuvrir={() => setAnalyseOuverte(true)} />
               </div>
@@ -1447,18 +1594,18 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                 </label>
               </div>
 
-              {isPdf && numPages > 1 && (
+              {isPdf && numPages > 1 && !encastre && (
                 <div className="ml-auto flex shrink-0 items-center gap-1">
-                  <button onClick={() => setPageNum((n) => Math.max(1, n - 1))} disabled={pageNum <= 1} className="rounded-lg p-1.5 hover:bg-muted disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+                  <button onClick={() => allerPage(Math.max(1, pageNum - 1))} disabled={pageNum <= 1} className="rounded-lg p-1.5 hover:bg-muted disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
                   <span className="tabular-nums">Page {pageNum} / {numPages}</span>
-                  <button onClick={() => setPageNum((n) => Math.min(numPages, n + 1))} disabled={pageNum >= numPages} className="rounded-lg p-1.5 hover:bg-muted disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+                  <button onClick={() => allerPage(Math.min(numPages, pageNum + 1))} disabled={pageNum >= numPages} className="rounded-lg p-1.5 hover:bg-muted disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
                 </div>
               )}
             </div>
 
             {/* Bande de pages : un document de coupes se parcourt à vue, pas en
                 avançant d'une feuille à l'aveugle. L'étalonnage de chacune s'y lit. */}
-            {isPdf && numPages > 1 && (
+            {isPdf && numPages > 1 && !encastre && (
               <div className="flex gap-2 overflow-x-auto border-t px-3 py-2">
                 {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
                   const vignette = apercus.pages.find((x) => x.numero === n)
@@ -1466,7 +1613,7 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
                   return (
                     <button
                       key={n}
-                      onClick={() => setPageNum(n)}
+                      onClick={() => allerPage(n)}
                       title={`Page ${n}${sansEchelle ? ' (non étalonnée)' : ''}`}
                       className={cn('relative w-16 shrink-0 overflow-hidden rounded-lg border bg-white transition-colors',
                         n === pageNum ? 'border-foreground ring-1 ring-foreground' : 'hover:border-foreground/40')}
@@ -1485,6 +1632,19 @@ export function PlanEditor({ plan, onClose }: { plan: ApiPlan; onClose: () => vo
           </div>
         </div>
       </div>
+
+      {/* Encastré : les panneaux de la feuille dans la colonne de droite des Métrés. */}
+      {encastre?.panneau && createPortal(
+        <div className="flex flex-col gap-3 [&>*]:w-full">
+          {panneauxDeLaFeuille}
+          {zonesDeLaPage.length === 0 && propositionsPage.length === 0 && propositionsAutres.length === 0 && !montrerElements && (
+            <p className="rounded-xl border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+              Rien à valider sur cette feuille. Ce que l’IA y propose, et ce que vous y mesurez, s’affiche ici.
+            </p>
+          )}
+        </div>,
+        encastre.panneau,
+      )}
 
       {/* Rattachement de la zone sélectionnée à un ouvrage du relevé */}
       {choixOuvrage && selAnn && (

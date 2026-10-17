@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowRight, ChevronRight, Plus, ClipboardCheck, FileText, Layers,
-  FilePlus, History, MapPin, type LucideIcon,
+  FilePlus, History, MapPin, Ruler, type LucideIcon,
 } from 'lucide-react'
 import { formatDate, formatCHF, cn } from '@/lib/utils'
 import { Link } from 'react-router-dom'
@@ -13,10 +13,14 @@ import type { ProjectStatus } from '@/lib/api-types'
 
 const glass = (alpha: number): CSSProperties => ({ background: `rgba(255,255,255,${alpha})` })
 
-// L'assistant porte le picto Diagly plutôt qu'une icône générique.
+// L'assistant porte le picto Diagly plutôt qu'une icône générique. Les Métrés
+// ouvrent leur page : on y dépose un jeu de plans, l'IA en propose les
+// quantités. Ils prennent la place de « Mes diagnostics », que la carte du
+// même nom, juste dessous, ouvre déjà avec ses compteurs : la grille reste à
+// quatre accès, et tient dans son cadre sur iPad comme sur ordinateur.
 const QUICK: { icon: LucideIcon; img?: string; title: string; desc: string; to: string }[] = [
+  { icon: Ruler, title: 'Métrés', desc: 'Déposer des plans', to: '/app/metres' },
   { icon: Plus, title: 'Nouveau diagnostic', desc: 'Créer un dossier', to: '/app/projects/new' },
-  { icon: ClipboardCheck, title: 'Mes diagnostics', desc: 'Tous vos dossiers', to: '/app/projects' },
   { icon: FileText, title: 'Base de données', desc: 'Articles et prix', to: '/app/cfc' },
   { icon: ClipboardCheck, img: '/diagly-mark.svg', title: 'Assistant Diagly', desc: 'Poser une question', to: '/app/assistant' },
 ]

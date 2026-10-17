@@ -235,4 +235,34 @@ describe('les repères du plan d’étage type', () => {
     const autre = { ...analyse, elements: analyse.elements!.map((e) => ({ ...e, page: 2 })) }
     expect(propositionsDeLAnalyse(autre, [page], { estPdf: true, identifiant: () => 'r' }).annotations).toEqual([])
   })
+
+  /**
+   * La chambre ouest du logement A : entre le mur de façade (nu intérieur à
+   * 0,30 m), la cloison de 12 cm du couloir (y = 6,12 m), la cloison de la
+   * salle de bain (x = 3,50 m) et le mur nord (nu intérieur à 10,70 m), soit
+   * 3,20 × 4,58 = 14,656 m². Le modèle place les angles à l'œil, à quelques
+   * pixels ; l'aimantation doit les ramener au nu intérieur.
+   */
+  it('accroche une pièce au nu intérieur de ses murs et garde son type une fois validée', () => {
+    const k = page.largeurImage / page.largeurCanevas
+    const img = (x: number, y: number, dx: number, dy: number): PointImage => {
+      const c = versCanevas(PLAN_ETAGE_TYPE, x, y)
+      return [c.x * k + dx, c.y * k + dy]
+    }
+    const piece: AnalysePlan = {
+      ...analyse,
+      elements: [],
+      zones: [{
+        page: 1, type: 'piece', libelle: 'Logement A, Chambre', orientation: null, mesure: 'surface',
+        points: [img(0.3, 6.12, 3, -2), img(3.5, 6.12, -2, 3), img(3.5, 10.7, 2, 2), img(0.3, 10.7, -3, 1)],
+        releveId: null, confiance: 'moyenne', valeurCotee: null, cotes: null, remarque: null,
+      }],
+    }
+    const { annotations } = propositionsDeLAnalyse(piece, [page], { estPdf: true, identifiant: () => 'p' })
+    const pxParM = 1600 / 42 * (100 / PLAN_ETAGE_TYPE.echelle)
+    expect(annotations[0].proposition?.type).toBe('piece')
+    expect(mesureDeLaZone(annotations[0], pxParM)).toBeCloseTo(3.2 * 4.58, 1)
+    const validee = validerProposition(annotations[0])
+    expect(validee).toMatchObject({ typeZone: 'piece', text: 'Logement A, Chambre', color: COULEURS_PAR_TYPE.piece })
+  })
 })

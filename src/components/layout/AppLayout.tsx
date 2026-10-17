@@ -29,6 +29,7 @@ function isMobileAllowed(pathname: string): boolean {
   if (/^\/app\/projects\/[^/]+\/(sommaire|fiche|visite|photos|couts|cecb|rapports|diagnostic)$/.test(pathname)) return true
   if (pathname.startsWith('/app/diagnostic/')) return true    // éditeur de diagnostic + item
   if (pathname === '/app/cfc') return true                    // base de données
+  if (pathname === '/app/metres') return true                 // métrés : déposer des plans, lire les quantités
   if (pathname === '/app/assistant') return true              // assistant, en page plein écran
   if (pathname.startsWith('/app/settings')) return true       // paramètres
   if (pathname.startsWith('/app/support')) return true        // aide et support, ouverts depuis les paramètres

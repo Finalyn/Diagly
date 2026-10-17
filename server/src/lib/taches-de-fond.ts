@@ -102,6 +102,23 @@ export class TachesDeFond<T> {
     return { etat: "prete", resultat: t.resultat as T };
   }
 
+  /**
+   * La dernière tâche que ce compte a lancée sur ce sujet et pas encore
+   * réclamée, en cours ou prête. L'outil Métrés garde le numéro de chaque
+   * tâche avec ses feuilles ; si l'onglet se ferme entre le lancement et
+   * l'enregistrement de ce numéro, c'est par ici qu'il la retrouve, au lieu
+   * d'en relancer (et d'en payer) une seconde.
+   */
+  derniere(proprietaire: string, sujet: string | null): string | null {
+    this.oublierLesVieilles();
+    let trouvee: string | null = null;
+    let debut = -Infinity;
+    for (const [id, t] of this.taches) {
+      if (t.proprietaire === proprietaire && t.sujet === sujet && t.debut > debut) { trouvee = id; debut = t.debut; }
+    }
+    return trouvee;
+  }
+
   /** Quitter l'écran pendant la tâche l'arrête : personne n'en lira le résultat. */
   arreter(id: string, proprietaire: string): void {
     const t = this.taches.get(id);

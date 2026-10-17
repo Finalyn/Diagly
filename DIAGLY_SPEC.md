@@ -219,6 +219,9 @@ Fichiers : `GET /uploads/<fichier>?t=<jeton signé>`, jeton délivré par l'API,
 /app/projects/:id/calendrier   échéancier du dossier (sans enregistrement)
 /app/projects/:id/sommaire     sommaire du dossier sur téléphone
 /app/diagnostic/:id        le relevé ouvert seul ; /app/diagnostic/:id/item/:itemId y redirige
+/app/metres                Métrés : déposer un jeu de plans, liste des métrés (un par dossier qui a des plans)
+/app/metres/:projectId     espace de travail des Métrés, plein écran (feuilles, plan, quantités) ;
+                           /app/plans et /app/plans/:id y mènent
 /app/assistant             Assistant IA
 /app/cfc                   Base de données
 /app/planning              calendrier global
@@ -230,10 +233,10 @@ Fichiers : `GET /uploads/<fichier>?t=<jeton signé>`, jeton délivré par l'API,
 
 Bientôt disponible (écran d'attente)
 /app/buildings[/new | /:id | /:id/apartments/new | /:id/apartments/:aptId]
-/app/plans[/:id]   /app/reports/:id   /app/tenders/:id
+/app/reports/:id   /app/tenders/:id
 ```
 
-Sur téléphone, seules sont ouvertes : la liste et la création, le dossier (sommaire, fiche, visite, photos, coûts, étiquette énergétique, rapports, relevé), l'éditeur, la base de données, l'assistant, les paramètres, l'aide et l'invitation. Toute autre adresse ramène à `/app/projects` (`AppLayout.tsx`).
+Sur téléphone, seules sont ouvertes : la liste et la création, le dossier (sommaire, fiche, visite, photos, coûts, étiquette énergétique, rapports, relevé), l'éditeur, la base de données, les Métrés (en lecture : quantités et état des feuilles), l'assistant, les paramètres, l'aide et l'invitation. Toute autre adresse ramène à `/app/projects` (`AppLayout.tsx`).
 
 ---
 

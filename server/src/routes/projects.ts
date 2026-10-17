@@ -55,9 +55,12 @@ async function assertOperationOwnership(operationId: string | null | undefined, 
 
 const projectBaseSchema = z.object({
   name: z.string().min(1).max(255),
-  address: z.string().min(1).max(255),
+  // L'adresse peut rester vide : un dossier ouvert depuis l'outil Métrés naît
+  // d'un dépôt de plans, avant que l'analyse n'ait lu l'adresse au cartouche.
+  // Le formulaire de création, lui, continue de l'exiger.
+  address: z.string().max(255),
   postalCode: z.string().max(10).optional(),
-  city: z.string().min(1).max(150),
+  city: z.string().max(150),
   canton: z.string().min(1).max(50),
   parcelNumber: z.string().max(50).optional(),
   operationId: z.string().optional().nullable(),

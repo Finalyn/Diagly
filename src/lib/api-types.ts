@@ -441,11 +441,18 @@ export interface PlanAnnotation {
    * un de ses points à la main lui retire ce statut.
    */
   mesureExacte?: boolean
+  /**
+   * Ce que mesure une zone proposée par l'IA, gardé une fois validée : une
+   * façade, une fenêtre, une pièce. Le récapitulatif des Métrés range les
+   * quantités par là ; une zone tracée à la main n'en a pas.
+   */
+  typeZone?: TypeZoneIA
 }
 
 // ---- Analyse d'un plan par l'IA (voir server/src/lib/analyse-plans.ts) ----
 export type TypePageAnalysee = 'plan_etage' | 'elevation' | 'coupe' | 'toiture' | 'situation' | 'autre'
-export type TypeZoneIA = 'facade' | 'fenetre' | 'porte' | 'toiture' | 'emprise' | 'dalle' | 'mur' | 'autre'
+/** `piece` : un local fermé d'un plan d'étage, avec son nom lu sur le plan. */
+export type TypeZoneIA = 'facade' | 'fenetre' | 'porte' | 'toiture' | 'emprise' | 'dalle' | 'mur' | 'piece' | 'autre'
 export type ConfianceZone = 'haute' | 'moyenne' | 'basse'
 /** Un point en pixels de l'image envoyée au modèle, origine en haut à gauche. */
 export type PointImage = [number, number]
@@ -461,7 +468,13 @@ export interface CoteDeControle {
 export interface PageAnalysee {
   page: number
   type: TypePageAnalysee
+  /** Numéro de la feuille lu au cartouche : « A-101 ». Absent d'une analyse d'avant les Métrés. */
+  feuille?: string | null
   titre: string | null
+  /** Niveau que montre un plan d'étage : « Rez », « 1er », « 1er au 3e ». */
+  niveau?: string | null
+  /** Étages identiques que la feuille représente : 3 pour « Étage type (1er au 3e) ». */
+  etagesIdentiques?: number | null
   orientation: string | null
   /** Échelle imprimée, ramenée à « 1:100 ». */
   echelle: string | null
@@ -513,8 +526,19 @@ export interface ComptageAnalyse {
   confiance: ConfianceZone
 }
 
+/** Ce que le cartouche dit du bâtiment. */
+export interface ProjetLuAuCartouche {
+  nom: string | null
+  adresse: string | null
+  npa: string | null
+  localite: string | null
+  canton: string | null
+}
+
 export interface AnalysePlan {
   pages: PageAnalysee[]
+  /** Absent d'une analyse d'avant les Métrés. */
+  projet?: ProjetLuAuCartouche | null
   zones: ZoneAnalysee[]
   /** Absents d'une analyse d'avant les comptages. */
   elements?: ElementRepere[]
@@ -550,8 +574,79 @@ export interface ApiPlan {
   size: number
   scalePxPerM: number | null
   annotations: PlanAnnotation[]
+  /** Les feuilles vues par l'outil Métrés ; null tant que le plan n'y est pas passé. */
+  feuilles?: FeuillesPlan | null
   createdAt: string
   updatedAt?: string
+}
+
+// ---- Feuilles d'un plan, outil Métrés (voir server/src/lib/feuilles-plans.ts) ----
+export type StatutAnalyseFeuille = 'en_file' | 'en_cours' | 'prete' | 'erreur'
+/** Les champs qu'on corrige à la main : une nouvelle analyse ne les écrase pas. */
+export type ChampCorrigeable = 'numero' | 'titre' | 'type' | 'niveau' | 'etagesIdentiques'
+
+/** Une page du document, vue comme une feuille du jeu de plans. */
+export interface FeuillePlan {
+  /** Numéro lu au cartouche : « A-101 ». */
+  numero?: string | null
+  titre?: string | null
+  type?: TypePageAnalysee | null
+  /** « Rez », « 1er », « Sous-sol », « 1er au 3e ». */
+  niveau?: string | null
+  /** Étages identiques représentés : le multiplicateur d'un étage type. */
+  etagesIdentiques?: number | null
+  orientation?: string | null
+  corrige?: ChampCorrigeable[]
+  analyse?: {
+    statut: StatutAnalyseFeuille
+    /** Date ISO du dernier changement d'état. */
+    depuis?: string | null
+    /** Tâche de fond en cours : de quoi reprendre son résultat après une fermeture d'onglet. */
+    tache?: string | null
+    message?: string | null
+    /** Analyses perdues en route (serveur redémarré) : au-delà de deux, on cesse de relancer. */
+    tentatives?: number
+  } | null
+  /** Échelle proposée par l'analyse, en attente de confirmation dans l'éditeur. */
+  echelle?: import('./plans/analyse-ia').EchelleDePage | null
+  remarque?: string | null
+  ecartees?: ZoneEcartee[]
+  /** Pas de dessin vectoriel lisible : les zones n'ont pas pu être aimantées. */
+  sansGeometrie?: boolean
+  /** La réponse de l'IA a été coupée. */
+  tronque?: boolean
+}
+
+/** Un lot analysé : les totaux par catégorie que l'IA a comptés sur ses pages. */
+export interface LotAnalyse {
+  pages: number[]
+  le: string
+  comptages: ComptageAnalyse[]
+  remarques: string | null
+}
+
+export interface FeuillesPlan {
+  /** Nombre de pages du document, une fois connu. */
+  nombre?: number | null
+  /** Par numéro de page. */
+  pages: Record<string, FeuillePlan>
+  lots?: LotAnalyse[]
+}
+
+/** Un plan tel que la liste des Métrés le décrit : sans ses annotations. */
+export interface ApiPlanResume extends ApiPlan {
+  /** Zones et repères proposés par l'IA qui attendent d'être validés. */
+  aValider: number
+}
+
+/** Un métré : un dossier qui a des plans. */
+export interface ApiMetre {
+  projectId: string
+  nom: string
+  adresse: string
+  ville: string
+  misAJour: string
+  plans: ApiPlanResume[]
 }
 
 // ---- Calendrier ----

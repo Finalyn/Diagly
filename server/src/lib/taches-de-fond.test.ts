@@ -27,6 +27,20 @@ describe("les tâches de fond", () => {
     expect(() => taches.suivre(id, "alice", "plan-1")).toThrow("Introuvable.");
   });
 
+  it("se retrouvent sans leur numéro, par leur compte et leur plan, tant qu'elles ne sont pas réclamées", async () => {
+    const taches = new TachesDeFond<number>(MESSAGES);
+    const t = aLaMain<number>();
+    const id = taches.lancer("alice", t.travail, "plan-1");
+    expect(taches.derniere("alice", "plan-1")).toBe(id);
+    expect(taches.derniere("bob", "plan-1")).toBeNull();
+    expect(taches.derniere("alice", "plan-2")).toBeNull();
+    t.finir(3);
+    await attendre();
+    expect(taches.derniere("alice", "plan-1")).toBe(id);
+    taches.suivre(id, "alice", "plan-1");
+    expect(taches.derniere("alice", "plan-1")).toBeNull();
+  });
+
   it("ne se laissent suivre ni par un autre compte, ni pour un autre plan", () => {
     const taches = new TachesDeFond<number>(MESSAGES);
     const id = taches.lancer("alice", aLaMain<number>().travail, "plan-1");

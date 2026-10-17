@@ -54,7 +54,15 @@ async function imageDuCanevas(canvas: HTMLCanvasElement): Promise<Blob> {
   return enBlob(canvas, 'image/jpeg', 0.9)
 }
 
-interface PageAEnvoyer { rendue: PageRendue; image: Blob }
+export interface PageAEnvoyer { rendue: PageRendue; image: Blob }
+
+/**
+ * Les pages d'un plan, rendues pour le modèle et indexées pour l'aimantation.
+ * L'éditeur s'en sert pour son analyse, l'outil Métrés pour chaque lot.
+ */
+export function preparerPages(plan: ApiPlan, numeros: number[], progres: (fait: number) => void = () => undefined): Promise<PageAEnvoyer[]> {
+  return plan.mimeType === 'application/pdf' ? preparerPdf(plan, numeros, progres) : preparerImage(plan)
+}
 
 async function preparerPdf(plan: ApiPlan, numeros: number[], progres: (fait: number) => void): Promise<PageAEnvoyer[]> {
   const buf = await (await fetch(api.plans.fileUrl(plan))).arrayBuffer()
@@ -162,9 +170,7 @@ export function useAnalyseIA(plan: ApiPlan, ouvrages: ApiDiagnosticItem[]) {
     const estPdf = plan.mimeType === 'application/pdf'
     try {
       setEtat({ etape: 'preparation', fait: 0, total: numeros.length })
-      const pages = estPdf
-        ? await preparerPdf(plan, numeros, (fait) => setEtat({ etape: 'preparation', fait, total: numeros.length }))
-        : await preparerImage(plan)
+      const pages = await preparerPages(plan, numeros, (fait) => setEtat({ etape: 'preparation', fait, total: numeros.length }))
       if (controle.signal.aborted) return null
 
       setEtat({ etape: 'analyse', debut: Date.now(), pages: pages.length })

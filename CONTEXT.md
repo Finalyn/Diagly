@@ -49,7 +49,8 @@ La liste complète des routes est dans `DIAGLY_SPEC.md` (ROUTES WEB). En bref :
 - `/register/payment` : écran de paiement sans effet, lié de nulle part
 
 ### App
-- `/app/dashboard` Accueil : carte « Reprendre », accès rapides, activité récente
+- `/app/dashboard` Accueil : carte « Reprendre », accès rapides (dont Métrés), activité récente
+- `/app/metres` Métrés : dépôt d'un jeu de plans (nouveau bâtiment ou dossier existant), liste des métrés ; `/app/metres/:projectId` l'espace de travail plein écran (navigateur des feuilles, éditeur de plan encastré, zones à valider et quantités du jeu), analyse de tout le jeu par lots en tâche de fond (`src/components/metres/moteur.ts`)
 - `/app/projects` Diagnostics, `/app/projects/new` création (de zéro, depuis un document ou un CECB)
 - Dans un dossier : relevé (`/diagnostic`), fiche, visite, plans, étiquette énergétique (`/cecb`), coûts, variantes, photos, rapports ; `/sommaire` sur téléphone
 - `/app/diagnostic/:id` le relevé ouvert seul
@@ -57,7 +58,7 @@ La liste complète des routes est dans `DIAGLY_SPEC.md` (ROUTES WEB). En bref :
 - `/app/planning` calendrier global et `/app/projects/:id/calendrier` échéancier : sans entrée dans les menus
 
 ### Bientôt disponible
-- Parc immobilier (`/app/buildings` et suivantes), `/app/plans`, `/app/reports/:id`, `/app/tenders/:id`
+- Parc immobilier (`/app/buildings` et suivantes), `/app/reports/:id`, `/app/tenders/:id` (`/app/plans` mène aux Métrés)
 
 ## Navigation
 - Ouvrir un dossier mène au relevé

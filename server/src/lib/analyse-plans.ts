@@ -2,9 +2,11 @@
  * L'analyse d'un plan par l'IA, pour l'outil de métré.
  *
  * Le modèle regarde une page de plan rendue en image, dit ce qu'elle montre
- * (plan d'étage, élévation, coupe…), lit son échelle et une cote de contrôle,
- * puis dessine les zones à métrer : la façade, chacune de ses fenêtres, la
- * toiture, l'emprise. Ces zones arrivent dans l'outil Plan « à valider » : le
+ * (plan d'étage, élévation, coupe…), lit au cartouche le numéro de la feuille
+ * et le niveau qu'elle représente, combien d'étages identiques elle vaut, son
+ * échelle et une cote de contrôle, puis dessine les zones à métrer : la
+ * façade, chacune de ses fenêtres, la toiture, l'emprise, chaque pièce d'un
+ * plan d'étage avec son nom. Ces zones arrivent dans l'outil Plan « à valider » : le
  * diagnostiqueur les relit, les corrige, les rattache à un ouvrage, et seules
  * celles qu'il valide comptent dans le métré.
  *
@@ -33,7 +35,11 @@ import {
 export const TYPES_PAGE = ["plan_etage", "elevation", "coupe", "toiture", "situation", "autre"] as const;
 export type TypePage = (typeof TYPES_PAGE)[number];
 
-export const TYPES_ZONE = ["facade", "fenetre", "porte", "toiture", "emprise", "dalle", "mur", "autre"] as const;
+/**
+ * `piece` : un local fermé d'un plan d'étage, avec le nom écrit dedans. C'est
+ * la base des surfaces SIA 416, qui demandent l'affectation de chaque local.
+ */
+export const TYPES_ZONE = ["facade", "fenetre", "porte", "toiture", "emprise", "dalle", "mur", "piece", "autre"] as const;
 export type TypeZone = (typeof TYPES_ZONE)[number];
 
 export const CONFIANCES = ["haute", "moyenne", "basse"] as const;
@@ -62,7 +68,13 @@ export interface OuvrageEnvoye {
 export interface PageAnalysee {
   page: number;
   type: TypePage;
+  /** Numéro de la feuille lu au cartouche : « A-101 », « 02 ». */
+  feuille: string | null;
   titre: string | null;
+  /** Le niveau que montre un plan d'étage : « Rez », « 1er », « Sous-sol », « 1er au 3e ». */
+  niveau: string | null;
+  /** Combien d'étages identiques la feuille représente : 3 pour « Étage type (1er au 3e) ». */
+  etagesIdentiques: number | null;
   orientation: string | null;
   echelle: string | null;
   echelleOu: string | null;
@@ -108,8 +120,18 @@ export interface ComptageAnalyse {
   confiance: Confiance;
 }
 
+/** Ce que le cartouche dit du bâtiment : de quoi nommer un dossier ouvert depuis un dépôt de plans. */
+export interface ProjetLu {
+  nom: string | null;
+  adresse: string | null;
+  npa: string | null;
+  localite: string | null;
+  canton: string | null;
+}
+
 export interface AnalysePlan {
   pages: PageAnalysee[];
+  projet: ProjetLu | null;
   zones: ZoneAnalysee[];
   elements: ElementRepere[];
   comptages: ComptageAnalyse[];
@@ -186,7 +208,10 @@ Tous les points sont en pixels de l'image de leur page, sous la forme [x, y] : o
 
 POUR CHAQUE PAGE
 - "type" : "plan_etage", "elevation" (une façade), "coupe", "toiture" (plan de toiture), "situation" ou "autre" ;
+- "feuille" : le numéro de la feuille tel qu'il est écrit au cartouche (« A-101 », « 102 », « 03 »), sans le mot « Plan n° », ou null s'il n'y en a pas ;
 - "titre" : tel qu'il est écrit (« Façade sud », « Rez-de-chaussée »), ou null ;
+- "niveau" : pour un plan d'étage, le niveau qu'il montre, dit court : « Sous-sol », « Rez », « 1er », « 2e », « Attique », « Combles » ; pour un étage type, le premier et le dernier niveau : « 1er au 3e ». null pour une autre vue ;
+- "etagesIdentiques" : le nombre de niveaux que la feuille représente à elle seule, d'après son titre ou ses notes : 3 pour « Étage type (1er au 3e) », 1 pour un plan d'un seul niveau. null pour une vue qui n'est pas un plan d'étage ;
 - "orientation" : pour une élévation, l'orientation de la façade (« sud », « nord-est ») si le titre ou le plan la donne, sinon null ;
 - "echelle" : l'échelle imprimée, sous la forme « 1:100 », lue au cartouche ou sous le titre du dessin ; null si aucune n'est écrite. N'en déduis jamais une d'après le dessin. "echelleOu" : où tu l'as lue (« cartouche », « sous le titre »), ou null ;
 - "cote" : UNE cote de contrôle, imprimée et bien lisible, de préférence la plus longue cote totale du dessin principal, horizontale ou verticale : { "texte": "12.40", "longueurM": 12.40, "p1": [x, y], "p2": [x, y] }. p1 et p2 sont les deux extrémités de la ligne de cote, là où elle croise ses lignes d'attache (au centre des traits obliques ou des pointes de flèches). Convertis en mètres : « 1240 » en centimètres vaut 12.40. null si aucune cote n'est lisible ;
@@ -194,14 +219,14 @@ POUR CHAQUE PAGE
 - "remarque" : ce qui gêne la lecture de la page, en une phrase, ou null.
 
 CHAQUE ZONE
-- "type" : "facade", "fenetre", "porte", "toiture", "emprise", "dalle", "mur" ou "autre" ;
-- "libelle" : court et précis, pour la retrouver : « Façade sud », « Fenêtre 1er étage, 2e depuis la gauche », « Emprise du rez » ;
+- "type" : "facade", "fenetre", "porte", "toiture", "emprise", "dalle", "mur", "piece" ou "autre" ;
+- "libelle" : court et précis, pour la retrouver : « Façade sud », « Fenêtre 1er étage, 2e depuis la gauche », « Emprise du rez » ; pour une pièce, son nom tel qu'il est écrit dans le local (« Séjour », « Chambre », « Bain », « Cage d'escalier »), précédé du logement s'il est indiqué (« Logement A, Chambre ») ;
 - "orientation" : pour une façade et ses ouvertures, sinon null ;
 - "mesure" : "surface" (au moins 3 points, le contour fermé dans l'ordre, sans répéter le premier point à la fin) ou "longueur" (exactement 2 points, les deux extrémités d'un segment droit) ;
 - "points" : la liste des sommets [x, y] ;
 - "releveId" : l'ouvrage du relevé que cette zone quantifie, par son id dans la liste ci-dessous, avec une unité compatible (m² pour une surface, ml ou m pour une longueur) ; null si aucun ne convient vraiment ;
 - "confiance" : "haute", "moyenne" ou "basse" ;
-- "valeurCotee" : la surface en m² ou la longueur en m que donnent les cotes imprimées, si elles suffisent à la calculer (1.20 × 1.40 = 1.68), sinon null ; "cotes" : les cotes employées (« 1.20 × 1.40 »), sinon null ;
+- "valeurCotee" : la surface en m² ou la longueur en m que donnent les cotes imprimées, si elles suffisent à la calculer (1.20 × 1.40 = 1.68), sinon null ; pour une pièce, la surface imprimée dans le local si elle y figure (« 18.45 m² » donne 18.45) ; "cotes" : les cotes employées (« 1.20 × 1.40 », « surface imprimée »), sinon null ;
 - "remarque" : ce qui est douteux, en une phrase, ou null.
 
 CE QU'IL FAUT COMPTER
@@ -212,7 +237,7 @@ Puis, au niveau de la réponse, "comptages" : une entrée par catégorie présen
 
 CE QU'IL FAUT DESSINER
 - Sur une élévation : la façade entière, zone "facade" : le contour extérieur brut du mur, du terrain fini (ou du haut du socle s'il est distinct) jusqu'au haut de l'acrotère ou à l'égout du toit, sans découper les ouvertures. Puis CHAQUE fenêtre et CHAQUE porte comme zone à part, au contour extérieur du cadre (le vide de maçonnerie), pour que la façade moins ses ouvertures se calcule. La toiture visible en élévation seulement si elle fait partie de la façade dessinée.
-- Sur un plan d'étage : l'emprise (contour extérieur des murs de façade, au nu extérieur) ; la dalle (surface intérieure brute, au nu intérieur des murs de façade) si elle se lit clairement.
+- Sur un plan d'étage : l'emprise (contour extérieur des murs de façade, au nu extérieur) ; la dalle (surface intérieure brute, au nu intérieur des murs de façade) si elle se lit clairement. Puis CHAQUE local fermé, zone "piece" : le contour au nu intérieur de ses murs et cloisons, en suivant les décrochements, une baie de porte se fermant dans l'alignement du mur. Une pièce dont le nom n'est pas écrit garde un libellé descriptif (« Local sans nom, au nord »). Un séjour ouvert sur la cuisine sans cloison entre eux est une seule pièce, au nom des deux (« Séjour, cuisine »).
 - Sur un plan de toiture : chaque pan de toiture.
 - Sur une coupe ou un plan de situation : rien, sauf une surface évidente et utile au métré.
 
@@ -221,17 +246,21 @@ RÈGLES
 2. Préférer les cotes imprimées : quand elles existent, place les points en accord avec elles et remplis "valeurCotee".
 3. Rien hors du dessin : le cartouche, la légende, les cotes, les textes et le cadre de la feuille ne sont pas des zones.
 4. Confiance basse dès que le contour est douteux (trait peu lisible, photo de travers, élément caché ou coupé), haute seulement quand le contour est net et que les cotes le confirment.
-5. Au plus 150 zones en tout, et au plus 400 repères.
+5. Au plus 200 zones en tout, et au plus 400 repères.
 6. N'utilise jamais le tiret cadratin.
 
 OUVRAGES DU RELEVÉ (id | CFC | libellé | unité)
 ${liste}
 
+LE BÂTIMENT
+Au niveau de la réponse, "projet" : ce que le cartouche dit du bâtiment, { "nom", "adresse" (rue et numéro), "npa", "localite", "canton" (deux lettres) }, chaque champ à null s'il n'est pas écrit. Ne le complète jamais de mémoire.
+
 Réponds UNIQUEMENT par un objet JSON valide, sans texte autour :
 {
+ "projet": { "nom": "Immeuble Les Tilleuls", "adresse": "Chemin des Tilleuls 4", "npa": "1004", "localite": "Lausanne", "canton": "VD" },
  "pages": [
   {
-   "page": ${exemple.numero}, "type": "elevation", "titre": "Façade sud", "orientation": "sud",
+   "page": ${exemple.numero}, "type": "elevation", "feuille": "A-201", "titre": "Façade sud", "niveau": null, "etagesIdentiques": null, "orientation": "sud",
    "echelle": "1:100", "echelleOu": "cartouche",
    "cote": { "texte": "12.40", "longueurM": 12.40, "p1": [412, 1236], "p2": [1102, 1236] },
    "zones": [
@@ -273,7 +302,10 @@ const zoneBrute = z.object({
 const pageBrute = z.object({
   page: z.unknown().optional(),
   type: z.unknown().optional(),
+  feuille: texte(30),
   titre: texte(120),
+  niveau: texte(40),
+  etagesIdentiques: z.unknown().optional(),
   orientation: texte(30),
   echelle: z.unknown().optional(),
   echelleOu: texte(60),
@@ -283,7 +315,12 @@ const pageBrute = z.object({
   remarque: texte(300),
 }).passthrough();
 
+const projetBrut = z.object({
+  nom: texte(200), adresse: texte(200), npa: texte(10), localite: texte(120), canton: texte(10),
+}).passthrough();
+
 const analyseBrute = z.object({
+  projet: z.unknown().optional(),
   pages: z.array(z.unknown()).optional().catch([]),
   zones: z.array(z.unknown()).optional().catch([]),
   elements: z.array(z.unknown()).optional().catch([]),
@@ -399,8 +436,40 @@ function sansDoublons(pts: Point[]): Point[] {
 
 const LIBELLES_PAR_DEFAUT: Record<TypeZone, string> = {
   facade: "Façade", fenetre: "Fenêtre", porte: "Porte", toiture: "Toiture",
-  emprise: "Emprise", dalle: "Dalle", mur: "Mur", autre: "Zone",
+  emprise: "Emprise", dalle: "Dalle", mur: "Mur", piece: "Pièce", autre: "Zone",
 };
+
+/** Au-delà, une feuille ne représente plus des étages identiques mais une erreur de lecture. */
+const ETAGES_IDENTIQUES_MAX = 60;
+
+/**
+ * Le nombre d'étages identiques d'une page.
+ *
+ * Seul un plan d'étage en représente plusieurs : une façade ou une coupe vaut
+ * pour elle-même. Un nombre absurde (zéro, un demi, quatre-vingts) est
+ * écarté plutôt que ramené : multiplier tout un étage par une valeur
+ * inventée fausserait le métré entier, et l'utilisateur peut la corriger.
+ */
+function etagesIdentiquesLus(v: unknown, type: TypePage): number | null {
+  if (type !== "plan_etage") return null;
+  const n = entier(v);
+  return n !== null && n >= 1 && n <= ETAGES_IDENTIQUES_MAX ? n : null;
+}
+
+/** Le cartouche lu, ou null s'il ne dit rien du bâtiment. */
+function projetLu(v: unknown): ProjetLu | null {
+  const p = projetBrut.safeParse(v);
+  if (!p.success) return null;
+  const d = p.data;
+  const projet: ProjetLu = {
+    nom: d.nom ?? null,
+    adresse: d.adresse ?? null,
+    npa: d.npa && /^\d{4}$/.test(d.npa) ? d.npa : null,
+    localite: d.localite ?? null,
+    canton: d.canton && /^[A-Za-z]{2}$/.test(d.canton) ? d.canton.toUpperCase() : null,
+  };
+  return Object.values(projet).some((x) => x !== null) ? projet : null;
+}
 
 /**
  * La réponse brute du modèle, validée.
@@ -463,10 +532,14 @@ export function validerAnalyse(brut: unknown, pages: PageEnvoyee[], releveIds: s
       else cote = { texte: (texte(40).parse(c.texte) ?? String(longueurM)), longueurM: longueurM!, p1: p1 as Point, p2: p2 as Point };
     }
 
+    const type = typeDePage(p.data.type);
     pagesLues.push({
       page: numero,
-      type: typeDePage(p.data.type),
+      type,
+      feuille: p.data.feuille ?? null,
       titre: p.data.titre ?? null,
+      niveau: type === "plan_etage" ? p.data.niveau ?? null : null,
+      etagesIdentiques: etagesIdentiquesLus(p.data.etagesIdentiques, type),
       orientation: p.data.orientation ? p.data.orientation.toLowerCase() : null,
       echelle: echelleLue(p.data.echelle),
       echelleOu: p.data.echelleOu ?? null,
@@ -544,7 +617,7 @@ export function validerAnalyse(brut: unknown, pages: PageEnvoyee[], releveIds: s
   const comptages = comptagesValides(lu.data.comptages, elements, envoyees, ecartees);
 
   pagesLues.sort((a, b) => a.page - b.page);
-  return { pages: pagesLues, zones, elements, comptages, ecartees, remarques: lu.data.remarques ?? null };
+  return { pages: pagesLues, projet: projetLu(lu.data.projet), zones, elements, comptages, ecartees, remarques: lu.data.remarques ?? null };
 }
 
 /**

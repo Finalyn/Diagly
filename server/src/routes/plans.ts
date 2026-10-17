@@ -4,7 +4,9 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { mkdirSync, existsSync, unlink } from "node:fs";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { feuillesSchema, nombreAValider, remplacerPropositions } from "../lib/feuilles-plans.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { aiLimiter, uploadLimiter } from "../middlewares/rate-limit.js";
 import { validateQuery, validateBody } from "../middlewares/validate.js";
@@ -65,6 +67,39 @@ router.get("/", validateQuery(listQuery), async (req, res) => {
   res.json({ plans: plans.map(withFileUrl), count: plans.length });
 });
 
+/**
+ * Les métrés du compte : un par dossier qui a des plans.
+ *
+ * La page Métrés de l'accueil les liste avec leur nombre de feuilles, l'état
+ * de leur analyse et ce qui attend d'être validé. Demander les plans dossier
+ * par dossier ferait une requête par bâtiment ; ici, une seule, et sans les
+ * annotations elles-mêmes, qui pèsent lourd et ne servent qu'à l'éditeur.
+ */
+router.get("/metres", async (req, res) => {
+  const plans = await prisma.plan.findMany({
+    where: { project: await ownerScopeFor(req.auth!.sub) },
+    orderBy: { createdAt: "asc" },
+    include: { project: { select: { id: true, name: true, address: true, city: true, updatedAt: true } } },
+  });
+  type Metre = {
+    projectId: string; nom: string; adresse: string; ville: string; misAJour: string;
+    plans: (Omit<typeof plans[number], "annotations" | "project"> & { fileUrl: string; annotations: []; aValider: number })[];
+  };
+  const parDossier = new Map<string, Metre>();
+  for (const { annotations, project, ...p } of plans) {
+    let m = parDossier.get(project.id);
+    if (!m) {
+      m = { projectId: project.id, nom: project.name, adresse: project.address, ville: project.city, misAJour: project.updatedAt.toISOString(), plans: [] };
+      parDossier.set(project.id, m);
+    }
+    m.plans.push({ ...withFileUrl(p), annotations: [], aValider: nombreAValider(annotations) });
+    const touche = p.updatedAt.toISOString();
+    if (touche > m.misAJour) m.misAJour = touche;
+  }
+  const metres = [...parDossier.values()].sort((a, b) => b.misAJour.localeCompare(a.misAJour));
+  res.json({ metres, count: metres.length });
+});
+
 router.post("/", uploadLimiter, upload.single("file"), async (req, res) => {
   const file = req.file;
   if (!file) throw badRequest("Aucun fichier valide (PDF, PNG, JPG ou WEBP, 30 Mo max)");
@@ -82,6 +117,19 @@ const updatePlanSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   scalePxPerM: z.number().positive().nullable().optional(),
   annotations: z.array(z.unknown()).optional(),
+  /** Les feuilles du document, vues par l'outil Métrés (lib/feuilles-plans.ts). null les oublie. */
+  feuilles: feuillesSchema.nullable().optional(),
+  /**
+   * Les propositions de l'IA pour quelques pages : elles remplacent celles qui
+   * attendaient encore sur ces pages, sans toucher au reste. L'outil Métrés
+   * analyse le jeu par lots en tâche de fond et range chaque lot dès qu'il
+   * est prêt, pendant qu'on travaille peut-être sur une autre feuille : il ne
+   * doit pas avoir à réécrire toutes les annotations du plan pour autant.
+   */
+  propositions: z.object({
+    pages: z.array(z.number().int().min(1).max(5000)).min(1).max(500),
+    annotations: z.array(z.unknown()).max(5000),
+  }).optional(),
 });
 
 router.put("/:id", validateBody(updatePlanSchema), async (req, res) => {
@@ -90,12 +138,19 @@ router.put("/:id", validateBody(updatePlanSchema), async (req, res) => {
   });
   if (!plan) throw notFound("Plan not found");
   const data = req.body as z.infer<typeof updatePlanSchema>;
+  // Les propositions se posent sur les annotations envoyées dans la même
+  // requête, ou à défaut sur celles qui sont en base.
+  let annotations = data.annotations as unknown[] | undefined;
+  if (data.propositions) {
+    annotations = remplacerPropositions(annotations ?? plan.annotations, data.propositions.pages, data.propositions.annotations);
+  }
   const updated = await prisma.plan.update({
     where: { id: plan.id },
     data: {
       name: data.name,
       scalePxPerM: data.scalePxPerM,
-      annotations: data.annotations as object[] | undefined,
+      annotations: annotations as object[] | undefined,
+      ...(data.feuilles === undefined ? {} : { feuilles: data.feuilles === null ? Prisma.JsonNull : (data.feuilles as Prisma.InputJsonValue) }),
     },
   });
   res.json({ plan: withFileUrl(updated) });
@@ -223,6 +278,12 @@ router.post("/:id/analyse", aiLimiter, recevoirPages, async (req, res) => {
     return { configured: true as const, tronque: r.tronque, refus: r.refus, analyse };
   }, plan.id);
   res.status(202).json({ configured: true, enCours: id });
+});
+
+// La tâche de ce plan que le compte a lancée et pas encore réclamée : l'outil
+// Métrés la retrouve ainsi quand l'onglet s'est fermé avant d'en garder le numéro.
+router.get("/:id/analyse", (req, res) => {
+  res.json({ enCours: ANALYSES.derniere(req.auth!.sub, req.params.id) });
 });
 
 router.get("/:id/analyse/:tache", (req, res) => {

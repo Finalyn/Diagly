@@ -151,7 +151,7 @@ export function versCanevas(plan: PlanDeTest, xM: number, yM: number, largeurCan
 // ---------------------------------------------------------------- habillage
 
 /** Cartouche en bas à droite de la feuille, comme sur un plan d'architecte. */
-function cartouche(c: Crayon, titre: string, echelle: string) {
+function cartouche(c: Crayon, titre: string, echelle: string, numero = '101') {
   const x = 300, y = 12, l = 108, h = 48
   c.epaisseur(0.35)
   c.gris(0)
@@ -165,7 +165,7 @@ function cartouche(c: Crayon, titre: string, echelle: string) {
   c.texte(x + 3, y + 26, titre, 4.5)
   c.texte(x + 3, y + 14.5, 'Relevé de l\'existant', 2.8)
   c.texte(x + 63, y + 14.5, `Échelle ${echelle}`, 3.2)
-  c.texte(x + 3, y + 3.5, 'Plan n° 101', 2.8)
+  c.texte(x + 3, y + 3.5, `Plan n° ${numero}`, 2.8)
   c.texte(x + 63, y + 3.5, 'Format A3  16.10.2026', 2.8)
 }
 
@@ -259,7 +259,7 @@ export const OUVERTURES_FACADE = [
   { type: 'porte' as const, x: PORTE.x, y: 0, largeur: PORTE.largeur, hauteur: PORTE.hauteur },
 ]
 
-function dessinerFacade(): PageDessinee {
+function dessinerFacade(numero?: string): PageDessinee {
   const plan = FACADE_SUD
   const c = new Crayon()
   // Repère de la feuille en millimètres.
@@ -324,7 +324,7 @@ function dessinerFacade(): PageDessinee {
     const p = { x: plan.origineMm.x + (FACADE.largeur + 0.6) * mm, y: plan.origineMm.y + y * mm - 1 }
     c.texte(p.x, p.y, t, 3)
   }
-  cartouche(c, 'Façade sud', '1:100')
+  cartouche(c, 'Façade sud', '1:100', numero)
   c.ecrire('Q')
   return { largeur: plan.largeurPt, hauteur: plan.hauteurPt, contenu: c.ops.join('\n') }
 }
@@ -351,7 +351,7 @@ export const PLAN_REZ: PlanDeTest = {
   },
 }
 
-function dessinerRez(): PageDessinee {
+function dessinerRez(numero?: string): PageDessinee {
   const plan = PLAN_REZ
   const c = new Crayon()
   c.ecrire('q', `${n(PT_PAR_MM)} 0 0 ${n(PT_PAR_MM)} 0 0 cm`, '1 J 1 j')
@@ -417,7 +417,7 @@ function dessinerRez(): PageDessinee {
   piece(6.2, 2.0, 'Cuisine')
   piece(9.4, 2.0, 'Chambre')
   piece(5.8, 6.8, 'Bureau')
-  cartouche(c, 'Plan du rez-de-chaussée', '1:50')
+  cartouche(c, 'Plan du rez-de-chaussée', '1:50', numero)
   c.ecrire('Q')
   return { largeur: plan.largeurPt, hauteur: plan.hauteurPt, contenu: c.ops.join('\n') }
 }
@@ -550,7 +550,7 @@ function pleins(debut: number, fin: number, ouvertures: [number, number][]): [nu
   return r
 }
 
-function dessinerEtageType(): PageDessinee {
+function dessinerEtageType(numero?: string): PageDessinee {
   const plan = PLAN_ETAGE_TYPE
   const { largeur: L, profondeur: P, mur: M, cloison: K, murCage: MC } = ETAGE
   const c = new Crayon()
@@ -656,7 +656,7 @@ function dessinerEtageType(): PageDessinee {
   }
   piece(8.85, 2.9, 'Palier', 2.8)
   piece(8.75, 4.0, "Cage d'escalier", 2.4)
-  cartouche(c, 'Étage type (1er au 3e)', '1:100')
+  cartouche(c, 'Étage type (1er au 3e)', '1:100', numero)
   c.ecrire('Q')
   return { largeur: plan.largeurPt, hauteur: plan.hauteurPt, contenu: c.ops.join('\n') }
 }
@@ -664,6 +664,17 @@ function dessinerEtageType(): PageDessinee {
 /** Le plan d'étage type seul, sur une feuille A3 au 1:100. */
 export function pdfEtageType(): Uint8Array {
   return assemblerPdf([dessinerEtageType()])
+}
+
+/**
+ * Un jeu complet pour l'outil Métrés : le rez (feuille 101, au 1:50), l'étage
+ * type du 1er au 3e (feuille 102) et la façade sud (feuille 201), chacune
+ * avec son numéro au cartouche. De quoi vérifier que l'analyse lit le numéro
+ * de chaque feuille, son niveau, les étages identiques qu'elle représente et
+ * les pièces nommées sur les plans d'étage.
+ */
+export function pdfJeuMetres(): Uint8Array {
+  return assemblerPdf([dessinerRez('101'), dessinerEtageType('102'), dessinerFacade('201')])
 }
 
 /**

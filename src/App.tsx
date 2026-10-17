@@ -48,8 +48,8 @@ const DossierMobile = lazy(() => named(import('@/pages/app/DossierMobile'), 'Dos
 const AssistantPage = lazy(() => named(import('@/pages/app/AssistantPage'), 'AssistantPage'))
 const DiagnosticDetail = lazy(() => named(import('@/pages/app/DiagnosticDetail'), 'DiagnosticDetail'))
 const DiagnosticItemDetail = lazy(() => named(import('@/pages/app/DiagnosticItemDetail'), 'DiagnosticItemDetail'))
-const PlansList = lazy(() => named(import('@/pages/app/PlansList'), 'PlansList'))
-const PlanViewer = lazy(() => named(import('@/pages/app/PlanViewer'), 'PlanViewer'))
+const Metres = lazy(() => named(import('@/pages/app/Metres'), 'Metres'))
+const EspaceMetres = lazy(() => named(import('@/pages/app/EspaceMetres'), 'EspaceMetres'))
 const ReportDetail = lazy(() => named(import('@/pages/app/ReportDetail'), 'ReportDetail'))
 const BuildingsList = lazy(() => named(import('@/pages/app/BuildingsList'), 'BuildingsList'))
 const BuildingNew = lazy(() => named(import('@/pages/app/BuildingNew'), 'BuildingNew'))
@@ -132,6 +132,11 @@ function App() {
           <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/onboarding" element={<Onboarding />} />
 
+          {/* L'espace de travail des Métrés prend tout l'écran, comme un logiciel
+              de métré : il a sa propre barre, et le téléphone y a sa version
+              de lecture (voir EspaceMetres). */}
+          <Route path="/app/metres/:projectId" element={<ProtectedRoute><EspaceMetres /></ProtectedRoute>} />
+
           {/* App (protégée par auth) */}
           <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route index element={<HomeRedirect />} />
@@ -163,9 +168,12 @@ function App() {
             <Route path="diagnostic/:id" element={<DiagnosticDetail />} />
             <Route path="diagnostic/:id/item/:itemId" element={<DiagnosticItemDetail />} />
 
-            {/* Plans */}
-            <Route path="plans" element={<PlansList />} />
-            <Route path="plans/:id" element={<PlanViewer />} />
+            {/* Métrés : déposer un jeu de plans, retrouver ses métrés. Les
+                anciennes adresses des plans, restées « bientôt disponibles »,
+                y mènent. */}
+            <Route path="metres" element={<Metres />} />
+            <Route path="plans" element={<Navigate to="/app/metres" replace />} />
+            <Route path="plans/:id" element={<Navigate to="/app/metres" replace />} />
 
             {/* Reports */}
             <Route path="reports/:id" element={<ReportDetail />} />
