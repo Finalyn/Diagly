@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -32,7 +32,6 @@ const OuvertureDossier = lazy(() => named(import('@/pages/app/ProjectDetail'), '
 const ProjectEdit = lazy(() => named(import('@/pages/app/ProjectEdit'), 'ProjectEdit'))
 const ProjectDiagnostic = lazy(() => named(import('@/pages/app/ProjectDiagnostic'), 'ProjectDiagnostic'))
 const ProjectMetres = lazy(() => named(import('@/pages/app/ProjectMetres'), 'ProjectMetres'))
-const ProjectPlans = lazy(() => named(import('@/pages/app/ProjectPlans'), 'ProjectPlans'))
 const ProjectPhotos = lazy(() => named(import('@/pages/app/ProjectPhotos'), 'ProjectPhotos'))
 // La vitrine embarque Leaflet et ses captures : chargee a la demande, elle ne
 // pese pas sur le paquet que tout utilisateur de l'application telecharge.
@@ -152,7 +151,7 @@ function App() {
             <Route path="projects/:id/diagnostic" element={<ProjectDiagnostic />} />
             <Route path="projects/:id/couts" element={<ProjectMetres />} />
             <Route path="projects/:id/variantes" element={<ProjectVariantes />} />
-            <Route path="projects/:id/plans" element={<ProjectPlans />} />
+            <Route path="projects/:id/plans" element={<VersMetres />} />
             <Route path="projects/:id/photos" element={<ProjectPhotos />} />
             <Route path="projects/:id/rapports" element={<ProjectRapports />} />
             <Route path="projects/:id/cecb" element={<ProjectCECB />} />
@@ -211,3 +210,13 @@ function App() {
 }
 
 export default App
+
+/**
+ * L'outil Plan du dossier est devenu Métrés : les anciens liens (favoris,
+ * notifications, mails) y mènent, avec l'état qu'ils transportaient.
+ */
+function VersMetres() {
+  const { id } = useParams<{ id: string }>()
+  const location = useLocation()
+  return <Navigate to={`/app/metres/${id}`} replace state={location.state} />
+}

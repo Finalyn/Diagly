@@ -24,14 +24,15 @@ const STATUT: Record<ProjectStatus, string> = {
   EN_REVUE: 'bg-amber-500', TERMINE: 'bg-emerald-500', ARCHIVE: 'bg-gray-400',
 }
 
-type Entree = { segment: string; label: string; icone: typeof MapPin }
+/** `vers` remplace le lien du segment quand l'outil vit hors du dossier (Métrés, plein écran). */
+type Entree = { segment: string; label: string; icone: typeof MapPin; vers?: (projectId: string) => string }
 
 /** Les outils, rangés par sujet : le bâtiment, l'analyse chiffrée, les documents remis. */
 const GROUPES: { titre: string; entrees: Entree[] }[] = [
   { titre: 'Bâtiment', entrees: [
     { segment: 'fiche', label: 'Fiche du bâtiment', icone: MapPin },
     { segment: 'visite', label: 'Visite', icone: CalendarCheck },
-    { segment: 'plans', label: 'Plans', icone: Ruler },
+    { segment: 'plans', label: 'Métrés', icone: Ruler, vers: (id) => `/app/metres/${id}` },
     { segment: 'cecb', label: 'Étiquette énergétique', icone: Zap },
   ] },
   { titre: 'Analyse', entrees: [
@@ -106,7 +107,7 @@ export function DossierSidebar({ projectId }: { projectId: string }) {
               {g.entrees.map((e) => (
                 <NavLink
                   key={e.segment}
-                  to={`${base}/${e.segment}`}
+                  to={e.vers ? e.vers(projectId) : `${base}/${e.segment}`}
                   data-visite={`onglet-${e.segment}`}
                   className={({ isActive }) => cn(
                     'flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13.5px] transition-colors short:py-1.5',

@@ -18,7 +18,9 @@ const RAISONS: Record<string, string> = {
   'deja-a-jour': 'déjà à jour',
 }
 
-export function ReportDossier({ resume, etat, erreur, onConfirmer, onFermer }: {
+export function ReportDossier({ dossier, resume, etat, erreur, onConfirmer, onFermer }: {
+  /** Le dossier du bâtiment de ce métré, nommé pour qu'on sache où l'on écrit. */
+  dossier: string
   resume: ResumeReport
   etat: 'pret' | 'en-cours' | 'fait'
   erreur: string | null
@@ -32,7 +34,10 @@ export function ReportDossier({ resume, etat, erreur, onConfirmer, onFermer }: {
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 pb-[calc(var(--safe-bottom)+1rem)] pl-[calc(var(--safe-left)+1rem)] pr-[calc(var(--safe-right)+1rem)] pt-[calc(var(--safe-top)+1rem)]" onClick={etat === 'en-cours' ? undefined : onFermer}>
       <div role="dialog" aria-label="Reporter au dossier" className="flex max-h-full w-full max-w-lg flex-col rounded-2xl border bg-background p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="flex items-center gap-2 text-lg font-semibold"><SendHorizontal className="h-5 w-5" />Reporter au dossier</h3>
-        <p className="mt-1 text-sm text-muted-foreground">Voici ce qui sera écrit au dossier. Rien ne part avant votre confirmation.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Dans le dossier <span className="font-medium text-foreground">« {dossier} »</span>, celui du bâtiment de ces plans :
+          ses éléments comptés et les quantités de son relevé. Rien ne part avant votre confirmation.
+        </p>
 
         <div className="-mx-1 mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto px-1 text-sm">
           <section>

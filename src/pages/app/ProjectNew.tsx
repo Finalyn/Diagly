@@ -280,12 +280,9 @@ export function ProjectNew() {
         queryClient.invalidateQueries({ queryKey: ['operation', operationId] })
         navigate(`/app/diagnostics-multi/${operationId}`)
       } else if (data.plansManquants) {
-        // Le dossier s'ouvre quand même, sur ses Plans, où il suffit d'ajouter
+        // Le dossier s'ouvre quand même, sur ses Métrés, où il suffit d'ajouter
         // ceux qui manquent.
-        const n = data.plansManquants
-        navigate(`/app/projects/${data.projectId}/plans`, {
-          state: { avisPlans: n > 1 ? `${n} plans n’ont pas pu être rangés dans le dossier. Ajoutez-les ici.` : 'Un plan n’a pas pu être rangé dans le dossier. Ajoutez-le ici.' },
-        })
+        navigate(`/app/metres/${data.projectId}`, { state: { plansManquants: data.plansManquants } })
       } else {
         // Avec des relevés importés, on ouvre le diagnostic pour les vérifier.
         navigate(data.releves ? `/app/projects/${data.projectId}/diagnostic` : `/app/projects/${data.projectId}`)

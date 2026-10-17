@@ -5,7 +5,7 @@ const evenement = (type: string, data: unknown) => `event: ${type}\ndata: ${JSON
 
 // Un flux tel que l'API le rend : réflexion, puis texte en plusieurs morceaux.
 const FLUX = [
-  evenement("message_start", { type: "message_start", message: { id: "msg_1", content: [] } }),
+  evenement("message_start", { type: "message_start", message: { id: "msg_1", content: [], usage: { input_tokens: 15000, cache_read_input_tokens: 200, output_tokens: 1 } } }),
   evenement("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } }),
   evenement("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Je lis la coupe" } }),
   evenement("content_block_stop", { type: "content_block_stop", index: 0 }),
@@ -22,14 +22,14 @@ describe("AssembleurDeFlux", () => {
   it("rassemble le texte, sans la réflexion, et garde la raison de l'arrêt", () => {
     const a = new AssembleurDeFlux();
     a.pousser(FLUX);
-    expect(a.terminer()).toEqual({ texte: '{"estUnJeuDePlans": true}', arret: "end_turn", erreur: null });
+    expect(a.terminer()).toEqual({ texte: '{"estUnJeuDePlans": true}', arret: "end_turn", erreur: null, jetons: { entree: 15200, sortie: 42 } });
   });
 
   it("supporte un flux découpé n'importe où, retours chariot compris", () => {
     const a = new AssembleurDeFlux();
     const crlf = FLUX.replace(/\n/g, "\r\n");
     for (let i = 0; i < crlf.length; i += 7) a.pousser(crlf.slice(i, i + 7));
-    expect(a.terminer()).toEqual({ texte: '{"estUnJeuDePlans": true}', arret: "end_turn", erreur: null });
+    expect(a.terminer()).toEqual({ texte: '{"estUnJeuDePlans": true}', arret: "end_turn", erreur: null, jetons: { entree: 15200, sortie: 42 } });
   });
 
   it("signale une erreur survenue en cours de route", () => {

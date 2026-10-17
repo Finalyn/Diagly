@@ -16,7 +16,7 @@
  * échelles proposées qui restent, après confirmation.
  */
 import { useState } from 'react'
-import { AlertTriangle, Check, Loader2, Pencil, RotateCcw, Ruler, X } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Pencil, RotateCcw, Ruler, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ApiPlan, ChampCorrigeable, FeuillePlan, TypePageAnalysee } from '@/lib/api-types'
 import { useApercusPages, useRenduPlan } from '@/components/plans/rendu'
@@ -56,7 +56,7 @@ const ANALYSES: Record<EtatAnalyse, string> = {
   erreur: 'bg-red-50 text-red-700',
 }
 
-export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir, onAnalyser, onCorriger, echellesAPoser = 0, onPoserEchelles }: {
+export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir, onAnalyser, onCorriger, echellesAPoser = 0, onPoserEchelles, onSupprimer }: {
   groupes: GroupeDeFeuilles[]
   selection: RefFeuille | null
   /** Sur téléphone : on regarde l'état des feuilles, on ne les corrige pas. */
@@ -67,6 +67,8 @@ export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir
   /** Feuilles dont l'échelle proposée attend d'être posée. */
   echellesAPoser?: number
   onPoserEchelles?: () => void
+  /** Retirer un document du jeu (et du dossier), toutes ses feuilles avec. */
+  onSupprimer?: (plan: GroupeDeFeuilles['plan']) => void
 }) {
   const [confirmer, setConfirmer] = useState(false)
   const incoherentes = groupes.reduce((s, g) => s + g.feuilles.filter((f) => f.echelle === 'incoherente').length, 0)
@@ -110,13 +112,14 @@ export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir
           onChoisir={onChoisir}
           onAnalyser={onAnalyser}
           onCorriger={onCorriger}
+          onSupprimer={lectureSeule ? undefined : onSupprimer}
         />
       ))}
     </div>
   )
 }
 
-function GroupePlan({ groupe, plusieurs, selection, lectureSeule, onChoisir, onAnalyser, onCorriger }: {
+function GroupePlan({ groupe, plusieurs, selection, lectureSeule, onChoisir, onAnalyser, onCorriger, onSupprimer }: {
   groupe: GroupeDeFeuilles
   plusieurs: boolean
   selection: RefFeuille | null
@@ -124,6 +127,7 @@ function GroupePlan({ groupe, plusieurs, selection, lectureSeule, onChoisir, onA
   onChoisir?: (f: RefFeuille) => void
   onAnalyser?: (f: RefFeuille, relance: boolean) => void
   onCorriger?: (f: RefFeuille, patch: Partial<Pick<FeuillePlan, ChampCorrigeable>>) => void
+  onSupprimer?: (plan: GroupeDeFeuilles['plan']) => void
 }) {
   const { plan, nombre, feuilles } = groupe
   const pdf = plan.mimeType === 'application/pdf'
@@ -134,10 +138,23 @@ function GroupePlan({ groupe, plusieurs, selection, lectureSeule, onChoisir, onA
 
   return (
     <section>
-      {plusieurs && (
-        <p className="mb-1.5 truncate px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground" title={plan.name}>
-          {plan.name}{nombre ? ` · ${nombre} page${nombre > 1 ? 's' : ''}` : ''}
-        </p>
+      {/* Le nom du document, et de quoi le retirer : l'en-tête reste même
+          pour un document seul dès qu'on peut le supprimer. */}
+      {(plusieurs || onSupprimer) && (
+        <div className="mb-1.5 flex items-center gap-1 px-1">
+          <p className="min-w-0 flex-1 truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground" title={plan.name}>
+            {plan.name}{nombre ? ` · ${nombre} page${nombre > 1 ? 's' : ''}` : ''}
+          </p>
+          {onSupprimer && (
+            <button
+              onClick={() => onSupprimer(plan)}
+              className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 pointer-coarse:p-2.5"
+              title="Supprimer ce document et ses métrés"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       )}
       {nombre == null ? (
         <p className="flex items-center gap-2 rounded-xl border border-dashed px-3 py-3 text-xs text-muted-foreground">

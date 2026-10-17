@@ -88,8 +88,13 @@ export async function demanderAuModeleDesPlans(
   } catch {
     throw badRequest(messages.interrompue);
   }
-  const { texte, arret, erreur } = flux.terminer();
-  logger.info({ arret, erreur, secondes: Math.round((Date.now() - debut) / 1000) }, messages.journal);
+  const { texte, arret, erreur, jetons } = flux.terminer();
+  // Les jetons disent ce que l'analyse a coûté : une ligne par appel dans le
+  // journal du serveur, à multiplier par le tarif du modèle.
+  logger.info({
+    arret, erreur, secondes: Math.round((Date.now() - debut) / 1000),
+    modele: env.ANTHROPIC_MODEL_PLANS, jetonsEntree: jetons.entree, jetonsSortie: jetons.sortie,
+  }, messages.journal);
   if (erreur) throw badRequest(messages.indisponible);
   return { texte, json: objetJson(texte), tronque: arret === "max_tokens", refus: arret === "refusal" };
 }

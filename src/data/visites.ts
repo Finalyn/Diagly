@@ -483,70 +483,8 @@ export const VISITES: Visite[] = [
       {
         cible: '[data-visite="onglet-plans"]',
         cote: 'droite',
-        titre: 'Plans, et c’est là que ça devient intéressant',
-        texte: 'Cliquez sur Plans : c’est l’outil qui transforme un dessin d’architecte en quantités justes dans le relevé.',
-        avanceAuClic: true,
-      },
-      {
-        cible: '[data-visite="plans-ajouter"], [data-visite="plans-vide"]',
-        cote: 'gauche',
-        titre: 'Importer un plan',
-        texte: 'Déposez un PDF ou une image, jusqu’à trente mégaoctets. Un PDF de plusieurs pages est gardé tel quel : chaque page a ses propres mesures et sa propre échelle.',
-      },
-      {
-        cible: '[data-visite="plans-liste"]',
-        cote: 'haut',
-        titre: 'Vos plans',
-        texte: 'Chaque vignette montre le plan, son nombre de pages et le nombre de mesures déjà rattachées à un ouvrage.',
-      },
-      {
-        cible: '[data-visite="plan-vignette"]',
-        cote: 'bas',
-        titre: 'Ouvrez un plan',
-        texte: 'Cliquez sur une vignette : l’éditeur s’ouvre en plein écran et je vous montre ses outils.',
-        avanceAuClic: true,
-      },
-      {
-        titre: 'L’éditeur s’ouvre sur l’étalonnage',
-        texte: 'Tant qu’une page n’a pas d’échelle, les outils de mesure restent inaccessibles : une surface relevée sur un plan non étalonné serait fausse sans que rien ne le signale. Sans plan dans ce dossier, je vous décris les outils quand même.',
-      },
-      {
-        cible: '[data-outil="calibrate"]',
-        cote: 'droite',
-        titre: 'Étalonner',
-        texte: 'Tracez un trait sur la cote connue la plus longue du plan, puis saisissez sa longueur réelle. Sur un document de plusieurs pages, Diagly propose d’appliquer l’échelle aux autres, avec un aperçu de chacune.',
-      },
-      {
-        cible: '[data-outil="measure"]',
-        cote: 'droite',
-        titre: 'Mesurer',
-        texte: 'Une cote entre deux points, affichée en direct. De quoi vérifier une dimension sans sortir le mètre.',
-      },
-      {
-        cible: '[data-outil="hatch"]',
-        cote: 'droite',
-        titre: 'Tracer une zone',
-        texte: 'Au glisser pour un rectangle, point par point pour une forme libre. La surface s’affiche en direct, arrondie au demi mètre carré.',
-      },
-      {
-        titre: 'Rattacher la zone à un ouvrage',
-        texte: 'Dès la zone tracée, Diagly propose de la rattacher à un ouvrage du relevé. La liste des mesures, à droite de l’éditeur, signale en orange celles qui ne le sont pas : un clic sur la ligne ouvre le choix.',
-      },
-      {
-        cible: '[data-outil="reference"]',
-        cote: 'droite',
-        titre: 'Comparer deux états',
-        texte: 'Le calque de référence superpose un second plan en transparence, le projet par-dessus l’existant par exemple. Vous choisissez la page à superposer et vous la faites glisser pour l’aligner.',
-      },
-      {
-        titre: 'Annoter, et revenir en arrière',
-        texte: 'Dessiner, flèche et note servent à commenter le plan. Ctrl+Z défait le dernier geste et Ctrl+Maj+Z le rejoue. Échap abandonne le tracé en cours sans rien effacer.',
-      },
-      {
-        cible: '[data-visite="plans-quantites"]',
-        cote: 'haut',
-        titre: 'Reporter dans le relevé',
-        texte: 'Les zones et les cotes rattachées à un même ouvrage s’additionnent, à travers tous vos plans et toutes leurs pages. Diagly vous montre ce qu’il a mesuré et ce que cela changerait au coût, et vous validez : une quantité ne change jamais toute seule.',
+        titre: 'Métrés, et c’est là que ça devient intéressant',
+        texte: 'Déposez les plans du bâtiment : l’IA lit chaque feuille, pose l’échelle, dessine pièces, façades et fenêtres, et compte les portes. Vous validez ce qu’elle propose, les quantités s’additionnent étage par étage, puis se reportent dans le relevé. L’outil s’ouvre en plein écran.',
       },
       {
         titre: 'Voilà le dossier',

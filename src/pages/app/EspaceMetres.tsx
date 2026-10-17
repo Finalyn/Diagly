@@ -458,6 +458,17 @@ export function EspaceMetres() {
     return () => window.removeEventListener('keydown', onKey)
   }, [revueActive])
 
+  // ---- retirer un document du jeu : ses feuilles et tout ce qui y est tracé
+  const supprimerPlan = async (plan: ApiPlan) => {
+    if (!window.confirm(`Supprimer « ${plan.name} » ? Ses feuilles et tous les métrés tracés dessus seront perdus.`)) return
+    try {
+      await api.plans.delete(plan.id)
+      await queryClient.invalidateQueries({ queryKey: ['plans', projectId] })
+    } catch {
+      setAvis(`« ${plan.name} » n’a pas pu être supprimé : réessayez.`)
+    }
+  }
+
   // ---- export Excel du métré
   const [exportEtat, setExportEtat] = useState<'repos' | 'en-cours' | 'erreur'>('repos')
   const exporter = async () => {
@@ -604,6 +615,7 @@ export function EspaceMetres() {
               <NavigateurFeuilles
                 groupes={groupes} selection={selection} onChoisir={choisir} onAnalyser={analyser} onCorriger={corriger}
                 echellesAPoser={echellesEnAttente} onPoserEchelles={() => void moteur.poserLesEchellesProposees()}
+                onSupprimer={(plan) => void supprimerPlan(plan)}
               />
             )}
       </div>
@@ -706,6 +718,7 @@ export function EspaceMetres() {
 
       {report && (
         <ReportDossier
+          dossier={[projet?.name, projet?.city].filter(Boolean).join(', ') || 'ce bâtiment'}
           resume={report.resume}
           etat={report.etat}
           erreur={report.erreur}
@@ -803,14 +816,21 @@ function BarreDuHaut({
   const secondes = etat.lot ? Math.max(0, Math.round((maintenant - etat.lot.depuis) / 1000)) : 0
   const duree = secondes >= 60 ? `${Math.floor(secondes / 60)} min ${String(secondes % 60).padStart(2, '0')} s` : `${secondes} s`
   const part = compteurs.total ? compteurs.pretes / compteurs.total : 0
+  // On revient d'où l'on vient : le dossier, la liste des métrés, l'accueil.
+  // Ouvert directement (lien, onglet neuf), l'espace ramène à la liste des métrés.
+  const navigate = useNavigate()
+  const retour = () => {
+    if ((window.history.state as { idx?: number } | null)?.idx) navigate(-1)
+    else navigate('/app/metres')
+  }
   const bouton = 'flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-40 pointer-coarse:min-h-11'
 
   return (
     <header className="safe-top safe-sides shrink-0 border-b bg-background">
       <div className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
-        <Link to="/app/metres" className="flex shrink-0 items-center gap-1 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground pointer-coarse:p-2.5" title="Tous les métrés">
+        <button onClick={retour} className="flex shrink-0 items-center gap-1 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground pointer-coarse:p-2.5" title="Retour">
           <ChevronLeft className="h-5 w-5" />
-        </Link>
+        </button>
         <img src={telephone ? '/diagly-mark.svg' : '/diagly-logo.svg'} alt="Diagly" className={cn('shrink-0', telephone ? 'h-6 w-6' : 'h-6')} />
         <div className="hidden h-6 w-px shrink-0 bg-border sm:block" aria-hidden />
         <div className="min-w-0 flex-1">
