@@ -28,16 +28,28 @@
  * L'éditeur est celui du dossier, encastré : la page lui est imposée par le
  * navigateur, et ses panneaux de feuille passent dans la colonne de droite.
  *
+ * Une bascule « Plan | Tableau », gardée dans l'adresse, remplace le plan et
+ * la colonne de droite par le tableau de toutes les formes du jeu
+ * (components/metres/TableauMetres.tsx) : une ligne par forme, regroupée et
+ * sous-totalisée comme on veut, et reliée au plan. Toucher une ligne revient
+ * au plan, sur sa feuille, la forme sélectionnée et cadrée ; ce qu'on y
+ * change s'écrit sur la forme. Le navigateur des feuilles reste à gauche et
+ * filtre le tableau sur une feuille, ou le laisse sur tout le jeu.
+ *
+ * Des plans papier s'ajoutent en les scannant (components/metres/ScannerPlans.tsx) :
+ * le PDF obtenu suit le chemin d'un dépôt ordinaire.
+ *
  * Sur iPad debout, le navigateur se replie en tiroir pour laisser la place
  * au plan. Sur téléphone, l'écran n'est pas un outil de tracé : il montre les
- * quantités et l'état des feuilles, et renvoie à l'iPad ou à l'ordinateur
- * pour corriger.
+ * quantités, le tableau en cartes et l'état des feuilles, et renvoie à l'iPad
+ * ou à l'ordinateur pour corriger.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertCircle, AlertTriangle, ChevronLeft, FileSpreadsheet, FolderOpen, Layers, ListChecks, Loader2, Plus, SendHorizontal, Square, X,
+  AlertCircle, AlertTriangle, ChevronLeft, FileSpreadsheet, FolderOpen, Layers, ListChecks, Loader2, Map as Carte, Plus, ScanLine, SendHorizontal,
+  Square, Table2, X,
 } from 'lucide-react'
 import { api, saveBlob } from '@/lib/api'
 import type { ApiPlan, ChampCorrigeable, FeuillePlan, PlanAnnotation } from '@/lib/api-types'
@@ -56,11 +68,16 @@ import { CarteRevue } from '@/components/metres/RevueMetres'
 import { CarteRechercheSymbole, type ResultatSymbole } from '@/components/metres/RechercheSymbole'
 import { chercherDansLeJeu } from '@/components/metres/symboles'
 import { ReportDossier } from '@/components/metres/ReportDossier'
+import { CartesTableau, TableauMetres, type ActionsTableau } from '@/components/metres/TableauMetres'
+import { ScannerPlans } from '@/components/metres/ScannerPlans'
 import { useEnregistrerComptages } from '@/components/comptages/enregistrer'
 import {
-  aValiderSurLaPage, echellesAPoser, enAttente, estPdf, etatAnalyse, feuilleDe, libelleFeuille, lotDeLaPage, nombreDePages,
+  NOMS_VUES, aValiderSurLaPage, echellesAPoser, enAttente, estPdf, etatAnalyse, feuilleDe, libelleFeuille, lotDeLaPage, nombreDePages,
   ordonnerPlans, statutEchelle, type RefFeuille,
 } from '@/lib/plans/feuilles'
+import {
+  ETAT_TABLEAU_INITIAL, estUnRegroupement, lignesDuTableau, type EtatTableau, type LigneTableau, type Regroupement,
+} from '@/lib/plans/tableau'
 import {
   CLASSIFICATION, CLASSIFICATIONS, classificationDe, entreesSia416, panneauDesQuantites, type CleClassification, type InstanceQ,
   type PanneauQuantites as Panneau, type PlanPourQuantites,
@@ -136,6 +153,25 @@ export function EspaceMetres() {
   const telephone = useIsMobile()
   const tiroir = useTiroir()
   const [params, setParams] = useSearchParams()
+  // La vue (plan ou tableau) et le regroupement du tableau, gardés dans l'adresse comme la feuille.
+  const vue: 'plan' | 'tableau' = params.get('vue') === 'tableau' ? 'tableau' : 'plan'
+  const groupe = params.get('groupe')
+  const regroupement: Regroupement = estUnRegroupement(groupe) ? groupe : 'classification'
+  const tableauSurLaFeuille = params.get('filtre') === 'feuille'
+  /**
+   * Change quelques paramètres de l'adresse sans toucher aux autres. On part
+   * de l'adresse du moment et non de celle du dernier rendu : deux changements
+   * dans le même geste (revenir au plan, puis ouvrir la feuille d'une forme)
+   * ne doivent pas s'effacer l'un l'autre.
+   */
+  const majParams = useCallback((patch: Record<string, string | null>) => setParams(() => {
+    const p = new URLSearchParams(window.location.search)
+    for (const [k, v] of Object.entries(patch)) {
+      if (v == null) p.delete(k)
+      else p.set(k, v)
+    }
+    return p
+  }, { replace: true }), [setParams])
 
   const projetQ = useQuery({ queryKey: ['project', projectId], queryFn: () => api.projects.get(projectId), enabled: !!projectId })
   const plansQ = useQuery({ queryKey: ['plans', projectId], queryFn: () => api.plans.list(projectId), enabled: !!projectId })
@@ -149,12 +185,13 @@ export function EspaceMetres() {
   // Ce que l'éditeur ouvert tient : le panneau et les pastilles le suivent sans attendre l'enregistrement.
   const [live, setLive] = useState<EtatEditeur | null>(null)
   const planVu = useCallback((plan: ApiPlan): ApiPlan => {
-    if (live?.planId !== plan.id) return plan
+    // En vue tableau, l'éditeur est fermé : ce qu'il tenait est parti au serveur, le cache le tient.
+    if (vue === 'tableau' || live?.planId !== plan.id) return plan
     const table: PlanAnnotation[] = Object.keys(live.echelles).length
       ? [{ id: 'pages', type: 'pages', points: [], pageScales: live.echelles }]
       : []
     return { ...plan, scalePxPerM: live.scale, annotations: [...live.annotations.filter((a) => a.type !== 'pages'), ...table] }
-  }, [live])
+  }, [live, vue])
 
   // Les plans, dans l'ordre du dépôt.
   const plans = useMemo(() => ordonnerPlans(plansQ.data?.plans ?? []), [plansQ.data])
@@ -192,6 +229,7 @@ export function EspaceMetres() {
   const projet = projetQ.data?.project
   const hauteurDuDossier = projet?.floorHeight ?? null
   const panneau = useMemo(() => panneauDesQuantites(jeu, { hauteurDuDossier }), [jeu, hauteurDuDossier])
+  const sia = useMemo(() => surfacesSia416(entreesSia416(panneau)), [panneau])
   const aValiderJeu = useMemo(() => jeu.reduce((s, x) => s + (x.plan.annotations ?? []).filter(enAttente).length, 0), [jeu])
   const echellesEnAttente = useMemo(() => jeu.reduce((s, x) => s + Object.keys(echellesAPoser(x.plan, x.feuilles)).length, 0), [jeu])
 
@@ -204,9 +242,14 @@ export function EspaceMetres() {
   }, [brut, toutes])
   const [tiroirOuvert, setTiroirOuvert] = useState(false)
   const choisir = useCallback((f: RefFeuille) => {
-    setParams({ feuille: `${f.planId}~${f.page}` }, { replace: true })
+    majParams({ feuille: `${f.planId}~${f.page}` })
     setTiroirOuvert(false)
-  }, [setParams])
+  }, [majParams])
+  /** En vue tableau, choisir une feuille y limite le tableau ; elle reste celle que le plan ouvrira. */
+  const choisirPourLeTableau = useCallback((f: RefFeuille) => {
+    majParams({ feuille: `${f.planId}~${f.page}`, filtre: 'feuille' })
+    setTiroirOuvert(false)
+  }, [majParams])
 
   // ---- analyse demandée au dépôt : dès que les documents sont comptés
   const etatArrivee = location.state as { analyserTout?: boolean; plansManquants?: number } | null
@@ -228,7 +271,8 @@ export function EspaceMetres() {
   // ---- ajouter des plans au dossier, sans quitter l'espace
   const champFichiers = useRef<HTMLInputElement>(null)
   const [envoi, setEnvoi] = useState<string | null>(null)
-  const ajouterPlans = async (fichiers: FileList | null) => {
+  const [scanner, setScanner] = useState(false)
+  const ajouterPlans = async (fichiers: FileList | File[] | null) => {
     if (!fichiers?.length) return
     const admis = Array.from(fichiers).filter((f) => FICHIERS_ADMIS.includes(f.type) && f.size <= TAILLE_MAX)
     let manquants = fichiers.length - admis.length
@@ -290,6 +334,79 @@ export function EspaceMetres() {
     onDessinerDans: (cle) => setClassement((c) => (c?.cle === cle ? null : { cle, jeton: Date.now() })),
     onHauteur: (e, h) => moteur.reglerFeuille(e.planId, e.page, { hauteurEtage: h }),
     onAffecter: (planId, id, categorie) => void moteur.modifierAnnotation(planId, id, { sia416: categorie ?? undefined }),
+  }
+
+  // ---- la vue tableau : toutes les formes du jeu, reliées au plan
+  const [etatTableau, setEtatTableau] = useState<EtatTableau>(ETAT_TABLEAU_INITIAL)
+  const lignesTableau = useMemo(() => {
+    if (vue !== 'tableau') return []
+    const parPlan = new Map(jeu.map((x) => [x.plan.id, x]))
+    const formes = new Map(jeu.map((x) => [x.plan.id, new Map((x.plan.annotations ?? []).map((a) => [a.id, a]))]))
+    return lignesDuTableau(panneau, sia, {
+      feuille: (planId, page) => {
+        const x = parPlan.get(planId)
+        if (!x) return { numero: null, titre: `Page ${page}` }
+        const f = feuilleDe(x.feuilles, page)
+        const titre = f.titre?.trim() || (f.type ? NOMS_VUES[f.type] : null) || (estPdf(x.plan) ? `${x.plan.name}, page ${page}` : x.plan.name)
+        return { numero: f.numero?.trim() || null, titre }
+      },
+      annotation: (planId, id) => formes.get(planId)?.get(id) ?? null,
+      ouvrages,
+    })
+  }, [vue, jeu, panneau, sia, ouvrages])
+  const feuilleDuTableau = useMemo(() => {
+    if (vue !== 'tableau' || !tableauSurLaFeuille || !selection) return null
+    const g = groupes.find((x) => x.plan.id === selection.planId)
+    const f = g?.feuilles.find((x) => x.page === selection.page)
+    return { planId: selection.planId, page: selection.page, libelle: f && g ? libelleFeuille(f.feuille, f.page, g.plan.name) : `Page ${selection.page}` }
+  }, [vue, tableauSurLaFeuille, selection, groupes])
+
+  /** Une ligne du tableau ouvre sa feuille en vue plan, la forme sélectionnée et cadrée. */
+  const voirSurLePlan = useCallback((l: LigneTableau) => {
+    majParams({ vue: null, feuille: `${l.planId}~${l.page}` })
+    setCible({ id: l.id, jeton: Date.now() })
+    setSelectionPlan(l.id)
+  }, [majParams])
+
+  const basculerVue = (v: 'plan' | 'tableau') => {
+    if (v === vue) return
+    if (v === 'tableau') {
+      // L'éditeur va se fermer et enregistrer ce qu'il tenait : le cache le
+      // prend tout de suite, pour que le tableau ne montre pas l'état d'avant.
+      const tenu = live
+      if (tenu) {
+        queryClient.setQueryData<{ plans: ApiPlan[]; count: number }>(['plans', projectId], (avant) => (avant
+          ? { ...avant, plans: avant.plans.map((p) => (p.id === tenu.planId ? planVu(p) : p)) }
+          : avant))
+      }
+      setLive(null)
+      setClassement(null)
+      diffuseur.ecrire(null)
+    } else {
+      // Revenir au plan par la bascule ne recadre pas sur une forme d'avant.
+      setCible(null)
+    }
+    majParams({ vue: v === 'tableau' ? 'tableau' : null })
+  }
+
+  /** Les lignes d'un geste, rangées par plan : une écriture par document. */
+  const parPlan = (ls: LigneTableau[]) => {
+    const m = new Map<string, string[]>()
+    for (const l of ls) m.set(l.planId, [...(m.get(l.planId) ?? []), l.id])
+    return [...m]
+  }
+  const actionsTableau: ActionsTableau = {
+    onVoir: voirSurLePlan,
+    onRenommer: async (l, nom) => {
+      const a = jeu.find((x) => x.plan.id === l.planId)?.plan.annotations.find((x) => x.id === l.id)
+      if (!a) return
+      // Une proposition garde son nom dans la proposition : c'est lui qu'elle prendra à la validation.
+      await moteur.modifierAnnotations(l.planId, [l.id], a.proposition ? { proposition: { ...a.proposition, libelle: nom } } : { text: nom })
+    },
+    onSia416: (l, categorie) => moteur.modifierAnnotations(l.planId, [l.id], { sia416: categorie ?? undefined }),
+    onRattacher: async (ls, itemId) => { for (const [planId, ids] of parPlan(ls)) await moteur.modifierAnnotations(planId, ids, { itemId }) },
+    onValider: async (ls) => { for (const [planId, ids] of parPlan(ls)) await moteur.validerAnnotations(planId, ids) },
+    onSupprimer: async (ls) => { for (const [planId, ids] of parPlan(ls)) await moteur.supprimerAnnotations(planId, ids) },
   }
 
   // ---- la recherche d'un symbole sur tout le jeu
@@ -474,7 +591,6 @@ export function EspaceMetres() {
   const exporter = async () => {
     setExportEtat('en-cours')
     try {
-      const sia = surfacesSia416(entreesSia416(panneau))
       const parId = new Map(jeu.map((x) => [x.plan.id, x]))
       const m = exportDuMetre(panneau, sia, {
         batiment: projet?.name ?? 'Bâtiment',
@@ -551,6 +667,8 @@ export function EspaceMetres() {
       nombresConnus={nombresConnus}
       telephone={telephone}
       tiroir={tiroir && !telephone}
+      vue={vue}
+      onVue={basculerVue}
       aValider={aValiderJeu}
       revueActive={revueActive}
       exportEtat={exportEtat}
@@ -558,7 +676,11 @@ export function EspaceMetres() {
       onTiroir={() => setTiroirOuvert(true)}
       onAnalyserTout={() => void moteur.analyserTout()}
       onArreter={() => void moteur.arreter()}
-      onRevoir={demarrerRevue}
+      onRevoir={() => {
+        // La revue se fait sur le plan : la vue tableau lui laisse la place.
+        if (vue === 'tableau') basculerVue('plan')
+        demarrerRevue()
+      }}
       onExporter={() => void exporter()}
       onReporter={ouvrirReport}
     />
@@ -578,7 +700,18 @@ export function EspaceMetres() {
         {compteursDePages}
         {barre}
         {bandeauAvis}
-        <EcranTelephone groupes={groupes} panneau={panneau} chargement={plansQ.isLoading} />
+        <EcranTelephone
+          groupes={groupes}
+          panneau={panneau}
+          chargement={plansQ.isLoading}
+          vue={vue}
+          onVue={(v) => majParams({ vue: v === 'tableau' ? 'tableau' : null })}
+          lignes={lignesTableau}
+          regroupement={regroupement}
+          onRegroupement={(r) => majParams({ groupe: r === 'classification' ? null : r })}
+          etatTableau={etatTableau}
+          onEtatTableau={setEtatTableau}
+        />
       </div>
     )
   }
@@ -592,15 +725,26 @@ export function EspaceMetres() {
             {compteurs.total} feuille{compteurs.total > 1 ? 's' : ''} · {plans.length} document{plans.length > 1 ? 's' : ''}
           </p>
         </div>
-        <button
-          onClick={() => champFichiers.current?.click()}
-          disabled={!!envoi}
-          className="flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50 pointer-coarse:min-h-11"
-          title="Ajouter des plans à ce dossier"
-        >
-          {envoi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          {envoi ?? 'Ajouter'}
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            onClick={() => champFichiers.current?.click()}
+            disabled={!!envoi}
+            className="flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50 pointer-coarse:min-h-11"
+            title="Ajouter des plans à ce dossier"
+          >
+            {envoi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            {envoi ?? 'Ajouter'}
+          </button>
+          {!envoi && (
+            <button
+              onClick={() => setScanner(true)}
+              className="flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-11"
+              title="Scanner un plan papier"
+            >
+              <ScanLine className="h-3.5 w-3.5" />Scanner
+            </button>
+          )}
+        </div>
         <input ref={champFichiers} type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => void ajouterPlans(e.target.files)} />
         {tiroir && (
           <button onClick={() => setTiroirOuvert(false)} className="rounded-lg p-1.5 hover:bg-muted pointer-coarse:p-3" title="Fermer"><X className="h-4 w-4" /></button>
@@ -612,11 +756,29 @@ export function EspaceMetres() {
           : plans.length === 0
             ? <p className="p-3 text-xs text-muted-foreground">Ce dossier n’a pas encore de plan. Ajoutez-en : l’analyse démarre d’elle-même.</p>
             : (
-              <NavigateurFeuilles
-                groupes={groupes} selection={selection} onChoisir={choisir} onAnalyser={analyser} onCorriger={corriger}
-                echellesAPoser={echellesEnAttente} onPoserEchelles={() => void moteur.poserLesEchellesProposees()}
-                onSupprimer={(plan) => void supprimerPlan(plan)}
-              />
+              <>
+                {/* En vue tableau, le navigateur filtre : une feuille, ou tout le jeu. */}
+                {vue === 'tableau' && (
+                  <button
+                    onClick={() => { majParams({ filtre: null }); setTiroirOuvert(false) }}
+                    aria-pressed={!feuilleDuTableau}
+                    className={cn('mb-3 flex w-full items-center gap-2 rounded-xl border bg-background px-3 py-2 text-left text-[13px] font-medium transition-colors pointer-coarse:min-h-11',
+                      !feuilleDuTableau ? 'border-foreground ring-1 ring-foreground' : 'hover:border-foreground/30')}
+                  >
+                    <Table2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">Tout le jeu</span>
+                    <span className="shrink-0 text-[11px] font-normal text-muted-foreground">{lignesTableau.length} forme{lignesTableau.length > 1 ? 's' : ''}</span>
+                  </button>
+                )}
+                <NavigateurFeuilles
+                  groupes={groupes}
+                  selection={vue === 'tableau' ? (feuilleDuTableau ? selection : null) : selection}
+                  onChoisir={vue === 'tableau' ? choisirPourLeTableau : choisir}
+                  onAnalyser={analyser} onCorriger={corriger}
+                  echellesAPoser={echellesEnAttente} onPoserEchelles={() => void moteur.poserLesEchellesProposees()}
+                  onSupprimer={(plan) => void supprimerPlan(plan)}
+                />
+              </>
             )}
       </div>
     </div>
@@ -637,84 +799,115 @@ export function EspaceMetres() {
           </div>
         )}
 
-        <main className="relative min-w-0 flex-1">
-          {planCourant && encastre ? (
-            <PlanEditor key={planCourant.id} plan={planCourant} encastre={encastre} />
-          ) : (
-            <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-              {plansQ.isLoading || !nombresConnus
-                ? <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Préparation des feuilles…</span>
-                : 'Choisissez une feuille à gauche.'}
-            </div>
-          )}
-          {symbole && !revue && (
-            <CarteRechercheSymbole
-              progres={symbole.progres}
-              resultats={symbole.resultats}
-              coches={symbole.coches}
-              categorie={symbole.categorie}
-              onCocher={(id) => setSymbole((s) => {
-                if (!s) return s
-                const coches = new Set(s.coches)
-                if (coches.has(id)) coches.delete(id)
-                else coches.add(id)
-                return { ...s, coches }
-              })}
-              onVoir={(r) => {
-                choisir({ planId: r.planId, page: r.page })
-                const o = symbole.resultats.find((x) => x.id === r.id)
-                const l = (o?.largeur ?? 40) / 2, h = (o?.hauteur ?? 40) / 2
-                setCible({ id: '', jeton: Date.now(), points: [{ x: r.x - l, y: r.y - h }, { x: r.x + l, y: r.y + h }] })
-              }}
-              onCategorie={(categorie) => setSymbole((s) => (s ? { ...s, categorie } : s))}
-              onCompter={() => void compterSymbole()}
-              onFermer={fermerSymbole}
-            />
-          )}
-          {revue && (
-            <CarteRevue
-              element={courant}
-              position={revue.index + 1}
-              total={revue.elements.length}
-              decision={courant ? revue.decisions[courant.id] ?? null : null}
-              validees={Object.values(revue.decisions).filter((d) => d === 'validee').length}
-              rejetees={Object.values(revue.decisions).filter((d) => d === 'rejetee').length}
-              pret={pretPourDecider}
-              onValider={() => decider('validee')}
-              onRejeter={() => decider('rejetee')}
-              onPrecedent={() => deplacer(-1)}
-              onSuivant={() => deplacer(1)}
-              onQuitter={() => setRevue(null)}
-            />
-          )}
-        </main>
+        {vue === 'tableau' ? (
+          <main className="relative min-w-0 flex-1">
+            {plansQ.isLoading
+              ? <p className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Chargement…</p>
+              : (
+                <TableauMetres
+                  projectId={projectId}
+                  panneau={panneau}
+                  lignes={lignesTableau}
+                  regroupement={regroupement}
+                  onRegroupement={(r) => majParams({ groupe: r === 'classification' ? null : r })}
+                  feuille={feuilleDuTableau}
+                  onToutLeJeu={() => majParams({ filtre: null })}
+                  etat={etatTableau}
+                  onEtat={setEtatTableau}
+                  choisie={selectionPlan}
+                  actions={actionsTableau}
+                />
+              )}
+          </main>
+        ) : (
+          <>
+            <main className="relative min-w-0 flex-1">
+              {planCourant && encastre ? (
+                <PlanEditor key={planCourant.id} plan={planCourant} encastre={encastre} />
+              ) : (
+                <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+                  {plansQ.isLoading || !nombresConnus
+                    ? <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Préparation des feuilles…</span>
+                    : 'Choisissez une feuille à gauche.'}
+                </div>
+              )}
+              {symbole && !revue && (
+                <CarteRechercheSymbole
+                  progres={symbole.progres}
+                  resultats={symbole.resultats}
+                  coches={symbole.coches}
+                  categorie={symbole.categorie}
+                  onCocher={(id) => setSymbole((s) => {
+                    if (!s) return s
+                    const coches = new Set(s.coches)
+                    if (coches.has(id)) coches.delete(id)
+                    else coches.add(id)
+                    return { ...s, coches }
+                  })}
+                  onVoir={(r) => {
+                    choisir({ planId: r.planId, page: r.page })
+                    const o = symbole.resultats.find((x) => x.id === r.id)
+                    const l = (o?.largeur ?? 40) / 2, h = (o?.hauteur ?? 40) / 2
+                    setCible({ id: '', jeton: Date.now(), points: [{ x: r.x - l, y: r.y - h }, { x: r.x + l, y: r.y + h }] })
+                  }}
+                  onCategorie={(categorie) => setSymbole((s) => (s ? { ...s, categorie } : s))}
+                  onCompter={() => void compterSymbole()}
+                  onFermer={fermerSymbole}
+                />
+              )}
+              {revue && (
+                <CarteRevue
+                  element={courant}
+                  position={revue.index + 1}
+                  total={revue.elements.length}
+                  decision={courant ? revue.decisions[courant.id] ?? null : null}
+                  validees={Object.values(revue.decisions).filter((d) => d === 'validee').length}
+                  rejetees={Object.values(revue.decisions).filter((d) => d === 'rejetee').length}
+                  pret={pretPourDecider}
+                  onValider={() => decider('validee')}
+                  onRejeter={() => decider('rejetee')}
+                  onPrecedent={() => deplacer(-1)}
+                  onSuivant={() => deplacer(1)}
+                  onQuitter={() => setRevue(null)}
+                />
+              )}
+            </main>
 
-        {/* À droite : les quantités du jeu, et ce qui attend d'être validé sur la feuille. */}
-        <aside className="flex w-80 shrink-0 flex-col border-l bg-muted/30 xl:w-[23rem]">
-          <div className="flex shrink-0 gap-1 border-b p-2">
-            <Onglet actif={onglet === 'quantites'} onClick={() => setOnglet('quantites')}>Quantités</Onglet>
-            <Onglet actif={onglet === 'feuille'} onClick={() => setOnglet('feuille')}>
-              Cette feuille{aValiderFeuille > 0 && <span className="ml-1 rounded-full bg-teal-100 px-1.5 text-[10px] text-teal-800">{aValiderFeuille}</span>}
-            </Onglet>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-[calc(var(--safe-bottom)+0.75rem)]">
-            {/* La colonne de la feuille reste montée : l'éditeur y pose ses panneaux. */}
-            <div ref={setPanneauFeuille} className={cn(onglet !== 'feuille' && 'hidden')} />
-            {onglet === 'quantites' && (
-              <PanneauVivant
-                panneau={panneau}
-                jeu={jeu}
-                hauteurDuDossier={hauteurDuDossier}
-                diffuseur={diffuseur}
-                selection={selectionPlan}
-                masquees={masquees}
-                classementActif={classement?.cle ?? null}
-                actions={actions}
-              />
-            )}
-          </div>
-        </aside>
+            {/* À droite : les quantités du jeu, et ce qui attend d'être validé sur la feuille. */}
+            <aside className="flex w-80 shrink-0 flex-col border-l bg-muted/30 xl:w-[23rem]">
+              <div className="flex shrink-0 gap-1 border-b p-2">
+                <Onglet actif={onglet === 'quantites'} onClick={() => setOnglet('quantites')}>Quantités</Onglet>
+                <Onglet actif={onglet === 'feuille'} onClick={() => setOnglet('feuille')}>
+                  Cette feuille{aValiderFeuille > 0 && <span className="ml-1 rounded-full bg-teal-100 px-1.5 text-[10px] text-teal-800">{aValiderFeuille}</span>}
+                </Onglet>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-[calc(var(--safe-bottom)+0.75rem)]">
+                {/* La colonne de la feuille reste montée : l'éditeur y pose ses panneaux. */}
+                <div ref={setPanneauFeuille} className={cn(onglet !== 'feuille' && 'hidden')} />
+                {onglet === 'quantites' && (
+                  <PanneauVivant
+                    panneau={panneau}
+                    jeu={jeu}
+                    hauteurDuDossier={hauteurDuDossier}
+                    diffuseur={diffuseur}
+                    selection={selectionPlan}
+                    masquees={masquees}
+                    classementActif={classement?.cle ?? null}
+                    actions={actions}
+                  />
+                )}
+              </div>
+            </aside>
+          </>
+        )}
       </div>
+
+      {scanner && (
+        <ScannerPlans
+          onFichier={(f) => { setScanner(false); void ajouterPlans([f]) }}
+          onFermer={() => setScanner(false)}
+        />
+      )}
 
       {report && (
         <ReportDossier
@@ -783,7 +976,7 @@ function Onglet({ actif, onClick, children }: { actif: boolean; onClick: () => v
 }
 
 function BarreDuHaut({
-  nom, adresse, projectId, etat, compteurs, nombresConnus, telephone, tiroir, aValider, revueActive, exportEtat, rienAExporter,
+  nom, adresse, projectId, etat, compteurs, nombresConnus, telephone, tiroir, vue, onVue, aValider, revueActive, exportEtat, rienAExporter,
   onTiroir, onAnalyserTout, onArreter, onRevoir, onExporter, onReporter,
 }: {
   nom: string
@@ -794,6 +987,8 @@ function BarreDuHaut({
   nombresConnus: boolean
   telephone: boolean
   tiroir: boolean
+  vue: 'plan' | 'tableau'
+  onVue: (v: 'plan' | 'tableau') => void
   /** Éléments à valider dans tout le jeu. */
   aValider: number
   revueActive: boolean
@@ -837,6 +1032,26 @@ function BarreDuHaut({
           <p className="truncate text-sm font-semibold">{nom}</p>
           <p className="truncate text-xs text-muted-foreground">{adresse || 'Métrés'}</p>
         </div>
+
+        {/* Le plan et sa colonne, ou toutes les formes du jeu en tableau. */}
+        {!telephone && (
+          <div className="flex shrink-0 rounded-lg bg-muted p-0.5" role="group" aria-label="Vue">
+            {([['plan', 'Plan', Carte], ['tableau', 'Tableau', Table2]] as const).map(([cle, libelle, Icone]) => (
+              <button
+                key={cle}
+                onClick={() => onVue(cle)}
+                aria-pressed={vue === cle}
+                aria-label={libelle}
+                title={cle === 'plan' ? 'Le plan de la feuille et ses quantités' : 'Toutes les formes du jeu, en tableau'}
+                className={cn('flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium transition-colors pointer-coarse:min-h-11',
+                  vue === cle ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+              >
+                {/* Sur iPad debout, l'icône seule : le nom du bâtiment garde sa place. */}
+                <Icone className="h-4 w-4" /><span className="hidden xl:inline">{libelle}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {tiroir && (
           <button onClick={onTiroir} className={bouton}>
@@ -916,13 +1131,29 @@ function BarreDuHaut({
   )
 }
 
-/** Sur téléphone : les quantités et l'état des feuilles, et où aller pour corriger. */
-function EcranTelephone({ groupes, panneau, chargement }: {
+/** Sur téléphone : les quantités, le tableau en cartes et l'état des feuilles, et où aller pour corriger. */
+function EcranTelephone({
+  groupes, panneau, chargement, vue, onVue, lignes, regroupement, onRegroupement, etatTableau, onEtatTableau,
+}: {
   groupes: GroupeDeFeuilles[]
   panneau: Panneau
   chargement: boolean
+  /** Le tableau est un onglet ici, gardé dans l'adresse comme la vue tableau ailleurs. */
+  vue: 'plan' | 'tableau'
+  onVue: (v: 'plan' | 'tableau') => void
+  lignes: LigneTableau[]
+  regroupement: Regroupement
+  onRegroupement: (r: Regroupement) => void
+  etatTableau: EtatTableau
+  onEtatTableau: (maj: (e: EtatTableau) => EtatTableau) => void
 }) {
-  const [onglet, setOnglet] = useState<'quantites' | 'feuilles'>('quantites')
+  const [ongletLocal, setOngletLocal] = useState<'quantites' | 'feuilles'>('quantites')
+  const onglet = vue === 'tableau' ? 'tableau' : ongletLocal
+  const choisirOnglet = (o: 'quantites' | 'feuilles' | 'tableau') => {
+    if (o === 'tableau') { onVue('tableau'); return }
+    setOngletLocal(o)
+    if (vue === 'tableau') onVue('plan')
+  }
   const sia = useMemo(() => surfacesSia416(entreesSia416(panneau)), [panneau])
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -931,15 +1162,18 @@ function EcranTelephone({ groupes, panneau, chargement }: {
         Pour corriger les métrés, ouvrez ce plan sur iPad ou ordinateur.
       </p>
       <div className="mx-3 mt-3 flex gap-1 rounded-xl bg-muted p-1">
-        <Onglet actif={onglet === 'quantites'} onClick={() => setOnglet('quantites')}>Quantités</Onglet>
-        <Onglet actif={onglet === 'feuilles'} onClick={() => setOnglet('feuilles')}>Feuilles</Onglet>
+        <Onglet actif={onglet === 'quantites'} onClick={() => choisirOnglet('quantites')}>Quantités</Onglet>
+        <Onglet actif={onglet === 'tableau'} onClick={() => choisirOnglet('tableau')}>Tableau</Onglet>
+        <Onglet actif={onglet === 'feuilles'} onClick={() => choisirOnglet('feuilles')}>Feuilles</Onglet>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-[calc(var(--safe-bottom)+1rem)]">
         {chargement
           ? <p className="flex items-center gap-2 p-3 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Chargement…</p>
           : onglet === 'quantites'
             ? <PanneauQuantites panneau={panneau} sia={sia} selection={null} masquees={new Set()} classementActif={null} lectureSeule />
-            : <NavigateurFeuilles groupes={groupes} selection={null} lectureSeule />}
+            : onglet === 'tableau'
+              ? <CartesTableau panneau={panneau} lignes={lignes} regroupement={regroupement} onRegroupement={onRegroupement} etat={etatTableau} onEtat={onEtatTableau} />
+              : <NavigateurFeuilles groupes={groupes} selection={null} lectureSeule />}
       </div>
     </div>
   )

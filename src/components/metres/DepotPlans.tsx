@@ -8,15 +8,19 @@
  * de création, avec son diagnostic ; les fichiers partent comme plans du
  * dossier, par la route des plans ; puis l'espace de travail s'ouvre, et
  * l'analyse de tout le jeu démarre d'elle-même.
+ *
+ * Un plan papier se scanne (ScannerPlans) : le PDF obtenu, une page à la
+ * taille de chaque feuille, prend ensuite exactement le même chemin.
  */
 import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, FileText, Image as ImageIcon, Loader2, Plus, Search, Upload, X } from 'lucide-react'
+import { Building2, FileText, Image as ImageIcon, Loader2, Plus, ScanLine, Search, Upload, X } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { nomProvisoire } from '@/lib/plans/feuilles'
 import { MarqueDiagly } from '@/components/plans/AnalyseIA'
+import { ScannerPlans } from '@/components/metres/ScannerPlans'
 
 const FICHIERS_ADMIS = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp']
 const TAILLE_MAX = 30 * 1024 * 1024
@@ -33,6 +37,7 @@ export function DepotPlans() {
   const [survol, setSurvol] = useState(false)
   const [fichiers, setFichiers] = useState<File[] | null>(null)
   const [refuses, setRefuses] = useState<string[]>([])
+  const [scanner, setScanner] = useState(false)
 
   const recevoir = (liste: FileList | null) => {
     if (!liste?.length) return
@@ -63,13 +68,24 @@ export function DepotPlans() {
             Vous validez ce qu’elle propose, et les quantités s’additionnent, étages types compris.
           </p>
         </div>
-        <button
-          onClick={() => champ.current?.click()}
-          className="mt-1 inline-flex h-11 items-center gap-2 rounded-xl bg-foreground px-5 text-sm font-semibold text-background transition-opacity hover:opacity-90"
-        >
-          <Plus className="h-4 w-4" />Choisir des fichiers
-        </button>
+        <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+          <button
+            onClick={() => champ.current?.click()}
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-foreground px-5 text-sm font-semibold text-background transition-opacity hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" />Choisir des fichiers
+          </button>
+          <button
+            onClick={() => setScanner(true)}
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-black/15 bg-white px-5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+          >
+            <ScanLine className="h-4 w-4" />Scanner un plan
+          </button>
+        </div>
         <p className="text-xs text-muted-foreground">PDF vectoriels de préférence · 30 Mo au plus par fichier</p>
+        <p className="max-w-lg text-xs text-muted-foreground">
+          Plan papier : scannez-le bien à plat, de face et bien éclairé. Sans traits vectoriels, l’accrochage n’y existe pas : les zones s’y placent à l’œil.
+        </p>
         <input ref={champ} type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => recevoir(e.target.files)} />
         {refuses.length > 0 && (
           <p className="text-xs text-red-700">
@@ -79,6 +95,12 @@ export function DepotPlans() {
       </div>
 
       {fichiers && <ChoixDuBatiment fichiers={fichiers} onFermer={() => setFichiers(null)} />}
+      {scanner && (
+        <ScannerPlans
+          onFichier={(f) => { setScanner(false); setRefuses([]); setFichiers([f]) }}
+          onFermer={() => setScanner(false)}
+        />
+      )}
     </>
   )
 }

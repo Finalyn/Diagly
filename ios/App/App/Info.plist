@@ -31,7 +31,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Diagly utilise l'appareil photo pour photographier les ouvrages pendant la visite du bâtiment.</string>
+	<string>Diagly utilise l'appareil photo pour photographier les ouvrages pendant la visite du bâtiment et pour scanner les plans papier.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Diagly accède à vos photos pour joindre des images déjà prises aux relevés du diagnostic.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

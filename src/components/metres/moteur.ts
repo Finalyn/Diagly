@@ -35,9 +35,9 @@ import { useEffect, useSyncExternalStore } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { api, ApiError, type CorpsMajPlan, type ResultatAnalyseServeur } from '@/lib/api'
 import type { ApiPlan, ApiProject, ApiDiagnostic, FeuillePlan, FeuillesPlan, PlanAnnotation } from '@/lib/api-types'
-import { propositionsDeLAnalyse } from '@/lib/plans/analyse-ia'
+import { propositionsDeLAnalyse, validerProposition, validerRepere } from '@/lib/plans/analyse-ia'
 import {
-  PAGES_PAR_LOT, VIDE, apresUnePerte, appliquerAnalyse, ordonnerPlans, completerBatiment, corrigerFeuille, echellesAPoser, enCoursParTache,
+  PAGES_PAR_LOT, VIDE, apresUnePerte, appliquerAnalyse, ordonnerPlans, completerBatiment, corrigerFeuille, echellesAPoser, enAttente, enCoursParTache,
   estPdf, etatAnalyse, feuilleDe, mettreEnCours, mettreEnErreur, mettreEnFile, nomProvisoire, nombreDePages, poserDansLaTable, prochainLot,
   retirerDeLaFile, type FeuilleEnFile, type RefFeuille,
 } from '@/lib/plans/feuilles'
@@ -241,6 +241,53 @@ export class MoteurMetres {
     await this.ecrireDepuis(planId, (plan) => {
       if (!(plan.annotations ?? []).some((a) => a.id === id)) return null
       return { annotations: plan.annotations.map((a) => (a.id === id ? { ...a, ...patch } : a)) }
+    })
+    this.maj({})
+  }
+
+  /**
+   * Plusieurs formes d'un plan modifiées d'un coup (rattachées au même
+   * ouvrage, depuis le tableau) : une seule écriture, ou l'éditeur s'il a ce
+   * plan ouvert. Une erreur d'écriture remonte à l'écran qui l'a demandée.
+   */
+  async modifierAnnotations(planId: string, ids: string[], patch: Partial<PlanAnnotation>) {
+    if (!ids.length) return
+    const ouvert = this.poignee
+    if (ouvert?.planId === planId && ouvert.modifier) { for (const id of ids) ouvert.modifier(id, patch); return }
+    const visees = new Set(ids)
+    await this.ecrireDepuis(planId, (plan) => {
+      if (!(plan.annotations ?? []).some((a) => visees.has(a.id))) return null
+      return { annotations: plan.annotations.map((a) => (visees.has(a.id) ? { ...a, ...patch } : a)) }
+    })
+    this.maj({})
+  }
+
+  /**
+   * Valider des formes depuis le tableau, comme la revue le fait : par
+   * l'éditeur s'il a ce plan ouvert, sinon avec les mêmes transformations que
+   * lui (validerProposition, validerRepere). Ce qui est déjà validé ne bouge pas.
+   */
+  async validerAnnotations(planId: string, ids: string[]) {
+    if (!ids.length) return
+    const ouvert = this.poignee
+    if (ouvert?.planId === planId && ouvert.valider) { ouvert.valider(ids); return }
+    const visees = new Set(ids)
+    await this.ecrireDepuis(planId, (plan) => {
+      if (!(plan.annotations ?? []).some((a) => visees.has(a.id) && enAttente(a))) return null
+      return { annotations: plan.annotations.map((a) => (visees.has(a.id) ? validerRepere(validerProposition(a)) : a)) }
+    })
+    this.maj({})
+  }
+
+  /** Supprimer des formes depuis le tableau : par l'éditeur s'il a ce plan ouvert, sinon directement. */
+  async supprimerAnnotations(planId: string, ids: string[]) {
+    if (!ids.length) return
+    const ouvert = this.poignee
+    if (ouvert?.planId === planId && ouvert.rejeter) { ouvert.rejeter(ids); return }
+    const visees = new Set(ids)
+    await this.ecrireDepuis(planId, (plan) => {
+      if (!(plan.annotations ?? []).some((a) => visees.has(a.id))) return null
+      return { annotations: plan.annotations.filter((a) => !visees.has(a.id)) }
     })
     this.maj({})
   }

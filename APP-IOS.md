@@ -223,6 +223,7 @@ resterait sur l'écran de connexion avec une erreur réseau.
 | `ios/App/App/ImpressionPlugin.swift` | feuille d'impression iOS (`src/lib/impression.ts`) |
 | `ios/App/App/ConnexionPlugin.swift` | connexion Apple et fenêtre de connexion sécurisée pour Google (`src/lib/connexion-native.ts`) |
 | `ios/App/App/BarreOngletsPlugin.swift` | barre du bas native, Liquid Glass sur iOS 26 (`src/lib/barre-native.ts`) |
+| `ios/App/App/ScannerPlugin.swift` | scanner de documents d'iOS (VisionKit) pour les plans papier, pages en JPEG à pleine résolution (`src/lib/scanner-natif.ts`) |
 | `src/lib/natif.ts` | démarrage dans l'app : écran de lancement, barre d'état, réseau, retour au premier plan, notifications |
 | `src/lib/push-client.ts` | permission et jeton des notifications, côté app comme côté navigateur |
 | `ios/outils/profil-app-store.mjs` | crée le profil App Store par l'API, lancé par le workflow |

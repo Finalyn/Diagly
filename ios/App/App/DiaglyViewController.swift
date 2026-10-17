@@ -12,6 +12,7 @@ class DiaglyViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(ImpressionPlugin())
         bridge?.registerPluginInstance(ConnexionPlugin())
         bridge?.registerPluginInstance(BarreOngletsPlugin())
+        bridge?.registerPluginInstance(ScannerPlugin())
     }
 
     override func viewDidLoad() {

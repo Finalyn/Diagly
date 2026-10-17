@@ -315,7 +315,7 @@ export function panneauDesQuantites(jeu: PlanPourQuantites[], options: OptionsQu
       .map(([k, xs]) => {
         const e = etagesConnus.get(k)!
         const instances = xs.map((x) => instanceDe(x, e.hauteur))
-        const comptent = instances.filter((i) => !i.aValider && !i.horsTotal && i.valeur != null)
+        const comptent = instances.filter(compteAuTotal)
         return {
           cle: k, planId: e.planId, page: e.page, rang: e.ordre, nom: e.nom, multiplicateur: e.mult, hauteur: e.hauteur, hauteurReglee: e.reglee,
           instances,
@@ -323,7 +323,7 @@ export function panneauDesQuantites(jeu: PlanPourQuantites[], options: OptionsQu
           aValider: instances.filter((i) => i.aValider).length,
         }
       })
-    const toutes = etages.flatMap((e) => e.instances.filter((i) => !i.aValider && !i.horsTotal && i.valeur != null).map((i) => ({ i, mult: e.multiplicateur })))
+    const toutes = etages.flatMap((e) => e.instances.filter(compteAuTotal).map((i) => ({ i, mult: e.multiplicateur })))
     const aValider = siennes.filter((x) => x.aValider).length
     const sansEchelle = siennes.filter((x) => !x.aValider && x.valeur == null).length
     aValiderTotal += aValider
@@ -340,12 +340,25 @@ export function panneauDesQuantites(jeu: PlanPourQuantites[], options: OptionsQu
   return { classifications, aValider: aValiderTotal, sansEchelle: sansEchelleTotal }
 }
 
+/**
+ * Une forme entre-t-elle dans les totaux ? Ni proposition à valider, ni repère
+ * déjà compté sur un plan d'étage, ni forme sans échelle. Le panneau, le
+ * tableau et l'export s'en tiennent tous à cette seule règle.
+ */
+export function compteAuTotal(i: InstanceQ): boolean {
+  return !i.aValider && !i.horsTotal && i.valeur != null
+}
+
 function deriveesDe(cle: CleClassification, instances: InstanceQ[], mult: number): QuantiteDerivee[] {
   return deriveesPonderees(cle, instances.map((i) => ({ i, mult })))
 }
 
-/** Les totaux d'une classification ou d'un étage, chaque forme multipliée par les étages identiques de sa feuille. */
-function deriveesPonderees(cle: CleClassification, xs: { i: InstanceQ; mult: number }[]): QuantiteDerivee[] {
+/**
+ * Les totaux d'une classification ou d'un étage, chaque forme multipliée par
+ * les étages identiques de sa feuille. Le tableau des métrés s'en sert aussi
+ * pour ses sous-totaux : un même calcul, des chiffres qui concordent partout.
+ */
+export function deriveesPonderees(cle: CleClassification, xs: { i: InstanceQ; mult: number }[]): QuantiteDerivee[] {
   const sum = (f: (i: InstanceQ) => number | null | undefined) => xs.reduce((s, { i, mult }) => s + (f(i) ?? 0) * mult, 0)
   const der = (i: InstanceQ, k: string) => i.derivees.find((x) => x.cle === k)?.valeur
   const nombre = (f: (i: InstanceQ) => boolean = () => true) => xs.reduce((s, { i, mult }) => s + (f(i) ? mult : 0), 0)

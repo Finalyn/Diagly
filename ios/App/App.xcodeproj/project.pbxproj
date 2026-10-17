@@ -20,6 +20,7 @@
 		6EFEFC8570CC53744EB5F865 /* ImpressionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 710B3A6B892078923E143A23 /* ImpressionPlugin.swift */; };
 		88D1E74F170FD47620952808 /* ConnexionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81A1DED0AE792BBEB8FB7B3D /* ConnexionPlugin.swift */; };
 		5BBEBE9638CF7699CBB65A26 /* BarreOngletsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50319CE26964CDF67128AD7A /* BarreOngletsPlugin.swift */; };
+		8F039BD52E10F167E450BECA /* ScannerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 544D4BDB9C9A74F7EFA9A1C9 /* ScannerPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +40,7 @@
 		81A1DED0AE792BBEB8FB7B3D /* ConnexionPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnexionPlugin.swift; sourceTree = "<group>"; };
 		35FF86E8FFAC0ADC655C8AE3 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		50319CE26964CDF67128AD7A /* BarreOngletsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarreOngletsPlugin.swift; sourceTree = "<group>"; };
+		544D4BDB9C9A74F7EFA9A1C9 /* ScannerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerPlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -73,6 +75,7 @@
 		504EC3061FED79650016851F /* App */ = {
 			isa = PBXGroup;
 			children = (
+				544D4BDB9C9A74F7EFA9A1C9 /* ScannerPlugin.swift */,
 				50319CE26964CDF67128AD7A /* BarreOngletsPlugin.swift */,
 				35FF86E8FFAC0ADC655C8AE3 /* App.entitlements */,
 				81A1DED0AE792BBEB8FB7B3D /* ConnexionPlugin.swift */,
@@ -172,6 +175,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8F039BD52E10F167E450BECA /* ScannerPlugin.swift in Sources */,
 				5BBEBE9638CF7699CBB65A26 /* BarreOngletsPlugin.swift in Sources */,
 				88D1E74F170FD47620952808 /* ConnexionPlugin.swift in Sources */,
 				6EFEFC8570CC53744EB5F865 /* ImpressionPlugin.swift in Sources */,
