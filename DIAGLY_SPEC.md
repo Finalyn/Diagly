@@ -199,10 +199,9 @@ Fichiers : `GET /uploads/<fichier>?t=<jeton signé>`, jeton délivré par l'API,
 ## ROUTES WEB (React Router, `src/App.tsx`)
 
 ```
-/                          vitrine (dans l'app native : redirige vers /app)
+/                          page d'accueil (dans l'app native : redirige vers /app)
 /bientot                   page « bientôt disponible », pour fermer le site le temps d'une intervention
-/landing, /landing-2       anciennes vitrines, liées de nulle part
-/landing-3                 redirige vers /
+/landing, /landing-2, /landing-3   anciennes adresses de la page d'accueil, redirigent vers /
 /dashboard                 redirige vers /app/dashboard
 /share/:token              rapport partagé, lecture seule, sans compte
 /preview                   maquette de démonstration, sans compte

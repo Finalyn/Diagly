@@ -11,7 +11,48 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Diagly" />
-    <title>Diagly - Diagnostic et rénovation en Suisse</title>
+    <!-- Le titre, la description et la carte de partage sont ceux de la page
+         d'accueil : les robots et les réseaux sociaux lisent ce fichier sans
+         exécuter l'application. -->
+    <title>Diagly : diagnostic de bâtiment, des plans au rapport chiffré</title>
+    <meta name="description" content="Diagly lit vos plans avec l'IA et en tire les métrés, guide le relevé sur iPad et iPhone, chiffre les travaux par code CFC et sort le rapport à votre en-tête. Hébergé en Suisse." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Diagly" />
+    <meta property="og:locale" content="fr_CH" />
+    <meta property="og:url" content="https://diagly.ch/" />
+    <meta property="og:title" content="Diagly : diagnostic de bâtiment, des plans au rapport chiffré" />
+    <meta property="og:description" content="Métrés par l'IA, relevé sur iPad et iPhone, chiffrage par code CFC et rapports à votre en-tête. Conçu et hébergé en Suisse." />
+    <meta property="og:image" content="https://diagly.ch/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Diagly sur ordinateur, iPad et iPhone : les métrés d'un plan d'étage, la fiche d'un ouvrage et la liste des diagnostics." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Diagly : diagnostic de bâtiment, des plans au rapport chiffré" />
+    <meta name="twitter:description" content="Métrés par l'IA, relevé sur iPad et iPhone, chiffrage par code CFC et rapports à votre en-tête. Conçu et hébergé en Suisse." />
+    <meta name="twitter:image" content="https://diagly.ch/og-image.jpg" />
+    <!-- Données structurées : les offres reprennent les tarifs affichés sur la
+         page, sans note ni avis. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Diagly",
+        "url": "https://diagly.ch/",
+        "image": "https://diagly.ch/og-image.jpg",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "inLanguage": "fr-CH",
+        "description": "Logiciel suisse de diagnostic de bâtiment : métrés tirés des plans par l'IA, relevé de l'état sur iPad et iPhone, chiffrage par code CFC, rapports et présentation des métrés.",
+        "publisher": { "@type": "Organization", "name": "Finalyn", "email": "contact@finalyn.com" },
+        "offers": [
+          { "@type": "Offer", "name": "Découverte", "price": "0", "priceCurrency": "CHF" },
+          { "@type": "Offer", "name": "Starter", "price": "49", "priceCurrency": "CHF",
+            "priceSpecification": { "@type": "UnitPriceSpecification", "price": "49", "priceCurrency": "CHF", "unitText": "mois" } },
+          { "@type": "Offer", "name": "Pro", "price": "149", "priceCurrency": "CHF",
+            "priceSpecification": { "@type": "UnitPriceSpecification", "price": "149", "priceCurrency": "CHF", "unitText": "mois" } }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

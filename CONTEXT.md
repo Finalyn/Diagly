@@ -42,7 +42,7 @@ Cliquer sur le logo ramène à l'accueil.
 La liste complète des routes est dans `DIAGLY_SPEC.md` (ROUTES WEB). En bref :
 
 ### Public
-- `/` vitrine (`LandingV3`), `/share/:token` rapport partagé, `/preview` maquette de démonstration, `/bientot`
+- `/` page d'accueil (`src/pages/marketing/accueil/`, maquettes dessinées en code), `/share/:token` rapport partagé, `/preview` maquette de démonstration, `/bientot` ; `/landing`, `/landing-2`, `/landing-3` mènent à `/`
 
 ### Auth
 - `/login`, `/register`, `/forgot-password`, `/reset-password/:token`, `/oauth-callback`, `/onboarding`

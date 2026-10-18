@@ -222,7 +222,7 @@ https://carto.com/basemaps/apikey/.
 src/                 application React (site et app iPhone/iPad)
   pages/app/         les écrans du produit (relevé, coûts, rapports, plans...)
   pages/auth/        connexion, inscription, mot de passe oublié
-  pages/marketing/   la vitrine publique
+  pages/marketing/   la page d'accueil publique (accueil/) et la page « bientôt disponible »
   components/        composants partagés (layout, rapports, plans, Guide IA...)
   lib/               calculs (base CFC, devis, métrés), appels API, natif
   lib/hors-ligne/    file d'envoi des relevés sans réseau

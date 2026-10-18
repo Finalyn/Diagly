@@ -33,11 +33,9 @@ const ProjectEdit = lazy(() => named(import('@/pages/app/ProjectEdit'), 'Project
 const ProjectDiagnostic = lazy(() => named(import('@/pages/app/ProjectDiagnostic'), 'ProjectDiagnostic'))
 const ProjectMetres = lazy(() => named(import('@/pages/app/ProjectMetres'), 'ProjectMetres'))
 const ProjectPhotos = lazy(() => named(import('@/pages/app/ProjectPhotos'), 'ProjectPhotos'))
-// La vitrine embarque Leaflet et ses captures : chargee a la demande, elle ne
-// pese pas sur le paquet que tout utilisateur de l'application telecharge.
-const Landing = lazy(() => named(import('@/pages/marketing/Landing'), 'Landing'))
-const LandingV2 = lazy(() => named(import('@/pages/marketing/LandingV2'), 'LandingV2'))
-const LandingV3 = lazy(() => named(import('@/pages/marketing/LandingV3'), 'LandingV3'))
+// La page d'accueil et ses maquettes : chargées à la demande, elles ne pèsent
+// pas sur le paquet que tout utilisateur de l'application télécharge.
+const Accueil = lazy(() => named(import('@/pages/marketing/accueil/Accueil'), 'Accueil'))
 const ProjectRapports = lazy(() => named(import('@/pages/app/ProjectRapports'), 'ProjectRapports'))
 const ProjectVariantes = lazy(() => named(import('@/pages/app/ProjectVariantes'), 'ProjectVariantes'))
 const ProjectCECB = lazy(() => named(import('@/pages/app/ProjectCECB'), 'ProjectCECB'))
@@ -98,17 +96,17 @@ function App() {
       <FiletDeSecurite>
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          {/* Racine : la vitrine est publiée. La page « bientôt disponible »
+          {/* Racine : la page d'accueil. La page « bientôt disponible »
               garde son adresse, elle sert encore à fermer le site le temps
               d'une intervention sans toucher au routage. */}
           {/* L'app iPhone/iPad n'a pas de vitrine : elle s'ouvre sur le travail
               (ou sur la connexion, que ProtectedRoute impose au besoin). */}
-          <Route path="/" element={estAppNative ? <Navigate to="/app" replace /> : <LandingV3 />} />
+          <Route path="/" element={estAppNative ? <Navigate to="/app" replace /> : <Accueil />} />
           <Route path="/bientot" element={<Soon />} />
-          {/* Les deux versions précédentes restent accessibles le temps de la
-              comparaison. Elles ne sont liées depuis nulle part. */}
-          <Route path="/landing" element={<Landing />} />
-          <Route path="/landing-2" element={<LandingV2 />} />
+          {/* Les adresses des anciennes versions de la page mènent à l'accueil :
+              un lien gardé quelque part ne tombe pas sur une page vide. */}
+          <Route path="/landing" element={<Navigate to="/" replace />} />
+          <Route path="/landing-2" element={<Navigate to="/" replace />} />
           <Route path="/landing-3" element={<Navigate to="/" replace />} />
           <Route path="/tarifs" element={<Navigate to="/" replace />} />
 

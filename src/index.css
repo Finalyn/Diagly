@@ -273,6 +273,26 @@ html.natif :where(img, svg) {
 .dp-pop { animation: dp-pop 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; transform-origin: bottom right; }
 
 
+/* ============ Page d'accueil : apparition au défilement ============ */
+/* Un bloc monte en fondu quand il entre à l'écran (Apparition, pages/marketing/
+   accueil/ui.tsx). En mouvement réduit, le glissement disparaît et il ne reste
+   que le fondu, raccourci par la règle générale plus bas. */
+.accueil-apparition {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.accueil-apparition.est-visible {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .accueil-apparition { transform: none; }
+}
+@media print {
+  .accueil-apparition { opacity: 1 !important; transform: none !important; }
+}
+
 /* ============ Typographie : l'espacement suit la taille ============ */
 /* Une seule valeur d'interlettrage pour toutes les tailles est fausse quelque part :
    un titre grandit et ses lettres s'écartent trop, un petit texte se resserre trop.
