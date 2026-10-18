@@ -50,7 +50,7 @@ La liste complète des routes est dans `DIAGLY_SPEC.md` (ROUTES WEB). En bref :
 
 ### App
 - `/app/dashboard` Accueil : carte « Reprendre », accès rapides (dont Métrés), activité récente
-- `/app/metres` Métrés : dépôt d'un jeu de plans (nouveau bâtiment ou dossier existant), liste des métrés ; `/app/metres/:projectId` l'espace de travail plein écran (navigateur des feuilles, éditeur de plan encastré, zones à valider et quantités du jeu), analyse de tout le jeu par lots en tâche de fond (`src/components/metres/moteur.ts`)
+- `/app/metres` Métrés : dépôt d'un jeu de plans (nouveau bâtiment ou dossier existant), liste des métrés ; `/app/metres/:projectId` l'espace de travail plein écran (navigateur des feuilles, éditeur de plan encastré, zones à valider et quantités du jeu), analyse de tout le jeu par lots en tâche de fond (`src/components/metres/moteur.ts`) ; bouton « Présentation » : plans de repérage et tableaux par niveau en diapositives 16:9, export PDF (`src/lib/plans/presentation.ts`, `src/components/metres/PresentationMetres.tsx`), aussi dans les Rapports du dossier, avec ou sans diagnostic
 - `/app/projects` Diagnostics, `/app/projects/new` création (de zéro, depuis un document ou un CECB)
 - Dans un dossier : relevé (`/diagnostic`), fiche, visite, plans, étiquette énergétique (`/cecb`), coûts, variantes, photos, rapports ; `/sommaire` sur téléphone
 - `/app/diagnostic/:id` le relevé ouvert seul

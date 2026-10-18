@@ -586,6 +586,63 @@ body {
   .doc-feuille { zoom: var(--zoom-feuille, 1); }
 }
 
+/* ============ Présentation des métrés, 16:9 ============ */
+/*
+ * Une diapositive mesure 1280 × 720 px, soit 13,33 × 7,5 pouces : le 16:9 des
+ * présentations. À l'écran, elle est réduite à la largeur de sa colonne (la
+ * page pose --zoom-diapo, ou --zoom-feuille dans les rapports) ; à
+ * l'impression, elle remplit exactement sa page.
+ *
+ * Ce qui s'imprime est une copie des diapositives posée à la racine du
+ * document (PresentationMetres) : tant que la présentation est affichée,
+ * <html> porte `impression-diapositives` et une taille de page 16:9 sans
+ * marges. Tout le reste de l'app sort de l'impression ; les rapports A4,
+ * imprimés à un autre moment, gardent leur format.
+ */
+.diapo {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: #fff;
+  color: #111827;
+  font-family: var(--font-sans);
+  -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+}
+
+@media screen {
+  .diapo-ecran {
+    width: 1280px;
+    margin: 0 auto 28px;
+    zoom: var(--zoom-diapo, var(--zoom-feuille, 1));
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+  .diapos-impression { display: none; }
+}
+
+@media print {
+  html:not(.impression-diapositives) .diapos-impression { display: none !important; }
+  html.impression-diapositives,
+  html.impression-diapositives body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  html.impression-diapositives body > :not(.diapos-impression) { display: none !important; }
+  .diapos-impression { display: block; }
+  .diapos-impression .diapo {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: page;
+    page-break-after: always;
+  }
+  .diapos-impression .diapo:last-child { break-after: auto; page-break-after: auto; }
+}
+
 /* L'éditeur de diagnostic en bleu Diagly (la coche du logo) : ses boutons et
    ses sélections étaient noirs, la couleur principale de l'app. */
 html.editeur-diagnostic {

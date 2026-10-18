@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type TouchEvent } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle, BookOpen, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf, Minus, Plus } from 'lucide-react'
+import { Loader2, AlertCircle, BookOpen, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf, Minus, Plus, Presentation } from 'lucide-react'
 import { Button, Card, CardContent } from '@/components/ui'
 import { ExportDialog } from '@/components/ExportDialog'
 import { cn } from '@/lib/utils'
@@ -24,18 +24,26 @@ import { RapportScenario } from '@/components/report/RapportScenario'
 import type { RVariant, ScenarioId } from '@/components/report/scenarios'
 import { TVA, toNum } from '@/components/report/constants'
 import { ORIGINE_PUBLIQUE } from '@/lib/plateforme'
-import { imprimerLaPage } from '@/lib/impression'
+import { imprimerDiapositives, imprimerLaPage } from '@/lib/impression'
+import { DIAPO, OPTIONS_PRESENTATION, type OptionsPresentation } from '@/lib/plans/presentation'
+import { OptionsDeLaPresentation, PresentationMetres } from '@/components/metres/PresentationMetres'
+import { useJeuDuDossier, usePresentation } from '@/components/metres/presentation-donnees'
 
-type ReportKind = 'complet' | 'sommaire' | 'detaille' | 'documente' | 'scenario' | 'rapport' | 'photos' | 'existant'
+type ReportKind = 'complet' | 'sommaire' | 'detaille' | 'documente' | 'scenario' | 'rapport' | 'photos' | 'existant' | 'metres'
 const REPORT_TITLES: Record<ReportKind, string> = {
   complet: 'Rapport complet',
   sommaire: 'Rapport sommaire', detaille: 'Rapport détaillé', documente: 'Rapport documenté', scenario: 'Rapport par scénario',
   rapport: 'Rapport de diagnostic', photos: 'Rapport photo', existant: "Rapport de l'existant",
+  metres: 'Plans de repérage et métrés',
 }
 
-// L'onglet « Variantes » = les 4 types de rapports ; l'onglet « Rapports » = Rapport + Rapports photo.
+// L'onglet « Variantes » = les 4 types de rapports ; l'onglet « Rapports » = Rapport + Rapports photo,
+// et la présentation des métrés, qui vit aussi sans diagnostic.
 const KINDS_VARIANTES = [['sommaire', 'Sommaire', LayoutList], ['detaille', 'Détaillé', FileText], ['documente', 'Documenté', Image], ['scenario', 'Par scénario', Layers]] as const
-const KINDS_RAPPORTS = [['complet', 'Complet', BookOpen], ['rapport', 'Rapport', FileText], ['existant', "De l'existant", ClipboardList], ['photos', 'Rapports photo', Image]] as const
+const KINDS_RAPPORTS = [
+  ['complet', 'Complet', BookOpen], ['rapport', 'Rapport', FileText], ['existant', "De l'existant", ClipboardList], ['photos', 'Rapports photo', Image],
+  ['metres', 'Plans de repérage et métrés (16:9)', Presentation],
+] as const
 
 /** Les quatre types qui partagent le corps du rapport standard. */
 const STANDARDS: ReportKind[] = ['sommaire', 'detaille', 'documente', 'rapport']
@@ -96,7 +104,19 @@ export function ProjectRapports() {
   // (boutons ou pincement à deux doigts). Au-delà de l'ajustement, la feuille
   // déborde de sa colonne, qui défile alors dans les deux sens.
   const [loupe, setLoupe] = useState(1)
-  const ajuste = largeurDoc ? Math.min(1, largeurDoc / 800) : 1
+  // Le choix du type de rapport ; sans choix, le premier qui a de quoi s'afficher.
+  const [choix, setReport] = useState<ReportKind | null>(null)
+  const projectQuery = useQuery({ queryKey: ['project', id], queryFn: () => api.projects.get(id!), enabled: !!id })
+  const project = projectQuery.data?.project
+  const marqueDuDossier = apercu ?? project?.reportBranding ?? null
+  // L'auteur du dossier signe tous ses rapports, pas seulement le complet.
+  const auteur = marqueDuDossier?.auteur?.trim() || auteurDuCompte
+  const diagnostic = projectQuery.data?.diagnostics[0]
+  // Un dossier sans diagnostic n'a que ses métrés à présenter : c'est par eux qu'il s'ouvre.
+  const report: ReportKind = choix ?? (mode === 'variantes' ? 'detaille' : diagnostic || projectQuery.isLoading ? 'complet' : 'metres')
+  // Une feuille A4 fait environ 800 px de large, une diapositive 16:9 1280.
+  const largeurBase = report === 'metres' ? DIAPO.largeur : 800
+  const ajuste = largeurDoc ? Math.min(1, largeurDoc / largeurBase) : 1
   const zoomDe = (l: number) => Math.min(3, Math.max(0.3, ajuste * l))
   const zoom = zoomDe(loupe)
   const zoomFeuille = zoom !== 1 ? ({ '--zoom-feuille': String(zoom) } as CSSProperties) : undefined
@@ -120,16 +140,8 @@ export function ProjectRapports() {
     setLoupe(p.actuelle)
   }
   const actionsAGauche = useActionsAGauche()
-  const [report, setReport] = useState<ReportKind>(mode === 'rapports' ? 'complet' : 'detaille')
   const [scenario, setScenario] = useState<ScenarioId>('energetique')
   const [exportOpen, setExportOpen] = useState(false)
-
-  const projectQuery = useQuery({ queryKey: ['project', id], queryFn: () => api.projects.get(id!), enabled: !!id })
-  const project = projectQuery.data?.project
-  const marqueDuDossier = apercu ?? project?.reportBranding ?? null
-  // L'auteur du dossier signe tous ses rapports, pas seulement le complet.
-  const auteur = marqueDuDossier?.auteur?.trim() || auteurDuCompte
-  const diagnostic = projectQuery.data?.diagnostics[0]
 
   const itemsQuery = useQuery({
     queryKey: ['diagnostic-items', diagnostic?.id],
@@ -161,6 +173,12 @@ export function ProjectRapports() {
   }, [catalogQuery.data])
   const labels = useMemo(() => cfcGroupLabels(cfcQuery.data?.entries ?? []), [cfcQuery.data])
 
+  // La présentation des métrés : le jeu de plans du dossier, ses quantités, et les relevés quand il y en a.
+  const [optionsPresentation, setOptionsPresentation] = useState<OptionsPresentation>(OPTIONS_PRESENTATION)
+  const [presentationPrete, setPresentationPrete] = useState(false)
+  const jeuDuDossier = useJeuDuDossier(mode === 'rapports' ? id ?? '' : '', project?.floorHeight ?? null)
+  const presentation = usePresentation({ ...jeuDuDossier, projet: project, items, options: optionsPresentation })
+
   // Regroupement par groupe CFC (2 chiffres), trié par code.
   const groups = useMemo(() => {
     const map = new Map<string, typeof items>()
@@ -181,7 +199,7 @@ export function ProjectRapports() {
   if (projectQuery.isError || !project) {
     return <Card><CardContent className="py-16 text-center"><AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" /><p className="text-sm text-red-700">Projet introuvable</p></CardContent></Card>
   }
-  if (!diagnostic) {
+  if (!diagnostic && mode === 'variantes') {
     return (
       <Card><CardContent className="py-16 text-center">
         <h3 className="text-lg font-semibold mb-1">Aucun diagnostic</h3>
@@ -235,15 +253,33 @@ export function ProjectRapports() {
   const currentVariant = variants.find(v => v.id === scenario) ?? variants[2]
   const classeEnergie = project.energyClassGlobal ?? project.energyClassEnvelope ?? null
 
+  // La présentation s'imprime en pages 16:9, une fois ses plans rendus ; les rapports, en A4.
+  const presentationVide = report === 'metres' && presentation.diapositives.length === 0
+  const imprimer = () => {
+    const fait = report === 'metres'
+      ? imprimerDiapositives(presentation.nomDuFichier)
+      : imprimerLaPage(`${REPORT_TITLES[report]} - ${project.name}`)
+    void fait.catch(() => undefined)
+  }
   const actions = (
     <>
-      <Button onClick={() => { void imprimerLaPage(`${REPORT_TITLES[report]} - ${project.name}`).catch(() => undefined) }} className="w-full justify-start">
-        <Printer className="mr-2 h-4 w-4" />Imprimer / PDF
+      <Button
+        onClick={imprimer}
+        disabled={report === 'metres' ? presentationVide || !presentationPrete : !diagnostic}
+        className="w-full justify-start"
+      >
+        {report === 'metres' && !presentationVide && !presentationPrete
+          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          : <Printer className="mr-2 h-4 w-4" />}
+        Imprimer / PDF
       </Button>
-      <Button variant="outline" onClick={() => setExportOpen(true)} className="w-full justify-start">
-        <Download className="mr-2 h-4 w-4" />Exporter
-      </Button>
-      <ShareControl projectId={id!} initialToken={project.shareToken ?? null} />
+      {/* L'export et le lien de partage portent sur le diagnostic. */}
+      {diagnostic && (
+        <Button variant="outline" onClick={() => setExportOpen(true)} className="w-full justify-start">
+          <Download className="mr-2 h-4 w-4" />Exporter
+        </Button>
+      )}
+      {diagnostic && <ShareControl projectId={id!} initialToken={project.shareToken ?? null} />}
     </>
   )
 
@@ -295,6 +331,16 @@ export function ProjectRapports() {
             </button>
           ))}
         </nav>
+
+        {report === 'metres' && presentation.elements.length > 0 && (
+          <OptionsDeLaPresentation
+            elements={presentation.elements}
+            siaDisponible={presentation.siaDisponible}
+            photosDisponibles={presentation.photosDisponibles}
+            options={optionsPresentation}
+            onOptions={setOptionsPresentation}
+          />
+        )}
 
         {report === 'scenario' && (
           <div>
@@ -348,7 +394,8 @@ export function ProjectRapports() {
           se ranger au bord de la fenêtre. */}
       {/* Les feuilles A4 sont réduites à la largeur de la colonne (zoom sur
           chaque feuille, voir index.css) plutôt que de défiler en largeur. */}
-      <div className={cn('js-print-column relative min-w-0 flex-1 max-lg:order-3 lg:h-full', !actionsAGauche && 'lg:max-w-[calc(210mm+1rem)]')}>
+      {/* La présentation 16:9 prend toute la largeur : elle n'a pas le format d'une feuille A4. */}
+      <div className={cn('js-print-column relative min-w-0 flex-1 max-lg:order-3 lg:h-full', !actionsAGauche && report !== 'metres' && 'lg:max-w-[calc(210mm+1rem)]')}>
       <div
         ref={mesurerDoc}
         onTouchStart={debutPincement}
@@ -363,8 +410,48 @@ export function ProjectRapports() {
 
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
 
+      {/* Les rapports se fondent sur le diagnostic ; la présentation des métrés, non. */}
+      {!diagnostic && report !== 'metres' && (
+        <Card><CardContent className="py-16 text-center">
+          <h3 className="mb-1 text-lg font-semibold">Aucun diagnostic</h3>
+          <p className="mb-4 text-sm text-muted-foreground">Ce rapport se base sur le diagnostic. Démarrez-le d'abord, ou présentez les métrés du dossier.</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Link to={`/app/projects/${id}/diagnostic`}><Button>Aller au diagnostic</Button></Link>
+            <Button variant="outline" onClick={() => setReport('metres')}>Plans de repérage et métrés</Button>
+          </div>
+        </CardContent></Card>
+      )}
+
+      {/* Plans de repérage et métrés, 16:9 : tirés des formes validées dans les Métrés. */}
+      {report === 'metres' && (
+        jeuDuDossier.chargement
+          ? <div className="flex items-center justify-center py-32 text-muted-foreground"><Loader2 className="mr-2 h-6 w-6 animate-spin" />Chargement des plans…</div>
+          : presentation.elements.length === 0
+            ? (
+              <Card><CardContent className="py-16 text-center">
+                <h3 className="mb-1 text-lg font-semibold">Aucun métré validé</h3>
+                <p className="mx-auto mb-4 max-w-md text-sm text-muted-foreground">
+                  La présentation se compose d’elle-même à partir des formes validées dans les Métrés : déposez les plans du bâtiment, analysez-les, validez les formes.
+                </p>
+                <Link to={`/app/metres/${id}`}><Button>Ouvrir les Métrés</Button></Link>
+              </CardContent></Card>
+            )
+            : presentationVide
+              ? <p className="py-24 text-center text-sm text-muted-foreground">Cochez au moins un élément à présenter.</p>
+              : (
+                <PresentationMetres
+                  diapositives={presentation.diapositives}
+                  plans={presentation.plans}
+                  attenue={optionsPresentation.attenue}
+                  batiment={presentation.batiment}
+                  adresse={presentation.adresse}
+                  onPret={setPresentationPrete}
+                />
+              )
+      )}
+
       {/* Rapport complet : le livrable clé en main, garde + sommaire + méthode + état + devis */}
-      {report === 'complet' && (
+      {diagnostic && report === 'complet' && (
         <RapportComplet
           project={project}
           items={items}
@@ -382,7 +469,7 @@ export function ProjectRapports() {
       )}
 
       {/* Corps commun : sommaire, détaillé, documenté, et le rapport de l'onglet Rapports */}
-      {STANDARDS.includes(report) && (
+      {diagnostic && STANDARDS.includes(report) && (
         <RapportStandard
           project={project}
           items={items}
@@ -397,17 +484,17 @@ export function ProjectRapports() {
       )}
 
       {/* Rapport de l'existant : qualitatif, calqué sur le modèle du bureau */}
-      {report === 'existant' && (
+      {diagnostic && report === 'existant' && (
         <RapportExistant project={project} items={items} etatExistant={etatExistant} auteur={auteur} />
       )}
 
       {/* Reportage photo seul */}
-      {report === 'photos' && (
+      {diagnostic && report === 'photos' && (
         <RapportPhoto projectName={project.name} groups={groups} auteur={auteur} />
       )}
 
       {/* Rapport par scénario de rénovation */}
-      {report === 'scenario' && (
+      {diagnostic && report === 'scenario' && (
         <RapportScenario
           projectName={project.name}
           variant={currentVariant}

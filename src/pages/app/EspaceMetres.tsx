@@ -39,6 +39,10 @@
  * Des plans papier s'ajoutent en les scannant (components/metres/ScannerPlans.tsx) :
  * le PDF obtenu suit le chemin d'un dépôt ordinaire.
  *
+ * « Présentation », à côté d'Excel, ouvre les plans de repérage et les
+ * tableaux par niveau en diapositives 16:9 (components/metres/FenetrePresentation.tsx),
+ * à projeter ou à exporter en PDF, avec ou sans diagnostic.
+ *
  * Sur iPad debout, le navigateur se replie en tiroir pour laisser la place
  * au plan. Sur téléphone, l'écran n'est pas un outil de tracé : il montre les
  * quantités, le tableau en cartes et l'état des feuilles, et renvoie à l'iPad
@@ -53,8 +57,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertCircle, AlertTriangle, ChevronLeft, Compass, FileSpreadsheet, FolderOpen, Layers, ListChecks, Loader2, Map as Carte, Plus, ScanLine,
-  SendHorizontal, Square, Table2, X,
+  AlertCircle, AlertTriangle, ChevronLeft, Compass, FileSpreadsheet, FolderOpen, Layers, ListChecks, Loader2, Map as Carte, Plus, Presentation,
+  ScanLine, SendHorizontal, Square, Table2, X,
 } from 'lucide-react'
 import { api, saveBlob } from '@/lib/api'
 import type { ApiPlan, ChampCorrigeable, FeuillePlan, PlanAnnotation } from '@/lib/api-types'
@@ -75,6 +79,8 @@ import { chercherDansLeJeu } from '@/components/metres/symboles'
 import { ReportDossier } from '@/components/metres/ReportDossier'
 import { CartesTableau, TableauMetres, type ActionsTableau } from '@/components/metres/TableauMetres'
 import { ScannerPlans } from '@/components/metres/ScannerPlans'
+import { FenetrePresentation } from '@/components/metres/FenetrePresentation'
+import type { JeuDePlans } from '@/components/metres/presentation-donnees'
 import { useEnregistrerComptages } from '@/components/comptages/enregistrer'
 import { VisiteGuidee } from '@/components/visite/VisiteGuidee'
 import { useVisiteAuto } from '@/components/visite/useVisiteAuto'
@@ -230,8 +236,8 @@ export function EspaceMetres() {
   const toutes = useMemo(() => groupes.flatMap((g) => g.feuilles), [groupes])
   const nombresConnus = groupes.every((g) => g.nombre != null)
 
-  // Le jeu tel que le panneau, la revue, l'export et le report le lisent.
-  const jeu: PlanPourQuantites[] = useMemo(
+  // Le jeu tel que le panneau, la revue, l'export, la présentation et le report le lisent.
+  const jeu: JeuDePlans = useMemo(
     () => plans.map((p) => ({ plan: planVu(p), feuilles: moteur.feuillesDe(p) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- etat.version suit les écritures de la file
     [plans, planVu, moteur, etat.version],
@@ -619,6 +625,10 @@ export function EspaceMetres() {
     }
   }
 
+  // ---- la présentation 16:9 : plans de repérage et tableaux par niveau
+  const [presentation, setPresentation] = useState(false)
+  const fermerPresentation = useCallback(() => setPresentation(false), [])
+
   // ---- report au dossier
   const enregistrerComptages = useEnregistrerComptages(projectId)
   const [report, setReport] = useState<{ resume: ResumeReport; etat: 'pret' | 'en-cours' | 'fait'; erreur: string | null } | null>(null)
@@ -692,6 +702,7 @@ export function EspaceMetres() {
         demarrerRevue()
       }}
       onExporter={() => void exporter()}
+      onPresentation={() => setPresentation(true)}
       onReporter={ouvrirReport}
     />
   )
@@ -919,6 +930,10 @@ export function EspaceMetres() {
         />
       )}
 
+      {presentation && (
+        <FenetrePresentation projet={projet} jeu={jeu} panneau={panneau} sia={sia} items={items} onFermer={fermerPresentation} />
+      )}
+
       {report && (
         <ReportDossier
           dossier={[projet?.name, projet?.city].filter(Boolean).join(', ') || 'ce bâtiment'}
@@ -997,7 +1012,7 @@ function Onglet({ actif, onClick, visite, children }: {
 
 function BarreDuHaut({
   nom, adresse, projectId, etat, compteurs, nombresConnus, telephone, tiroir, vue, onVue, aValider, revueActive, exportEtat, rienAExporter,
-  onTiroir, onAnalyserTout, onArreter, onRevoir, onExporter, onReporter,
+  onTiroir, onAnalyserTout, onArreter, onRevoir, onExporter, onPresentation, onReporter,
 }: {
   nom: string
   adresse: string
@@ -1019,6 +1034,7 @@ function BarreDuHaut({
   onArreter: () => void
   onRevoir: () => void
   onExporter: () => void
+  onPresentation: () => void
   onReporter: () => void
 }) {
   // Le temps du lot en cours se lit : une minute sans signe de vie inquiète.
@@ -1119,6 +1135,11 @@ function BarreDuHaut({
             <button onClick={onExporter} disabled={exportEtat === 'en-cours' || rienAExporter} className={bouton} title="Exporter le métré en Excel : récapitulatif, détail, SIA 416" data-visite="metres-excel">
               {exportEtat === 'en-cours' ? <Loader2 className="h-4 w-4 animate-spin" /> : exportEtat === 'erreur' ? <AlertTriangle className="h-4 w-4 text-red-600" /> : <FileSpreadsheet className="h-4 w-4" />}
               <span className="hidden xl:inline">Excel</span>
+            </button>
+          )}
+          {!telephone && (
+            <button onClick={onPresentation} disabled={rienAExporter} className={bouton} title="Présentation 16:9 : plans de repérage et tableaux par niveau, à projeter ou en PDF" data-visite="metres-presentation">
+              <Presentation className="h-4 w-4" /><span className="hidden xl:inline">Présentation</span>
             </button>
           )}
           {!telephone && (

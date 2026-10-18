@@ -220,7 +220,7 @@ resterait sur l'écran de connexion avec une erreur réseau.
 | `ios/App/App/App.entitlements` | notifications (APNs de production) et connexion Apple |
 | `ios/App/App/AppDelegate.swift` | transmet le jeton APNs de l'appareil à Capacitor |
 | `ios/App/App/DiaglyViewController.swift` | vue principale : enregistre les plugins maison, geste de retour depuis le bord, pas d'aperçu Safari |
-| `ios/App/App/ImpressionPlugin.swift` | feuille d'impression iOS (`src/lib/impression.ts`) |
+| `ios/App/App/ImpressionPlugin.swift` | feuille d'impression iOS (`src/lib/impression.ts`) ; PDF 16:9 de la présentation des métrés, pages de 960 × 540 points, remis à la feuille de partage (`pdfDiapositives`) |
 | `ios/App/App/ConnexionPlugin.swift` | connexion Apple et fenêtre de connexion sécurisée pour Google (`src/lib/connexion-native.ts`) |
 | `ios/App/App/BarreOngletsPlugin.swift` | barre du bas native, Liquid Glass sur iOS 26 (`src/lib/barre-native.ts`) |
 | `ios/App/App/ScannerPlugin.swift` | scanner de documents d'iOS (VisionKit) pour les plans papier, pages en JPEG à pleine résolution (`src/lib/scanner-natif.ts`) |

@@ -36,6 +36,19 @@ export const NOMS_SIA416: Record<CategorieSia416, string> = {
   SI: 'Surface d’installations',
 }
 
+/**
+ * La couleur de chaque catégorie sur un plan (présentation des métrés) :
+ * quatre teintes qui se distinguent entre elles et du dessin en retrait.
+ */
+export const COULEURS_SIA416: Record<CategorieSia416, string> = {
+  SUP: '#4f46e5',
+  SUS: '#0d9488',
+  SD: '#f59e0b',
+  SI: '#e11d48',
+}
+/** Une pièce que ni son nom ni un choix ne range encore. */
+export const COULEUR_NON_AFFECTEE = '#94a3b8'
+
 /** Ce que l'écran et l'export disent toujours à côté des chiffres. */
 export const MENTION_SIA416 = 'À vérifier, selon SIA 416:2003'
 
