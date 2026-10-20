@@ -1,52 +1,56 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type TouchEvent } from 'react'
-import { useParams, Link, useLocation } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle, BookOpen, ClipboardList, Printer, FileText, Image, Share2, Copy, Check, ExternalLink, X, Download, LayoutList, Layers, Leaf, Minus, Plus, Presentation } from 'lucide-react'
+import {
+  Loader2, AlertCircle, BookOpen, FileDown, FileSpreadsheet, Image, Share2, Copy, Check, ExternalLink, X, Download,
+  Leaf, Minus, Plus, Presentation, Receipt, Archive,
+} from 'lucide-react'
 import { Button, Card, CardContent } from '@/components/ui'
 import { ExportDialog } from '@/components/ExportDialog'
 import { cn } from '@/lib/utils'
-import { computeProjectMetrics } from '@/lib/formulas'
-import { getMarketCoeff } from '@/lib/diagnostic-auto'
-import { cfcGroupCode, cfcGroupLabels } from '@/lib/cfc'
-import { api } from '@/lib/api'
-import { useBaseCfc } from '@/lib/base-cfc/requete'
+import { api, saveBlob } from '@/lib/api'
 import type { ElementState } from '@/lib/api-types'
 import type { MarqueDuDossier } from '@/lib/marque'
 import { useAuth } from '@/stores/auth'
 import { MarqueDuRapport } from '@/components/report/marque-contexte'
 import { PersonnaliserLeRapport } from '@/components/report/PersonnaliserLeRapport'
-import { RapportComplet } from '@/components/report/RapportComplet'
+import { RapportComplet, type PartieDuRapport } from '@/components/report/RapportComplet'
+import { ConfirmerEnvoi, ControleAvantEnvoi } from '@/components/report/ControleAvantEnvoi'
+import { useDevisDuDossier } from '@/components/report/use-devis-du-dossier'
 import { RappelDuBureau } from '@/components/RappelDuBureau'
-import { RapportStandard } from '@/components/report/RapportStandard'
-import { RapportExistant } from '@/components/report/RapportExistant'
-import { RapportPhoto } from '@/components/report/RapportPhoto'
-import { RapportScenario } from '@/components/report/RapportScenario'
-import type { RVariant, ScenarioId } from '@/components/report/scenarios'
-import { TVA, toNum } from '@/components/report/constants'
 import { ORIGINE_PUBLIQUE } from '@/lib/plateforme'
 import { imprimerDiapositives, imprimerLaPage } from '@/lib/impression'
+import { pdfDesPages } from '@/lib/pdf-direct'
+import { estAppNative } from '@/lib/plateforme'
+import { bloquants as lesBloquants, controlerLeRapport } from '@/lib/controles-rapport'
+import { archiveDesPhotos, nomDeDossier, nombreDePhotos } from '@/lib/photos-zip'
+import { enAttente } from '@/lib/plans/feuilles'
+import { telechargerLeClasseur } from '@/lib/plans/telecharger-metre'
 import { DIAPO, OPTIONS_PRESENTATION, type OptionsPresentation } from '@/lib/plans/presentation'
 import { OptionsDeLaPresentation, PresentationMetres } from '@/components/metres/PresentationMetres'
 import { useJeuDuDossier, usePresentation } from '@/components/metres/presentation-donnees'
+import { useFicheDepuisPlans } from '@/components/metres/fiche-depuis-plans'
 
-type ReportKind = 'complet' | 'sommaire' | 'detaille' | 'documente' | 'scenario' | 'rapport' | 'photos' | 'existant' | 'metres'
-const REPORT_TITLES: Record<ReportKind, string> = {
-  complet: 'Rapport complet',
-  sommaire: 'Rapport sommaire', detaille: 'Rapport détaillé', documente: 'Rapport documenté', scenario: 'Rapport par scénario',
-  rapport: 'Rapport de diagnostic', photos: 'Rapport photo', existant: "Rapport de l'existant",
-  metres: 'Plans de repérage et métrés',
-}
+/**
+ * Les documents du dossier, et le seul endroit de l'app où on les télécharge.
+ *
+ * Cinq documents, pas plus : le rapport complet, et quatre extraits qui en
+ * reprennent les mêmes données (le devis original, le rapport photo,
+ * l'étiquette énergétique), ou les plans de repérage et métrés. Les anciens
+ * gabarits (« Rapport », « De l'existant ») comptaient leurs propres totaux et
+ * ne disaient pas la même chose que le rapport complet : ils sont retirés.
+ * Partout ailleurs (Coûts, Photos, Étiquette énergétique, Métrés), on consulte.
+ */
+type ReportKind = PartieDuRapport | 'metres'
 
-// L'onglet « Variantes » = les 4 types de rapports ; l'onglet « Rapports » = Rapport + Rapports photo,
-// et la présentation des métrés, qui vit aussi sans diagnostic.
-const KINDS_VARIANTES = [['sommaire', 'Sommaire', LayoutList], ['detaille', 'Détaillé', FileText], ['documente', 'Documenté', Image], ['scenario', 'Par scénario', Layers]] as const
-const KINDS_RAPPORTS = [
-  ['complet', 'Complet', BookOpen], ['rapport', 'Rapport', FileText], ['existant', "De l'existant", ClipboardList], ['photos', 'Rapports photo', Image],
-  ['metres', 'Plans de repérage et métrés (16:9)', Presentation],
-] as const
-
-/** Les quatre types qui partagent le corps du rapport standard. */
-const STANDARDS: ReportKind[] = ['sommaire', 'detaille', 'documente', 'rapport']
+const DOCUMENTS: [ReportKind, string, typeof BookOpen][] = [
+  ['complet', 'Rapport complet', BookOpen],
+  ['devis', 'Devis original', Receipt],
+  ['photos', 'Rapport photo', Image],
+  ['energie', 'Étiquette énergétique', Leaf],
+  ['metres', 'Plans de repérage et métrés', Presentation],
+]
+const TITRES = Object.fromEntries(DOCUMENTS.map(([k, l]) => [k, l])) as Record<ReportKind, string>
 
 /**
  * Imprimer, exporter et partager passent dans la colonne de gauche sur iPad
@@ -73,24 +77,15 @@ const distanceDesDoigts = (t: TouchEvent['touches']) =>
 
 export function ProjectRapports() {
   const { id } = useParams<{ id: string }>()
-  const { pathname } = useLocation()
-  const mode: 'variantes' | 'rapports' = pathname.endsWith('/rapports') ? 'rapports' : 'variantes'
   const user = useAuth((s) => s.user)
   const auteurDuCompte = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.companyName || ''
   /**
-   * L'aperçu de la personnalisation, pendant qu'on la règle.
-   *
-   * Le panneau remonte son brouillon ici, et le document le montre aussitôt :
-   * on choisit une couleur en la regardant sur la page, pas en imaginant ce
-   * qu'elle donnera. null = on affiche ce qui est enregistré.
+   * L'aperçu de la personnalisation, pendant qu'on la règle : le document le
+   * montre aussitôt. null = on affiche ce qui est enregistré.
    */
   const [apercu, setApercu] = useState<MarqueDuDossier | null>(null)
-  const kinds = mode === 'rapports' ? KINDS_RAPPORTS : KINDS_VARIANTES
   // Une feuille A4 fait 210 mm, soit environ 800 px : quand la colonne du
-  // document est plus étroite, on la réduit à sa largeur. Mesurer la colonne
-  // plutôt que l'écran couvre l'iPad, debout (la colonne fait ~550 px) comme
-  // couché (~420 px, entre les réglages et les actions), où la feuille
-  // défilait en largeur ; sur téléphone, cela revient au même qu'avant.
+  // document est plus étroite, on la réduit à sa largeur.
   const [largeurDoc, setLargeurDoc] = useState<number | null>(null)
   const colonneDoc = useRef<HTMLDivElement | null>(null)
   const mesurerDoc = useCallback((el: HTMLDivElement | null) => {
@@ -100,21 +95,18 @@ export function ProjectRapports() {
     o.observe(el)
     return () => o.disconnect()
   }, [])
-  // Le zoom : la feuille ajustée à la colonne, multipliée par la loupe choisie
-  // (boutons ou pincement à deux doigts). Au-delà de l'ajustement, la feuille
-  // déborde de sa colonne, qui défile alors dans les deux sens.
   const [loupe, setLoupe] = useState(1)
-  // Le choix du type de rapport ; sans choix, le premier qui a de quoi s'afficher.
   const [choix, setReport] = useState<ReportKind | null>(null)
-  const projectQuery = useQuery({ queryKey: ['project', id], queryFn: () => api.projects.get(id!), enabled: !!id })
-  const project = projectQuery.data?.project
+
+  // Le dossier chiffré : un seul calcul pour tous les documents.
+  const dossier = useDevisDuDossier(id)
+  const { project, diagnostic, devis, base } = dossier
+  const items = useMemo(() => dossier.items ?? [], [dossier.items])
   const marqueDuDossier = apercu ?? project?.reportBranding ?? null
-  // L'auteur du dossier signe tous ses rapports, pas seulement le complet.
   const auteur = marqueDuDossier?.auteur?.trim() || auteurDuCompte
-  const diagnostic = projectQuery.data?.diagnostics[0]
+
   // Un dossier sans diagnostic n'a que ses métrés à présenter : c'est par eux qu'il s'ouvre.
-  const report: ReportKind = choix ?? (mode === 'variantes' ? 'detaille' : diagnostic || projectQuery.isLoading ? 'complet' : 'metres')
-  // Une feuille A4 fait environ 800 px de large, une diapositive 16:9 1280.
+  const report: ReportKind = choix ?? (diagnostic || dossier.chargement ? 'complet' : 'metres')
   const largeurBase = report === 'metres' ? DIAPO.largeur : 800
   const ajuste = largeurDoc ? Math.min(1, largeurDoc / largeurBase) : 1
   const zoomDe = (l: number) => Math.min(3, Math.max(0.3, ajuste * l))
@@ -140,28 +132,12 @@ export function ProjectRapports() {
     setLoupe(p.actuelle)
   }
   const actionsAGauche = useActionsAGauche()
-  const [scenario, setScenario] = useState<ScenarioId>('energetique')
   const [exportOpen, setExportOpen] = useState(false)
 
-  const itemsQuery = useQuery({
-    queryKey: ['diagnostic-items', diagnostic?.id],
-    queryFn: () => api.diagnostics.listItems(diagnostic!.id),
-    enabled: !!diagnostic,
-  })
-  // Référence stable : `?? []` produirait un tableau neuf à chaque rendu et casserait les mémorisations en aval.
-  const items = useMemo(() => itemsQuery.data?.items ?? [], [itemsQuery.data])
-
-  // Variantes du projet : le rapport complet en fait son chapitre 5.
+  // Variantes du projet : le rapport complet en fait un chapitre.
   const variantsQuery = useQuery({ queryKey: ['variants', id], queryFn: () => api.variants.list(id!), enabled: !!id })
-
-  const cfcQuery = useQuery({ queryKey: ['cfc-catalog'], queryFn: () => api.cfc.catalog(), staleTime: 3.6e6 })
-  // Catalogue des items : il porte la description de l'état constaté (« état existant »
-  // du tableau de référence), qui doit figurer dans le rapport et pas seulement à la saisie.
+  // L'ancien catalogue porte la description de l'état constaté des relevés d'avant la bascule.
   const catalogQuery = useQuery({ queryKey: ['cfc-items'], queryFn: () => api.cfc.items(), staleTime: 3.6e6 })
-  // La base v3 porte le devis, ses postes et le nom des étapes. L'ancien
-  // catalogue reste là pour les relevés d'avant la bascule, dont il décrit
-  // l'état constaté, et pour les variantes.
-  const baseQuery = useBaseCfc()
   const etatExistant = useMemo(() => {
     const parId = new Map((catalogQuery.data?.items ?? []).map((c) => [c.id, c]))
     return (it: { catalogItemId: number | null; state: ElementState | null }): string | null => {
@@ -171,166 +147,158 @@ export function ProjectRapports() {
       return it.state === 'TRES_BON' ? c.descTbe : it.state === 'BON' ? c.descBon : it.state === 'MOYEN' ? c.descMoyen : c.descMauvais
     }
   }, [catalogQuery.data])
-  const labels = useMemo(() => cfcGroupLabels(cfcQuery.data?.entries ?? []), [cfcQuery.data])
 
   // La présentation des métrés : le jeu de plans du dossier, ses quantités, et les relevés quand il y en a.
   const [optionsPresentation, setOptionsPresentation] = useState<OptionsPresentation>(OPTIONS_PRESENTATION)
   const [presentationPrete, setPresentationPrete] = useState(false)
-  const jeuDuDossier = useJeuDuDossier(mode === 'rapports' ? id ?? '' : '', project?.floorHeight ?? null)
+  /** Le PDF en préparation : « 3/12 » pendant que les pages se photographient. */
+  const [pdf, setPdf] = useState<string | null>(null)
+  const [enCours, setEnCours] = useState<'photos' | 'excel' | null>(null)
+  const jeuDuDossier = useJeuDuDossier(id ?? '', project?.floorHeight ?? null)
   const presentation = usePresentation({ ...jeuDuDossier, projet: project, items, options: optionsPresentation })
+  // Les métrés validés des plans remplacent les dimensions de la fiche : le devis les lit aussitôt.
+  const formesAValider = jeuDuDossier.jeu.reduce((s, x) => s + (x.plan.annotations ?? []).filter(enAttente).length, 0)
+  useFicheDepuisPlans(id, project, jeuDuDossier.panneau, jeuDuDossier.sia,
+    !jeuDuDossier.chargement && jeuDuDossier.jeu.length > 0 && formesAValider === 0 && jeuDuDossier.panneau.aValider === 0)
 
-  // Regroupement par groupe CFC (2 chiffres), trié par code.
-  const groups = useMemo(() => {
-    const map = new Map<string, typeof items>()
-    const sorted = [...items].sort((a, b) => (a.cfcCode ?? '').localeCompare(b.cfcCode ?? '', undefined, { numeric: true }))
-    for (const it of sorted) {
-      const g = cfcGroupCode(it.cfcCode) ?? ''
-      if (!map.has(g)) map.set(g, [])
-      map.get(g)!.push(it)
-    }
-    return Array.from(map.entries())
-      .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
-      .map(([code, its]) => ({ code, label: code ? (labels.get(code) ?? `CFC ${code}`) : 'Non classé', items: its }))
-  }, [items, labels])
+  // Le contrôle avant envoi, sur le même devis que le document.
+  const controles = useMemo(() => (project && devis
+    ? controlerLeRapport({ items, articles: base.articles, etapes: base.etapes, fiche: project, devis })
+    : []), [project, devis, items, base])
+  const bloquants = useMemo(() => lesBloquants(controles), [controles])
+  const [confirmation, setConfirmation] = useState<{ action: string; suite: () => void } | null>(null)
+  /** Une sortie vers le client : elle passe par la confirmation tant qu'un point bloque. */
+  const avecControle = (action: string, suite: () => void) => {
+    if (report !== 'metres' && bloquants.length > 0) setConfirmation({ action, suite })
+    else suite()
+  }
 
-  if (projectQuery.isLoading) {
+  if (dossier.chargement && !project) {
     return <div className="flex items-center justify-center py-32 text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mr-2" />Chargement…</div>
   }
-  if (projectQuery.isError || !project) {
+  if (dossier.erreur || !project) {
     return <Card><CardContent className="py-16 text-center"><AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" /><p className="text-sm text-red-700">Projet introuvable</p></CardContent></Card>
   }
-  if (!diagnostic && mode === 'variantes') {
-    return (
-      <Card><CardContent className="py-16 text-center">
-        <h3 className="text-lg font-semibold mb-1">Aucun diagnostic</h3>
-        <p className="text-sm text-muted-foreground mb-4">Le rapport se base sur le diagnostic. Démarrez-le d'abord.</p>
-        <Link to={`/app/projects/${id}/diagnostic`}><Button>Aller au diagnostic</Button></Link>
-      </CardContent></Card>
-    )
-  }
 
-  const metrics = computeProjectMetrics(project)
-  const roof = metrics.roof
-  const htRepair = items.reduce((s, i) => s + toNum(i.estimatedCost), 0)
-
-  // 3 scénarios de rénovation cumulatifs, cascade honoraires/réserve/TVA sur chaque HT.
-  const cascade = (h: number) => {
-    const hon = h * (project.honoraryPct ?? 0) / 100
-    const aH = h + hon
-    const res = aH * (project.reservePct ?? 0) / 100
-    const sT = aH + res
-    const t = sT * TVA
-    return { ht: h, honoraires: hon, reserve: res, sousTotal: sT, tva: t, total: sT + t }
-  }
-  // Enveloppes de scénario estimées depuis la géométrie (rénovation intérieure ≈ plancher, isolation ≈ enveloppe).
-  const coeff = getMarketCoeff()
-  const winPct = project.windowPct / 100
-  const facade = metrics.facade
-  const windowArea = facade * winPct
-  const opaque = Math.max(facade - windowArea, 0)
-  const roofM = roof ?? 0
-  const floor = project.floorArea ?? 0
-  const improvementPack = Math.round(floor * 120 * coeff)
-  const energyPack = Math.round((opaque * 220 + windowArea * 250 + roofM * 180) * coeff)
-  // Forfaits de scénario : estimés depuis la géométrie, donc absents de la liste des
-  // éléments diagnostiqués. Ils sont énoncés ligne par ligne, avec leur base de calcul,
-  // pour que le total du scénario se retrouve à la main.
-  const packRenovation = {
-    label: 'Rénovation intérieure (forfait)',
-    basis: `${Math.round(floor)} m² de plancher × 120 CHF × indice ${coeff}`,
-    amount: improvementPack,
-  }
-  const packEnergie = {
-    label: 'Isolation de l’enveloppe (forfait)',
-    basis: `${Math.round(opaque)} m² opaque × 220 + ${Math.round(windowArea)} m² vitré × 250${roofM ? ` + ${Math.round(roofM)} m² toiture × 180` : ''} CHF × indice ${coeff}`,
-    amount: energyPack,
-  }
-  const variants: RVariant[] = [
-    { id: 'maintenance', name: 'Maintenance', envelopes: ['Réparation'], energyFocus: false, packs: [], ...cascade(htRepair) },
-    { id: 'renovation', name: 'Rénovation', envelopes: ['Réparation', 'Rénovation intérieure'], energyFocus: false, packs: [packRenovation], ...cascade(htRepair + improvementPack) },
-    { id: 'energetique', name: 'Rénovation énergétique', envelopes: ['Réparation', 'Rénovation intérieure', 'Isolation enveloppe'], energyFocus: true, packs: [packRenovation, packEnergie], ...cascade(htRepair + improvementPack + energyPack) },
-  ]
-  const currentVariant = variants.find(v => v.id === scenario) ?? variants[2]
-  const classeEnergie = project.energyClassGlobal ?? project.energyClassEnvelope ?? null
-
-  // La présentation s'imprime en pages 16:9, une fois ses plans rendus ; les rapports, en A4.
+  // Le PDF sort directement des pages affichées : diapositives 16:9 pour la
+  // présentation, feuilles A4 pour les rapports (pdf-direct.ts). Dans l'app
+  // iPhone et iPad, il passe par le plugin natif, qui l'enregistre ou le partage.
   const presentationVide = report === 'metres' && presentation.diapositives.length === 0
-  const imprimer = () => {
-    const fait = report === 'metres'
-      ? imprimerDiapositives(presentation.nomDuFichier)
-      : imprimerLaPage(`${REPORT_TITLES[report]} - ${project.name}`)
-    void fait.catch(() => undefined)
+  const telechargerPdf = async () => {
+    const nom = report === 'metres' ? presentation.nomDuFichier : `${TITRES[report]} - ${project.name}`
+    if (estAppNative) {
+      await (report === 'metres' ? imprimerDiapositives(nom) : imprimerLaPage(nom))
+      return
+    }
+    const colonne = colonneDoc.current
+    if (!colonne) return
+    const pages = report === 'metres'
+      ? [...colonne.querySelectorAll<HTMLElement>('.diapos-ecran .diapo')]
+      : [...colonne.querySelectorAll<HTMLElement>('.doc-feuille')].filter((el) => !el.closest('.doc-mesure'))
+    setPdf(`0/${pages.length}`)
+    try {
+      await pdfDesPages(pages, { nom, format: report === 'metres' ? 'diapo' : 'a4', onProgres: (faites, total) => setPdf(`${faites}/${total}`) })
+    } finally {
+      setPdf(null)
+    }
   }
+  const imprimer = () => avecControle('Télécharger', () => { void telechargerPdf().catch(() => setPdf(null)) })
+
+  const archiverPhotos = async () => {
+    setEnCours('photos')
+    try {
+      saveBlob(await archiveDesPhotos(project.name, items), `${nomDeDossier(project.name)}-photos.zip`)
+    } finally {
+      setEnCours(null)
+    }
+  }
+  const classeur = async () => {
+    setEnCours('excel')
+    try {
+      await telechargerLeClasseur(id!, project, jeuDuDossier.jeu, jeuDuDossier.panneau, jeuDuDossier.sia)
+    } finally {
+      setEnCours(null)
+    }
+  }
+  const photos = nombreDePhotos(items)
+
   const actions = (
     <>
       <Button
         onClick={imprimer}
-        disabled={report === 'metres' ? presentationVide || !presentationPrete : !diagnostic}
+        disabled={pdf !== null || (report === 'metres' ? presentationVide || !presentationPrete : !diagnostic || !devis)}
         className="w-full justify-start"
       >
-        {report === 'metres' && !presentationVide && !presentationPrete
+        {pdf !== null || (report === 'metres' && !presentationVide && !presentationPrete)
           ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          : <Printer className="mr-2 h-4 w-4" />}
-        Imprimer / PDF
+          : <FileDown className="mr-2 h-4 w-4" />}
+        {pdf !== null ? `PDF ${pdf}` : 'PDF'}
       </Button>
+      {report === 'photos' && photos > 0 && (
+        <Button variant="outline" onClick={() => void archiverPhotos()} disabled={enCours !== null} className="w-full justify-start">
+          {enCours === 'photos' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
+          Photos (ZIP, {photos})
+        </Button>
+      )}
+      {report === 'metres' && presentation.elements.length > 0 && (
+        <Button variant="outline" onClick={() => void classeur()} disabled={enCours !== null} className="w-full justify-start">
+          {enCours === 'excel' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />}
+          Métré (Excel)
+        </Button>
+      )}
       {/* L'export et le lien de partage portent sur le diagnostic. */}
       {diagnostic && (
         <Button variant="outline" onClick={() => setExportOpen(true)} className="w-full justify-start">
           <Download className="mr-2 h-4 w-4" />Exporter
         </Button>
       )}
-      {diagnostic && <ShareControl projectId={id!} initialToken={project.shareToken ?? null} />}
+      {diagnostic && (
+        <ShareControl
+          projectId={id!}
+          initialToken={project.shareToken ?? null}
+          avantPartage={(suite) => avecControle('Partager', suite)}
+        />
+      )}
     </>
   )
 
   return (
     /* Une colonne à gauche, le document à droite.
-       Les types de rapport tenaient dans une pilule horizontale au-dessus du
-       document : au quatrième type les libellés se serraient, et le document
-       descendait d'autant. En colonne, la liste porte des noms entiers, reste
-       visible pendant qu'on fait défiler le document, et les actions se rangent
-       dessous au lieu de flotter à l'opposé de ce qu'elles actionnent.
 
        À partir de md, AppLayout encastre la page : sa zone principale ne
        défile plus, c'est à la page de le faire. Les trois colonnes ne tiennent
        côte à côte qu'à partir de lg ; entre les deux (iPad à la verticale),
        elles restent empilées comme sur téléphone, et c'est cette enveloppe,
-       calée sur la hauteur de la zone, qui défile d'un bloc. Sans elle, rien
-       ne défilait : le document dépassait par le bas d'une zone figée. Sur
-       téléphone, la zone principale défile encore elle-même. */
+       calée sur la hauteur de la zone, qui défile d'un bloc. */
     <div className="js-print-column flex min-h-0 flex-col gap-4 md:h-full md:max-lg:overflow-y-auto">
-    {/* Même en-tête que les autres pages du dossier ; il ne s'imprime pas. */}
     <div className="js-print-hide shrink-0 print:hidden">
       <h1 className="text-xl font-bold md:text-2xl">Rapports</h1>
-      <p className="text-sm text-muted-foreground">Le document remis au client : choisissez son type, réglez son apparence, puis imprimez, exportez ou partagez-le.</p>
+      <p className="text-sm text-muted-foreground">Les documents remis au client, et le seul endroit où on les télécharge : choisissez-en un, vérifiez-le, puis téléchargez ou partagez-le.</p>
     </div>
-    {/* Colonnes empilées : elles gardent leur hauteur entière, pour que
-        l'enveloppe défile au lieu de les tasser dans sa hauteur. À partir de
-        lg, la rangée prend au contraire la hauteur restante (flex-1, min-h-0)
-        et chaque colonne défile en elle-même. */}
     <div className="js-print-column flex min-h-0 flex-col gap-4 max-lg:shrink-0 lg:flex-1 lg:flex-row lg:overflow-hidden">
-      {/* À gauche ce qui compose le document : le type de rapport et son
-          apparence. Au milieu le document. À droite ce qui en sort : imprimer,
-          exporter, partager. Chaque colonne défile d'elle-même quand elle
-          dépasse, sans emporter le document avec elle. */}
-      <aside className="shrink-0 space-y-4 print:hidden max-lg:order-1 lg:h-full lg:w-60 lg:overflow-y-auto lg:pb-3">
-        <nav className="space-y-1" aria-label="Type de rapport">
-          {kinds.map(([k, label, Icon]) => (
+      {/* À gauche ce qui compose le document : son type, le contrôle avant
+          envoi et son apparence. Au milieu le document. À droite ce qui en
+          sort. Chaque colonne défile d'elle-même quand elle dépasse. */}
+      <aside className="shrink-0 space-y-4 print:hidden max-lg:order-1 lg:h-full lg:w-64 lg:overflow-y-auto lg:pb-3">
+        <nav className="space-y-1" aria-label="Document">
+          {DOCUMENTS.map(([k, label, Icon]) => (
             <button
               key={k}
               onClick={() => setReport(k)}
               aria-current={report === k ? 'page' : undefined}
               className={cn(
                 'flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors',
-                report === k
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                report === k ? 'bg-blue-50 text-blue-700' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />{label}
             </button>
           ))}
         </nav>
+
+        {diagnostic && report !== 'metres' && devis && (
+          <ControleAvantEnvoi controles={controles} items={items} projectId={id!} diagnosticId={diagnostic.id} />
+        )}
 
         {report === 'metres' && presentation.elements.length > 0 && (
           <OptionsDeLaPresentation
@@ -342,31 +310,6 @@ export function ProjectRapports() {
           />
         )}
 
-        {report === 'scenario' && (
-          <div>
-            <p className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Scénario
-            </p>
-            <div className="space-y-1">
-              {variants.map(v => (
-                <button
-                  key={v.id}
-                  onClick={() => setScenario(v.id)}
-                  aria-current={scenario === v.id ? 'true' : undefined}
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
-                    scenario === v.id
-                      ? 'bg-blue-50 font-medium text-blue-700'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                  )}
-                >
-                  {v.energyFocus && <Leaf className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}{v.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {actionsAGauche && <div className="space-y-2 border-t pt-4">{actions}</div>}
 
         <PersonnaliserLeRapport
@@ -375,26 +318,12 @@ export function ProjectRapports() {
           auteurParDefaut={auteur}
           onApercu={setApercu}
         />
-
       </aside>
 
-      {/* Les feuilles A4 ont une largeur fixe : quand la fenêtre offre moins de
-          210 mm, on les fait défiler horizontalement plutôt que de laisser toute
-          la page déborder. À l'impression, la contrainte disparaît. */}
-      {/* Tout le document porte la marque du dossier : les en-têtes de page
-          sont trop loin d'ici pour qu'on la leur passe de main en main. */}
+      {/* Tout le document porte la marque du dossier. Il ne dépasse jamais la
+          largeur d'une feuille A4, et c'est lui, et non la page, qui défile. La
+          présentation 16:9 prend toute la largeur. */}
       <MarqueDuRapport dossier={marqueDuDossier} auteur={auteur}>
-      {/* Le document ne dépasse jamais la largeur d'une feuille A4 : au-delà, il
-          ne gagnerait rien et éloignerait les boutons d'export. En dessous, il
-          se laisse rétrécir et défile en largeur, plutôt que de pousser la
-          colonne de droite hors de l'écran.
-
-          C'est lui, et non la page, qui défile : la barre de défilement longe
-          alors la feuille, à portée du regard et de la main, au lieu d'aller
-          se ranger au bord de la fenêtre. */}
-      {/* Les feuilles A4 sont réduites à la largeur de la colonne (zoom sur
-          chaque feuille, voir index.css) plutôt que de défiler en largeur. */}
-      {/* La présentation 16:9 prend toute la largeur : elle n'a pas le format d'une feuille A4. */}
       <div className={cn('js-print-column relative min-w-0 flex-1 max-lg:order-3 lg:h-full', !actionsAGauche && report !== 'metres' && 'lg:max-w-[calc(210mm+1rem)]')}>
       <div
         ref={mesurerDoc}
@@ -409,12 +338,20 @@ export function ProjectRapports() {
       <RappelDuBureau />
 
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} projectId={id!} />
+      {confirmation && (
+        <ConfirmerEnvoi
+          bloquants={bloquants}
+          action={confirmation.action}
+          onAnnuler={() => setConfirmation(null)}
+          onConfirmer={() => { const suite = confirmation.suite; setConfirmation(null); suite() }}
+        />
+      )}
 
       {/* Les rapports se fondent sur le diagnostic ; la présentation des métrés, non. */}
       {!diagnostic && report !== 'metres' && (
         <Card><CardContent className="py-16 text-center">
           <h3 className="mb-1 text-lg font-semibold">Aucun diagnostic</h3>
-          <p className="mb-4 text-sm text-muted-foreground">Ce rapport se base sur le diagnostic. Démarrez-le d'abord, ou présentez les métrés du dossier.</p>
+          <p className="mb-4 text-sm text-muted-foreground">Ce document se base sur le diagnostic. Démarrez-le d'abord, ou présentez les métrés du dossier.</p>
           <div className="flex flex-wrap justify-center gap-2">
             <Link to={`/app/projects/${id}/diagnostic`}><Button>Aller au diagnostic</Button></Link>
             <Button variant="outline" onClick={() => setReport('metres')}>Plans de repérage et métrés</Button>
@@ -450,59 +387,24 @@ export function ProjectRapports() {
               )
       )}
 
-      {/* Rapport complet : le livrable clé en main, garde + sommaire + méthode + état + devis */}
-      {diagnostic && report === 'complet' && (
-        <RapportComplet
-          project={project}
-          items={items}
-          etatExistant={etatExistant}
-          cfcEntries={cfcQuery.data?.entries ?? []}
-          base={{
-            articles: baseQuery.data?.articles ?? [],
-            postes: baseQuery.data?.postes ?? [],
-            etapes: baseQuery.data?.etapes ?? [],
-          }}
-          catalogItems={catalogQuery.data?.items ?? []}
-          variants={variantsQuery.data?.variants ?? []}
-          auteur={auteur}
-        />
-      )}
-
-      {/* Corps commun : sommaire, détaillé, documenté, et le rapport de l'onglet Rapports */}
-      {diagnostic && STANDARDS.includes(report) && (
-        <RapportStandard
-          project={project}
-          items={items}
-          groups={groups}
-          etatExistant={etatExistant}
-          auteur={auteur}
-          titre={REPORT_TITLES[report]}
-          sommaire={report === 'sommaire'}
-          avecPhotos={report === 'documente'}
-          variants={variants}
-        />
-      )}
-
-      {/* Rapport de l'existant : qualitatif, calqué sur le modèle du bureau */}
-      {diagnostic && report === 'existant' && (
-        <RapportExistant project={project} items={items} etatExistant={etatExistant} auteur={auteur} />
-      )}
-
-      {/* Reportage photo seul */}
-      {diagnostic && report === 'photos' && (
-        <RapportPhoto projectName={project.name} groups={groups} auteur={auteur} />
-      )}
-
-      {/* Rapport par scénario de rénovation */}
-      {diagnostic && report === 'scenario' && (
-        <RapportScenario
-          projectName={project.name}
-          variant={currentVariant}
-          allVariants={variants}
-          items={items}
-          energyClass={classeEnergie}
-          auteur={auteur}
-        />
+      {/* Le rapport complet, ou l'un de ses extraits : mêmes données, même calcul. */}
+      {diagnostic && report !== 'metres' && (
+        devis
+          ? (
+            <RapportComplet
+              key={report}
+              partie={report}
+              project={project}
+              items={items}
+              devis={devis}
+              etatExistant={etatExistant}
+              base={base}
+              catalogItems={catalogQuery.data?.items ?? []}
+              variants={variantsQuery.data?.variants ?? []}
+              auteur={auteur}
+            />
+          )
+          : <div className="flex items-center justify-center py-32 text-muted-foreground"><Loader2 className="mr-2 h-6 w-6 animate-spin" />Chiffrage du dossier…</div>
       )}
       </div>
       {/* Le zoom, posé sur le document : réduire pour voir la page entière,
@@ -521,10 +423,8 @@ export function ProjectRapports() {
       </div>
       </MarqueDuRapport>
 
-      {/* Ce qui sort du document. À droite parce que c'est la fin du geste :
-          on choisit à gauche, on relit au milieu, on édite à droite. Sur iPad
-          couché, ces actions passent à gauche (useActionsAGauche). */}
-      {/* Téléphone : imprimer, exporter, partager montent avant le document. */}
+      {/* Ce qui sort du document : à droite, la fin du geste. Sur iPad couché,
+          ces actions passent à gauche (useActionsAGauche). */}
       {!actionsAGauche && (
         <aside className="shrink-0 space-y-2 print:hidden max-lg:order-2 lg:h-full lg:w-52 lg:overflow-y-auto">
           {actions}
@@ -536,7 +436,12 @@ export function ProjectRapports() {
 }
 
 /** Bouton + popover pour activer / copier / révoquer le lien de partage client. */
-function ShareControl({ projectId, initialToken }: { projectId: string; initialToken: string | null }) {
+function ShareControl({ projectId, initialToken, avantPartage }: {
+  projectId: string
+  initialToken: string | null
+  /** Passe la main au contrôle avant envoi : il appelle la suite, ou demande confirmation. */
+  avantPartage: (suite: () => void) => void
+}) {
   const [token, setToken] = useState<string | null>(initialToken)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -560,7 +465,7 @@ function ShareControl({ projectId, initialToken }: { projectId: string; initialT
 
   return (
     <div className="relative">
-      <Button variant="outline" onClick={() => (token ? setOpen((o) => !o) : enable())} disabled={loading} className="w-full justify-start">
+      <Button variant="outline" onClick={() => (token ? setOpen((o) => !o) : avantPartage(() => void enable()))} disabled={loading} className="w-full justify-start">
         {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />}
         {token ? 'Lien de partage' : 'Partager'}
       </Button>
@@ -568,14 +473,14 @@ function ShareControl({ projectId, initialToken }: { projectId: string; initialT
       {open && token && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          {/* À la largeur de la colonne : plus large (w-80), elle débordait de
-              la colonne qui défile et s'y faisait couper. */}
+          {/* À la largeur de la colonne : plus large, elle débordait de la
+              colonne qui défile et s'y faisait couper. */}
           <div className="absolute inset-x-0 mt-2 z-50 rounded-xl border bg-background shadow-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold">Partager au client</p>
               <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
             </div>
-            <p className="text-xs text-muted-foreground">Toute personne disposant de ce lien peut consulter le rapport en lecture seule, sans connexion.</p>
+            <p className="text-xs text-muted-foreground">Toute personne disposant de ce lien peut consulter le rapport complet en lecture seule, sans connexion.</p>
             <div className="flex items-center gap-1.5">
               <input readOnly value={url} onFocus={(e) => e.target.select()} className="flex-1 min-w-0 rounded-lg border bg-muted/40 px-2.5 py-1.5 text-xs" />
               <button onClick={copy} className="h-8 w-8 rounded-lg border flex items-center justify-center hover:bg-muted shrink-0" title="Copier">

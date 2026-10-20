@@ -375,6 +375,9 @@ model Project {
   facadeArea            Float?        @map("facade_area")
   terrainArea           Float?        @map("terrain_area")
   perimeter             Float?
+  /// Surface de toiture mesuree sur les plans. null = deduite du type de
+  /// toiture et de la surface batie (src/lib/formulas.ts).
+  roofArea              Float?        @map("roof_area")
   windowPct             Float         @default(30) @map("window_pct")
   honoraryPct           Float         @default(12) @map("honorary_pct")
   reservePct            Float         @default(10) @map("reserve_pct")
@@ -418,6 +421,14 @@ model Project {
   /// Lus sur les plans, comptes dans l'outil Plan ou saisis au dossier, ils
   /// l'emportent sur les regles de quantite de la base (src/lib/base-cfc/comptages.ts).
   comptages             Json?         @map("comptages")
+  /// D'ou vient chaque dimension de la fiche : { "floorArea": { "source": "plans",
+  /// "valeur": 1240, "majLe": "..." } }. « plans » = tiree des metres valides ;
+  /// le rapport cite la source de chaque metre (src/lib/sources-dimensions.ts).
+  sources               Json?         @map("sources")
+  /// Majorations propres au dossier : installation de chantier (pourcentage et
+  /// minimum) et frais secondaires (autorisations, taxes, assurances, prorata).
+  /// { "installation": { "pct": 3, "minimum": 5000 }, "frais": [{ "libelle", "pct", "montant" }] }
+  majorations           Json?         @map("majorations")
   createdAt             DateTime      @default(now()) @map("created_at")
   updatedAt             DateTime      @updatedAt @map("updated_at")
 
@@ -723,6 +734,10 @@ model DiagnosticItem {
   /// Remise aux normes retenue (null = non retenue) + son coût. Enveloppe distincte.
   norms            String?       @db.Text
   normsCost        Decimal?      @map("norms_cost") @db.Decimal(12, 2)
+  /// Releves dont la reparation devient inutile si l'amelioration est faite
+  /// (une ITE rend inutiles la refection du crepi et le nettoyage de la meme
+  /// facade). Liste d'identifiants de releves, celui-ci compris. null = aucun.
+  improvementReplaces Json?      @map("improvement_replaces")
   createdAt        DateTime      @default(now()) @map("created_at")
   updatedAt        DateTime      @updatedAt @map("updated_at")
 

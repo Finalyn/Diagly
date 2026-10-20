@@ -4,7 +4,8 @@
  * En tête, la zone où l'on dépose un jeu de plans ; dessous, les métrés déjà
  * faits, un par dossier qui a des plans : le bâtiment, le nombre de feuilles,
  * où en est leur analyse, ce qui attend d'être validé. Un clic ouvre
- * l'espace de travail du bâtiment.
+ * l'espace de travail du bâtiment. Sans aucun métré, un exemple animé montre
+ * ce que l'IA fera des plans (ExempleMetres).
  *
  * En tête aussi, de quoi apprendre l'outil : la visite guidée, qui entoure
  * les boutons au fur et à mesure, et le tutoriel écrit. Le téléphone n'a pas
@@ -22,6 +23,7 @@ import { useIsMobile } from '@/lib/use-mobile'
 import { useVisite } from '@/stores/visite'
 import { ApercuPlan } from '@/components/plans/ApercuPlan'
 import { DepotPlans } from '@/components/metres/DepotPlans'
+import { ExempleMetres } from '@/components/metres/ExempleMetres'
 import { etatAnalyse, feuillesDe, nombreDePages, ordonnerPlans } from '@/lib/plans/feuilles'
 
 /** Où en est l'analyse d'un métré, en une pastille. */
@@ -82,9 +84,7 @@ export function Metres() {
         ) : isError ? (
           <p className="flex items-center gap-2 py-10 text-sm text-red-700"><AlertCircle className="h-4 w-4" />Les métrés n’ont pas pu être chargés.</p>
         ) : metres.length === 0 ? (
-          <p className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
-            Aucun métré pour l’instant. Déposez les plans d’un bâtiment ci-dessus pour commencer.
-          </p>
+          <ExempleMetres />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {metres.map((m, i) => <CarteMetre key={m.projectId} metre={m} visite={i === 0 ? 'metres-carte' : undefined} />)}

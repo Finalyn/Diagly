@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { dureeVieDeReference, dureeVieResiduelle, phraseDureeVie } from './duree-vie'
+import { dureeVieDeReference, dureeVieResiduelle, phraseDureeVie, bonEtatSuspect } from './duree-vie'
 
 const EN = { anneeCourante: 2026 }
 
@@ -58,10 +58,17 @@ describe('durée de vie résiduelle', () => {
     expect(d.usure).toBe(1)           // bornée, jamais au-delà de 100 %
   })
 
-  it("retombe sur l'année de construction quand la pose n'est pas relevée, et le dit", () => {
-    const d = dureeVieResiduelle({ cfcCode: '226.2', yearInstalled: null }, { ...EN, yearBuilt: 1934 })!
-    expect(d.anneePose).toBe(1934)
-    expect(d.poseEstimee).toBe(true)
+  it("ne reprend pas l'année de construction quand la pose n'est pas relevée", () => {
+    // Des fenêtres PVC « posées en 1934 », « dépassées de 62 ans » : l'aberration du premier rapport.
+    expect(dureeVieResiduelle({ cfcCode: '221.1', yearInstalled: null }, { ...EN, yearBuilt: 1934 })).toBeUndefined()
+  })
+
+  it('soupçonne un bon état dont la durée de vie est dépassée de beaucoup', () => {
+    const vieux = dureeVieResiduelle({ cfcCode: '221.1', yearInstalled: 1960 }, EN)
+    expect(bonEtatSuspect('BON', vieux)).toBe(true)
+    expect(bonEtatSuspect('MAUVAIS', vieux)).toBe(false)
+    const recent = dureeVieResiduelle({ cfcCode: '221.1', yearInstalled: 2015 }, EN)
+    expect(bonEtatSuspect('BON', recent)).toBe(false)
   })
 
   it('préfère toujours la pose relevée à l’année de construction', () => {
@@ -91,10 +98,9 @@ describe('phrase du rapport', () => {
     expect(phraseDureeVie(d)).toBe('Posé en 2010 · durée de vie de référence 30 ans · durée de vie résiduelle 14 ans')
   })
 
-  it('marque une pose estimée pour que le lecteur sache ce qui est relevé', () => {
+  it('dit que l’année de pose n’est pas relevée, sans calculer de durée restante', () => {
     const d = dureeVieResiduelle({ cfcCode: '221.1', yearInstalled: null }, { ...EN, yearBuilt: 1983 })
-    expect(phraseDureeVie(d)).toContain('(année de construction, à confirmer)')
-    expect(phraseDureeVie(d)).toContain('dépassée de 13 ans')
+    expect(phraseDureeVie(d, '221.1')).toBe('Année de pose non relevée · durée de vie de référence 30 ans')
   })
 
   it('ne dit rien quand il n’y a rien à dire', () => {

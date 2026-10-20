@@ -616,10 +616,10 @@ export const VISITES: Visite[] = [
         texte: 'Le Tableau met toutes les formes du jeu en lignes, regroupées par classification, étage, ouvrage ou feuille, avec leurs sous-totaux. Plusieurs lignes se valident ou se rattachent d’un geste ; une ligne touchée revient au plan.',
       },
       {
-        cible: '[data-visite="metres-excel"]',
+        cible: '[data-visite="metres-rapports"]',
         cote: 'bas',
-        titre: 'L’export Excel',
-        texte: 'Un classeur en trois onglets : le récapitulatif, le détail forme par forme, et les surfaces SIA 416.',
+        titre: 'Les documents',
+        texte: 'Le classeur Excel du métré (récapitulatif, détail forme par forme, surfaces SIA 416) et le PDF de la présentation se téléchargent depuis les Rapports du dossier, comme tous ses documents.',
       },
       {
         cible: '[data-visite="metres-reporter"]',

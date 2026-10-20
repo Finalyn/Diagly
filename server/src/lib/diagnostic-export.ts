@@ -58,6 +58,14 @@ export interface CostTotals {
   tva: number;
   total: number;
   byPriority: { priority: PriorityCode; total: number; count: number }[];
+  /**
+   * Postes de chantier et frais secondaires : présents quand le chiffrage
+   * vient du devis de l'app (le même calcul que le rapport). Absents d'un
+   * export calculé ici, par l'API ou le serveur MCP.
+   */
+  htPostes?: number;
+  frais?: number;
+  detailFrais?: { libelle: string; montant: number }[];
 }
 
 /** Une variante de rénovation (scénario) : périmètre cumulatif + cascade de coûts. */

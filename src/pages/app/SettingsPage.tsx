@@ -1011,6 +1011,7 @@ function SectionNotifications() {
     priorityAlerts: n.priorityAlerts ?? true,
     weeklyDigest: n.weeklyDigest ?? false,
     relances: n.relances ?? true,
+    analysesIA: n.analysesIA ?? true,
   })
   const [occupe, setOccupe] = useState<string | null>(null)
 
@@ -1026,6 +1027,7 @@ function SectionNotifications() {
     { k: 'emailDiagnostic', titre: 'Diagnostic ouvert', aide: "À l'ouverture d'un diagnostic sur un de vos bâtiments." },
     { k: 'weeklyDigest', titre: 'Résumé du lundi', aide: 'Ce qui a avancé, et les visites de la semaine qui vient.' },
     { k: 'relances', titre: "Rappels d'absence", aide: "Après une semaine sans venir, le dossier qui vous attend. Deux rappels au plus, en semaine, le matin." },
+    { k: 'analysesIA', titre: 'Analyses par l’IA', aide: "Quand l'analyse de vos plans est terminée et que vous êtes ailleurs. Sur l'appareil et dans la cloche, jamais par e-mail." },
   ]
 
   return (

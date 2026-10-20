@@ -18,6 +18,8 @@ export interface OuvrageReleve {
   cfcCode: string
   state: EtatApi
   cfcLabel?: string
+  works?: string[]
+  notes?: string | null
 }
 
 const ETATS: Record<string, Etat> = { TRES_BON: 1, BON: 2, MOYEN: 3, MAUVAIS: 4 }
@@ -47,6 +49,8 @@ export interface RepriseDiagnostic {
   manquants: (ElementEnveloppe | 'production')[]
   /** Combien d'ouvrages ont alimenté chaque élément, pour pouvoir le dire à l'écran. */
   comptes: Record<string, number>
+  /** Les ouvrages qui ont donné l'état retenu, nommés : « Façade crépie (Bon) ». */
+  origines: Record<string, string[]>
 }
 
 /**
@@ -59,6 +63,7 @@ export interface RepriseDiagnostic {
 export function reprendreDuDiagnostic(ouvrages: OuvrageReleve[], defaut: Etat = 3): RepriseDiagnostic {
   const pire: Record<string, Etat> = {}
   const comptes: Record<string, number> = {}
+  const parElement: Record<string, { nom: string; etat: Etat }[]> = {}
 
   for (const o of ouvrages) {
     const cible = elementDuCfc(o.cfcCode)
@@ -68,6 +73,12 @@ export function reprendreDuDiagnostic(ouvrages: OuvrageReleve[], defaut: Etat = 
     comptes[cible] = (comptes[cible] ?? 0) + 1
     // Le plus mauvais l'emporte : une façade dont un pan est en ruine n'est pas moyenne.
     pire[cible] = Math.max(pire[cible] ?? 1, etat) as Etat
+    ;(parElement[cible] ??= []).push({ nom: o.cfcLabel ?? o.cfcCode, etat })
+  }
+  const MOTS = ['', 'Très bon', 'Bon', 'Moyen', 'Mauvais']
+  const origines: Record<string, string[]> = {}
+  for (const [cible, liste] of Object.entries(parElement)) {
+    origines[cible] = liste.filter((x) => x.etat === pire[cible]).map((x) => `${x.nom} (${MOTS[x.etat]})`)
   }
 
   const manquants: (ElementEnveloppe | 'production')[] = []
@@ -84,5 +95,45 @@ export function reprendreDuDiagnostic(ouvrages: OuvrageReleve[], defaut: Etat = 
     etatProduction: pire.production ?? defaut,
     manquants,
     comptes,
+    origines,
   }
+}
+
+export type SourceAgent = 'releve' | 'dossier' | 'defaut'
+
+/**
+ * L'agent énergétique, tel que le relevé le dit.
+ *
+ * La production de chaleur relevée au chapitre 3 (« Chaudière gaz ») passe
+ * d'abord, puis l'agent du dossier (certificat, registre). Sans l'un ni
+ * l'autre seulement, la valeur par défaut, et le rapport le dit. Le chapitre
+ * énergie annonçait « mazout, chaudière ancienne » à côté d'une chaudière gaz
+ * relevée sur place.
+ */
+export function agentDuReleve(
+  ouvrages: OuvrageReleve[],
+  agentDuDossier: string | null | undefined,
+): { agent: string; source: SourceAgent } | null {
+  const production = ouvrages
+    .filter((o) => elementDuCfc(o.cfcCode) === 'production' && o.state)
+    .map((o) => [o.cfcLabel, ...(o.works ?? []), o.notes].filter(Boolean).join(' '))
+  for (const texte of production) {
+    const a = agentDuTexte(texte)
+    if (a) return { agent: a, source: 'releve' }
+  }
+  const a = agentDuDossier ? agentDuTexte(agentDuDossier) : null
+  return a ? { agent: a, source: 'dossier' } : null
+}
+
+/** L'agent qu'un texte nomme, ou null. */
+export function agentDuTexte(texte: string): string | null {
+  const t = texte.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const condensation = /condens/.test(t)
+  if (/pompe a chaleur|\bpac\b/.test(t)) return /sol|geotherm|sonde|eau-eau|eau eau/.test(t) ? 'PAC_SOL_EAU' : 'PAC_AIR_EAU'
+  if (/\bgaz\b/.test(t)) return condensation ? 'GAZ_CONDENSATION' : 'GAZ_ANCIEN'
+  if (/mazout|fioul|\bhuile\b/.test(t)) return condensation ? 'MAZOUT_CONDENSATION' : 'MAZOUT_ANCIEN'
+  if (/\bbois\b|pellet|plaquette|granule/.test(t)) return 'BOIS'
+  if (/chauffage a distance|\bcad\b|reseau de chaleur|thermoreseau/.test(t)) return 'CAD'
+  if (/electrique/.test(t)) return 'ELECTRIQUE_DIRECT'
+  return null
 }

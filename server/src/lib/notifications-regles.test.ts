@@ -206,3 +206,12 @@ describe('les rappels d’absence', () => {
     expect(phraseDeRelance(null).titre).toBe('Un bâtiment à diagnostiquer ?')
   })
 })
+
+describe('la fin d’une analyse par l’IA', () => {
+  it('prévient sur l’appareil et dans la cloche, jamais par courriel', () => {
+    expect(canauxVoulus(undefined, 'analyse_terminee', TOUT)).toEqual({ centre: true, push: true, email: false })
+  })
+  it('se tait sur l’appareil quand on l’a coupée, mais reste dans la cloche', () => {
+    expect(canauxVoulus({ analysesIA: false }, 'analyse_terminee', TOUT)).toEqual({ centre: true, push: false, email: false })
+  })
+})

@@ -133,9 +133,14 @@ export interface DocumentA4Props {
   entete: ReactNode
   /** Mention répétée en pied de page, à gauche du numéro. */
   mentionPied?: ReactNode
+  /**
+   * La première page n'a pas de pied : une page de garde ne porte ni numéro
+   * ni mention. Elle compte quand même : la page suivante est la deuxième.
+   */
+  sansPiedPremierePage?: boolean
 }
 
-export function DocumentA4({ blocs, entete, mentionPied }: DocumentA4Props) {
+export function DocumentA4({ blocs, entete, mentionPied, sansPiedPremierePage }: DocumentA4Props) {
   const sondeRef = useRef<HTMLDivElement>(null)
   const mesureRef = useRef<HTMLDivElement>(null)
   const [pages, setPages] = useState<Page[] | null>(null)
@@ -251,10 +256,12 @@ export function DocumentA4({ blocs, entete, mentionPied }: DocumentA4Props) {
                 )
               ))}
             </div>
-            <footer className="doc-pied">
-              <span>{mentionPied}</span>
-              <span>{i + 1} / {pages.length}</span>
-            </footer>
+            {sansPiedPremierePage && i === 0 ? <footer className="doc-pied border-transparent" aria-hidden /> : (
+              <footer className="doc-pied">
+                <span>{mentionPied}</span>
+                <span>{i + 1} / {pages.length}</span>
+              </footer>
+            )}
           </div>
         </section>
       ))}

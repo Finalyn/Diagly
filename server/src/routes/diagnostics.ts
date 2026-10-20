@@ -132,9 +132,14 @@ async function modifierReleve(
   egid: string | null,
   data: ModificationReleve,
 ) {
+  // Une colonne JSON se vide par JsonNull, pas par null.
+  const { improvementReplaces, ...reste } = data;
   const item = await prisma.diagnosticItem.update({
     where: { id: releve.id },
-    data,
+    data: {
+      ...reste,
+      ...(improvementReplaces === undefined ? {} : { improvementReplaces: improvementReplaces === null ? Prisma.JsonNull : improvementReplaces }),
+    },
   });
   fireItemEvents(ownerId, releve.diagnosticId, egid);
   return item;
@@ -203,6 +208,7 @@ router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
         improvementCost: data.improvementCost,
         norms: data.norms,
         normsCost: data.normsCost,
+        ...(data.improvementReplaces ? { improvementReplaces: data.improvementReplaces } : {}),
       },
     });
   } catch (e) {

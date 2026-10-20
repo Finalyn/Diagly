@@ -9,6 +9,7 @@ import {
 import { stateLabels, stateColors, priorityColors } from '@/data/mock'
 import { formatCHF } from '@/lib/utils'
 import { api, ApiError } from '@/lib/api'
+import { useDevisDuDossier } from '@/components/report/use-devis-du-dossier'
 
 /**
  * Ce qu'un diagnostic donne à lire quand on ne le remplit pas.
@@ -33,6 +34,9 @@ const priorityCircleColors: Record<string, { bg: string; ring: string }> = {
 const toNum = (v: string | null | undefined): number => (v ? Number(v) : 0)
 
 export function StatistiquesDiagnostic({ diagnosticId, projectId }: { diagnosticId: string; projectId: string }) {
+  // Le total et les compteurs par priorité viennent du devis, comme au rapport :
+  // la fiche ne doit pas annoncer un autre montant que le PDF.
+  const { devis } = useDevisDuDossier(projectId)
   const itemsQuery = useQuery({
     queryKey: ['diagnostic-items', diagnosticId],
     queryFn: () => api.diagnostics.listItems(diagnosticId),
@@ -52,7 +56,8 @@ export function StatistiquesDiagnostic({ diagnosticId, projectId }: { diagnostic
   // regarder, et on ne voit plus que ce qui vient d'apparaître.
   const vide = items.length === 0
 
-  const total = items.reduce((s, i) => s + toNum(i.estimatedCost), 0)
+  const total = devis?.ht ?? items.reduce((s, i) => s + toNum(i.estimatedCost), 0)
+  const duDevis = (p: 'I' | 'II' | 'III') => devis?.priorites.find((x) => x.cle === p)
   const pI = items.filter(i => i.priority === 'I')
   const pII = items.filter(i => i.priority === 'II')
   const pIII = items.filter(i => i.priority === 'III')
@@ -65,9 +70,9 @@ export function StatistiquesDiagnostic({ diagnosticId, projectId }: { diagnostic
   ].filter(s => s.value > 0)
 
   const priorityData = [
-    { name: 'I', fullName: 'Priorité I', count: pI.length, cost: pI.reduce((s, i) => s + toNum(i.estimatedCost), 0), color: '#ef4444' },
-    { name: 'II', fullName: 'Priorité II', count: pII.length, cost: pII.reduce((s, i) => s + toNum(i.estimatedCost), 0), color: '#fb923c' },
-    { name: 'III', fullName: 'Priorité III', count: pIII.length, cost: pIII.reduce((s, i) => s + toNum(i.estimatedCost), 0), color: '#22c55e' },
+    { name: 'I', fullName: 'Priorité I', count: duDevis('I')?.lignes ?? pI.length, cost: duDevis('I')?.ht ?? pI.reduce((s, i) => s + toNum(i.estimatedCost), 0), color: '#ef4444' },
+    { name: 'II', fullName: 'Priorité II', count: duDevis('II')?.lignes ?? pII.length, cost: duDevis('II')?.ht ?? pII.reduce((s, i) => s + toNum(i.estimatedCost), 0), color: '#fb923c' },
+    { name: 'III', fullName: 'Priorité III', count: duDevis('III')?.lignes ?? pIII.length, cost: duDevis('III')?.ht ?? pIII.reduce((s, i) => s + toNum(i.estimatedCost), 0), color: '#22c55e' },
   ]
 
   const topCFC = [...items].sort((a, b) => toNum(b.estimatedCost) - toNum(a.estimatedCost)).slice(0, 5)

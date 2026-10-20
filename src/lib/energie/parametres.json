@@ -132,10 +132,13 @@
       "retombe alors sur l'état par défaut sans le dire. La liste est volontairement ici",
       "et non dans le code, pour que le catalogue puisse évoluer sans livraison.",
       "L'état retenu pour un élément est le PLUS MAUVAIS des ouvrages qui lui correspondent :",
-      "une façade dont un pan est en ruine n'est pas une façade moyenne."
+      "une façade dont un pan est en ruine n'est pas une façade moyenne.",
+      "Revu le 19.10.2026 : les stores (228), la peinture extérieure (227) et la ferblanterie (222)",
+      "n'alimentent plus ni les façades ni la toiture. Ils ne disent rien de l'isolation, et des stores",
+      "en mauvais état faisaient d'une façade en bon état une façade mauvaise."
     ],
-    "toiture": ["214", "222", "224", "225", "227"],
-    "facades": ["215", "216", "217", "226", "228"],
+    "toiture": ["214", "224", "225"],
+    "facades": ["215", "216", "217", "226"],
     "fenetres": ["221"],
     "sol": ["211", "213", "271"],
     "ventilation": ["244"],

@@ -44,7 +44,8 @@ export const itemBaseSchema = z.object({
   quantityManual: z.boolean().optional(),
   costManual: z.boolean().optional(),
   unit: z.string().max(50).optional(),
-  yearInstalled: z.number().int().min(1500).max(2100).optional(),
+  /// null efface l'annee de pose : le rapport dit alors « non relevee ».
+  yearInstalled: z.number().int().min(1500).max(2100).nullable().optional(),
   interventionYear: z.number().int().min(1900).max(2200).nullable().optional(),
   estimatedCost: z.number().min(0).nullable().optional(),
   /// Coefficient marche en vigueur au moment ou le cout a ete calcule.
@@ -53,6 +54,9 @@ export const itemBaseSchema = z.object({
   improvementCost: z.number().min(0).nullable().optional(),
   norms: z.string().max(2000).nullable().optional(),
   normsCost: z.number().min(0).nullable().optional(),
+  /// Releves dont l'amelioration rend la reparation inutile, celui-ci compris :
+  /// le devis en deduit le montant net de l'option.
+  improvementReplaces: z.array(z.string().min(1).max(40)).max(50).nullable().optional(),
 });
 
 // L'identifiant d'un relevé peut venir de l'appareil (UUID) : une saisie faite

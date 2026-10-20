@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { buildDevis, cascadeDe, postesDeChantier, tableauDesOptions, uniteCourte } from './devis'
+import {
+  annonceDesVariantes, buildDevis, cascadeDe, enveloppeDe, listeEnClair, postesDeChantier, sansPrixAnnonce, uniteCourte,
+  type Devis,
+} from './devis'
 import { setMarketCoeff } from './diagnostic-auto'
 import { formatPrixUnitaire } from './utils'
 import type { ApiArticle, ApiDiagnosticItem, ApiEtapeVisite, ApiPosteAutomatique } from './api-types'
@@ -59,7 +62,13 @@ const LABELS = new Map([
   ['226', 'Crépissages de façade'], ['287', 'Nettoyage du bâtiment'],
   ['121', 'Installations de chantier'], ['211', 'Échafaudages'], ['285', 'Peintures intérieures'],
 ])
-const NU = { honoraryPct: 0, reservePct: 0, batiment: batiment() }
+// L'installation de chantier se règle par dossier : à zéro ici, pour que les
+// montants attendus ne portent que ce que chaque test regarde.
+const SANS_INSTALLATION = { pct: 0, minimum: 0 }
+const NU = { honoraryPct: 0, reservePct: 0, batiment: batiment(), installation: SANS_INSTALLATION }
+
+/** Les lignes tirées des relevés, sans les postes de chantier. */
+const travaux = (d: Devis) => d.lignes.filter((l) => l.releveId != null)
 
 // Le coefficient marché est un état global du module : on le neutralise pour que
 // les montants attendus soient lisibles, et on le restaure là où il est testé.
@@ -87,37 +96,171 @@ describe('les enveloppes d’un ouvrage', () => {
       [ouvrage({ estimatedCost: '12000', normsCost: '3000', norms: 'Mise aux normes incendie' })],
       LABELS, BASE, NU,
     )
-    const lignes = d.blocs.flatMap((b) => b.positions.flatMap((p) => p.lignes)).filter((l) => !l.automatique)
-    expect(lignes.map((l) => l.enveloppe)).toEqual(['Réparation', 'Mise aux normes'])
+    expect(travaux(d).map((l) => l.enveloppe)).toEqual(['Réparation', 'Mise aux normes'])
   })
 
-  it('sort l’amélioration du devis principal pour la mettre aux options', () => {
+  it('compte l’amélioration au total général, dans son enveloppe', () => {
     const d = buildDevis(
       [ouvrage({ estimatedCost: '12000', improvementCost: '40000', improvement: 'Isolation périphérique' })],
       LABELS, BASE, NU,
     )
-    const principal = d.blocs.flatMap((b) => b.positions.flatMap((p) => p.lignes)).filter((l) => !l.automatique)
-    expect(principal.map((l) => l.enveloppe)).toEqual(['Réparation'])
-    expect(d.options.lignes.map((l) => l.montant)).toEqual([40_000])
-    // Le total principal ne la porte pas : c'est une décision, pas un engagement.
-    expect(d.blocs.find((b) => b.cle === 'II')!.ht).toBe(12_000)
+    expect(travaux(d).map((l) => l.enveloppe)).toEqual(['Réparation', 'Amélioration'])
+    expect(enveloppeDe(d, 'Amélioration').ht).toBe(40_000)
+    expect(enveloppeDe(d, 'Réparation').ht).toBe(12_000)
+    // Le total général porte aussi les postes comptés d'office.
+    expect(d.ht - enveloppeDe(d, 'Poste de chantier').ht).toBe(52_000)
   })
 
-  it('écarte du devis un ouvrage sans montant', () => {
-    const d = buildDevis([ouvrage({ estimatedCost: null })], LABELS, BASE, NU)
-    expect(d.blocs.some((b) => b.cle === 'II')).toBe(false)
+  it('fait retomber la somme des enveloppes sur le total général, TTC compris', () => {
+    const d = buildDevis(
+      [
+        ouvrage({ id: 'a', estimatedCost: '12000', area: 400, normsCost: '3000', norms: 'Garde-corps' }),
+        ouvrage({ id: 'b', articleId: 'A100', etapeNumero: 5, cfcCode: '285.1', estimatedCost: '9000', improvement: 'Peinture minérale', improvementCost: '4000' }),
+      ],
+      LABELS, BASE,
+      {
+        honoraryPct: 12, reservePct: 10, batiment: batiment({ surfacePlancher: 1200, surfaceFacade: 400 }),
+        installation: { pct: 3, minimum: 0 }, frais: [{ libelle: 'Autorisations', pct: null, montant: 2500 }, { libelle: 'Assurances', pct: 0.5, montant: null }],
+      },
+    )
+    const ht = d.enveloppes.reduce((s, e) => s + e.ht, 0)
+    const ttc = d.enveloppes.reduce((s, e) => s + e.cascade.total, 0)
+    expect(ht).toBe(d.ht)
+    expect(ttc).toBeCloseTo(d.cascade.total, 6)
+    expect(d.lignes.reduce((s, l) => s + l.montant, 0)).toBe(d.ht)
+  })
+
+  it('garde au devis, à chiffrer, un état Moyen sans prix', () => {
+    // L'étanchéité de toiture en priorité I à 0 CHF disparaissait du total.
+    const d = buildDevis([ouvrage({ estimatedCost: null, area: 300 })], LABELS, BASE, NU)
+    const l = travaux(d)[0]
+    expect(l).toMatchObject({ enveloppe: 'Réparation', aChiffrer: true, montant: 0, priorite: 'II' })
+    expect(d.aChiffrer.filter((x) => x.releveId)).toHaveLength(1)
+  })
+
+  it('ne prescrit rien là où la base dit « Néant » pour l’état', () => {
+    const neant = { ...BASE, articles: [article({ etats: [{ etat: 'moyen', travaux: 'Néant', prix: null, partPrixMauvais: null, unite: 'm2' }] }), A009, A100] }
+    const d = buildDevis([ouvrage({ estimatedCost: null })], LABELS, neant, NU)
+    expect(travaux(d)).toHaveLength(0)
+  })
+
+  it('laisse hors du devis un ouvrage pas encore évalué', () => {
+    const d = buildDevis([ouvrage({ state: null, priority: null, estimatedCost: null })], LABELS, BASE, NU)
+    expect(travaux(d)).toHaveLength(0)
+  })
+
+  it('montre à chiffrer une amélioration retenue sans montant', () => {
+    const d = buildDevis(
+      [ouvrage({ state: 'BON', priority: 'III', estimatedCost: null, improvement: 'Isolation des caissons de stores', improvementCost: null })],
+      LABELS, BASE, NU,
+    )
+    expect(travaux(d)).toEqual([expect.objectContaining({ enveloppe: 'Amélioration', aChiffrer: true })])
   })
 
   it('calcule le prix unitaire appliqué, que le client peut recalculer', () => {
     const d = buildDevis([ouvrage({ estimatedCost: '18000', area: 200 })], LABELS, BASE, NU)
-    const l = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0]
+    const l = travaux(d)[0]
     expect(l.prixUnitaire).toBe(90)
     expect(l.quantite! * l.prixUnitaire!).toBeCloseTo(l.montant, 2)
   })
 
   it('laisse le prix unitaire vide plutôt que de diviser par zéro', () => {
     const d = buildDevis([ouvrage({ estimatedCost: '18000', area: 0 })], LABELS, BASE, NU)
-    expect(d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0].prixUnitaire).toBeNull()
+    expect(travaux(d)[0].prixUnitaire).toBeNull()
+  })
+})
+
+describe('un seul compteur par priorité', () => {
+  it('compte les lignes de travaux, les mêmes pour la synthèse et le récapitulatif', () => {
+    const d = buildDevis([
+      ouvrage({ id: 'a', priority: 'I', state: 'MAUVAIS', estimatedCost: '10000', norms: 'Garde-corps', normsCost: '2000' }),
+      ouvrage({ id: 'b', priority: 'I', state: 'MAUVAIS', estimatedCost: '5000' }),
+      ouvrage({ id: 'c', priority: 'III', state: 'BON', estimatedCost: null, improvement: 'ITE', improvementCost: '30000' }),
+    ], LABELS, BASE, { ...NU, batiment: batiment({ surfacePlancher: 800, surfaceFacade: 400 }) })
+    expect(d.priorites.map((p) => [p.cle, p.lignes, p.ht])).toEqual([
+      ['I', 3, 17_000], ['II', 0, 0], ['III', 1, 30_000],
+    ])
+  })
+})
+
+describe('le prix annoncé est le prix appliqué', () => {
+  it('retire du texte le prix qu’il annonce', () => {
+    expect(sansPrixAnnonce("Ajout d'isolation, épaisseur 16 cm, à 260 CHF/m²")).toBe("Ajout d'isolation, épaisseur 16 cm")
+    expect(sansPrixAnnonce('Remplacement complet')).toBe('Remplacement complet')
+  })
+
+  it('dit l’indexation quand elle change le prix du catalogue', () => {
+    setMarketCoeff(1.476)
+    const base = { ...BASE, articles: [article({ etats: [{ etat: 'amelioration', travaux: 'ITE', prix: 260, partPrixMauvais: null, unite: 'm2' }] }), A009, A100] }
+    const d = buildDevis(
+      [ouvrage({ state: 'BON', estimatedCost: null, area: 100, improvement: 'ITE, à 260 CHF/m²', improvementCost: String(Math.round(260 * 100 * 1.476)) })],
+      LABELS, base, NU,
+    )
+    const l = travaux(d).find((x) => x.enveloppe === 'Amélioration')!
+    expect(l.remarque).toBe('ITE')
+    expect(l.indexation).toEqual({ prixCatalogue: 260, coeff: 1.476 })
+    expect(l.prixModifie).toBe(false)
+  })
+
+  it('signale un prix repris à la main', () => {
+    const d = buildDevis([ouvrage({ estimatedCost: '20000', area: 100, costManual: true })], LABELS, BASE, NU)
+    expect(travaux(d)[0].prixModifie).toBe(true)
+  })
+
+  it('repère les variantes annoncées pour un seul montant', () => {
+    expect(annonceDesVariantes('Réhaussement OU / ET remplissage')).toBe(true)
+    expect(annonceDesVariantes('Remplacement des joints')).toBe(false)
+  })
+})
+
+describe('une amélioration remplace la réparation qu’elle rend inutile', () => {
+  it('déduit la réfection du crépi et le nettoyage de la même façade, sous l’amélioration', () => {
+    const d = buildDevis([
+      ouvrage({ id: 'crepi', estimatedCost: '30000', area: 400, improvement: 'Isolation périphérique', improvementCost: '124000', improvementReplaces: ['crepi', 'nettoyage'] }),
+      ouvrage({ id: 'nettoyage', articleId: 'A009', cfcCode: '215.2', cfcLabel: 'Nettoyage de façade', estimatedCost: '6000', area: 400 }),
+    ], LABELS, BASE, { ...NU, batiment: batiment({ surfaceFacade: 400 }) })
+    const amelioration = enveloppeDe(d, 'Amélioration')
+    expect(amelioration.ht).toBe(124_000 - 30_000 - 6000)
+    // La réparation reste entière dans son enveloppe : on peut ne pas faire l'amélioration.
+    expect(enveloppeDe(d, 'Réparation').ht).toBe(36_000)
+    const i = d.lignes.findIndex((l) => l.cle === 'crepi:Amélioration')
+    expect(d.lignes[i + 1]).toMatchObject({ montant: -30_000, rattacheA: 'crepi:Amélioration' })
+  })
+
+  it('ne déduit rien d’une amélioration sans montant', () => {
+    const d = buildDevis([
+      ouvrage({ id: 'crepi', estimatedCost: '30000', improvement: 'ITE', improvementCost: null, improvementReplaces: ['crepi'] }),
+    ], LABELS, BASE, NU)
+    expect(d.lignes.some((l) => l.montant < 0)).toBe(false)
+  })
+})
+
+describe('l’installation de chantier', () => {
+  const lignes = [ouvrage({ estimatedCost: '100000' })]
+
+  it('paraît à chiffrer tant que le dossier ne l’a pas réglée', () => {
+    const d = buildDevis(lignes, LABELS, BASE, { ...NU, installation: undefined })
+    expect(d.lignes.find((l) => l.cfcCode === '211.0')).toMatchObject({ aChiffrer: true, enveloppe: 'Poste de chantier' })
+  })
+
+  it('prend un pourcentage des travaux, avec un minimum', () => {
+    const pct = buildDevis(lignes, LABELS, BASE, { ...NU, installation: { pct: 4, minimum: 3000 } })
+    expect(pct.lignes.find((l) => l.cfcCode === '211.0')!.montant).toBe(4000)
+    const min = buildDevis(lignes, LABELS, BASE, { ...NU, installation: { pct: 2, minimum: 5000 } })
+    expect(min.lignes.find((l) => l.cfcCode === '211.0')!.montant).toBe(5000)
+  })
+
+  it('disparaît quand le dossier la met à zéro', () => {
+    const d = buildDevis(lignes, LABELS, BASE, NU)
+    expect(d.lignes.find((l) => l.cfcCode === '211.0')).toBeUndefined()
+  })
+})
+
+describe('les frais secondaires', () => {
+  it('s’ajoutent après la réserve, en pourcentage ou en montant', () => {
+    const c = cascadeDe(100_000, 10, 5, [{ libelle: 'Assurances', pct: 1, montant: null }, { libelle: 'Taxes', pct: null, montant: 2000 }])
+    expect(c.frais).toBe(3000)
+    expect(c.sousTotal).toBeCloseTo(100_000 + 10_000 + 5_500 + 3000, 6)
   })
 })
 
@@ -127,8 +270,7 @@ describe('règle 9, une ligne par étape', () => {
 
   it('nomme l’étape de chaque ligne quand l’ouvrage est relevé deux fois', () => {
     const d = buildDevis([cage, appartements], LABELS, BASE, NU)
-    const lignes = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes
-    expect(lignes.map((l) => l.libelle).sort()).toEqual([
+    expect(travaux(d).map((l) => l.libelle).sort()).toEqual([
       'Peinture intérieure – murs · Appartements',
       "Peinture intérieure – murs · Cage d'escalier",
     ])
@@ -136,8 +278,7 @@ describe('règle 9, une ligne par étape', () => {
 
   it('n’alourdit pas le libellé d’un ouvrage relevé une seule fois', () => {
     const d = buildDevis([ouvrage({ estimatedCost: '12000' })], LABELS, BASE, NU)
-    expect(d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0].libelle)
-      .toBe('Façade crépie non isolée')
+    expect(travaux(d)[0].libelle).toBe('Façade crépie non isolée')
   })
 
   it('trie les positions par code CFC, à l’usage suisse', () => {
@@ -145,8 +286,7 @@ describe('règle 9, une ligne par étape', () => {
       [cage, ouvrage({ estimatedCost: '12000' })],
       LABELS, BASE, { ...NU, batiment: batiment({ surfacePlancher: 1200, surfaceFacade: 400 }) },
     )
-    const auto = d.blocs.find((b) => b.cle === 'AUTO')!
-    expect(auto.positions.map((p) => p.code)).toEqual(['121', '211', '287'])
+    expect(d.positions.map((p) => p.code)).toEqual(['121', '211', '226', '285', '287'])
   })
 })
 
@@ -214,38 +354,45 @@ describe('règle 7, les postes automatiques', () => {
   })
 })
 
-describe('règle 8, l’échafaudage des options', () => {
-  const option = ouvrage({ estimatedCost: null, improvement: 'Isolation périphérique crépie', improvementCost: '124000', area: 400 })
+describe('règle 8, l’échafaudage des améliorations', () => {
+  const ite = ouvrage({ state: 'BON', priority: 'III', estimatedCost: null, improvement: 'Isolation périphérique crépie', improvementCost: '124000', area: 400 })
+  const opts = { ...NU, batiment: batiment({ surfaceFacade: 400 }) }
 
-  it('ajoute l’échafaudage au tableau des options', () => {
-    const t = tableauDesOptions([option], BASE, false)
-    expect(t.lignes[0].echafaudage).toMatchObject({ montant: 14_000 })
-    expect(t.ht).toBe(124_000)
-    expect(t.total).toBe(138_000)
+  it('porte dans l’enveloppe des améliorations l’échafaudage qu’aucun autre travail ne monte', () => {
+    const d = buildDevis([ite], LABELS, BASE, opts)
+    const l = d.lignes.find((x) => x.cle === 'auto:211.1:amelioration')!
+    expect(l).toMatchObject({ enveloppe: 'Amélioration', quantite: 400, montant: 14_000 })
+    expect(enveloppeDe(d, 'Amélioration').ht).toBe(138_000)
+    expect(d.surfaceEchafaudee).toBe(400)
   })
 
-  it('ne le compte pas deux fois quand le devis principal le porte déjà', () => {
-    const t = tableauDesOptions([option], BASE, true)
-    expect(t.lignes[0].echafaudage!.montant).toBeNull()
-    expect(t.lignes[0].echafaudage!.mention).toBe('Échafaudage déjà compté au devis principal.')
-    expect(t.total).toBe(124_000)
+  it('ne le compte pas deux fois quand les réparations échafaudent déjà la façade', () => {
+    const d = buildDevis([ouvrage({ id: 'r', estimatedCost: '72000', area: 400 }), { ...ite, id: 'i' }], LABELS, BASE, opts)
+    expect(d.lignes.find((x) => x.cle === 'auto:211.1:amelioration')).toBeUndefined()
+    expect(d.lignes.filter((x) => x.cfcCode === '211.1')).toHaveLength(1)
+    expect(d.surfaceEchafaudee).toBe(400)
   })
 
-  it('se tait pour une option qui ne demande pas d’échafaudage', () => {
+  it('ne compte que le complément quand les réparations n’en échafaudent qu’une partie', () => {
+    const d = buildDevis([ouvrage({ id: 'r', estimatedCost: '36000', area: 200 }), { ...ite, id: 'i', articleId: 'A009', cfcCode: '215.2', area: 200 }], LABELS, BASE, opts)
+    expect(d.lignes.find((x) => x.cle === 'auto:211.1:amelioration')!.quantite).toBe(200)
+    expect(d.surfaceEchafaudee).toBe(400)
+  })
+
+  it('se tait pour une amélioration qui ne demande pas d’échafaudage', () => {
     const interieur = ouvrage({
-      articleId: 'A100', etapeNumero: 5, cfcCode: '285.1', estimatedCost: null,
+      articleId: 'A100', etapeNumero: 5, cfcCode: '285.1', state: 'BON', estimatedCost: null,
       improvement: 'Peinture minérale', improvementCost: '20000',
     })
-    expect(tableauDesOptions([interieur], BASE, false).lignes[0].echafaudage).toBeNull()
+    expect(buildDevis([interieur], LABELS, BASE, opts).lignes.some((x) => x.cfcCode === '211.1')).toBe(false)
   })
+})
 
-  it('voit l’échafaudage du devis principal quand il y est', () => {
-    const d = buildDevis(
-      [ouvrage({ estimatedCost: '72000', area: 400, improvement: 'Isolation', improvementCost: '124000' })],
-      LABELS, BASE, { honoraryPct: 0, reservePct: 0, batiment: batiment({ surfaceFacade: 400 }) },
-    )
-    expect(d.options.lignes[0].echafaudage!.montant).toBeNull()
-    expect(d.options.echafaudage).toBe(0)
+describe('l’accord des listes générées', () => {
+  it('accorde « autre » au singulier', () => {
+    expect(listeEnClair(['a', 'b', 'c', 'd'])).toBe('a, b, c et 1 autre ouvrage')
+    expect(listeEnClair(['a', 'b', 'c', 'd', 'e'])).toBe('a, b, c et 2 autres ouvrages')
+    expect(listeEnClair(['a', 'b'])).toBe('a et b')
   })
 })
 
@@ -265,13 +412,13 @@ describe('unité du catalogue', () => {
 describe('un montant se refait de tête', () => {
   it('tient sur la ligne d’un ouvrage', () => {
     const d = buildDevis([ouvrage({ estimatedCost: '27000', area: 300 })], LABELS, BASE, NU)
-    const l = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0]
+    const l = travaux(d)[0]
     expect(l.quantite! * l.prixUnitaire!).toBeCloseTo(l.montant, 2)
   })
 
   it('tient sur une quantité qui ne tombe pas juste', () => {
     const d = buildDevis([ouvrage({ estimatedCost: '12345', area: 37 })], LABELS, BASE, NU)
-    const l = d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0]
+    const l = travaux(d)[0]
     expect(l.quantite! * l.prixUnitaire!).toBeCloseTo(l.montant, 0)
   })
 
@@ -283,7 +430,12 @@ describe('un montant se refait de tête', () => {
 
   it('ne fabrique pas de prix unitaire sans quantité', () => {
     const d = buildDevis([ouvrage({ estimatedCost: '5000', area: null })], LABELS, BASE, NU)
-    expect(d.blocs.find((b) => b.cle === 'II')!.positions[0].lignes[0].prixUnitaire).toBeNull()
+    expect(travaux(d)[0].prixUnitaire).toBeNull()
+  })
+
+  it('garde à chiffrer un poste dont la quantité manque', () => {
+    const d = buildDevis([ouvrage({ estimatedCost: '5000' })], LABELS, BASE, NU)
+    expect(d.lignes.find((l) => l.cfcCode === '287')).toMatchObject({ aChiffrer: true, montant: 0 })
   })
 })
 

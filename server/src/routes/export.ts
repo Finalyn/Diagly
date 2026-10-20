@@ -87,16 +87,32 @@ const sheetSchema = z.object({
   columns: z.array(columnSchema).max(80),
 });
 const templateSchema = z.object({ id: z.string().max(100), name: z.string().max(120), sheets: z.array(sheetSchema).max(10) });
+const montant = z.number().min(-1e10).max(1e10);
+/**
+ * Le chiffrage du devis, tel que l'app le calcule pour le rapport : postes de
+ * chantier compris. L'export le reprend à la place du sien, pour qu'un dossier
+ * ne sorte qu'un total, qu'on le lise en PDF ou en Excel.
+ */
+const chiffrageSchema = z.object({
+  htRepair: montant, htImprovement: montant, htNorms: montant, htPostes: montant, ht: montant,
+  honoraryPct: z.number().min(0).max(100), honoraires: montant,
+  reservePct: z.number().min(0).max(100), reserve: montant,
+  frais: montant, detailFrais: z.array(z.object({ libelle: z.string().max(120), montant })).max(12),
+  sousTotal: montant, tva: montant, total: montant,
+  byPriority: z.array(z.object({ priority: z.enum(["I", "II", "III"]), total: montant, count: z.number().int().min(0) })).max(3),
+});
 const postBody = z.object({
   format: z.enum(["json", "csv", "xlsx"]),
   sheet: z.enum(["building", "items", "workplan"]).optional(),
   template: templateSchema.optional(),
   templateId: z.string().max(100).optional(),
+  chiffrage: chiffrageSchema.optional(),
 });
 
 router.post("/projects/:id", validateBody(postBody), async (req, res) => {
   const b = req.body as z.infer<typeof postBody>;
   const payload = await buildDiagnosticExport(req.params.id, req.auth!.sub);
+  if (b.chiffrage) payload.costs = { ...b.chiffrage, tvaPct: payload.costs.tvaPct };
   const template = b.template ?? (await templateFromPrefs(req.auth!.sub, b.templateId));
   if (b.format !== "json") fireEvent(req.auth!.sub, "rapport.genere", { projectId: req.params.id, egid: payload.building.egid, kind: "export", format: b.format });
   await emit(res, payload, b.format, template, b.sheet);

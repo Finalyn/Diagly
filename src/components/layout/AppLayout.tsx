@@ -5,6 +5,7 @@ import { DossierSidebar } from './DossierSidebar'
 import { DossierMobileBar } from './DossierMobileBar'
 import { MobileNav } from './MobileNav'
 import { OfflineIndicator } from '@/components/OfflineIndicator'
+import { AnalysesEnCours } from '@/components/metres/AnalysesEnCours'
 import { VisiteGuidee } from '@/components/visite/VisiteGuidee'
 import { useVisiteAuto } from '@/components/visite/useVisiteAuto'
 import { useIsMobile } from '@/lib/use-mobile'
@@ -222,6 +223,9 @@ export function AppLayout() {
 
       {/* La visite guidée traverse les écrans : elle est montée ici, une fois. */}
       <VisiteGuidee />
+
+      {/* Les plans qui s'analysent pendant qu'on est ailleurs : où en est la file, et sa fin. */}
+      <AnalysesEnCours />
 
     </div>
   )

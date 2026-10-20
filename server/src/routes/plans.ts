@@ -18,6 +18,7 @@ import { logger } from "../lib/logger.js";
 import { env } from "../lib/env.js";
 import { TachesDeFond } from "../lib/taches-de-fond.js";
 import { demanderAuModeleDesPlans } from "../lib/modele-plans.js";
+import { notifierSansAttendre } from "../lib/notifications.js";
 import { MAX_IMAGE_ENCODEE, MAX_REQUETE_ENCODEE } from "../lib/lecture-plans.js";
 import {
   consigneAnalyse, dimensionsImage, presentationDePage, tientDansLeModele, validerAnalyse,
@@ -75,6 +76,42 @@ router.get("/", validateQuery(listQuery), async (req, res) => {
  * par dossier ferait une requête par bâtiment ; ici, une seule, et sans les
  * annotations elles-mêmes, qui pèsent lourd et ne servent qu'à l'éditeur.
  */
+/**
+ * La fin d'un tour d'analyse, signalée par l'app quand la file d'un dossier
+ * s'est vidée pendant qu'on était ailleurs (components/metres/moteur.ts).
+ * C'est l'app qui mène la file, lot après lot : elle seule sait quand le
+ * dernier est rangé. Le serveur ne fait que prévenir, dans la cloche et en
+ * push, jamais par courriel (notifications-regles.ts).
+ */
+const finAnalyse = z.object({
+  faites: z.number().int().min(0).max(10_000),
+  erreurs: z.number().int().min(0).max(10_000),
+});
+
+router.post("/metres/:projectId/analyse-terminee", validateBody(finAnalyse), async (req, res) => {
+  const userId = req.auth!.sub;
+  const projet = await prisma.project.findFirst({
+    where: { id: req.params.projectId, ...(await ownerScopeFor(userId)) },
+    select: { id: true, name: true },
+  });
+  if (!projet) throw notFound("Project not found");
+  const { faites, erreurs } = req.body as z.infer<typeof finAnalyse>;
+  if (faites + erreurs === 0) { res.json({ ok: true }); return; }
+
+  const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+  const texte = [
+    faites ? `${projet.name} : ${pluriel(faites, "feuille")} ${faites > 1 ? "analysées" : "analysée"}, prêtes à valider.` : `${projet.name} : l’analyse n’a pas abouti.`,
+    erreurs ? `${pluriel(erreurs, "feuille")} en erreur, à relancer.` : null,
+  ].filter(Boolean).join(" ");
+  notifierSansAttendre(userId, "analyse_terminee", {
+    titre: "Analyse des plans terminée",
+    texte,
+    url: `/app/metres/${projet.id}`,
+    cle: `analyse-${projet.id}`,
+  });
+  res.json({ ok: true });
+});
+
 router.get("/metres", async (req, res) => {
   const plans = await prisma.plan.findMany({
     where: { project: await ownerScopeFor(req.auth!.sub) },

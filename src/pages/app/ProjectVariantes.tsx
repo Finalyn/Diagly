@@ -21,6 +21,7 @@ import { api } from '@/lib/api'
 import { cn, formatCHF } from '@/lib/utils'
 import { baseDuProjet, calculerVariantes, montantDepuisCatalogue, montantOuvrage, type LigneArbitrage, type Variante } from '@/lib/variantes'
 import { buildDevis, uniteCourte } from '@/lib/devis'
+import { optionsDuDevis } from '@/lib/devis-du-dossier'
 import { useBaseCfc } from '@/lib/base-cfc/requete'
 import { donneesDuBatiment } from '@/lib/base-cfc/batiment'
 import { buildQuantityContext, resolveQuantity, type QuantityContext } from '@/lib/diagnostic-auto'
@@ -84,15 +85,16 @@ export function ProjectVariantes() {
   // Les variantes se comparent au devis complet du rapport — postes de chantier
   // compris — et non à la seule somme des ouvrages : sinon l'écart affiché ici ne
   // se recouperait pas avec celui du rapport.
+  // Même calcul que le rapport et l'onglet Coûts, majorations du dossier comprises.
   const devis = useMemo(
     () => buildDevis(items, cfcLabelIndex(cfcQuery.data?.entries ?? []), {
       articles: baseQuery.data?.articles ?? [],
       postes: baseQuery.data?.postes ?? [],
       etapes: baseQuery.data?.etapes ?? [],
-    }, {
-      honoraryPct: project?.honoraryPct ?? null,
-      reservePct: project?.reservePct ?? null,
-      batiment: donneesDuBatiment(project ?? {}),
+    }, project ? optionsDuDevis(project) : {
+      honoraryPct: null,
+      reservePct: null,
+      batiment: donneesDuBatiment({}),
     }),
     [items, cfcQuery.data, baseQuery.data, project],
   )

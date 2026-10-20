@@ -14,6 +14,7 @@ import {
   ChevronLeft, ChevronRight, ClipboardCheck, Phone, Navigation, CalendarCheck, MapPin, Zap, Calculator, Image, FileText, Loader2,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useDevisDuDossier } from '@/components/report/use-devis-du-dossier'
 import { useIsMobile } from '@/lib/use-mobile'
 import { statusLabels } from '@/data/mock'
 import { cn, formatCHF } from '@/lib/utils'
@@ -34,6 +35,7 @@ export function DossierMobile() {
   const visiteQ = useQuery({ queryKey: ['visite', id], queryFn: () => api.visite.get(id!), enabled: !!id })
   const diagId = projetQ.data?.diagnostics?.[0]?.id
   const diagQ = useQuery({ queryKey: ['diagnostic', diagId], queryFn: () => api.diagnostics.get(diagId!), enabled: !!diagId })
+  const { devis } = useDevisDuDossier(id)
 
   // Sur ordinateur, la barre du dossier tient lieu de sommaire, et la fiche du
   // bâtiment porte l'itinéraire et l'appel : une adresse de téléphone y mène.
@@ -45,7 +47,8 @@ export function DossierMobile() {
   const items = diagQ.data?.items ?? []
   const urgents = items.filter((i) => i.priority === 'I').length
   const photos = items.reduce((n, i) => n + (i.photos?.length ?? 0), 0)
-  const coutHT = items.reduce((s, i) => s + (i.estimatedCost ? Number(i.estimatedCost) : 0), 0)
+  // Le même total que le devis et le rapport : toutes enveloppes, postes de chantier compris.
+  const coutHT = devis?.ht ?? 0
   const plan = visiteQ.data?.plan
   const rdv = plan?.startAt ? new Date(plan.startAt) : null
   const contact = aAppeler(visiteQ.data?.contacts ?? [])

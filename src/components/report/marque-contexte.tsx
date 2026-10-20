@@ -8,15 +8,18 @@
  */
 import { useMemo, type ReactNode } from 'react'
 import { useAuth } from '@/stores/auth'
-import { marqueDuRapport, type MarqueDuDossier } from '@/lib/marque'
+import { marqueDuRapport, type MarqueDuBureau, type MarqueDuDossier } from '@/lib/marque'
 import { ContexteMarque } from './use-marque'
 
-export function MarqueDuRapport({ dossier, auteur, children }: {
+export function MarqueDuRapport({ dossier, auteur, bureau: bureauFourni, children }: {
   dossier?: MarqueDuDossier | null
   auteur?: string
+  /** L'identité du bureau quand il n'y a pas de session : le lien de partage la reçoit du serveur. */
+  bureau?: MarqueDuBureau | null
   children: ReactNode
 }) {
-  const bureau = useAuth((s) => s.user?.preferences?.company)
+  const duCompte = useAuth((s) => s.user?.preferences?.company)
+  const bureau = bureauFourni ?? duCompte
   const marque = useMemo(
     () => marqueDuRapport(bureau, dossier, auteur),
     [bureau, dossier, auteur],

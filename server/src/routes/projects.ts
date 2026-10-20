@@ -46,6 +46,38 @@ function comptagesPourPrisma(v: unknown) {
   return { comptages: v === null ? Prisma.JsonNull : (v as Prisma.InputJsonValue) };
 }
 
+/** Les sources des dimensions et les majorations : même règle que l'apparence. */
+function jsonPourPrisma<K extends "sources" | "majorations">(cle: K, v: unknown) {
+  if (v === undefined) return {};
+  return { [cle]: v === null ? Prisma.JsonNull : (v as Prisma.InputJsonValue) } as Record<K, Prisma.InputJsonValue | typeof Prisma.JsonNull>;
+}
+
+const sourceDimension = z.object({
+  source: z.enum(["plans", "registre", "saisie", "defaut"]),
+  valeur: z.number().nullable().optional(),
+  majLe: z.string().max(40).optional(),
+}).strict();
+
+/** Les dimensions dont la fiche peut dire la source. */
+const sourcesSchema = z.partialRecord(
+  z.enum(["floorArea", "builtArea", "facadeArea", "perimeter", "nbFloors", "floorHeight", "windowPct", "roofArea", "nbApartments", "nbStaircases"]),
+  sourceDimension,
+);
+
+const majorationsSchema = z.object({
+  installation: z.object({
+    pct: z.number().min(0).max(100).nullable(),
+    minimum: z.number().min(0).max(10_000_000).nullable(),
+  }).strict().nullable().optional(),
+  frais: z.array(z.object({
+    libelle: z.string().min(1).max(120),
+    pct: z.number().min(0).max(100).nullable(),
+    montant: z.number().min(0).max(10_000_000).nullable(),
+  }).strict()).max(12).optional(),
+  /** Prix d'un poste de chantier propre à ce dossier, déjà indexé : { "211.1": 32 }. */
+  prixPostes: z.record(z.string().min(1).max(12), z.number().min(0).max(10_000_000)).optional(),
+}).strict();
+
 /** Vérifie que l'opération (si fournie) est accessible (parc de l'organisation ou compte solo). */
 async function assertOperationOwnership(operationId: string | null | undefined, ownerId: string) {
   if (!operationId) return;
@@ -73,14 +105,15 @@ const projectBaseSchema = z.object({
   // Typologies suisses : « 1.5 », « 2.5 »… en clef, nombre de logements en valeur.
   apartmentTypes: z.record(z.string().regex(/^[0-9]+(\.5)?$/), z.number().int().min(0).max(10_000))
     .nullable().optional(),
-  nbFloors: z.number().int().min(0).optional(),
-  floorHeight: z.number().positive().optional(),
-  nbStaircases: z.number().int().min(0).optional(),
-  floorArea: z.number().positive().optional(),
-  builtArea: z.number().positive().optional(),
-  facadeArea: z.number().positive().optional(),
-  terrainArea: z.number().positive().optional(),
-  perimeter: z.number().positive().optional(),
+  nbFloors: z.number().int().min(0).nullable().optional(),
+  floorHeight: z.number().positive().nullable().optional(),
+  nbStaircases: z.number().int().min(0).nullable().optional(),
+  floorArea: z.number().positive().nullable().optional(),
+  builtArea: z.number().positive().nullable().optional(),
+  facadeArea: z.number().positive().nullable().optional(),
+  terrainArea: z.number().positive().nullable().optional(),
+  perimeter: z.number().positive().nullable().optional(),
+  roofArea: z.number().positive().nullable().optional(),
   windowPct: z.number().min(0).max(100).optional(),
   honoraryPct: z.number().min(0).max(100).optional(),
   reservePct: z.number().min(0).max(100).optional(),
@@ -106,6 +139,8 @@ const projectBaseSchema = z.object({
    * garde les règles de quantité de la base.
    */
   comptages: comptagesSchema.nullable().optional(),
+  sources: sourcesSchema.nullable().optional(),
+  majorations: majorationsSchema.nullable().optional(),
   // Données énergétiques (import certificat)
   sre: z.number().nonnegative().nullable().optional(),
   energyConsumptionHeat: z.number().nonnegative().nullable().optional(),
@@ -143,7 +178,7 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", validateBody(createSchema), async (req, res) => {
-  const { apartmentTypes, reportBranding, comptages, ...data } = req.body as z.infer<typeof createSchema>;
+  const { apartmentTypes, reportBranding, comptages, sources, majorations, ...data } = req.body as z.infer<typeof createSchema>;
   await assertOperationOwnership(data.operationId, req.auth!.sub);
   const project = await prisma.project.create({
     data: {
@@ -151,6 +186,8 @@ router.post("/", validateBody(createSchema), async (req, res) => {
       ...typologiesPourPrisma(apartmentTypes),
       ...apparencePourPrisma(reportBranding),
       ...comptagesPourPrisma(comptages),
+      ...jsonPourPrisma("sources", sources),
+      ...jsonPourPrisma("majorations", majorations),
       ownerId: req.auth!.sub,
     },
   });
@@ -175,11 +212,11 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", validateBody(updateSchema), async (req, res) => {
   const before = await loadOwnedProject(req.params.id, req.auth!.sub);
-  const { apartmentTypes, reportBranding, comptages, ...data } = req.body as z.infer<typeof updateSchema>;
+  const { apartmentTypes, reportBranding, comptages, sources, majorations, ...data } = req.body as z.infer<typeof updateSchema>;
   await assertOperationOwnership(data.operationId, req.auth!.sub);
   const project = await prisma.project.update({
     where: { id: req.params.id },
-    data: { ...data, ...typologiesPourPrisma(apartmentTypes), ...apparencePourPrisma(reportBranding), ...comptagesPourPrisma(comptages) },
+    data: { ...data, ...typologiesPourPrisma(apartmentTypes), ...apparencePourPrisma(reportBranding), ...comptagesPourPrisma(comptages), ...jsonPourPrisma("sources", sources), ...jsonPourPrisma("majorations", majorations) },
   });
   // Finalisation (transition vers TERMINE uniquement).
   if (data.status === "TERMINE" && before.status !== "TERMINE") {

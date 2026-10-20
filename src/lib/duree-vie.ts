@@ -108,6 +108,19 @@ export function dureeVieDeReference(cfcCode: string | null | undefined): number 
   return position ? DUREE_VIE_PAR_CFC[position] : undefined
 }
 
+/**
+ * Un ouvrage noté en bon état dont la durée de vie est largement dépassée :
+ * l'un des deux est faux, l'état ou l'année de pose. À vérifier avant d'éditer.
+ * Le seuil est la moitié de la durée de référence, et au moins vingt ans.
+ */
+export function bonEtatSuspect(
+  etat: string | null | undefined,
+  d: DureeVie | undefined,
+): boolean {
+  if (!d || (etat !== 'BON' && etat !== 'TRES_BON')) return false
+  return d.depassement >= Math.max(20, d.reference / 2)
+}
+
 export interface DureeVie {
   /** Durée de vie de référence retenue pour ce type d'ouvrage, en années. */
   reference: number
@@ -126,9 +139,15 @@ export interface DureeVie {
 /**
  * Durée de vie résiduelle d'un ouvrage.
  *
- * Sans année de pose relevée, on retombe sur l'année de construction du bâtiment :
- * un ouvrage d'origine est le cas courant, et le rapport le signale comme estimé
- * plutôt que de taire l'information. Sans l'une ni l'autre, on ne calcule rien.
+ * Sans année de pose relevée, on ne calcule rien. Reprendre l'année de
+ * construction donnait des fenêtres PVC « posées en 1934 » et une durée de vie
+ * « dépassée de 62 ans » en rouge sur presque chaque ouvrage d'un immeuble
+ * ancien : une aberration que le lecteur voit tout de suite, et qui jette le
+ * doute sur le reste. L'ouvrage porte alors la mention « année de pose non
+ * relevée » (phraseDureeVie).
+ *
+ * `contexte.yearBuilt` reste accepté pour les appels existants, mais n'est
+ * plus utilisé comme année de pose.
  */
 export function dureeVieResiduelle(
   ouvrage: { cfcCode: string | null | undefined; yearInstalled: number | null | undefined },
@@ -137,8 +156,8 @@ export function dureeVieResiduelle(
   const reference = dureeVieDeReference(ouvrage.cfcCode)
   if (reference == null) return undefined
 
-  const poseEstimee = ouvrage.yearInstalled == null
-  const anneePose = ouvrage.yearInstalled ?? contexte.yearBuilt ?? null
+  const poseEstimee = false
+  const anneePose = ouvrage.yearInstalled ?? null
   if (anneePose == null) return undefined
 
   const anneeCourante = contexte.anneeCourante ?? new Date().getFullYear()
@@ -155,9 +174,18 @@ export function dureeVieResiduelle(
   }
 }
 
-/** Phrase toute faite pour le rapport, ou null si le calcul n'est pas possible. */
-export function phraseDureeVie(d: DureeVie | undefined): string | null {
-  if (!d) return null
+/**
+ * Phrase toute faite pour le rapport.
+ *
+ * `cfcCode` permet de dire « année de pose non relevée » pour un ouvrage qui a
+ * une durée de vie de référence mais pas d'année de pose ; sans lui, ou pour
+ * une prestation sans durée de vie, null.
+ */
+export function phraseDureeVie(d: DureeVie | undefined, cfcCode?: string | null): string | null {
+  if (!d) {
+    const reference = cfcCode ? dureeVieDeReference(cfcCode) : undefined
+    return reference != null ? `Année de pose non relevée · durée de vie de référence ${reference} ans` : null
+  }
   const pose = `Posé en ${d.anneePose}${d.poseEstimee ? ' (année de construction, à confirmer)' : ''}`
   const duree = `durée de vie de référence ${d.reference} ans`
   const reste = d.depassement > 0

@@ -13,9 +13,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  AlertTriangle, Bell, CalendarClock, ClipboardCheck, Settings2, Sparkle, Trash2,
-} from 'lucide-react'
+import { AlertTriangle, Bell, CalendarClock, ClipboardCheck, Ruler, Settings2, Sparkle, Trash2 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -28,6 +26,7 @@ const ALLURE: Record<TypeNotification, { icone: typeof Bell; fond: string; teint
   priorite_urgente: { icone: AlertTriangle, fond: 'bg-orange-50', teinte: 'text-orange-700' },
   rappel_visite: { icone: CalendarClock, fond: 'bg-violet-50', teinte: 'text-violet-700' },
   resume_hebdo: { icone: Sparkle, fond: 'bg-neutral-100', teinte: 'text-neutral-600' },
+  analyse_terminee: { icone: Ruler, fond: 'bg-sky-50', teinte: 'text-sky-700' },
 }
 
 const MINUTE = 60_000

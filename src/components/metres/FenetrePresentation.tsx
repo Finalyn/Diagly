@@ -1,7 +1,8 @@
 /**
  * La présentation des métrés, ouverte depuis l'espace Métrés : plein écran,
- * les réglages à gauche, les diapositives empilées au centre, et l'export en
- * PDF 16:9 en haut à droite.
+ * les réglages à gauche, les diapositives empilées au centre. On la consulte
+ * ici ; son PDF se télécharge depuis la page Rapports du dossier, le seul
+ * endroit de l'app d'où un document sort.
  *
  * Elle lit le jeu que l'espace tient à jour, éditeur ouvert compris : ce
  * qu'on vient de valider y paraît sans attendre l'enregistrement. Elle se
@@ -9,9 +10,9 @@
  * diapositives de l'existant.
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import { AlertTriangle, FileDown, Loader2, Minus, Plus, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { FileText, Minus, Plus, X } from 'lucide-react'
 import type { ApiDiagnosticItem, ApiProject } from '@/lib/api-types'
-import { imprimerDiapositives } from '@/lib/impression'
 import { DIAPO, OPTIONS_PRESENTATION, type OptionsPresentation } from '@/lib/plans/presentation'
 import type { PanneauQuantites } from '@/lib/plans/quantites'
 import type { Sia416 } from '@/lib/plans/sia416'
@@ -30,8 +31,7 @@ export function FenetrePresentation({ projet, jeu, panneau, sia, items, onFermer
 }) {
   const [options, setOptions] = useState<OptionsPresentation>(OPTIONS_PRESENTATION)
   const p = usePresentation({ jeu, panneau, sia, projet, items, options })
-  const [pret, setPret] = useState(false)
-  const [exportEtat, setExportEtat] = useState<'repos' | 'en-cours' | 'erreur'>('repos')
+  const [, setPret] = useState(false)
   // L'auteur des rapports signe aussi la présentation.
   const user = useAuth((s) => s.user)
   const auteur = projet?.reportBranding?.auteur?.trim() || [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.companyName || ''
@@ -64,15 +64,6 @@ export function FenetrePresentation({ projet, jeu, panneau, sia, items, onFermer
     }
   }, [onFermer])
 
-  const exporter = async () => {
-    setExportEtat('en-cours')
-    try {
-      await imprimerDiapositives(p.nomDuFichier)
-      setExportEtat('repos')
-    } catch {
-      setExportEtat('erreur')
-    }
-  }
   const n = p.diapositives.length
   const bouton = 'flex h-9 w-9 items-center justify-center rounded-full hover:bg-muted pointer-coarse:h-11 pointer-coarse:w-11'
 
@@ -96,15 +87,16 @@ export function FenetrePresentation({ projet, jeu, panneau, sia, items, onFermer
             </button>
             <button type="button" onClick={() => setLoupe((l) => Math.min(3, l * 1.25))} aria-label="Agrandir" className={bouton}><Plus className="h-4 w-4" /></button>
           </div>
-          <button
-            onClick={() => void exporter()}
-            disabled={!n || !pret || exportEtat === 'en-cours'}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-40 pointer-coarse:min-h-11"
-            title={pret ? 'Une diapositive par page, au format 16:9' : 'Les plans se préparent…'}
-          >
-            {exportEtat === 'en-cours' || (n > 0 && !pret) ? <Loader2 className="h-4 w-4 animate-spin" /> : exportEtat === 'erreur' ? <AlertTriangle className="h-4 w-4" /> : <FileDown className="h-4 w-4" />}
-            Exporter en PDF
-          </button>
+          {projet && (
+            <Link
+              to={`/app/projects/${projet.id}/rapports`}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-sm font-semibold text-background transition-opacity hover:opacity-90 pointer-coarse:min-h-11"
+              title="Le PDF de la présentation se télécharge depuis les Rapports du dossier"
+            >
+              <FileText className="h-4 w-4" />
+              Télécharger depuis Rapports
+            </Link>
+          )}
         </div>
       </header>
 

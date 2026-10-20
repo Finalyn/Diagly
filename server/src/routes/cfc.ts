@@ -200,7 +200,7 @@ router.get("/categories", async (req, res) => {
 const nombre = (v: Prisma.Decimal | null) => (v === null ? null : Number(v));
 
 /** Un article avec ses six etats et ses etapes de visite. */
-function serialiserArticle(a: {
+export function serialiserArticle(a: {
   etats: { etat: string; travaux: string | null; prix: Prisma.Decimal | null; partPrixMauvais: number | null; unite: string }[];
   etapes: { etapeNumero: number; ordreDansEtape: number }[];
 } & Record<string, unknown>) {

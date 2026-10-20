@@ -26,6 +26,11 @@
  * plan ouvert, les propositions lui sont remises directement (la poignée) :
  * c'est lui qui tient les annotations à jour, et c'est lui qui les enregistre.
  *
+ * On peut aller ailleurs dans l'app pendant que la file tourne : un
+ * indicateur dit où elle en est (AnalysesEnCours, dans AppLayout), et à la
+ * fin d'un tour, si l'on n'est pas sur l'espace Métrés du dossier, le serveur
+ * envoie la notification « Analyse terminée » (la cloche, et le push).
+ *
  * Coût : chaque lot est un appel au modèle des plans. Rien ne repart sans
  * qu'on l'ait demandé : une feuille déjà analysée ne se relance que par
  * « Relancer », une feuille en erreur attend qu'on la relance, et une
@@ -70,6 +75,20 @@ export interface EtatFile {
   pause: string | null
   /** Change à chaque écriture : de quoi redessiner les écrans abonnés. */
   version: number
+  /** La file tourne (un lot en cours, ou le suivant qui se prépare). */
+  enMarche: boolean
+  /** Le bilan du dernier tour allé à son terme, tant qu'on ne l'a pas lu (AnalysesEnCours). */
+  fin: { faites: number; erreurs: number; le: number } | null
+}
+
+/** Ce que l'app montre d'un dossier dont les plans s'analysent, ailleurs que dans l'espace Métrés. */
+export interface AnalyseDuDossier {
+  projectId: string
+  nom: string
+  enMarche: boolean
+  /** Les feuilles encore en file ou en cours. */
+  restantes: number
+  fin: EtatFile['fin']
 }
 
 /** Le message du serveur quand le compte a déjà une analyse en cours (taches-de-fond.ts). */
@@ -97,7 +116,11 @@ export class MoteurMetres {
   private feuilles = new Map<string, FeuillesPlan>()
   private chaines = new Map<string, Promise<unknown>>()
   private ecouteurs = new Set<() => void>()
-  private etat: EtatFile = { lot: null, pause: null, version: 0 }
+  private etat: EtatFile = { lot: null, pause: null, version: 0, enMarche: false, fin: null }
+  /** Ce que le tour en cours a déjà rangé, pour le bilan de fin. */
+  private bilan = { faites: 0, erreurs: 0 }
+  /** « Arrêter » a été demandé : le tour ne finit pas, il s'interrompt. */
+  private arrete = false
   private tourne = false
   private repris = false
   private arret: AbortController | null = null
@@ -121,6 +144,42 @@ export class MoteurMetres {
   private maj(patch: Partial<EtatFile>) {
     this.etat = { ...this.etat, ...patch, version: this.etat.version + 1 }
     for (const e of this.ecouteurs) e()
+    majDesAnalyses()
+  }
+
+  /** Le résumé que l'app montre ailleurs que dans l'espace Métrés. */
+  resume(): AnalyseDuDossier {
+    const restantes = this.feuillesDuJeu().filter((f) => f.etat === 'en_file' || f.etat === 'en_cours').length
+    return { projectId: this.projectId, nom: this.nomDuDossier(), enMarche: this.etat.enMarche, restantes, fin: this.etat.fin }
+  }
+
+  /** Le bilan de fin a été lu : on ne le montre plus. */
+  oublierFin() {
+    if (this.etat.fin) this.maj({ fin: null })
+  }
+
+  private nomDuDossier(): string {
+    const fiche = this.queryClient?.getQueryData<{ project?: { name?: string } }>(['project', this.projectId])
+    if (fiche?.project?.name) return fiche.project.name
+    const metres = this.queryClient?.getQueryData<{ metres?: { projectId: string; nom: string }[] }>(['metres'])
+    return metres?.metres?.find((m) => m.projectId === this.projectId)?.nom ?? 'Votre dossier'
+  }
+
+  /** Compte, après un lot, ses feuilles prêtes et celles en erreur. */
+  private compter(planId: string, pages: number[]) {
+    const plan = this.plans().find((p) => p.id === planId)
+    if (!plan) return
+    const f = this.feuillesDe(plan)
+    for (const page of pages) {
+      const etat = etatAnalyse(plan, f, page)
+      if (etat === 'prete') this.bilan.faites++
+      else if (etat === 'erreur') this.bilan.erreurs++
+    }
+  }
+
+  /** Le tour a fini pendant qu'on était ailleurs : le serveur prévient (la cloche, et le push sur l'appareil). */
+  private prevenir(fin: NonNullable<EtatFile['fin']>) {
+    void api.plans.analyseTerminee(this.projectId, { faites: fin.faites, erreurs: fin.erreurs }).catch(() => undefined)
   }
 
   configurer(options: { queryClient: QueryClient; ouvrages: OuvrageEnvoye[] }) {
@@ -378,6 +437,7 @@ export class MoteurMetres {
    * qui attendaient redeviennent non analysées. Ce qui est déjà rangé reste.
    */
   async arreter() {
+    this.arrete = true
     this.arret?.abort()
     if (this.enVol) api.plans.arreterAnalyse(this.enVol.planId, this.enVol.tache)
     const lot = this.etat.lot
@@ -397,6 +457,9 @@ export class MoteurMetres {
   async demarrer() {
     if (this.tourne || !this.queryClient) return
     this.tourne = true
+    this.bilan = { faites: 0, erreurs: 0 }
+    this.arrete = false
+    this.maj({ enMarche: true, fin: null })
     try {
       if (!this.repris) {
         this.repris = true
@@ -409,7 +472,14 @@ export class MoteurMetres {
       }
     } finally {
       this.tourne = false
-      this.maj({ lot: null })
+      // Un tour mené à son terme laisse son bilan ; une pause ou un arrêt, non.
+      const total = this.bilan.faites + this.bilan.erreurs
+      const vide = !prochainLot(this.feuillesDuJeu(), PAGES_PAR_LOT)
+      const fin = total > 0 && vide && !this.etat.pause && !this.arrete ? { ...this.bilan, le: Date.now() } : null
+      // Fini sous les yeux, dans l'espace Métrés du dossier : rien à signaler de plus.
+      const vu = window.location.pathname.includes(`/app/metres/${this.projectId}`) && document.visibilityState === 'visible'
+      this.maj({ lot: null, enMarche: false, fin: vu ? null : fin })
+      if (fin && !vu) this.prevenir(fin)
     }
   }
 
@@ -466,6 +536,7 @@ export class MoteurMetres {
       this.maj({ lot: { planId, pages, etape: 'analyse', depuis: Date.now() } })
       const r = await api.plans.suivreAnalyse(planId, tache, { signal: controle.signal })
       await this.ranger(plan, pages, preparees, r)
+      this.compter(planId, pages)
     } catch (e) {
       if (controle.signal.aborted || (e as Error)?.name === 'AbortError') return
       if (e instanceof ApiError && e.status === 404) {
@@ -485,6 +556,7 @@ export class MoteurMetres {
         return
       }
       await this.ecrireFeuilles(planId, (f) => mettreEnErreur(f, pages, maintenant(), (e as Error)?.message || 'L’analyse a échoué.'))
+      this.bilan.erreurs += pages.length
       this.echecsDeSuite++
       if (this.echecsDeSuite >= ECHECS_AVANT_PAUSE) this.maj({ pause: 'La file s’est arrêtée après deux échecs de suite. Relancez quand le réseau est revenu.' })
     } finally {
@@ -561,6 +633,25 @@ export class MoteurMetres {
 }
 
 const moteurs = new Map<string, MoteurMetres>()
+
+// Les analyses de tous les dossiers, pour l'indicateur de l'app (AnalysesEnCours).
+const ecouteursDesAnalyses = new Set<() => void>()
+let analyses: AnalyseDuDossier[] = []
+
+function majDesAnalyses() {
+  analyses = [...moteurs.values()].map((m) => m.resume()).filter((a) => a.enMarche || a.fin)
+  for (const e of ecouteursDesAnalyses) e()
+}
+
+/** S'abonner aux analyses de tous les dossiers : celles qui tournent, et celles qui viennent de finir. */
+export function abonnerAnalyses(ecouteur: () => void) {
+  ecouteursDesAnalyses.add(ecouteur)
+  return () => { ecouteursDesAnalyses.delete(ecouteur) }
+}
+
+export function instantaneDesAnalyses(): AnalyseDuDossier[] {
+  return analyses
+}
 
 /** Le moteur d'un dossier, créé au premier besoin et gardé le temps de la page. */
 export function moteurDe(projectId: string): MoteurMetres {

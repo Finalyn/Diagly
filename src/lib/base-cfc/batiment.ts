@@ -7,11 +7,15 @@
  * affirmation, l'absence de la donnée est une question, et les deux ne doivent
  * pas se ressembler dans un devis.
  *
- * La façade se calcule du périmètre, des étages et de la hauteur d'étage. La
- * valeur relevée à la main ne sert que de repli : écrite une fois à la création
- * du dossier, elle ne suivrait plus une correction du périmètre.
+ * La façade se calcule du périmètre, des étages et de la hauteur d'étage, sauf
+ * quand elle a été mesurée sur les plans ou saisie au dossier : la mesure passe
+ * alors avant. Sans source, la valeur enregistrée ne sert que de repli : écrite
+ * une fois à la création du dossier, elle ne suivrait plus une correction du
+ * périmètre.
  */
 
+import type { SourcesDimensions } from '../api-types'
+import { facadeMesuree } from '../formulas'
 import {
   surfaceFacade, surfaceFenetres,
   type DonneesBatiment, type RepartitionLogements,
@@ -38,6 +42,8 @@ export interface FicheDuBatiment {
   parkingArea?: number | null
   /** Les éléments comptés du dossier, tels que stockés (JSON). */
   comptages?: unknown
+  /** D'où vient chaque dimension : une façade mesurée passe avant le périmètre. */
+  sources?: SourcesDimensions | null
 }
 
 /** Hauteur d'étage retenue faute de mieux, usage du bureau. */
@@ -86,7 +92,9 @@ export function repartitionDesLogements(
 export function donneesDuBatiment(fiche: FicheDuBatiment): DonneesBatiment {
   const etages = valeur(fiche.nbFloors)
   const hauteurEtage = valeur(fiche.floorHeight) ?? HAUTEUR_DETAGE_PAR_DEFAUT
-  const facade = surfaceFacade(valeur(fiche.perimeter), etages, hauteurEtage) ?? valeur(fiche.facadeArea)
+  const facade = facadeMesuree(fiche)
+    ?? surfaceFacade(valeur(fiche.perimeter), etages, hauteurEtage)
+    ?? valeur(fiche.facadeArea)
   const logements = valeur(fiche.nbApartments)
   const cages = valeur(fiche.nbStaircases)
 

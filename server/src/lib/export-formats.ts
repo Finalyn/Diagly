@@ -91,17 +91,20 @@ function addCostsSheet(wb: ExcelJS.Workbook, payload: DiagnosticExport) {
   const c = payload.costs;
   ws.addRow(["Poste", "Montant"]);
   const rows: [string, number][] = [
+    ...(c.htPostes != null ? [["Postes de chantier (HT)", c.htPostes] as [string, number]] : []),
     ["Réparation (HT)", c.htRepair],
-    ["Amélioration (HT)", c.htImprovement],
     ["Mise aux normes (HT)", c.htNorms],
+    ["Amélioration (HT)", c.htImprovement],
     ["Travaux (HT)", c.ht],
     [`Honoraires (${c.honoraryPct}%)`, c.honoraires],
     [`Réserve (${c.reservePct}%)`, c.reserve],
+    ...(c.detailFrais ?? []).map((f) => [f.libelle, f.montant] as [string, number]),
     ["Sous-total", c.sousTotal],
     [`TVA ${c.tvaPct}%`, c.tva],
     ["Total TTC", c.total],
   ];
   for (const r of rows) ws.addRow(r);
+  const ligneTotal = rows.length + 1;
   ws.addRow([]);
   ws.addRow(["Par priorité", "Montant", "Nombre"]);
   for (const p of c.byPriority) ws.addRow([`Priorité ${p.priority}`, p.total, p.count]);
@@ -118,7 +121,7 @@ function addCostsSheet(wb: ExcelJS.Workbook, payload: DiagnosticExport) {
   const header = ws.getRow(1);
   header.font = { bold: true };
   // Total TTC en gras
-  ws.getRow(10).font = { bold: true };
+  ws.getRow(ligneTotal).font = { bold: true };
   return ws;
 }
 

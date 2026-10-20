@@ -10,13 +10,14 @@
  *  3. sinon, la règle de la base, partagée entre les types d'un groupe
  *     d'alternatives selon leur part de surface.
  *
- * Les rapports lisent la quantité et le coût écrits sur le relevé, pas ce
- * calcul : corriger un comptage doit donc réécrire les relevés concernés, ce
- * que fait `recalculsDesComptages`. L'éditeur, lui, recale le relevé qu'on
- * ouvre (DiagnosticDetail, synchronisation de la quantité automatique).
+ * Les rapports lisent la quantité et le coût écrits sur le relevé : corriger
+ * un comptage ou une dimension de la fiche doit donc réécrire les relevés
+ * concernés, ce que font `recalculsDesComptages` et `recalculsDuBatiment`.
+ * L'éditeur, lui, recale le relevé qu'on ouvre (DiagnosticDetail,
+ * synchronisation de la quantité automatique).
  */
 import type { ApiArticle, ApiDiagnosticItem } from '../api-types'
-import { computeCost, getMarketCoeff } from '../diagnostic-auto'
+import { computeCost, computeCostFromPrice, getMarketCoeff } from '../diagnostic-auto'
 import { groupesDuReleve, partEffective, quantiteDuType } from '../groupes-surface'
 import { cleDuReleve } from './etapes'
 import { ouvrageDuReleve, resolutionDeQuantite, type OuvrageSaisi } from './pont'
@@ -88,22 +89,17 @@ export interface Recalcul {
 }
 
 /**
- * Les relevés dont la quantité automatique ne correspond plus aux comptages
- * du dossier, avec la quantité et le coût à réécrire.
+ * La quantité que le calcul donne à chaque relevé du dossier, qu'il porte ou
+ * non une quantité reprise à la main.
  *
- * `categories` limite la passe à celles qui viennent de changer : un
- * comptage ajouté, corrigé ou retiré. Retiré, la catégorie retombe sur la
- * règle de la base et sur les parts de surface, exactement comme avant.
- *
- * Une quantité reprise à la main n'est jamais touchée, un coût forcé non
- * plus. Un relevé dont l'article a quitté la base est laissé tel quel.
+ * Sert à savoir si une quantité dite « relevée sur place » l'est vraiment :
+ * égale au calcul (fenêtres = 30 % de la façade), elle ne l'est pas.
  */
-export function recalculsDesComptages(
+export function calculateurDesQuantites(
   items: ApiDiagnosticItem[],
   articles: ApiArticle[],
   batiment: DonneesBatiment,
-  categories: CategorieComptee[],
-): Recalcul[] {
+): (it: ApiDiagnosticItem) => { ouvrage: OuvrageSaisi; quantite: number | undefined } | null {
   const comptages = batiment.comptages ?? {}
   const repartitions = repartitionsDuDossier(comptages, items, articles)
   const parId = new Map(articles.map((a) => [a.id, a]))
@@ -128,18 +124,58 @@ export function recalculsDesComptages(
     }),
   )
 
+  return (it) => {
+    const ouvrage = ouvrageDuReleve(it, articles)
+    if (!ouvrage) return null
+    const categorie = categorieDuReleve(it, articles)
+    const groupe = groupes.find((g) => g.membres.some((m) => m.id === it.id))
+    return {
+      ouvrage,
+      quantite: quantiteAutomatique(it, ouvrage, batiment, {
+        repartition: categorie ? repartitions.find((r) => r.categorie === categorie) ?? null : null,
+        groupe: groupe ? { membres: groupe.membres.length, sharePct: it.sharePct ?? null } : null,
+      }),
+    }
+  }
+}
+
+/** Une quantité reprise à la main qui diffère vraiment du calcul. */
+export function vraimentRelevee(it: ApiDiagnosticItem, calcul: ReturnType<typeof calculateurDesQuantites>): boolean {
+  if (!it.quantityManual) return false
+  const auto = calcul(it)?.quantite
+  return auto == null || it.area == null || Math.abs(auto - it.area) > Math.max(0.5, auto * 0.005)
+}
+
+/**
+ * Les relevés dont la quantité automatique ne correspond plus aux comptages
+ * du dossier, avec la quantité et le coût à réécrire.
+ *
+ * `categories` limite la passe à celles qui viennent de changer : un
+ * comptage ajouté, corrigé ou retiré. Retiré, la catégorie retombe sur la
+ * règle de la base et sur les parts de surface, exactement comme avant.
+ *
+ * Une quantité reprise à la main n'est jamais touchée, un coût forcé non
+ * plus. Un relevé dont l'article a quitté la base est laissé tel quel.
+ */
+export function recalculsDesComptages(
+  items: ApiDiagnosticItem[],
+  articles: ApiArticle[],
+  batiment: DonneesBatiment,
+  categories: CategorieComptee[] | 'tous',
+): Recalcul[] {
+  const calcul = calculateurDesQuantites(items, articles, batiment)
+
   const recalculs: Recalcul[] = []
   for (const it of items) {
     if (it.quantityManual) continue
     const categorie = categorieDuReleve(it, articles)
-    if (!categorie || !categories.includes(categorie)) continue
-    const ouvrage = ouvrageDuReleve(it, articles)
-    if (!ouvrage) continue
-    const groupe = groupes.find((g) => g.membres.some((m) => m.id === it.id))
-    const quantite = quantiteAutomatique(it, ouvrage, batiment, {
-      repartition: repartitions.find((r) => r.categorie === categorie) ?? null,
-      groupe: groupe ? { membres: groupe.membres.length, sharePct: it.sharePct ?? null } : null,
-    })
+    if (categories !== 'tous' && (!categorie || !categories.includes(categorie))) continue
+    const c = calcul(it)
+    if (!c) continue
+    const { ouvrage, quantite } = c
+    // Une dimension manquante ne vide pas une quantité déjà là : la donnée
+    // qui manque est une question, pas un zéro.
+    if (quantite == null && categories === 'tous') continue
     const area = quantite ?? null
     if (area === it.area) continue
     const patch: Partial<ApiDiagnosticItem> = { area }
@@ -147,9 +183,43 @@ export function recalculsDesComptages(
       patch.estimatedCost = (computeCost(ouvrage, it.state, quantite) ?? null) as unknown as string | null
       patch.costIndex = getMarketCoeff()
     }
+    // L'amélioration et la mise aux normes suivent la quantité quand leur
+    // montant est celui de la base : un montant repris à la main, non.
+    const suit = (montant: string | null, prix: number | null) => {
+      if (montant == null || prix == null) return undefined
+      const avant = computeCostFromPrice(prix, it.area)
+      if (avant == null || Math.abs(Number(montant) - avant) > Math.max(1, avant * 0.01)) return undefined
+      return (computeCostFromPrice(prix, quantite) ?? null) as unknown as string | null
+    }
+    const amelioration = it.improvement != null ? suit(it.improvementCost, ouvrage.priceImprovement) : undefined
+    if (amelioration !== undefined) patch.improvementCost = amelioration
+    const normes = it.norms != null ? suit(it.normsCost, ouvrage.priceNorms) : undefined
+    if (normes !== undefined) patch.normsCost = normes
     recalculs.push({ releveId: it.id, patch })
   }
   return recalculs
+}
+
+/**
+ * Les relevés dont la quantité ne suit plus la fiche du bâtiment : une
+ * dimension corrigée, ou remplacée par les métrés des plans.
+ *
+ * Tous les relevés passent, comptés ou non. Une quantité reprise à la main
+ * n'est jamais touchée, un coût forcé non plus.
+ */
+export function recalculsDuBatiment(
+  items: ApiDiagnosticItem[],
+  articles: ApiArticle[],
+  batiment: DonneesBatiment,
+): Recalcul[] {
+  return recalculsDesComptages(items, articles, batiment, 'tous')
+}
+
+/** Les relevés, avec leurs recalculs appliqués : ce que le devis doit lire. */
+export function appliquerRecalculs(items: ApiDiagnosticItem[], recalculs: Recalcul[]): ApiDiagnosticItem[] {
+  if (recalculs.length === 0) return items
+  const parId = new Map(recalculs.map((r) => [r.releveId, r.patch]))
+  return items.map((it) => (parId.has(it.id) ? { ...it, ...parId.get(it.id)! } : it))
 }
 
 /**

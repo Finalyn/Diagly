@@ -230,7 +230,7 @@ export function EstimationEnergetique({ project, ouvrages }: {
           </div>
 
           <div className="flex flex-wrap gap-x-10 gap-y-3 rounded-xl bg-muted/40 px-5 py-4">
-            <Chiffre valeur={`${gain.gainPourcent} %`} libelle="de gain estimé" />
+            <Chiffre valeur={`${String(gain.gainPourcent).replace('.', ',')} %`} libelle="de gain estimé" />
             <Chiffre valeur={`${gain.economieParM2}`} libelle="kWh/m²·an économisés" />
             <Chiffre valeur={gain.economieParAn.toLocaleString('fr-CH').replace(/\s/g, "'")} libelle="kWh économisés par an" />
           </div>

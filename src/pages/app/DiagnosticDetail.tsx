@@ -15,7 +15,7 @@ import {
   phraseDuGroupe, type GroupeSurface,
 } from '@/lib/groupes-surface'
 import { formatCHF, cn } from '@/lib/utils'
-import { dureeVieDeReference, dureeVieResiduelle } from '@/lib/duree-vie'
+import { bonEtatSuspect, dureeVieDeReference, dureeVieResiduelle } from '@/lib/duree-vie'
 import { aUnOubliImportant, bilanDesOublis, oublisDUnReleve, phraseDAlerte, relevesIncomplets } from '@/lib/oublis'
 import { circonference, decalageAnneau, partRemplie } from '@/lib/anneau'
 import { RecapOublis } from '@/components/diagnostic/RecapOublis'
@@ -720,6 +720,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 guideMode={guideMode}
                 projectId={projectId}
                 yearBuilt={projectQuery.data?.project?.yearBuilt ?? null}
+                voisins={items}
                 onBack={() => setSelectedItemId(null)}
                 suivant={suivant}
                 onUpdate={(data) => modifierReleve(selectedDiagItem.id, data)}
@@ -763,6 +764,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
               guideMode={guideMode}
               projectId={projectId}
               yearBuilt={projectQuery.data?.project?.yearBuilt ?? null}
+              voisins={items}
               onBack={() => setSelectedItemId(null)}
               onUpdate={(data) => modifierReleve(selectedDiagItem.id, data)}
               onDelete={() => {
@@ -859,14 +861,17 @@ function StepHeader({ n, label }: { n: number; label: string }) {
  * Une prestation de chantier (échafaudage, nettoyage) n'a pas de durée de vie : le
  * champ le dit plutôt que d'afficher un calcul qui n'aurait pas de sens.
  */
-function AnneeDePose({ item, yearBuilt, onUpdate, isMutating }: {
+function AnneeDePose({ item, onUpdate, isMutating }: {
   item: ApiDiagnosticItem
   yearBuilt?: number | null
   onUpdate: (data: Partial<ApiDiagnosticItem>) => void
   isMutating: boolean
 }) {
   const reference = dureeVieDeReference(item.cfcCode)
-  const vie = dureeVieResiduelle(item, { yearBuilt })
+  // Sans année de pose, pas de calcul : l'année de construction faisait passer
+  // des fenêtres PVC pour « posées en 1934 ».
+  const vie = dureeVieResiduelle(item, {})
+  const suspect = bonEtatSuspect(item.state, vie)
   const anneeCourante = new Date().getFullYear()
 
   return (
@@ -878,7 +883,7 @@ function AnneeDePose({ item, yearBuilt, onUpdate, isMutating }: {
           min="1500" max={anneeCourante + 1}
           key={`pose-${item.id}-${item.yearInstalled}`}
           defaultValue={item.yearInstalled ?? ''}
-          placeholder={yearBuilt ? String(yearBuilt) : 'AAAA'}
+          placeholder="AAAA"
           disabled={isMutating}
           className="h-14 w-24 shrink-0 text-center text-lg tabular-nums"
           onBlur={(e) => {
@@ -902,15 +907,22 @@ function AnneeDePose({ item, yearBuilt, onUpdate, isMutating }: {
             <>
               <p className="text-muted-foreground">Durée de vie de référence : {reference} ans.</p>
               {vie ? (
-                <p className={cn('mt-0.5 font-medium', vie.depassement > 0 ? 'text-red-700' : 'text-foreground')}>
-                  {vie.depassement > 0
-                    ? `Durée de vie dépassée de ${vie.depassement} an${vie.depassement > 1 ? 's' : ''}.`
-                    : `Durée de vie résiduelle : ${vie.residuelle} an${vie.residuelle > 1 ? 's' : ''}.`}
-                  {vie.poseEstimee && <span className="font-normal text-muted-foreground"> D'après l'année de construction, à confirmer.</span>}
-                </p>
+                <>
+                  <p className={cn('mt-0.5 font-medium', vie.depassement > 0 ? 'text-red-700' : 'text-foreground')}>
+                    {vie.depassement > 0
+                      ? `Durée de vie dépassée de ${vie.depassement} an${vie.depassement > 1 ? 's' : ''}.`
+                      : `Durée de vie résiduelle : ${vie.residuelle} an${vie.residuelle > 1 ? 's' : ''}.`}
+                  </p>
+                  {suspect && (
+                    <p className="mt-1 rounded-md bg-amber-50 px-2 py-1 font-medium text-amber-800">
+                      État « {item.state === 'TRES_BON' ? 'Très bon' : 'Bon'} » avec une durée de vie dépassée de {vie.depassement} ans :
+                      vérifiez l'année de pose, ou l'état.
+                    </p>
+                  )}
+                </>
               ) : (
-                <p className="mt-0.5 text-amber-700">
-                  Sans année de pose ni année de construction, le rapport n'affichera pas de durée résiduelle.
+                <p className="mt-0.5 text-muted-foreground">
+                  Non relevée : le rapport dira « année de pose non relevée », sans durée restante.
                 </p>
               )}
             </>
@@ -1428,8 +1440,10 @@ interface ItemEditorProps {
   repartition?: EtatRepartition | null
   guideMode: GuideMode
   projectId?: string
-  /** Année de construction : repli quand l'ouvrage n'a pas d'année de pose relevée. */
+  /** Année de construction, pour mémoire : elle ne remplace plus l'année de pose. */
   yearBuilt?: number | null
+  /** Les autres relevés du diagnostic : une amélioration peut rendre leur réparation inutile. */
+  voisins?: ApiDiagnosticItem[]
   onUpdate: (data: Partial<ApiDiagnosticItem>) => void
   onDelete: () => void
   isMutating: boolean
@@ -1563,20 +1577,31 @@ function InsulationInputs({ value, quantity, onChange }: {
   )
 }
 
-/** Un bloc d'enveloppe (Amélioration ou Mise aux normes) : retenable, éditable, chiffré. */
-function PerfBlock({ label, catalogWork, catalogPrice, unite, value, cost, quantity, onChange, isMutating }: {
+/**
+ * Un bloc d'enveloppe (Amélioration ou Mise aux normes) : retenable, éditable, chiffré.
+ *
+ * Il se propose toujours, même quand la base n'a rien pour cet ouvrage : une
+ * mise aux normes repérée sur place (un garde-corps trop bas, une porte palière
+ * qui n'est pas EI30) s'écrivait faute de mieux dans « Amélioration », et le
+ * devis la rangeait dans la mauvaise enveloppe. `onReclasser` la fait passer
+ * d'une enveloppe à l'autre sans la ressaisir.
+ */
+function PerfBlock({ label, catalogWork, catalogPrice, unite, value, cost, quantity, onChange, onReclasser, reclasserVers, isMutating, children }: {
   label: string; catalogWork: string | null; catalogPrice: PrixCatalogue; unite?: string
   value: string | null; cost: string | null; quantity: number | undefined
-  onChange: (work: string | null, cost: number | null) => void; isMutating: boolean
+  onChange: (work: string | null, cost: number | null) => void
+  onReclasser?: () => void
+  reclasserVers?: string
+  isMutating: boolean
+  children?: ReactNode
 }) {
   const has = !!catalogWork && catalogWork !== 'Néant'
   const retained = value != null
-  if (!has && !retained) return null
   const costNum = cost != null ? Number(cost) : null
   const isInsulation = /isolation|isolant|épaisseur/i.test(`${catalogWork ?? ''} ${value ?? ''}`)
   const toggle = () => {
     if (retained) onChange(null, null)
-    else onChange(has ? catalogWork! : '', computeCostFromPrice(catalogPrice, quantity) ?? null)
+    else onChange(has ? catalogWork! : '', has ? computeCostFromPrice(catalogPrice, quantity) ?? null : null)
   }
   return (
     <div className={cn('rounded-lg border p-3', retained ? 'border-primary/30 bg-primary/[0.03]' : 'bg-muted/10')}>
@@ -1588,12 +1613,12 @@ function PerfBlock({ label, catalogWork, catalogPrice, unite, value, cost, quant
           {retained ? 'Retenu · retirer' : 'Ajouter'}
         </button>
       </div>
-      {!retained && has && (
+      {!retained && (
         <p className="mt-1 text-xs text-muted-foreground">
-          {catalogWork}
+          {has ? catalogWork : 'Rien de proposé par la base pour cet ouvrage : ajoutez-la si la visite en a repéré une, avec son coût.'}
           {/* Un prix nu se lit mal : « 310 » n'apprend rien, « 310 CHF/m² » dit
               ce qu'il faudra multiplier. */}
-          {catalogPrice != null && catalogPrice !== '' && ` · ${catalogPrice} CHF${unite ? '/' + unite : ''}`}
+          {has && catalogPrice != null && catalogPrice !== '' && ` · ${catalogPrice} CHF${unite ? '/' + unite : ''}`}
         </p>
       )}
       {retained && (isInsulation
@@ -1607,29 +1632,121 @@ function PerfBlock({ label, catalogWork, catalogPrice, unite, value, cost, quant
               <Input type="number" className="w-36" key={`c-${label}-${cost}`} defaultValue={cost ?? ''}
                 onBlur={(e) => { const v = e.target.value ? Number(e.target.value) : null; if (v !== costNum) onChange(value ?? '', v) }} />
             </div>
+            {costNum == null || costNum <= 0 ? (
+              <p className="text-xs font-medium text-amber-700">Sans coût, elle paraît « à chiffrer » au devis.</p>
+            ) : null}
           </div>
         ))}
+      {retained && children}
+      {retained && onReclasser && reclasserVers && (
+        <button type="button" onClick={onReclasser} disabled={isMutating} className="mt-2 text-xs font-medium text-primary hover:underline">
+          C'est une {reclasserVers.toLowerCase()} : la déplacer
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * L'observation de l'ouvrage, telle qu'elle part au rapport.
+ *
+ * Obligatoire pour un état moyen ou mauvais : un premier rapport n'en portait
+ * qu'une, sur tout le bâtiment, et le client ne savait pas ce qui avait été vu.
+ * Le contrôle avant envoi la réclame aussi.
+ */
+function ChampObservation({ notes, setNotes, item, onUpdate, rows }: {
+  notes: string
+  setNotes: (v: string) => void
+  item: ApiDiagnosticItem
+  onUpdate: (data: Partial<ApiDiagnosticItem>) => void
+  rows: number
+}) {
+  const exigee = (item.state === 'MOYEN' || item.state === 'MAUVAIS') && !notes.trim()
+  return (
+    <>
+      <Textarea
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        onBlur={() => { if (notes !== (item.notes ?? '')) onUpdate({ notes: notes || null }) }}
+        placeholder="Ce qui a été vu : fissures, dégradations, défauts…"
+        rows={rows}
+        aria-invalid={exigee || undefined}
+        className={cn(exigee && 'border-amber-400')}
+      />
+      {exigee && (
+        <p className="mt-1 text-xs font-medium text-amber-700">
+          Obligatoire pour un état {item.state === 'MAUVAIS' ? 'Mauvais' : 'Moyen'} : le rapport l'explique au client.
+        </p>
+      )}
+    </>
+  )
+}
+
+/**
+ * Les réparations qu'une amélioration rend inutiles.
+ *
+ * Si le propriétaire retient l'isolation périphérique, la réfection du crépi
+ * et le nettoyage de la même façade disparaissent : cochées ici, elles
+ * viennent en déduction de l'amélioration au devis, qui se lit à son montant
+ * net. Les réparations proposées sont celle de l'ouvrage et celles des
+ * ouvrages de la même étape.
+ */
+function ReparationsRemplacees({ item, voisins, onUpdate, isMutating }: {
+  item: ApiDiagnosticItem
+  voisins: ApiDiagnosticItem[]
+  onUpdate: (data: Partial<ApiDiagnosticItem>) => void
+  isMutating: boolean
+}) {
+  const candidats = [item, ...voisins.filter((v) => v.id !== item.id && v.etapeNumero === item.etapeNumero)]
+    .filter((v) => Number(v.estimatedCost ?? 0) > 0)
+  if (candidats.length === 0 || Number(item.improvementCost ?? 0) <= 0) return null
+  const coches = new Set(item.improvementReplaces ?? [])
+  const basculer = (id: string) => {
+    const suivant = new Set(coches)
+    if (suivant.has(id)) suivant.delete(id)
+    else suivant.add(id)
+    onUpdate({ improvementReplaces: suivant.size ? [...suivant] : null })
+  }
+  return (
+    <div className="mt-3 border-t pt-2">
+      <p className="text-xs font-medium">Rend inutile, si elle est faite :</p>
+      <div className="mt-1 space-y-1">
+        {candidats.map((v) => (
+          <label key={v.id} className="flex cursor-pointer items-start gap-2 text-xs">
+            <input type="checkbox" className="mt-0.5" checked={coches.has(v.id)} disabled={isMutating} onChange={() => basculer(v.id)} />
+            <span>
+              {v.id === item.id ? 'la réparation de cet ouvrage' : v.cfcLabel}
+              <span className="text-muted-foreground"> · {Math.round(Number(v.estimatedCost)).toLocaleString('fr-CH')} CHF</span>
+            </span>
+          </label>
+        ))}
+      </div>
     </div>
   )
 }
 
 /** Enveloppes distinctes Amélioration + Mise aux normes (dimension « performance » du diag). */
-function PerformanceEnvelopes({ item, catalog, quantity, onUpdate, isMutating }: {
+function PerformanceEnvelopes({ item, catalog, quantity, onUpdate, isMutating, voisins = [] }: {
   item: ApiDiagnosticItem; catalog: OuvrageSaisi | null; quantity: number | undefined
   onUpdate: (data: Partial<ApiDiagnosticItem>) => void; isMutating: boolean
+  /** Les autres relevés du diagnostic : une amélioration peut rendre leur réparation inutile. */
+  voisins?: ApiDiagnosticItem[]
 }) {
-  const anyImp = (!!catalog?.workImprovement && catalog.workImprovement !== 'Néant') || item.improvement != null
-  const anyNorms = (!!catalog?.workNorms && catalog.workNorms !== 'Néant') || item.norms != null
-  if (!anyImp && !anyNorms) return null
   return (
     <div className="space-y-2.5">
-      <p className="text-sm font-medium">Amélioration &amp; remise aux normes</p>
-      <PerfBlock key={`imp-${item.id}`} label="Amélioration" catalogWork={catalog?.workImprovement ?? null} catalogPrice={catalog?.priceImprovement ?? null} unite={catalog?.uniteRemplacement}
-        value={item.improvement} cost={item.improvementCost} quantity={quantity} isMutating={isMutating}
-        onChange={(w, c) => onUpdate({ improvement: w, improvementCost: (c as unknown as string | null) })} />
+      <p className="text-sm font-medium">Mise aux normes &amp; amélioration</p>
       <PerfBlock key={`norm-${item.id}`} label="Mise aux normes" catalogWork={catalog?.workNorms ?? null} catalogPrice={catalog?.priceNorms ?? null} unite={catalog?.uniteRemplacement}
         value={item.norms} cost={item.normsCost} quantity={quantity} isMutating={isMutating}
-        onChange={(w, c) => onUpdate({ norms: w, normsCost: (c as unknown as string | null) })} />
+        onChange={(w, c) => onUpdate({ norms: w, normsCost: (c as unknown as string | null) })}
+        reclasserVers={item.improvement == null ? 'Amélioration' : undefined}
+        onReclasser={() => onUpdate({ improvement: item.norms, improvementCost: item.normsCost, norms: null, normsCost: null })} />
+      <PerfBlock key={`imp-${item.id}`} label="Amélioration" catalogWork={catalog?.workImprovement ?? null} catalogPrice={catalog?.priceImprovement ?? null} unite={catalog?.uniteRemplacement}
+        value={item.improvement} cost={item.improvementCost} quantity={quantity} isMutating={isMutating}
+        onChange={(w, c) => onUpdate({ improvement: w, improvementCost: (c as unknown as string | null), ...(w == null ? { improvementReplaces: null } : {}) })}
+        reclasserVers={item.norms == null ? 'Mise aux normes' : undefined}
+        onReclasser={() => onUpdate({ norms: item.improvement, normsCost: item.improvementCost, improvement: null, improvementCost: null, improvementReplaces: null })}>
+        <ReparationsRemplacees item={item} voisins={voisins} onUpdate={onUpdate} isMutating={isMutating} />
+      </PerfBlock>
     </div>
   )
 }
@@ -1699,8 +1816,10 @@ function PartDeSurface({ groupe, item, quantiteDuGroupe, unite, onPart }: {
   )
 }
 
-function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, guideMode, projectId, yearBuilt, onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, suivant, cadreExterne }: ItemEditorProps) {
+function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, guideMode, projectId, yearBuilt, voisins = [], onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, suivant, cadreExterne }: ItemEditorProps) {
   const [notes, setNotes] = useState(item.notes ?? '')
+  /** Moyen ou Mauvais : l'observation est obligatoire, le rapport l'explique au client. */
+  const etatDegrade = item.state === 'MOYEN' || item.state === 'MAUVAIS'
   const [showManual, setShowManual] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false) // options expertes repliées (mobile)
   const [viewer, setViewer] = useState<string | null>(null) // photo affichée en grand
@@ -1858,7 +1977,10 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
   // Changer la quantité recalcule le coût, et verrouille la quantité : le dossier peut
   // ensuite évoluer (périmètre, étages…) sans écraser ce que le terrain a relevé.
   const applyQuantity = (v: number | undefined, manual = true) => {
-    const patch: Partial<ApiDiagnosticItem> = { area: v ?? null, quantityManual: manual }
+    // Une quantité saisie égale au calcul (fenêtres = 30 % de la façade) n'est
+    // pas relevée sur place : elle continue de suivre le dossier.
+    const egaleAuCalcul = autoQty != null && v != null && Math.abs(v - autoQty) < 0.01
+    const patch: Partial<ApiDiagnosticItem> = { area: v ?? null, quantityManual: manual && !egaleAuCalcul }
     if (!item.costManual) {
       const cost = item.state ? computeCost(catalog, item.state, v) : undefined
       patch.estimatedCost = (cost ?? null) as unknown as string | null
@@ -1985,8 +2107,17 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
             <StateGuide item={item} catalog={catalog} onApply={applyState} isMutating={isMutating} />
           </section>
 
+          {/* Un état dégradé s'explique au client : l'observation se demande
+              ici, sans aller la chercher dans les options repliées. */}
+          {etatDegrade && (
+            <section className="space-y-3">
+              <StepHeader n={3} label="Observation" />
+              <ChampObservation notes={notes} setNotes={setNotes} item={item} onUpdate={onUpdate} rows={3} />
+            </section>
+          )}
+
           <section className="space-y-3">
-            <StepHeader n={3} label="Année de pose" />
+            <StepHeader n={etatDegrade ? 4 : 3} label="Année de pose" />
             <AnneeDePose item={item} yearBuilt={yearBuilt} onUpdate={onUpdate} isMutating={isMutating} />
           </section>
 
@@ -1994,7 +2125,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
               compté, il se dit donc ici, pendant qu'on est devant les portes. */}
           {blocRepartition && (
             <section className="space-y-3">
-              <StepHeader n={4} label="Combien de ce type ?" />
+              <StepHeader n={etatDegrade ? 5 : 4} label="Combien de ce type ?" />
               {blocRepartition}
             </section>
           )}
@@ -2005,7 +2136,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
               ne permettait de le saisir. */}
           {qtyResolution.origin === 'manuelle' && (
             <section className="space-y-3">
-              <StepHeader n={4} label={estLongueur ? 'Mesurer la longueur' : 'Saisir la quantité'} />
+              <StepHeader n={etatDegrade ? 5 : 4} label={estLongueur ? 'Mesurer la longueur' : 'Saisir la quantité'} />
               <div className="flex items-center gap-2">
                 <Input
                   type="number" inputMode="decimal" min="1" className="w-32 text-lg"
@@ -2067,17 +2198,13 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
             </button>
             {showAdvanced && (
               <div className="mt-4 space-y-5">
-                <PerformanceEnvelopes item={item} catalog={catalog} quantity={item.area ?? autoQty ?? undefined} onUpdate={onUpdate} isMutating={isMutating} />
-                <div>
-                  <p className="text-sm font-medium mb-2">Notes</p>
-                  <Textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    onBlur={() => { if (notes !== (item.notes ?? '')) onUpdate({ notes: notes || null }) }}
-                    placeholder="Observations terrain…"
-                    rows={2}
-                  />
-                </div>
+                <PerformanceEnvelopes item={item} catalog={catalog} quantity={item.area ?? autoQty ?? undefined} onUpdate={onUpdate} isMutating={isMutating} voisins={voisins} />
+                {!etatDegrade && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">Observations</p>
+                    <ChampObservation notes={notes} setNotes={setNotes} item={item} onUpdate={onUpdate} rows={2} />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2369,18 +2496,12 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
         </div>
 
         {/* Amélioration & remise aux normes */}
-        <PerformanceEnvelopes item={item} catalog={catalog} quantity={item.area ?? autoQty ?? undefined} onUpdate={onUpdate} isMutating={isMutating} />
+        <PerformanceEnvelopes item={item} catalog={catalog} quantity={item.area ?? autoQty ?? undefined} onUpdate={onUpdate} isMutating={isMutating} voisins={voisins} />
 
-        {/* 4. Notes */}
+        {/* 4. Observations : imprimées au rapport, obligatoires pour un état dégradé. */}
         <div>
-          <p className="text-sm font-medium mb-2">Notes</p>
-          <Textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={() => { if (notes !== (item.notes ?? '')) onUpdate({ notes: notes || null }) }}
-            placeholder="Observations terrain, remarques…"
-            rows={3}
-          />
+          <p className="text-sm font-medium mb-2">Observations</p>
+          <ChampObservation notes={notes} setNotes={setNotes} item={item} onUpdate={onUpdate} rows={3} />
         </div>
       </CardContent>
       {/* Le pas suivant, comme sur téléphone : la ligne d'après dans la liste,

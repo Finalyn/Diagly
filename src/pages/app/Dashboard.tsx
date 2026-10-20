@@ -7,6 +7,7 @@ import {
 import { formatDate, formatCHF, cn } from '@/lib/utils'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
+import { useDevisDuDossier } from '@/components/report/use-devis-du-dossier'
 import { useAuth } from '@/stores/auth'
 import { statusLabels } from '@/data/mock'
 import type { ProjectStatus } from '@/lib/api-types'
@@ -75,14 +76,16 @@ export function Dashboard() {
     queryFn: () => api.diagnostics.get(lastDiag!.id),
     enabled: !!lastDiag,
   })
+  // Le coût du dossier : celui du devis, le même qu'à l'onglet Coûts et au rapport.
+  const { devis: lastDevis } = useDevisDuDossier(lastProject?.id)
   const lastStats = useMemo(() => {
     const items = lastDiagData?.items ?? []
     return {
       releves: items.length,
       urgents: items.filter((it) => it.priority === 'I').length,
-      cout: items.reduce((s, it) => s + (it.estimatedCost ? Number(it.estimatedCost) : 0), 0),
+      cout: lastDevis?.ht ?? 0,
     }
-  }, [lastDiagData])
+  }, [lastDiagData, lastDevis])
 
   const greeting = user?.firstName ? `Bonjour ${user.firstName}` : 'Bonjour'
 

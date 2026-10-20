@@ -68,7 +68,7 @@ export interface UserPreferences {
     address?: string; postalCode?: string; city?: string; canton?: string
   }
   defaults?: { honoraryPct?: number; reservePct?: number; vatPct?: number; unit?: 'm' | 'cm' | 'mm' }
-  notifications?: { emailDiagnostic?: boolean; calendarReminders?: boolean; weeklyDigest?: boolean; priorityAlerts?: boolean; relances?: boolean }
+  notifications?: { emailDiagnostic?: boolean; calendarReminders?: boolean; weeklyDigest?: boolean; priorityAlerts?: boolean; relances?: boolean; analysesIA?: boolean }
   /** Modèles d'export enregistrés (mapping de colonnes) + modèle par défaut. */
   exportTemplates?: ExportTemplate[]
   exportDefaultTemplateId?: string
@@ -126,6 +126,8 @@ export interface ApiProject {
   facadeArea: number | null
   terrainArea: number | null
   perimeter: number | null
+  /** Surface de toiture mesurée sur les plans ; null = déduite du type et de la surface bâtie. */
+  roofArea?: number | null
   windowPct: number
   honoraryPct: number
   reservePct: number
@@ -167,8 +169,33 @@ export interface ApiProject {
    * saisis au dossier, ils l'emportent sur les règles de quantité de la base.
    */
   comptages?: Partial<Record<CategorieComptee, Comptage>> | null
+  /** D'où vient chaque dimension de la fiche (lib/sources-dimensions.ts). */
+  sources?: SourcesDimensions | null
+  /** Installation de chantier et frais secondaires propres au dossier. */
+  majorations?: MajorationsDuDossier | null
   createdAt: string
   updatedAt: string
+}
+
+export type SourceDimension = 'plans' | 'registre' | 'saisie' | 'defaut'
+
+/** Les dimensions dont la fiche dit la source. */
+export type DimensionSuivie =
+  | 'floorArea' | 'builtArea' | 'facadeArea' | 'perimeter' | 'nbFloors'
+  | 'floorHeight' | 'windowPct' | 'roofArea' | 'nbApartments' | 'nbStaircases'
+
+export type SourcesDimensions = Partial<Record<DimensionSuivie, {
+  source: SourceDimension
+  /** La valeur que les plans donnaient la dernière fois : une saisie la garde tant qu'ils ne changent pas. */
+  valeur?: number | null
+  majLe?: string
+}>>
+
+export interface MajorationsDuDossier {
+  installation?: { pct: number | null; minimum: number | null } | null
+  frais?: { libelle: string; pct: number | null; montant: number | null }[]
+  /** Prix d'un poste de chantier propre à ce dossier, déjà indexé. */
+  prixPostes?: Record<string, number>
 }
 
 /** Mesures d'amélioration + méta stockées en JSON sur le bâtiment. */
@@ -216,26 +243,21 @@ export interface CompanyBrand {
   phone: string | null; email: string | null; web: string | null
   logo: string | null; accentColor: string | null
 }
-export interface PublicReportProject {
-  name: string; address: string; postalCode: string | null; city: string; canton: string
-  parcelNumber: string | null; buildingType: BuildingType
-  yearBuilt: number | null; renovationYear: number | null
-  nbApartments: number | null; nbFloors: number | null
-}
-export interface PublicReportItem {
-  id: string; cfcCode: string; cfcLabel: string; state: ElementState; priority: Priority
-  works: string[]; estimatedCost: string | null; photos: string[]
-}
-export interface PublicReportCosts {
-  ht: number; honoraires: number; reserve: number; sousTotal: number; tva: number; total: number
-  byPriority: { p: Priority; total: number; count: number }[]
-}
+/**
+ * Le rapport partagé : les données du rapport complet, sans aucun total.
+ * Le lien est rendu par le même code que le PDF (RapportComplet), pour que les
+ * deux disent la même chose.
+ */
 export interface PublicReport {
-  project: PublicReportProject
-  diagnostic: { visitDate: string | null; status: DiagnosticStatus } | null
-  items: PublicReportItem[]
-  costs: PublicReportCosts
+  project: ApiProject
+  diagnostic: { id: string; visitDate: string | null; status: DiagnosticStatus } | null
+  items: ApiDiagnosticItem[]
+  base: { articles: ApiArticle[]; etapes: ApiEtapeVisite[]; postes: ApiPosteAutomatique[] }
+  cfcEntries: ApiCfcEntry[]
+  catalogItems: ApiCatalogItem[]
+  variants: ApiVariant[]
   company: CompanyBrand | null
+  auteur: string
 }
 
 export interface ApiDiagnostic {
@@ -305,6 +327,12 @@ export interface ApiDiagnosticItem {
   improvementCost: string | null
   norms: string | null
   normsCost: string | null
+  /**
+   * Relevés dont l'amélioration rend la réparation inutile, celui-ci compris :
+   * une isolation périphérique remplace la réfection du crépi et le nettoyage
+   * de la même façade. Le devis en déduit le montant net de l'option.
+   */
+  improvementReplaces?: string[] | null
   createdAt: string
   updatedAt: string
 }
@@ -1089,7 +1117,7 @@ export interface ApiModificationArticle {
 
 // ---------- Notifications ----------
 
-export type TypeNotification = 'diagnostic_cree' | 'priorite_urgente' | 'rappel_visite' | 'resume_hebdo'
+export type TypeNotification = 'diagnostic_cree' | 'priorite_urgente' | 'rappel_visite' | 'resume_hebdo' | 'analyse_terminee'
 
 /** Une notification du centre : la trace durable, que la cloche affiche. */
 export interface ApiNotification {

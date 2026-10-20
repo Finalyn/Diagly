@@ -42,7 +42,7 @@ Cliquer sur le logo ramène à l'accueil.
 La liste complète des routes est dans `DIAGLY_SPEC.md` (ROUTES WEB). En bref :
 
 ### Public
-- `/` page d'accueil (`src/pages/marketing/accueil/`, maquettes dessinées en code), `/share/:token` rapport partagé, `/preview` maquette de démonstration, `/bientot` ; `/landing`, `/landing-2`, `/landing-3` mènent à `/`
+- `/` page d'accueil, `/fonctionnalites` le détail de chaque outil, `/blog` et `/blog/:slug` les articles (`src/pages/marketing/`, référencement dans `seo.ts`, pages rendues en HTML au build par `scripts/prerendu.mjs` ; captures réelles du dossier d'exemple dans `public/accueil/`, dont les iPad des fonctionnalités dans `public/accueil/ipad/`), `/share/:token` rapport partagé, `/preview` maquette de démonstration, `/bientot` ; `/landing`, `/landing-2`, `/landing-3` mènent à `/`
 
 ### Auth
 - `/login`, `/register`, `/forgot-password`, `/reset-password/:token`, `/oauth-callback`, `/onboarding`
@@ -50,9 +50,13 @@ La liste complète des routes est dans `DIAGLY_SPEC.md` (ROUTES WEB). En bref :
 
 ### App
 - `/app/dashboard` Accueil : carte « Reprendre », accès rapides (dont Métrés), activité récente
-- `/app/metres` Métrés : dépôt d'un jeu de plans (nouveau bâtiment ou dossier existant), liste des métrés ; `/app/metres/:projectId` l'espace de travail plein écran (navigateur des feuilles, éditeur de plan encastré, zones à valider et quantités du jeu), analyse de tout le jeu par lots en tâche de fond (`src/components/metres/moteur.ts`) ; bouton « Présentation » : plans de repérage et tableaux par niveau en diapositives 16:9, export PDF (`src/lib/plans/presentation.ts`, `src/components/metres/PresentationMetres.tsx`), aussi dans les Rapports du dossier, avec ou sans diagnostic
+- `/app/metres` Métrés : dépôt d'un jeu de plans (nouveau bâtiment ou dossier existant), liste des métrés ; `/app/metres/:projectId` l'espace de travail plein écran (navigateur des feuilles, éditeur de plan encastré, zones à valider et quantités du jeu), analyse de tout le jeu par lots en tâche de fond (`src/components/metres/moteur.ts`) ; bouton « Présentation » : plans de repérage et tableaux par niveau en diapositives 16:9 (`src/lib/plans/presentation.ts`, `src/components/metres/PresentationMetres.tsx`), à consulter ; le PDF et le classeur Excel du métré se téléchargent depuis les Rapports du dossier, avec ou sans diagnostic
 - `/app/projects` Diagnostics, `/app/projects/new` création (de zéro, depuis un document ou un CECB)
 - Dans un dossier : relevé (`/diagnostic`), fiche, visite, plans, étiquette énergétique (`/cecb`), coûts, variantes, photos, rapports ; `/sommaire` sur téléphone
+- **Un seul calcul de devis** (`src/lib/devis.ts`, appelé par `src/lib/devis-du-dossier.ts` et le hook `useDevisDuDossier`) : total général = postes de chantier + toutes les lignes (réparation, mise aux normes, amélioration) ; enveloppes et priorités en sont des sous-ensembles. Rapport complet, extraits, onglet Coûts, lien de partage, export, tableau de bord : tous passent par lui. Un travail prescrit sans prix reste au devis « à chiffrer ».
+- **Rapports** (`/rapports`) : le seul endroit où l'on télécharge. Cinq documents : Rapport complet, Devis original, Rapport photo, Étiquette énergétique (extraits du complet, `partie` de `RapportComplet`), Plans de repérage et métrés (+ classeur Excel du métré, archive ZIP des photos). Contrôle avant envoi (`src/lib/controles-rapport.ts`) : prix manquants, doublons (fusion), surfaces de façade ou toiture dépassées, observations manquantes, durées incohérentes ; confirmation avant PDF ou partage tant qu'un point bloque.
+- **Coûts** (`/couts`) : le devis ligne par ligne, prix unitaire modifiable (« ce dossier uniquement, ou aussi ma base ? », responsables seulement pour la base), prix modifiés signalés avec retour à la base, majorations du dossier (installation de chantier en % avec minimum, frais secondaires) dans `project.majorations`.
+- **Fiche du bâtiment** : les métrés validés des plans remplacent les dimensions de la fiche, mention « issu des plans » (`src/lib/sources-dimensions.ts`, `project.sources`) ; une mesure nettement sous la fiche (plans incomplets) n'est pas reportée. Les quantités du devis se recalent sur la fiche à chaque lecture (`recalculsDuBatiment`).
 - `/app/diagnostic/:id` le relevé ouvert seul
 - `/app/cfc` Base de données, `/app/assistant`, `/app/settings`, `/app/integrations`, `/app/prestataires`, `/app/support`
 - `/app/planning` calendrier global et `/app/projects/:id/calendrier` échéancier : sans entrée dans les menus

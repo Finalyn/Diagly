@@ -1,10 +1,25 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { notFound } from "../lib/http-error.js";
+import { serialiserArticle } from "./cfc.js";
 
 const router = Router();
 
-// PUBLIC : rapport de diagnostic en lecture seule via jeton. Aucune authentification.
+/**
+ * PUBLIC : le rapport complet du dossier, en lecture seule, via son jeton.
+ * Aucune authentification.
+ *
+ * Le lien montrait un rapport à part, chiffré ici même : les réparations
+ * seules, sans postes de chantier ni améliorations. Le client qui recevait le
+ * PDF et le lien lisait deux totaux pour le même bâtiment. Le lien montre
+ * désormais le rapport complet, calculé par le même code que le PDF : le
+ * serveur n'envoie que les données, jamais un total.
+ *
+ * Ce que le rapport complet imprime, le lien le montre aussi (les
+ * observations, les taux d'honoraires et de réserve). Ce qui ne s'imprime
+ * pas reste ici : propriétaire, jeton, organisation de la visite et
+ * coordonnées des locataires, budget interne.
+ */
 router.get("/:token", async (req, res) => {
   // Un lien de partage circule par email : il ne doit ni etre indexe, ni rester dans un
   // cache partage (proxy). Le robots.txt couvre la page, cet en-tete couvre la reponse.
@@ -57,59 +72,64 @@ router.get("/:token", async (req, res) => {
         accentColor: c.accentColor ?? null,
       }
     : null;
+  const auteur = (typeof propre.auteur === "string" && propre.auteur.trim())
+    || [owner?.firstName, owner?.lastName].filter(Boolean).join(" ")
+    || (typeof c?.name === "string" ? c.name : "");
 
-  // Liste blanche stricte des champs projet exposes au public (pas d'ownerId, de jeton,
-  // ni de donnees internes comme les % de marge honoraires/reserve, le budget ou les surfaces).
-  const publicProject = {
-    name: project.name,
-    address: project.address,
-    postalCode: project.postalCode,
-    city: project.city,
-    canton: project.canton,
-    parcelNumber: project.parcelNumber,
-    buildingType: project.buildingType,
-    yearBuilt: project.yearBuilt,
-    renovationYear: project.renovationYear,
-    nbApartments: project.nbApartments,
-    nbFloors: project.nbFloors,
-  };
+  // Le dossier, sans ce qui ne s'imprime pas dans le rapport.
+  const {
+    ownerId, shareToken, sharedAt, visitPlan, operationId, totalBudget, ...publicProject
+  } = project;
+  void ownerId; void shareToken; void sharedAt; void visitPlan; void operationId; void totalBudget;
 
-  // Couts calcules cote serveur -> on ne renvoie que des MONTANTS, jamais les % de marge.
-  const TVA = 0.081;
-  const num = (v: unknown) => (v ? Number(v) : 0);
-  const ht = items.reduce((s, i) => s + num(i.estimatedCost), 0);
-  const honoraires = (ht * (project.honoraryPct ?? 0)) / 100;
-  const afterH = ht + honoraires;
-  const reserve = (afterH * (project.reservePct ?? 0)) / 100;
-  const sousTotal = afterH + reserve;
-  const tva = sousTotal * TVA;
-  const total = sousTotal + tva;
-  const byPriority = (["I", "II", "III"] as const).map((p) => ({
-    p,
-    total: items.filter((i) => i.priority === p).reduce((s, i) => s + num(i.estimatedCost), 0),
-    count: items.filter((i) => i.priority === p).length,
-  }));
+  // La base du devis : les articles relevés, les postes et les étapes. Pas
+  // toute la base de prix du bureau, seulement ce que ce rapport chiffre.
+  const idsArticles = [...new Set(items.map((i) => i.articleId).filter((v): v is string => !!v))];
+  const [articles, etapes, postes, variants] = await Promise.all([
+    prisma.article.findMany({ where: { id: { in: idsArticles } }, include: { etats: true, etapes: true } }),
+    prisma.etapeVisite.findMany({ orderBy: { numero: "asc" } }),
+    prisma.posteAutomatique.findMany({ orderBy: { cfcCode: "asc" } }),
+    prisma.projectVariant.findMany({
+      where: { projectId: project.id },
+      include: { lines: { orderBy: { createdAt: "asc" } } },
+      orderBy: [{ displayOrder: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
 
-  // Items : on n'expose PAS les notes internes du diagnostiqueur.
-  const publicItems = items.map((it) => ({
-    id: it.id,
-    cfcCode: it.cfcCode,
-    cfcLabel: it.cfcLabel,
-    state: it.state,
-    priority: it.priority,
-    works: it.works,
-    estimatedCost: it.estimatedCost,
-    photos: it.photos,
-  }));
+  // Les libellés CFC des positions et des groupes que le devis affiche.
+  const codes = new Set<string>();
+  for (const code of [...items.map((i) => i.cfcCode), ...postes.map((p) => p.cfcCode)]) {
+    const chiffres = code.split(".")[0] ?? "";
+    if (chiffres.length >= 3) codes.add(chiffres.slice(0, 3));
+    if (chiffres.length >= 2) codes.add(chiffres.slice(0, 2));
+  }
+  const cfcEntries = await prisma.cfcCatalogEntry.findMany({ where: { code: { in: [...codes] } } });
+
+  // L'ancien catalogue, pour les relevés d'avant la bascule et les variantes.
+  const idsCatalogue = [...new Set([
+    ...items.map((i) => i.catalogItemId),
+    ...variants.flatMap((v) => v.lines.map((l) => l.catalogItemId)),
+  ].filter((v): v is number => v != null))];
+  const catalogItems = idsCatalogue.length
+    ? await prisma.catalogItem.findMany({ where: { id: { in: idsCatalogue } } })
+    : [];
 
   res.json({
     project: publicProject,
     diagnostic: diagnostic
-      ? { visitDate: diagnostic.visitDate, status: diagnostic.status }
+      ? { id: diagnostic.id, visitDate: diagnostic.visitDate, status: diagnostic.status }
       : null,
-    items: publicItems,
-    costs: { ht, honoraires, reserve, sousTotal, tva, total, byPriority },
+    items,
+    base: {
+      articles: articles.map(serialiserArticle),
+      etapes,
+      postes: postes.map((p) => ({ ...p, prix: Number(p.prix) })),
+    },
+    cfcEntries,
+    catalogItems,
+    variants,
     company,
+    auteur,
   });
 });
 

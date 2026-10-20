@@ -5,6 +5,7 @@ import { ArrowLeft, Save, Loader2, AlertCircle } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Input, Select } from '@/components/ui'
 import { buildingTypeLabels, type BuildingType } from '@/data/mock'
 import { api, ApiError } from '@/lib/api'
+import { sourcesApresSaisie } from '@/lib/sources-dimensions'
 import type { ApiProject, ProjectStatus } from '@/lib/api-types'
 
 const buildingTypeOrder: BuildingType[] = ['LOGEMENT', 'VILLA', 'CHALET', 'SCOLAIRE', 'BUREAU', 'ADMINISTRATIF', 'INDUSTRIEL', 'HOTEL', 'COMMERCIAL', 'AUTRE']
@@ -97,7 +98,15 @@ export function ProjectEdit() {
   const form: FormState | null = edited ?? (data?.project ? fromProject(data.project) : null)
 
   const update = useMutation({
-    mutationFn: () => api.projects.update(id!, toPayload(form!)),
+    mutationFn: () => {
+      const corps = toPayload(form!)
+      const p = data!.project
+      // Les dimensions corrigées ici passent en « saisi au dossier » : elles
+      // l'emportent sur les plans tant que ceux-ci ne changent pas de mesure.
+      const changees = (['floorArea', 'builtArea', 'facadeArea', 'perimeter', 'nbFloors', 'floorHeight', 'windowPct', 'nbApartments', 'nbStaircases'] as const)
+        .filter((c) => corps[c] !== undefined && corps[c] !== (p[c] ?? undefined))
+      return api.projects.update(id!, changees.length ? { ...corps, sources: sourcesApresSaisie(p, [...changees]) } : corps)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', id] })
       queryClient.invalidateQueries({ queryKey: ['projects'] })

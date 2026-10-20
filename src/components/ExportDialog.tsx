@@ -7,11 +7,16 @@ import { api, saveBlob } from '@/lib/api'
 import { useAuth } from '@/stores/auth'
 import type { ExportTemplate, ExportFormat } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
+import { chiffragePourLExport } from '@/lib/devis-du-dossier'
+import { useDevisDuDossier } from '@/components/report/use-devis-du-dossier'
 
 const clone = (t: ExportTemplate): ExportTemplate => JSON.parse(JSON.stringify(t))
 
 export function ExportDialog({ open, onOpenChange, projectId }: { open: boolean; onOpenChange: (o: boolean) => void; projectId: string }) {
   const user = useAuth((s) => s.user)
+  // Le chiffrage du devis, le même que celui du rapport : l'export le reprend.
+  const { devis, project } = useDevisDuDossier(open ? projectId : undefined)
+  const chiffrage = devis && project ? chiffragePourLExport(devis, project) : undefined
   const saved = useMemo<ExportTemplate[]>(() => user?.preferences?.exportTemplates ?? [], [user])
 
   const defQuery = useQuery({ queryKey: ['export-default-template'], queryFn: () => api.export.defaultTemplate(), enabled: open, staleTime: 60 * 60 * 1000 })
@@ -55,9 +60,10 @@ export function ExportDialog({ open, onOpenChange, projectId }: { open: boolean;
     try {
       if (format === 'json') {
         const payload = await api.export.getJson(projectId)
-        saveBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), 'diagly-export.json')
+        const avecChiffrage = chiffrage ? { ...payload, costs: { ...payload.costs, ...chiffrage } } : payload
+        saveBlob(new Blob([JSON.stringify(avecChiffrage, null, 2)], { type: 'application/json' }), 'diagly-export.json')
       } else {
-        const { blob, filename } = await api.export.download(projectId, { format, template: draft, sheet: format === 'csv' ? csvSheet : undefined })
+        const { blob, filename } = await api.export.download(projectId, { format, template: draft, sheet: format === 'csv' ? csvSheet : undefined, chiffrage })
         saveBlob(blob, filename)
       }
     } catch (e) {

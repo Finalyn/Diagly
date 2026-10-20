@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, AlertCircle, Download, BookmarkCheck, Bookmark } from 'lucide-react'
+import { Loader2, AlertCircle, BookmarkCheck, Bookmark, FileText } from 'lucide-react'
 import { Button, Card, CardContent } from '@/components/ui'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { stateLabels, stateColors } from '@/data/mock'
 import { vibrer } from '@/lib/motion'
-import { creerZip, octetsDeDataUrl } from '@/lib/zip'
 import { Visionneuse } from '@/components/Visionneuse'
 import { referencePhoto } from '@/lib/photo-de-garde'
 import type { ElementState } from '@/lib/api-types'
@@ -20,9 +19,9 @@ import type { ElementState } from '@/lib/api-types'
  * de leur poste : il fallait les rouvrir un par un pour les revoir, et rien ne
  * permettait de les récupérer.
  *
- * Les photos sont stockées avec le poste, en JPEG réduit. L'enregistrement est donc
- * immédiat, sans passer par le serveur : sur téléphone le navigateur propose de garder
- * l'image, sur ordinateur elle tombe dans les téléchargements.
+ * Ici, on les consulte et on choisit celle de la page de garde. Les télécharger
+ * se fait depuis la page Rapports, en une archive, comme tous les documents du
+ * dossier : c'est le seul endroit de l'app d'où un document sort.
  */
 
 interface PhotoTrouvee {
@@ -35,32 +34,9 @@ interface PhotoTrouvee {
   rang: number
 }
 
-const slug = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-  .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-
-/** Nom du dossier, utilisable comme nom de fichier. */
-function nomDossier(projet: string): string {
-  return slug(projet) || 'diagnostic'
-}
-
-/** Nom de fichier lisible et triable : le dossier, le code CFC, puis le rang. */
-function nomFichier(projet: string, p: PhotoTrouvee): string {
-  return `${nomDossier(projet)}-${slug(p.cfcCode) || 'cfc'}-${p.rang}.jpg`
-}
-
-function enregistrer(nom: string, src: string) {
-  const a = document.createElement('a')
-  a.href = src
-  a.download = nom
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-}
-
 export function ProjectPhotos() {
   const { id } = useParams<{ id: string }>()
   const [ouverte, setOuverte] = useState<number | null>(null)
-  const [enCours, setEnCours] = useState(false)
 
   const projectQuery = useQuery({ queryKey: ['project', id], queryFn: () => api.projects.get(id!), enabled: !!id })
   const project = projectQuery.data?.project
@@ -106,32 +82,6 @@ export function ProjectPhotos() {
     return [...map.values()]
   }, [photos])
 
-  /**
-   * Tout sortir en une archive plutôt qu'en cent téléchargements : le navigateur
-   * en bloque une partie, et personne ne veut trier cent fichiers dans un dossier.
-   */
-  const toutEnregistrer = async () => {
-    if (!project || enCours) return
-    setEnCours(true)
-    try {
-      const fichiers = await Promise.all(photos.map(async (p) => ({
-        nom: nomFichier(project.name, p),
-        // Les photos du diagnostic sont conservées en data URL ; on gère quand même
-        // le cas d'une image servie par le serveur, pour ne pas la perdre en route.
-        donnees: p.src.startsWith('data:')
-          ? octetsDeDataUrl(p.src)
-          : new Uint8Array(await (await fetch(p.src)).arrayBuffer()),
-      })))
-      const url = URL.createObjectURL(creerZip(fichiers))
-      enregistrer(`${nomDossier(project.name)}-photos.zip`, url)
-      // Le navigateur a besoin de l'URL le temps du téléchargement.
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
-      vibrer('succes')
-    } finally {
-      setEnCours(false)
-    }
-  }
-
   if (projectQuery.isLoading || itemsQuery.isLoading) {
     return <div className="flex items-center justify-center py-32 text-muted-foreground"><Loader2 className="mr-2 h-6 w-6 animate-spin" />Chargement…</div>
   }
@@ -167,11 +117,11 @@ export function ProjectPhotos() {
           </p>
         </div>
         {photos.length > 0 && (
-          <Button onClick={toutEnregistrer} disabled={enCours}>
-            {enCours
-              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Préparation…</>
-              : <><Download className="mr-2 h-4 w-4" />Tout exporter ({photos.length})</>}
-          </Button>
+          // Les photos se consultent ici ; l'archive se télécharge depuis les
+          // Rapports, avec les autres documents du dossier.
+          <Link to={`/app/projects/${id}/rapports`}>
+            <Button variant="outline"><FileText className="mr-2 h-4 w-4" />Télécharger depuis Rapports</Button>
+          </Link>
         )}
       </div>
 
@@ -211,13 +161,6 @@ export function ProjectPhotos() {
                         <img src={p.src} alt="" loading="lazy" className="aspect-[4/3] w-full object-cover transition-transform group-hover:scale-[1.02]" />
                       </button>
                       <BoutonGarde active={cle(p) === cleGarde} onClick={() => choisirGarde(p)} />
-                      <button
-                        onClick={() => enregistrer(nomFichier(project.name, p), p.src)}
-                        title="Enregistrer cette photo"
-                        className="absolute right-1.5 top-1.5 rounded-lg bg-black/55 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/75"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </button>
                     </div>
                   )
                 })}
@@ -246,13 +189,6 @@ export function ProjectPhotos() {
             >
               {cle(active) === cleGarde ? <BookmarkCheck className="h-5 w-5" /> : <Bookmark className="h-5 w-5" />}
               <span className="hidden sm:inline">{cle(active) === cleGarde ? 'Page de garde' : 'Mettre en page de garde'}</span>
-            </button>
-            <button
-              onClick={() => enregistrer(nomFichier(project.name, active), active.src)}
-              className="rounded-lg bg-white/15 p-2 transition-colors hover:bg-white/25"
-              title="Enregistrer"
-            >
-              <Download className="h-5 w-5" />
             </button>
             </>
           )}

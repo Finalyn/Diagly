@@ -5,6 +5,7 @@
  * valeurs casse le rafraîchissement à chaud de Vite (règle react-refresh).
  */
 import type { ElementState } from '@/lib/api-types'
+import type { Enveloppe } from '@/lib/devis'
 
 // La TVA vit avec le calcul du devis : deux définitions divergeraient en silence.
 export { TVA } from '@/lib/devis'
@@ -39,3 +40,19 @@ export const PAGE = {
 
 /** Hauteur disponible pour le contenu d'une page. */
 export const HAUTEUR_CONTENU = PAGE.hauteur - PAGE.entete - PAGE.pied
+
+/** L'enveloppe d'une ligne, en un mot pour la colonne. */
+export const ENVELOPPE_COURTE: Record<Enveloppe, string> = {
+  'Poste de chantier': 'Chantier',
+  'Réparation': 'Réparation',
+  'Mise aux normes': 'Normes',
+  'Amélioration': 'Amélioration',
+}
+
+/** Le titre d'une enveloppe, tel que sa page l'imprime. */
+export const TITRE_ENVELOPPE: Record<Enveloppe, string> = {
+  'Poste de chantier': 'Postes de chantier',
+  'Réparation': 'Réparation',
+  'Mise aux normes': 'Mise aux normes',
+  'Amélioration': 'Amélioration',
+}

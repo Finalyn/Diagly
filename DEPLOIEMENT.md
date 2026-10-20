@@ -24,6 +24,17 @@ versionné et aucune mise en ligne ne l'écrase.
 `scripts/deploy-serveur.sh`, dans ce dépôt-ci, supposait que le serveur clone
 `Finalyn/Diagly` : il ne sert pas.
 
+## Les pages publiques pré-rendues
+
+`npm run build` se termine par `scripts/prerendu.mjs`, qui rend en HTML
+l'accueil, `/fonctionnalites`, `/blog` et chaque article dans
+`dist/prerendu/`, et écrit `sitemap.xml`, `llms.txt` et `llms-full.txt` à la
+racine de `dist/`. Le serveur sert ces fichiers pour ces adresses
+(`server/src/index.ts`, avant les fichiers statiques) ; l'application garde
+`index.html`. Un nouvel article (`src/pages/marketing/blog/articles.ts`) n'a
+besoin de rien d'autre : il est rendu, ajouté au plan du site et à
+`llms-full.txt` au prochain build.
+
 ## Mettre en ligne
 
 ### 1. Sur le poste : publier dans le dépôt de production
@@ -85,6 +96,13 @@ Une modification de schéma à laquelle `prisma db push` répond par une questio
 (une contrainte `UNIQUE` ajoutée, par exemple) fait échouer le build du
 Manager, qui ne peut pas y répondre : c'est pourquoi `users.apple_sub` n'a pas
 de contrainte d'unicité (commentaire dans `prisma/schema.prisma`).
+
+Le 19 octobre 2026, le devis unifié a ajouté quatre colonnes, toutes
+facultatives (aucune question de `prisma db push`, aucune donnée à reprendre) :
+`projects.roof_area`, `projects.sources`, `projects.majorations` et
+`diagnostic_items.improvement_replaces`. Sans elles, l'onglet Coûts, la fiche
+du bâtiment et les Métrés répondent par des erreurs dès qu'ils écrivent : le
+build du Manager (avec `prisma db push`) est obligatoire pour cette version.
 
 L'app iPhone/iPad parle à cette même production, avec des versions anciennes
 encore installées : une route ou un champ ne se retire pas tant qu'une

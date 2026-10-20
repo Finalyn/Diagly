@@ -466,6 +466,9 @@ export const api = {
     },
     /** La tâche lancée sur ce plan et pas encore réclamée, si le serveur en tient une. */
     tacheEnCours: (planId: string) => request<{ enCours: string | null }>(`/api/plans/${planId}/analyse`),
+    /** La file d'analyse d'un dossier s'est vidée : le serveur prévient (cloche et push). */
+    analyseTerminee: (projectId: string, bilan: { faites: number; erreurs: number }) =>
+      request<{ ok: boolean }>(`/api/plans/metres/${encodeURIComponent(projectId)}/analyse-terminee`, { method: 'POST', body: bilan }),
     arreterAnalyse: (planId: string, tache: string) => {
       void request(`/api/plans/${planId}/analyse/${tache}`, { method: 'DELETE' }).catch(() => undefined)
     },
@@ -545,11 +548,11 @@ export const api = {
     // Téléchargement authentifié (CSV/XLSX) avec modèle en ligne (édition non enregistrée).
     download: (
       projectId: string,
-      opts: { format: 'csv' | 'xlsx'; template?: import('./api-types').ExportTemplate; sheet?: string },
+      opts: { format: 'csv' | 'xlsx'; template?: import('./api-types').ExportTemplate; sheet?: string; chiffrage?: unknown },
     ) =>
       requestBlob(`/api/export/projects/${projectId}`, {
         method: 'POST',
-        body: { format: opts.format, template: opts.template, sheet: opts.sheet },
+        body: { format: opts.format, template: opts.template, sheet: opts.sheet, chiffrage: opts.chiffrage },
       }),
     // Le métré d'un jeu de plans, calculé dans le navigateur, mis en classeur par le serveur.
     metres: (projectId: string, metre: import('./plans/export-metres').ExportMetres) =>

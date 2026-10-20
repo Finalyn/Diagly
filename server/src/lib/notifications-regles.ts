@@ -18,6 +18,7 @@ export const TYPES_NOTIFICATION = [
   "rappel_visite",
   "resume_hebdo",
   "relance_absence",
+  "analyse_terminee",
 ] as const;
 
 export type TypeNotification = (typeof TYPES_NOTIFICATION)[number];
@@ -29,10 +30,11 @@ export interface ReglagesNotification {
   priorityAlerts?: boolean;
   weeklyDigest?: boolean;
   relances?: boolean;
+  analysesIA?: boolean;
 }
 
 /** Le réglage qui commande chaque type, et sa valeur quand rien n'est choisi. */
-export const REGLAGE: Record<TypeNotification, { champ: keyof ReglagesNotification; parDefaut: boolean }> = {
+export const REGLAGE: Record<TypeNotification, { champ: keyof ReglagesNotification; parDefaut: boolean; sansEmail?: boolean }> = {
   diagnostic_cree: { champ: "emailDiagnostic", parDefaut: true },
   priorite_urgente: { champ: "priorityAlerts", parDefaut: true },
   rappel_visite: { champ: "calendarReminders", parDefaut: true },
@@ -42,6 +44,9 @@ export const REGLAGE: Record<TypeNotification, { champ: keyof ReglagesNotificati
   // Activé par défaut : il ne parle que du travail en cours de la personne, et
   // se tait après deux rappels.
   relance_absence: { champ: "relances", parDefaut: true },
+  // La fin d'une analyse par l'IA prévient sur l'appareil, jamais par
+  // courriel : on vient de la lancer, on veut le savoir maintenant.
+  analyse_terminee: { champ: "analysesIA", parDefaut: true, sansEmail: true },
 };
 
 export interface Canaux {
@@ -65,12 +70,12 @@ export function canauxVoulus(
   type: TypeNotification,
   disponible: { push: boolean; email: boolean },
 ): Canaux {
-  const { champ, parDefaut } = REGLAGE[type];
+  const { champ, parDefaut, sansEmail } = REGLAGE[type];
   const voulu = reglages?.[champ] ?? parDefaut;
   return {
     centre: true,
     push: voulu && disponible.push,
-    email: voulu && disponible.email,
+    email: voulu && disponible.email && !sansEmail,
   };
 }
 

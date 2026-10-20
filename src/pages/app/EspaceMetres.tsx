@@ -56,11 +56,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useFicheDepuisPlans } from '@/components/metres/fiche-depuis-plans'
 import {
   AlertCircle, AlertTriangle, ChevronLeft, Compass, FileSpreadsheet, FolderOpen, Layers, ListChecks, Loader2, Map as Carte, Plus, Presentation,
   ScanLine, SendHorizontal, Square, Table2, X,
 } from 'lucide-react'
-import { api, saveBlob } from '@/lib/api'
+import { api } from '@/lib/api'
 import type { ApiPlan, ChampCorrigeable, FeuillePlan, PlanAnnotation } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/lib/use-mobile'
@@ -79,6 +80,7 @@ import { chercherDansLeJeu } from '@/components/metres/symboles'
 import { ReportDossier } from '@/components/metres/ReportDossier'
 import { CartesTableau, TableauMetres, type ActionsTableau } from '@/components/metres/TableauMetres'
 import { ScannerPlans } from '@/components/metres/ScannerPlans'
+import { ExempleMetres } from '@/components/metres/ExempleMetres'
 import { FenetrePresentation } from '@/components/metres/FenetrePresentation'
 import type { JeuDePlans } from '@/components/metres/presentation-donnees'
 import { useEnregistrerComptages } from '@/components/comptages/enregistrer'
@@ -98,7 +100,6 @@ import {
 } from '@/lib/plans/quantites'
 import { surfacesSia416 } from '@/lib/plans/sia416'
 import { fileDeRevue, type ElementRevue } from '@/lib/plans/revue'
-import { exportDuMetre, nomDuClasseur } from '@/lib/plans/export-metres'
 import { resumeDuReport, type ResumeReport } from '@/lib/plans/report-metres'
 import { comptagesDuDossier, type CategorieComptee } from '@/lib/base-cfc/comptages'
 import { COULEURS_CATEGORIE } from '@/lib/plans/analyse-ia'
@@ -247,6 +248,8 @@ export function EspaceMetres() {
   const panneau = useMemo(() => panneauDesQuantites(jeu, { hauteurDuDossier }), [jeu, hauteurDuDossier])
   const sia = useMemo(() => surfacesSia416(entreesSia416(panneau)), [panneau])
   const aValiderJeu = useMemo(() => jeu.reduce((s, x) => s + (x.plan.annotations ?? []).filter(enAttente).length, 0), [jeu])
+  // Les métrés validés remplacent les dimensions de la fiche, « issu des plans ».
+  useFicheDepuisPlans(projectId, projet, panneau, sia, plansQ.isSuccess && plans.length > 0 && aValiderJeu === 0 && panneau.aValider === 0)
   const echellesEnAttente = useMemo(() => jeu.reduce((s, x) => s + Object.keys(echellesAPoser(x.plan, x.feuilles)).length, 0), [jeu])
 
   // ---- la feuille choisie, gardée dans l'adresse pour qu'un rechargement y ramène
@@ -602,29 +605,6 @@ export function EspaceMetres() {
     }
   }
 
-  // ---- export Excel du métré
-  const [exportEtat, setExportEtat] = useState<'repos' | 'en-cours' | 'erreur'>('repos')
-  const exporter = async () => {
-    setExportEtat('en-cours')
-    try {
-      const parId = new Map(jeu.map((x) => [x.plan.id, x]))
-      const m = exportDuMetre(panneau, sia, {
-        batiment: projet?.name ?? 'Bâtiment',
-        adresse: [projet?.address, [projet?.postalCode, projet?.city].filter(Boolean).join(' ')].filter(Boolean).join(', '),
-        feuille: (planId, page) => {
-          const x = parId.get(planId)
-          return x ? libelleFeuille(feuilleDe(x.feuilles, page), page, x.plan.name) : `Page ${page}`
-        },
-        annotation: (planId, id) => parId.get(planId)?.plan.annotations.find((a) => a.id === id) ?? null,
-      })
-      const { blob } = await api.export.metres(projectId, m)
-      saveBlob(blob, nomDuClasseur(projet?.name ?? 'batiment'))
-      setExportEtat('repos')
-    } catch {
-      setExportEtat('erreur')
-    }
-  }
-
   // ---- la présentation 16:9 : plans de repérage et tableaux par niveau
   const [presentation, setPresentation] = useState(false)
   const fermerPresentation = useCallback(() => setPresentation(false), [])
@@ -691,7 +671,6 @@ export function EspaceMetres() {
       onVue={basculerVue}
       aValider={aValiderJeu}
       revueActive={revueActive}
-      exportEtat={exportEtat}
       rienAExporter={panneau.classifications.length === 0}
       onTiroir={() => setTiroirOuvert(true)}
       onAnalyserTout={() => void moteur.analyserTout()}
@@ -701,7 +680,6 @@ export function EspaceMetres() {
         if (vue === 'tableau') basculerVue('plan')
         demarrerRevue()
       }}
-      onExporter={() => void exporter()}
       onPresentation={() => setPresentation(true)}
       onReporter={ouvrirReport}
     />
@@ -846,10 +824,14 @@ export function EspaceMetres() {
               {planCourant && encastre ? (
                 <PlanEditor key={planCourant.id} plan={planCourant} encastre={encastre} />
               ) : (
-                <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+                // m-auto plutôt qu'un centrage du parent : un contenu plus haut que la zone défile sans être coupé en haut.
+                <div className="flex h-full overflow-y-auto p-6 text-center text-sm text-muted-foreground">
                   {plansQ.isLoading || !nombresConnus
-                    ? <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Préparation des feuilles…</span>
-                    : 'Choisissez une feuille à gauche.'}
+                    ? <span className="m-auto flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Préparation des feuilles…</span>
+                    : plans.length === 0
+                      // Un dossier sans plan : l'exemple animé, plutôt qu'une zone vide.
+                      ? <ExempleMetres dossier className="m-auto w-full max-w-5xl text-left" />
+                      : <span className="m-auto">Choisissez une feuille à gauche.</span>}
                 </div>
               )}
               {symbole && !revue && (
@@ -1011,8 +993,8 @@ function Onglet({ actif, onClick, visite, children }: {
 }
 
 function BarreDuHaut({
-  nom, adresse, projectId, etat, compteurs, nombresConnus, telephone, tiroir, vue, onVue, aValider, revueActive, exportEtat, rienAExporter,
-  onTiroir, onAnalyserTout, onArreter, onRevoir, onExporter, onPresentation, onReporter,
+  nom, adresse, projectId, etat, compteurs, nombresConnus, telephone, tiroir, vue, onVue, aValider, revueActive, rienAExporter,
+  onTiroir, onAnalyserTout, onArreter, onRevoir, onPresentation, onReporter,
 }: {
   nom: string
   adresse: string
@@ -1027,13 +1009,11 @@ function BarreDuHaut({
   /** Éléments à valider dans tout le jeu. */
   aValider: number
   revueActive: boolean
-  exportEtat: 'repos' | 'en-cours' | 'erreur'
   rienAExporter: boolean
   onTiroir: () => void
   onAnalyserTout: () => void
   onArreter: () => void
   onRevoir: () => void
-  onExporter: () => void
   onPresentation: () => void
   onReporter: () => void
 }) {
@@ -1132,10 +1112,11 @@ function BarreDuHaut({
             </button>
           )}
           {!telephone && (
-            <button onClick={onExporter} disabled={exportEtat === 'en-cours' || rienAExporter} className={bouton} title="Exporter le métré en Excel : récapitulatif, détail, SIA 416" data-visite="metres-excel">
-              {exportEtat === 'en-cours' ? <Loader2 className="h-4 w-4 animate-spin" /> : exportEtat === 'erreur' ? <AlertTriangle className="h-4 w-4 text-red-600" /> : <FileSpreadsheet className="h-4 w-4" />}
-              <span className="hidden xl:inline">Excel</span>
-            </button>
+            // Le classeur Excel et le PDF de la présentation se téléchargent
+            // depuis les Rapports, avec les autres documents du dossier.
+            <Link to={`/app/projects/${projectId}/rapports`} className={bouton} title="Télécharger le métré en Excel ou en présentation PDF, depuis les Rapports du dossier" data-visite="metres-rapports">
+              <FileSpreadsheet className="h-4 w-4" /><span className="hidden xl:inline">Rapports</span>
+            </Link>
           )}
           {!telephone && (
             <button onClick={onPresentation} disabled={rienAExporter} className={bouton} title="Présentation 16:9 : plans de repérage et tableaux par niveau, à projeter ou en PDF" data-visite="metres-presentation">

@@ -285,6 +285,7 @@ const preferencesSchema = z.object({
   notifications: z.object({
     emailDiagnostic: z.boolean(), calendarReminders: z.boolean(),
     weeklyDigest: z.boolean(), priorityAlerts: z.boolean(), relances: z.boolean(),
+    analysesIA: z.boolean(),
   }).strict().partial(),
   exportTemplates: z.array(z.object({
     id: z.string().max(100), name: z.string().max(120),

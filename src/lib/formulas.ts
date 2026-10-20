@@ -1,4 +1,4 @@
-import type { RoofType } from './api-types'
+import type { RoofType, SourcesDimensions } from './api-types'
 
 /**
  * Géométrie du bâtiment : une seule source pour tout ce qui se déduit des saisies
@@ -35,6 +35,23 @@ export interface ProjectGeometry {
   nbStaircases?: number | null
   /** Répartition des logements par typologie : { "3.5": 5, "4.5": 2 }. */
   apartmentTypes?: Record<string, number> | null
+  /** Surface de toiture mesurée sur les plans. */
+  roofArea?: number | null
+  /** D'où vient chaque dimension (lib/sources-dimensions.ts). */
+  sources?: SourcesDimensions | null
+}
+
+/**
+ * La surface de façade mesurée : tirée des plans, ou saisie au dossier.
+ *
+ * Elle passe avant le calcul par le périmètre. Une façade relevée sur les
+ * élévations vaut mieux qu'un périmètre multiplié par une hauteur d'étage
+ * supposée. Sans source, la surface enregistrée reste un repli : elle était
+ * autrefois écrite d'office à la création du dossier.
+ */
+export function facadeMesuree(g: { facadeArea?: number | null; sources?: SourcesDimensions | null }): number | null {
+  const s = g.sources?.facadeArea?.source
+  return (s === 'plans' || s === 'saisie') && g.facadeArea != null && g.facadeArea > 0 ? g.facadeArea : null
 }
 
 const n = (v: number | null | undefined, d = 0) => (typeof v === 'number' && isFinite(v) && v > 0 ? v : d)
@@ -47,6 +64,8 @@ const n = (v: number | null | undefined, d = 0) => (typeof v === 'number' && isF
  * changeait plus rien. Le calcul prime donc dès que ses trois entrées sont connues.
  */
 export function facadeSurface(g: ProjectGeometry): number {
+  const mesuree = facadeMesuree(g)
+  if (mesuree != null) return mesuree
   const perimeter = n(g.perimeter)
   const nbFloors = n(g.nbFloors)
   const floorHeight = n(g.floorHeight, 2.7)
@@ -95,7 +114,8 @@ export function computeProjectMetrics(g: ProjectGeometry): ProjectMetrics {
     opaqueFacade: Math.max(facade - windows, 0),
     flatRoof: builtArea * ROOF_COEFF.PLATE,
     slopedRoof: builtArea * ROOF_COEFF.PENTE,
-    roof: roofSurface(g.roofType, g.builtArea),
+    // Mesurée sur les plans, elle passe avant le coefficient de pente.
+    roof: g.roofArea != null && g.roofArea > 0 ? Math.round(g.roofArea) : roofSurface(g.roofType, g.builtArea),
     scaffolding: facade * SCAFFOLDING_COEFF,
     commons: floorArea * 0.1,
     tilesBathrooms: nbApartments * 7,

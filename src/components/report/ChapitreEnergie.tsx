@@ -1,8 +1,9 @@
-import { cn } from '@/lib/utils'
+import { cn, formatCHF } from '@/lib/utils'
 import type { ApiProject } from '@/lib/api-types'
-import { comparer, libelleAgent, libelleElement, type Classe } from '@/lib/energie/calcul'
-import { assembler, ELEMENTS, type SaisieEnergie } from '@/lib/energie/entree'
-import type { OuvrageReleve } from '@/lib/energie/depuis-diagnostic'
+import type { Devis, DevisLigne } from '@/lib/devis'
+import { comparer, libelleAgent, libelleElement, type Classe, type ElementEnveloppe } from '@/lib/energie/calcul'
+import { assembler, ELEMENTS, type MesurePossible, type SaisieEnergie } from '@/lib/energie/entree'
+import { elementDuCfc, type OuvrageReleve } from '@/lib/energie/depuis-diagnostic'
 
 /**
  * L'estimation énergétique, telle qu'elle part dans le rapport remis au client.
@@ -61,17 +62,53 @@ export function AvertissementEnergie() {
   )
 }
 
-export function CorpsEnergie({ project, ouvrages }: {
+/**
+ * Les lignes du devis qui chiffrent une mesure du scénario : les améliorations
+ * des ouvrages rattachés au même élément (toiture, façades, fenêtres, sol), ou
+ * à la production de chaleur.
+ */
+function lignesDeLaMesure(m: MesurePossible, devis: Devis | undefined): DevisLigne[] {
+  if (!devis) return []
+  const cible: ElementEnveloppe | 'production' | null =
+    m.mesure.type === 'ISOLER' ? m.mesure.element : m.mesure.type === 'PRODUCTION' ? 'production' : null
+  if (!cible) return []
+  return devis.lignes.filter((l) => l.enveloppe === 'Amélioration' && !l.automatique && elementDuCfc(l.cfcCode) === cible)
+}
+
+const SOURCE_AGENT = {
+  saisie: "corrigé dans l'onglet Étiquette énergétique",
+  releve: 'relevé sur place',
+  dossier: 'certificat ou registre du dossier',
+  defaut: 'valeur par défaut, à confirmer',
+} as const
+
+export function CorpsEnergie({ project, ouvrages, devis, client = false, partie }: {
   project: ApiProject
   ouvrages: OuvrageReleve[]
+  /** Le devis du dossier : chaque mesure retenue renvoie à son option chiffrée. */
+  devis?: Devis
+  /** Version remise au client : sans les mentions de mise au point du calcul. */
+  client?: boolean
+  /**
+   * Une moitié du chapitre : les données et l'état des éléments, ou le
+   * résultat et les mesures. Le rapport en fait deux blocs, qui se répartissent
+   * sur les pages ; d'un seul tenant, il laissait son titre seul en bas d'une page.
+   */
+  partie?: 'donnees' | 'resultat'
 }) {
   const saisie = (project.energyData?.estimation as SaisieEnergie | undefined) ?? {}
-  const { entree, reprise, mesuresPossibles, cochees, avant, apres } = assembler(project, ouvrages, saisie)
+  const { entree, reprise, mesuresPossibles, cochees, avant, apres, sourceAgent } = assembler(project, ouvrages, saisie)
   const gain = comparer(avant, apres, entree.sre)
   const retenues = mesuresPossibles.filter((m) => cochees.includes(m.cle))
+  const chiffrage = retenues.map((m) => ({ m, lignes: lignesDeLaMesure(m, devis) }))
+  const coutScenario = chiffrage.reduce((s, c) => s + c.lignes.reduce((t, l) => t + l.montant, 0), 0)
+  const nonChiffrees = chiffrage.filter((c) => c.lignes.length === 0 || c.lignes.some((l) => l.aChiffrer))
 
+  const donnees = partie !== 'resultat'
+  const resultat = partie !== 'donnees'
   return (
     <div className="space-y-3">
+      {donnees && <>
       <SousTitreEnergie>Données retenues</SousTitreEnergie>
       <table className="w-full">
         <tbody>
@@ -80,7 +117,7 @@ export function CorpsEnergie({ project, ouvrages }: {
             { INDIVIDUEL: 'Habitat individuel', COLLECTIF: 'Habitat collectif', ADMINISTRATIF: 'Administratif' }[entree.categorie]
           } />
           <LigneDonnee libelle="Surface de référence énergétique" valeur={`${Math.round(entree.sre)} m²`} />
-          <LigneDonnee libelle="Agent énergétique" valeur={libelleAgent(entree.agentChauffage)} />
+          <LigneDonnee libelle="Agent énergétique" valeur={`${libelleAgent(entree.agentChauffage)} (${SOURCE_AGENT[sourceAgent]})`} />
           <LigneDonnee
             libelle="Eau chaude sanitaire"
             valeur={entree.agentEcs ? `Séparée, ${libelleAgent(entree.agentEcs).toLowerCase()}` : 'Combinée au chauffage'}
@@ -108,6 +145,9 @@ export function CorpsEnergie({ project, ouvrages }: {
                 {reprise.manquants.includes(e) && (
                   <span className="text-muted-foreground"> (aucun ouvrage relevé, valeur par défaut)</span>
                 )}
+                {reprise.origines[e]?.length > 0 && !saisie.etats?.[e] && (
+                  <span className="block text-muted-foreground">d'après {reprise.origines[e].slice(0, 2).join(', ')}</span>
+                )}
               </td>
               <td className="py-1">{entree.elements[e].etat} · {MOT_ETAT[entree.elements[e].etat]}</td>
               <td className="py-1">{entree.elements[e].anneeRenovation ?? 'n.c.'}</td>
@@ -126,6 +166,9 @@ export function CorpsEnergie({ project, ouvrages }: {
         </tbody>
       </table>
 
+      </>}
+
+      {resultat && <>
       <SousTitreEnergie>Résultat</SousTitreEnergie>
       <table className="w-full">
         <thead>
@@ -150,26 +193,57 @@ export function CorpsEnergie({ project, ouvrages }: {
       </table>
 
       <p>
-        Gain estimé <strong>{gain.gainPourcent} %</strong>, soit {gain.economieParM2} kWh/m²·an,
+        Gain estimé <strong>{String(gain.gainPourcent).replace('.', ',')} %</strong>, soit {String(gain.economieParM2).replace('.', ',')} kWh/m²·an,
         ou environ <strong>{gain.economieParAn.toLocaleString('fr-CH').replace(/\s/g, "'")} kWh par an</strong> pour
         ce bâtiment.
       </p>
 
-      <SousTitreEnergie>Mesures retenues dans ce scénario</SousTitreEnergie>
+      <SousTitreEnergie>Mesures retenues dans ce scénario, et leur coût</SousTitreEnergie>
       {retenues.length === 0 ? (
         <p className="text-muted-foreground">Aucune mesure retenue : le scénario reprend l'état actuel.</p>
       ) : (
-        <ul className="list-disc pl-5">
-          {retenues.map((m) => <li key={m.cle}>{m.libelle}</li>)}
-        </ul>
+        <table className="w-full">
+          <tbody>
+            {chiffrage.map(({ m, lignes }) => (
+              <tr key={m.cle} className="border-b border-dotted align-top">
+                <td className="py-1">
+                  {m.libelle}
+                  {lignes.length > 0 && (
+                    <span className="block text-muted-foreground">
+                      Au devis : {lignes.map((l) => l.libelle).join(', ')}
+                    </span>
+                  )}
+                </td>
+                <td className="w-36 py-1 text-right tabular-nums">
+                  {lignes.length === 0 || lignes.some((l) => l.aChiffrer)
+                    ? <span className="font-medium text-amber-700">à chiffrer</span>
+                    : formatCHF(lignes.reduce((s, l) => s + l.montant, 0))}
+                </td>
+              </tr>
+            ))}
+            {devis && (
+              <tr className="font-semibold">
+                <td className="py-1.5">Coût du scénario (HT, améliorations chiffrées)</td>
+                <td className="py-1.5 text-right tabular-nums">{formatCHF(coutScenario)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+      {devis && nonChiffrees.length > 0 && (
+        <p className="text-muted-foreground">
+          Le gain annoncé suppose toutes les mesures ci-dessus. {nonChiffrees.length === 1 ? 'Une mesure n’a' : `${nonChiffrees.length} mesures n’ont`} pas
+          encore d'option chiffrée au devis : le coût du scénario ne {nonChiffrees.length === 1 ? 'la' : 'les'} comprend pas.
+        </p>
       )}
 
-      {avant.provisoire.length > 0 && (
+      {!client && avant.provisoire.length > 0 && (
         <p className="border-t pt-2 text-muted-foreground">
           Tables de calcul encore provisoires : {avant.provisoire.join(', ')}. La classe globale est à
           lire comme un ordre de grandeur tant que les valeurs officielles ne sont pas renseignées.
         </p>
       )}
+      </>}
     </div>
   )
 }

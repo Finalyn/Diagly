@@ -219,7 +219,9 @@ export function postesAutomatiques(
 
 function remarqueEchafaudage(s: SurfaceEchafaudee): string {
   const liste = s.declencheurs.slice(0, 3).join(', ')
-  const reste = s.declencheurs.length > 3 ? `, et ${s.declencheurs.length - 3} autres ouvrages` : ''
+  const n = s.declencheurs.length - 3
+  // « et 1 autres ouvrages » se lisait dans le rapport : l'accord suit le nombre.
+  const reste = n > 0 ? `, et ${n} autre${n > 1 ? 's' : ''} ouvrage${n > 1 ? 's' : ''}` : ''
   const etendue = s.facadeEntiere
     ? "Surface de la façade entière, l'échafaudage faisant le tour du bâtiment."
     : 'Surface des façades concernées, une même façade comptée une seule fois.'

@@ -17,7 +17,7 @@ import { computeProjectMetrics, perimeterWarning } from '@/lib/formulas'
 import { buildingTypeLabels, type BuildingType } from '@/data/mock'
 import { cn } from '@/lib/utils'
 import { api, ApiError } from '@/lib/api'
-import type { AggregationMode, ApiProject, RoofType } from '@/lib/api-types'
+import type { AggregationMode, ApiProject, DimensionSuivie, RoofType, SourcesDimensions } from '@/lib/api-types'
 
 const buildingTypeOrder: BuildingType[] = ['LOGEMENT', 'VILLA', 'CHALET', 'SCOLAIRE', 'BUREAU', 'ADMINISTRATIF', 'INDUSTRIEL', 'HOTEL', 'COMMERCIAL', 'AUTRE']
 
@@ -85,6 +85,23 @@ interface FormState {
  * saisie efface la provenance : la valeur est alors celle du diagnostiqueur.
  */
 type Origine = 'plans' | 'registre' | 'defaut'
+
+/**
+ * Les sources des dimensions, telles que le formulaire les a connues : lues
+ * sur les plans, reprises du registre, ou laissées par défaut. Une valeur
+ * saisie à la main n'a pas d'origine ici et passe en « saisi au dossier ».
+ */
+function sourcesALaCreation(origines: Partial<Record<string, Origine>>, form: Record<string, unknown>): SourcesDimensions | undefined {
+  const suivies: DimensionSuivie[] = ['floorArea', 'builtArea', 'facadeArea', 'perimeter', 'nbFloors', 'floorHeight', 'windowPct', 'nbApartments', 'nbStaircases']
+  const sources: SourcesDimensions = {}
+  for (const champ of suivies) {
+    const v = form[champ]
+    if (v === '' || v == null) continue
+    const o = origines[champ]
+    sources[champ] = { source: o === 'plans' ? 'plans' : o === 'registre' ? 'registre' : o === 'defaut' ? 'defaut' : 'saisie' }
+  }
+  return Object.keys(sources).length ? sources : undefined
+}
 
 /** Les champs des métrés dont une valeur des registres déclenche l'avertissement. */
 const CHAMPS_DES_METRES: { key: keyof FormState; label: string }[] = [
@@ -229,6 +246,8 @@ export function ProjectNew() {
         comptages: importPret?.plans && Object.keys(importPret.plans.comptages).length ? importPret.plans.comptages : undefined,
         honoraryPct: num(form.honoraryPct),
         reservePct: num(form.reservePct),
+        // D'où vient chaque dimension : le rapport cite la source de chaque métré.
+        sources: sourcesALaCreation(origines, form as unknown as Record<string, unknown>),
         // Un fichier importé apporte l'EGID et, pour un CECB, l'étiquette.
         egid: importPret?.batiment.egid?.slice(0, 20) || undefined,
         ...(importPret ? champsEnergie(importPret) : {}),

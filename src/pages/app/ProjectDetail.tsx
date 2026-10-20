@@ -9,8 +9,9 @@ import { ProjectMap } from '@/components/ProjectMap'
 import { TerrainConstraintsCard } from '@/components/TerrainConstraintsCard'
 import { StatistiquesDiagnostic, ZoneDanger } from '@/components/diagnostic/StatistiquesDiagnostic'
 import { statusLabels, statusColors, buildingTypeLabels, type BuildingType } from '@/data/mock'
-import type { ProjectStatus, ApiProject, RoofType } from '@/lib/api-types'
-import { computeProjectMetrics, roofSurface, perimeterWarning, floorsWarning } from '@/lib/formulas'
+import type { ProjectStatus, ApiProject, RoofType, DimensionSuivie, SourceDimension } from '@/lib/api-types'
+import { computeProjectMetrics, perimeterWarning, floorsWarning } from '@/lib/formulas'
+import { LIBELLE_SOURCE, sourceDe, sourcesApresSaisie } from '@/lib/sources-dimensions'
 import { formatDate } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { aAppeler, lienItineraire } from '@/lib/visite-mails'
@@ -20,11 +21,13 @@ const STATUS_OPTIONS = STATUSES.map(s => ({ value: s, label: statusLabels[s], co
 const BUILDING_TYPES: BuildingType[] = ['LOGEMENT', 'VILLA', 'CHALET', 'SCOLAIRE', 'BUREAU', 'ADMINISTRATIF', 'INDUSTRIEL', 'HOTEL', 'COMMERCIAL', 'AUTRE']
 const RESIDENTIAL: BuildingType[] = ['LOGEMENT', 'VILLA', 'CHALET']
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, source }: { label: string; children: React.ReactNode; source?: SourceDimension | null }) {
   return (
     <div>
       <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
       {children}
+      {/* La mesure des plans se distingue d'une saisie : c'est elle que le rapport cite. */}
+      {source === 'plans' && <p className="mt-1 text-[11px] font-medium text-emerald-700">{LIBELLE_SOURCE.plans}</p>}
     </div>
   )
 }
@@ -122,13 +125,18 @@ export function ProjectDetail({ aiguillage = false }: { aiguillage?: boolean } =
       if (required && v === '') return
       update.mutate({ [key]: v === '' ? null : v } as Partial<ApiProject>)
     }
+  const SUIVIES: DimensionSuivie[] = ['floorArea', 'builtArea', 'facadeArea', 'perimeter', 'nbFloors', 'floorHeight', 'windowPct', 'roofArea', 'nbApartments', 'nbStaircases']
   const saveNum = (key: keyof ApiProject, current: number | null) =>
     (e: React.FocusEvent<HTMLInputElement>) => {
       const raw = e.target.value.trim()
       const v = raw === '' ? null : Number(raw)
       if (v === (current ?? null)) return
-      update.mutate({ [key]: v } as Partial<ApiProject>)
+      // Une dimension corrigée à la main passe en « saisi au dossier » : elle
+      // l'emporte sur les plans, tant qu'ils ne donnent pas une autre mesure.
+      const suivie = SUIVIES.includes(key as DimensionSuivie)
+      update.mutate({ [key]: v, ...(suivie ? { sources: sourcesApresSaisie(project, [key as DimensionSuivie]) } : {}) } as Partial<ApiProject>)
     }
+  const src = (champ: DimensionSuivie) => sourceDe(project, champ)
 
   const isResidential = RESIDENTIAL.includes(project.buildingType)
   const adresse = [project.address, [project.postalCode, project.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
@@ -228,7 +236,7 @@ export function ProjectDetail({ aiguillage = false }: { aiguillage?: boolean } =
                 </Field>
                 </>
               )}
-              <Field label="Étages">
+              <Field label="Étages" source={src('nbFloors')}>
                 <Input type="number" defaultValue={project.nbFloors ?? ''} onBlur={saveNum('nbFloors', project.nbFloors)} />
                 {etagesDouteux && <p className="mt-1 text-[11px] text-amber-700">{etagesDouteux}</p>}
               </Field>
@@ -245,32 +253,34 @@ export function ProjectDetail({ aiguillage = false }: { aiguillage?: boolean } =
             <CardHeader><CardTitle>Surfaces</CardTitle></CardHeader>
             <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <Field label="Plancher (m²)"><Input type="number" defaultValue={project.floorArea ?? ''} onBlur={saveNum('floorArea', project.floorArea)} /></Field>
-              <Field label="Bâtie (m²)"><Input type="number" defaultValue={project.builtArea ?? ''} onBlur={saveNum('builtArea', project.builtArea)} /></Field>
-              <Field label="Périmètre (ml)">
+              <Field label="Plancher (m²)" source={src('floorArea')}><Input type="number" defaultValue={project.floorArea ?? ''} onBlur={saveNum('floorArea', project.floorArea)} /></Field>
+              <Field label="Bâtie (m²)" source={src('builtArea')}><Input type="number" defaultValue={project.builtArea ?? ''} onBlur={saveNum('builtArea', project.builtArea)} /></Field>
+              <Field label="Périmètre (ml)" source={src('perimeter')}>
                 <Input type="number" defaultValue={project.perimeter ?? ''} onBlur={saveNum('perimeter', project.perimeter)} />
                 {perimetreDouteux && <p className="mt-1 text-[11px] text-amber-700">{perimetreDouteux}</p>}
               </Field>
               <Field label="Terrain (m²)"><Input type="number" defaultValue={project.terrainArea ?? ''} onBlur={saveNum('terrainArea', project.terrainArea)} /></Field>
-              <Field label="% fenêtres"><Input type="number" defaultValue={project.windowPct} onBlur={saveNum('windowPct', project.windowPct)} /></Field>
+              <Field label="% fenêtres" source={src('windowPct')}><Input type="number" defaultValue={project.windowPct} onBlur={saveNum('windowPct', project.windowPct)} /></Field>
             </div>
 
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-4 mb-2">Estimations (formules)</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-4 mb-2">Façade et toiture</p>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { l: 'Façade',      v: `${metrics.facade.toFixed(0)} m²` },
-                { l: 'Fenêtres',    v: `${metrics.windows.toFixed(0)} m²` },
-                { l: 'Toiture',     v: roofSurface(project.roofType, project.builtArea) != null ? `${roofSurface(project.roofType, project.builtArea)} m²` : `${metrics.flatRoof.toFixed(0)}–${metrics.slopedRoof.toFixed(0)} m² (à préciser)` },
-                { l: 'Échafaudage', v: `${metrics.scaffolding.toFixed(0)} m²` },
+                { l: 'Façade',   v: `${metrics.facade.toFixed(0)} m²`, s: src('facadeArea') },
+                { l: 'Fenêtres', v: `${metrics.windows.toFixed(0)} m²`, s: src('windowPct') },
+                { l: 'Toiture',  v: metrics.roof != null ? `${metrics.roof} m²` : `${metrics.flatRoof.toFixed(0)}–${metrics.slopedRoof.toFixed(0)} m² (à préciser)`, s: src('roofArea') },
               ].map(m => (
-                <div key={m.l} className="flex justify-between p-2 rounded bg-muted/50 text-sm">
+                <div key={m.l} className="flex items-baseline justify-between gap-2 rounded bg-muted/50 p-2 text-sm">
                   <span className="text-muted-foreground">{m.l}</span>
-                  <span className="font-medium">{m.v}</span>
+                  <span className="text-right font-medium">
+                    {m.v}
+                    {m.s === 'plans' && <span className="block text-[11px] font-medium text-emerald-700">{LIBELLE_SOURCE.plans}</span>}
+                  </span>
                 </div>
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground mt-3">
-              Estimations à vérifier sur place.{!project.roofType && ' Toiture non présumée tant que le type n\'est pas précisé (ci-dessus).'}
+              Calculées du périmètre, des étages et du type de toiture, sauf quand les plans les mesurent. La surface à échafauder est celle que le devis chiffre (onglet Coûts).{!project.roofType && !project.roofArea && ' Toiture non présumée tant que le type n\'est pas précisé (ci-dessus).'}
             </p>
           </CardContent>
         </Card>

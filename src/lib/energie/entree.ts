@@ -2,7 +2,7 @@ import {
   appliquerMesures, calculer, libelleElement,
   type Agent, type Categorie, type ElementEnveloppe, type EntreeEnergie, type Etat, type Mesure, type Resultat,
 } from './calcul'
-import { reprendreDuDiagnostic, type OuvrageReleve, type RepriseDiagnostic } from './depuis-diagnostic'
+import { agentDuReleve, reprendreDuDiagnostic, type OuvrageReleve, type RepriseDiagnostic, type SourceAgent } from './depuis-diagnostic'
 
 /**
  * Comment un projet devient une entrée de calcul énergétique.
@@ -33,6 +33,8 @@ export interface ProjetPourEnergie {
   buildingType?: string | null
   sre?: number | null
   floorArea?: number | null
+  /** L'agent du certificat ou du registre, en clair (« Gaz », « Mazout »). */
+  energyAgent?: string | null
 }
 
 /** Catégorie énergétique déduite du type de bâtiment du dossier. */
@@ -58,6 +60,8 @@ export interface AssemblageEnergie {
   cochees: string[]
   avant: Resultat
   apres: Resultat
+  /** D'où vient l'agent énergétique : corrigé à l'écran, relevé, dossier, ou par défaut. */
+  sourceAgent: SourceAgent | 'saisie'
 }
 
 /** L'entrée de calcul, et tout ce qui en découle. */
@@ -67,12 +71,13 @@ export function assembler(
   saisie: SaisieEnergie = {},
 ): AssemblageEnergie {
   const reprise = reprendreDuDiagnostic(ouvrages)
+  const lu = agentDuReleve(ouvrages, projet.energyAgent)
 
   const entree: EntreeEnergie = {
     anneeConstruction: saisie.anneeConstruction ?? projet.yearBuilt ?? 1970,
     categorie: saisie.categorie ?? categorieParDefaut(projet.buildingType),
     sre: saisie.sre ?? projet.sre ?? projet.floorArea ?? 0,
-    agentChauffage: saisie.agentChauffage ?? 'MAZOUT_ANCIEN',
+    agentChauffage: saisie.agentChauffage ?? lu?.agent ?? 'MAZOUT_ANCIEN',
     etatProduction: saisie.etats?.production ?? reprise.etatProduction,
     agentEcs: saisie.agentEcs ?? null,
     photovoltaiqueKwc: saisie.photovoltaiqueKwc ?? null,
@@ -118,5 +123,6 @@ export function assembler(
     cochees,
     avant: calculer(entree),
     apres: calculer(appliquerMesures(entree, retenues)),
+    sourceAgent: saisie.agentChauffage ? 'saisie' : lu?.source ?? 'defaut',
   }
 }

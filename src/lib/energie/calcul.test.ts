@@ -187,3 +187,18 @@ describe('garde-fous', () => {
     expect(() => calculer({ ...villa2010, agentChauffage: 'CHARBON' })).toThrow(/inconnu/i)
   })
 })
+
+describe('l’agent énergétique vient du relevé', async () => {
+  const { agentDuReleve, agentDuTexte } = await import('./depuis-diagnostic')
+  it('lit la chaudière relevée avant l’agent du dossier', () => {
+    const r = agentDuReleve([{ cfcCode: '242.1', state: 'MOYEN', cfcLabel: 'Chaudière gaz' }], 'Mazout')
+    expect(r).toEqual({ agent: 'GAZ_ANCIEN', source: 'releve' })
+  })
+  it('retombe sur l’agent du dossier, puis sur rien', () => {
+    expect(agentDuReleve([], 'Pompe à chaleur air/eau')).toEqual({ agent: 'PAC_AIR_EAU', source: 'dossier' })
+    expect(agentDuReleve([], null)).toBeNull()
+  })
+  it('ne prend pas « capacité » pour une pompe à chaleur', () => {
+    expect(agentDuTexte('Capacité de la chaudière à condensation au gaz')).toBe('GAZ_CONDENSATION')
+  })
+})
