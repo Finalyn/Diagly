@@ -1,25 +1,38 @@
-import { Link } from 'react-router-dom'
+import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CONTACT } from '../contenu'
-import { Apparition, Bouton, Conteneur, FOCUS } from '../ui'
+import { Apparition, Bouton, Conteneur, FOCUS, LienSite } from '../ui'
 
-/** L'appel final : une seule proposition, sur fond sombre. */
-export function AppelFinal() {
+/**
+ * L'appel final : une bande pleine largeur sur le quadrillage du héros, la
+ * coche de Diagly, une phrase et deux portes, réserver une démo ou nous
+ * écrire. Son fond bleu clair se prolonge dans le pied de page : pas de carte
+ * aux coins arrondis posée au-dessus, qui ressemblait à un tiroir. C'est la dernière chose qu'on lit
+ * avant le pied de page, sur l'accueil comme sur la page Fonctionnalités.
+ */
+export function AppelFinal({ demoIci = false }: { demoIci?: boolean }) {
   return (
-    <section aria-labelledby="titre-fin" className="relative overflow-hidden bg-[#0b1220] py-24 text-center text-white sm:py-32">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_60%_70%_at_50%_100%,rgba(1,103,234,0.45)_0%,rgba(11,18,32,0)_70%)]" />
+    <section aria-labelledby="titre-fin" className="relative overflow-hidden bg-gradient-to-b from-white via-[#f6f9fe] to-[#f3f7fe] pb-20 pt-16 text-center sm:pb-28 sm:pt-24">
+      {/* Le quadrillage du héros revient en fin de page, et le fond se prolonge dans le pied de page. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 [background-image:linear-gradient(to_right,rgba(1,103,234,0.07)_1px,transparent_1px),linear-gradient(to_bottom,rgba(1,103,234,0.07)_1px,transparent_1px)] [background-size:72px_72px] [background-position:center_top] [mask-image:radial-gradient(ellipse_60%_70%_at_50%_45%,#000_25%,transparent_100%)]" />
       <Conteneur className="relative">
-        <Apparition className="mx-auto max-w-2xl">
-          <img src="/diagly-mark.svg" alt="" aria-hidden="true" className="mx-auto h-12 w-12 rounded-xl bg-white p-2" />
-          <h2 id="titre-fin" className="mt-6 text-balance text-[clamp(2rem,4.6vw,3.25rem)] font-semibold leading-[1.06] tracking-[-0.03em]">
-            Prenez un immeuble que vous connaissez.
-          </h2>
-          <p className="mx-auto mt-5 max-w-xl text-[17px] leading-relaxed text-white/70 sm:text-[19px]">
-            Déposez ses plans, relevez-le, et comparez le rapport qui en sort avec celui que vous auriez rendu.
-          </p>
-          <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-            <Bouton to="/register" className="w-full px-6 sm:w-auto">Créer un compte gratuit</Bouton>
-            <Bouton to="/login" variante="clair" className="w-full px-6 sm:w-auto">Se connecter</Bouton>
+        <Apparition className="px-2">
+          <div className="relative mx-auto max-w-2xl">
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-[0_10px_30px_-10px_rgba(1,103,234,0.45)] ring-1 ring-[#0167EA]/10">
+              <img src="/diagly-mark.svg" alt="" aria-hidden="true" className="h-7 w-7" />
+            </span>
+            <h2 id="titre-fin" className="mt-7 text-balance text-[clamp(2.1rem,4.6vw,3.4rem)] font-medium leading-[1.05] tracking-[-0.04em] text-[#0b1220]">
+              Prenez un immeuble que vous connaissez.
+            </h2>
+            <p className="mx-auto mt-5 max-w-xl text-pretty text-[16.5px] leading-[1.65] text-[#6b7280]">
+              Réservez une démo : nous vous montrons ce que Diagly en ferait, des plans au rapport. La démo est offerte.
+            </p>
+            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Bouton href={demoIci ? '#demo' : undefined} to={demoIci ? undefined : '/#demo'} className="w-full px-6 sm:w-auto">
+                Réserver une démo<ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Bouton>
+              <Bouton href={CONTACT} variante="contour" className="w-full px-6 sm:w-auto">Nous écrire</Bouton>
+            </div>
           </div>
         </Apparition>
       </Conteneur>
@@ -33,8 +46,8 @@ export function AppelFinal() {
  * compte rendu de cette refonte).
  */
 const COLONNES: { titre: string; liens: [string, string][] }[] = [
-  { titre: 'Produit', liens: [['Métrés par l’IA', '#metres'], ['Relevé sur le terrain', '#releve'], ['Chiffrage', '#chiffrage'], ['Rapports', '#rapports'], ['App iPhone et iPad', '#app'], ['Tarifs', '#tarifs']] },
-  { titre: 'Ressources', liens: [['Questions fréquentes', '#faq'], ['Aide et support', '/app/support'], ['Nous écrire', CONTACT]] },
+  { titre: 'Produit', liens: [['Fonctionnalités', '/fonctionnalites'], ['Métrés par l’IA', '/fonctionnalites#metres'], ['Relevé sur le terrain', '/fonctionnalites#releve'], ['Chiffrage', '/fonctionnalites#chiffrage'], ['Rapports', '/fonctionnalites#rapports'], ['App iPhone et iPad', '/fonctionnalites#app'], ['Tarifs', '/#tarifs']] },
+  { titre: 'Ressources', liens: [['Blog', '/blog'], ['Questions fréquentes', '/#faq'], ['Aide et support', '/app/support'], ['Nous écrire', CONTACT]] },
   { titre: 'Compte', liens: [['Se connecter', '/login'], ['Créer un compte', '/register']] },
   { titre: 'Légal', liens: [['Mentions légales', '/mentions-legales'], ['Confidentialité', '/confidentialite'], ['Conditions générales', '/cgu']] },
 ]
@@ -42,7 +55,7 @@ const COLONNES: { titre: string; liens: [string, string][] }[] = [
 export function PiedDePage() {
   const lien = cn('inline-flex min-h-11 items-center text-[14px] text-[#48484a] hover:text-[#0167EA]', FOCUS)
   return (
-    <footer className="border-t border-black/[0.06] bg-[#f5f7fa] pb-10 pt-14">
+    <footer className="bg-[#f3f7fe] pb-10 pt-4">
       <Conteneur>
         <div className="grid gap-10 lg:grid-cols-12">
           <div className="lg:col-span-4">
@@ -58,9 +71,7 @@ export function PiedDePage() {
                 <ul className="mt-2">
                   {c.liens.map(([libelle, href]) => (
                     <li key={libelle}>
-                      {href.startsWith('/')
-                        ? <Link to={href} className={lien}>{libelle}</Link>
-                        : <a href={href} className={lien}>{libelle}</a>}
+                      <LienSite to={href} className={lien}>{libelle}</LienSite>
                     </li>
                   ))}
                 </ul>

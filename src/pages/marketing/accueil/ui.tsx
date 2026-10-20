@@ -1,12 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { typo } from './typo'
 
 /**
- * Le vocabulaire de la page d'accueil : boutons, titres de section,
- * apparition au défilement et mise à l'échelle des maquettes.
+ * Le vocabulaire du site public (accueil et page Fonctionnalités) : boutons,
+ * liens d'une page à l'autre, en-tête de section, apparition au défilement.
  *
  * Tout ce qui revient d'une section à l'autre vit ici, pour que la page parle
  * une seule langue visuelle.
@@ -36,6 +36,28 @@ export function Bouton({ children, to, href, variante = 'plein', className }: {
   return <a href={href} className={styles}>{children}</a>
 }
 
+/**
+ * Un lien du site public. Vers une ancre de la page où l'on est déjà, c'est
+ * une ancre ordinaire : le navigateur défile. Vers une autre page, c'est un
+ * lien du routeur, et la page d'arrivée descend à l'ancre (useAncre). Une
+ * adresse e-mail ou un site externe restent des liens simples.
+ */
+export function LienSite({ to, className, children, onClick, 'aria-label': ariaLabel }: {
+  to: string
+  className?: string
+  children: ReactNode
+  onClick?: () => void
+  'aria-label'?: string
+}) {
+  const { pathname } = useLocation()
+  if (/^(mailto:|https?:)/.test(to)) return <a href={to} className={className} onClick={onClick} aria-label={ariaLabel}>{children}</a>
+  const [chemin, ancre] = to.split('#')
+  if (ancre !== undefined && (chemin === '' || chemin === pathname)) {
+    return <a href={`#${ancre}`} className={className} onClick={onClick} aria-label={ariaLabel}>{children}</a>
+  }
+  return <Link to={to} className={className} onClick={onClick} aria-label={ariaLabel}>{children}</Link>
+}
+
 /** Lien texte suivi d'une flèche, pour l'action secondaire d'un bloc. */
 export function LienFleche({ children, href, to, className }: { children: ReactNode; href?: string; to?: string; className?: string }) {
   const styles = cn('group inline-flex min-h-11 items-center gap-1.5 text-[15px] font-medium text-[#0167EA] hover:text-[#0154c4]', FOCUS, className)
@@ -43,37 +65,35 @@ export function LienFleche({ children, href, to, className }: { children: ReactN
   return to ? <Link to={to} className={styles}>{contenu}</Link> : <a href={href} className={styles}>{contenu}</a>
 }
 
-/** Le petit intitulé bleu au-dessus d'un titre de section. */
-export function Surtitre({ children, sombre, className }: { children: ReactNode; sombre?: boolean; className?: string }) {
+/**
+ * L'en-tête centré d'une section : un grand titre d'un trait fin, puis une
+ * ligne de sous-titre. Le titre est en poids moyen : la page parle calmement,
+ * seul le héros parle fort.
+ */
+export function EnTeteCentre({ titre, sousTitre, id, sombre, className }: {
+  titre: ReactNode
+  sousTitre?: ReactNode
+  id?: string
+  sombre?: boolean
+  className?: string
+}) {
   return (
-    <p className={cn('text-[13px] font-semibold uppercase tracking-[0.14em]', sombre ? 'text-[#7ab4ff]' : 'text-[#0167EA]', className)}>
-      {children}
-    </p>
-  )
-}
-
-/** Titre de section (h2) : grand, serré, à la mesure de l'écran. */
-export function TitreSection({ children, sombre, className, id }: { children: ReactNode; sombre?: boolean; className?: string; id?: string }) {
-  return (
-    <h2
-      id={id}
-      className={cn(
-        'mt-3 text-balance text-[clamp(1.9rem,4.4vw,3.1rem)] font-semibold leading-[1.08] tracking-[-0.03em]',
-        sombre ? 'text-white' : 'text-[#1d1d1f]',
-        className,
+    <Apparition className={cn('mx-auto flex max-w-3xl flex-col items-center text-center', className)}>
+      <h2
+        id={id}
+        className={cn(
+          'text-balance text-[clamp(2.1rem,4.6vw,3.4rem)] font-medium leading-[1.06] tracking-[-0.04em]',
+          sombre ? 'text-white' : 'text-[#0b1220]',
+        )}
+      >
+        {typo(titre)}
+      </h2>
+      {sousTitre && (
+        <p className={cn('mt-4 max-w-[38rem] text-pretty text-[15.5px] leading-[1.6]', sombre ? 'text-white/60' : 'text-[#6b7280]')}>
+          {typo(sousTitre)}
+        </p>
       )}
-    >
-      {typo(children)}
-    </h2>
-  )
-}
-
-/** Le paragraphe d'introduction d'une section. */
-export function Chapo({ children, sombre, className }: { children: ReactNode; sombre?: boolean; className?: string }) {
-  return (
-    <p className={cn('mt-5 max-w-[42rem] text-pretty text-[17px] leading-[1.6] sm:text-[19px]', sombre ? 'text-white/70' : 'text-[#545458]', className)}>
-      {typo(children)}
-    </p>
+    </Apparition>
   )
 }
 
@@ -116,42 +136,6 @@ export function Apparition({ children, className, delai = 0, as: Balise = 'div' 
     >
       {children}
     </Balise>
-  )
-}
-
-/**
- * Une maquette dessinée à une taille fixe, réduite à la largeur de sa place.
- *
- * Les écrans de Diagly sont reproduits à leur vraie taille (1440 px pour un
- * ordinateur, 393 px pour un iPhone) puis réduits d'un bloc : les
- * proportions restent celles de l'application, et le texte se redessine net à
- * chaque taille, là où une capture deviendrait floue. La hauteur est réservée
- * par le rapport largeur sur hauteur : rien ne saute pendant le chargement.
- */
-export function Echelle({ largeur, hauteur, children, className }: {
-  largeur: number
-  hauteur: number
-  children: ReactNode
-  className?: string
-}) {
-  const boite = useRef<HTMLDivElement>(null)
-  const [k, setK] = useState(1)
-  useLayoutEffect(() => {
-    const el = boite.current
-    if (!el) return
-    const maj = () => { if (el.clientWidth) setK(el.clientWidth / largeur) }
-    maj()
-    if (typeof ResizeObserver === 'undefined') return
-    const o = new ResizeObserver(maj)
-    o.observe(el)
-    return () => o.disconnect()
-  }, [largeur])
-  return (
-    <div ref={boite} className={cn('relative w-full', className)} style={{ aspectRatio: `${largeur} / ${hauteur}` }}>
-      <div className="absolute left-0 top-0 origin-top-left" style={{ width: largeur, height: hauteur, transform: `scale(${k})` }}>
-        {children}
-      </div>
-    </div>
   )
 }
 

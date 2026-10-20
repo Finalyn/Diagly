@@ -175,6 +175,21 @@ if (STATIC_DIR && existsSync(STATIC_DIR)) {
     app.use("/mobile", express.static(mobileDir));
     app.get("/mobile/*", (_req, res) => res.sendFile(join(mobileDir, "index.html")));
   }
+  // Les pages publiques, rendues en HTML au build (scripts/prerendu.mjs) :
+  // l'accueil, les fonctionnalités, le blog et ses articles arrivent avec leur
+  // texte, leur tête et leurs données structurées, pour les moteurs de
+  // recherche et les assistants d'IA qui ne lisent pas le JavaScript.
+  // L'application, elle, garde index.html. Placé avant les fichiers
+  // statiques : sinon « / » servirait la coquille de l'application.
+  const PRERENDU = join(STATIC_DIR, "prerendu");
+  app.get(["/", "/fonctionnalites", "/blog", "/blog/:slug"], (req, res, next) => {
+    const nom = req.path === "/" ? "index.html" : `${req.path.replace(/^\/+|\/+$/g, "")}.html`;
+    if (!/^[a-z0-9/-]+\.html$/.test(nom)) return next();
+    const fichier = join(PRERENDU, nom);
+    if (!fichier.startsWith(PRERENDU) || !existsSync(fichier)) return next();
+    res.setHeader("Cache-Control", "no-cache");
+    res.sendFile(fichier);
+  });
   app.use(
     express.static(STATIC_DIR, {
       setHeaders: (res, filePath) => {

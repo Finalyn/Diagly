@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils'
 import { CONTACT, QUESTIONS } from '../contenu'
 import { Conteneur, FOCUS } from '../ui'
 import { typo } from '../typo'
-import { EnTeteSection } from './blocs'
 
 /**
  * Les questions fréquentes, en accordéon : chaque question est un bouton dans
@@ -25,12 +24,12 @@ export function Questions() {
       <Conteneur>
         <div className="grid gap-10 lg:grid-cols-12 lg:gap-14">
           <div className="lg:col-span-4">
-            <EnTeteSection
-              id="titre-faq"
-              surtitre="FAQ"
-              titre="Questions fréquentes"
-              chapo={<>Une autre question&nbsp;? <a href={CONTACT} className={cn('font-medium text-[#0167EA] underline-offset-4 hover:underline', FOCUS)}>Écrivez-nous</a>.</>}
-            />
+            <h2 id="titre-faq" className="text-balance text-[clamp(2.1rem,4.2vw,3.1rem)] font-medium leading-[1.06] tracking-[-0.04em] text-[#0b1220]">
+              Questions fréquentes
+            </h2>
+            <p className="mt-4 text-[15.5px] leading-[1.6] text-[#6b7280]">
+              Une autre question&nbsp;? <a href={CONTACT} className={cn('font-medium text-[#0167EA] underline-offset-4 hover:underline', FOCUS)}>Écrivez-nous</a>.
+            </p>
           </div>
           <div className="lg:col-span-8">
             <div className="border-t border-black/[0.09]">

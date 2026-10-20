@@ -1,58 +1,43 @@
 /**
- * Le contenu de la page d'accueil qui n'est pas de la mise en page : la
- * navigation, les plans tarifaires et les questions fréquentes.
+ * Le contenu du site public qui n'est pas de la mise en page : la
+ * navigation, les tarifs et les questions fréquentes.
  *
- * Les plans et leurs prix sont repris tels quels de la version précédente de
- * la page : ce sont des engagements commerciaux, pas du texte de vitrine. On
- * ne les change pas ici sans que l'offre ait changé.
+ * Les tarifs sont des engagements commerciaux, pas du texte de vitrine : ils
+ * vivent ici, en un seul endroit, et les sections les lisent. Le modèle du
+ * 19 octobre 2026 : le diagnostic à l'unité, un tarif dégressif dès un
+ * certain nombre de diagnostics achetés, et l'abonnement mensuel. Pas de
+ * diagnostic offert : c'est la démo qui l'est.
  */
 
+/** Le menu du haut, le même sur toutes les pages du site (LienSite, ui.tsx). */
 export const NAV = [
-  { href: '#fonctionnalites', label: 'Fonctionnalités' },
-  { href: '#metres', label: 'Métrés IA' },
-  { href: '#app', label: 'App' },
-  { href: '#tarifs', label: 'Tarifs' },
-  { href: '#faq', label: 'FAQ' },
+  { href: '/fonctionnalites', label: 'Fonctionnalités' },
+  { href: '/fonctionnalites#metres', label: 'Métrés IA' },
+  { href: '/fonctionnalites#app', label: 'App' },
+  { href: '/#tarifs', label: 'Tarifs' },
+  { href: '/#faq', label: 'FAQ' },
+  { href: '/blog', label: 'Blog' },
 ]
 
-export interface Plan {
-  nom: string
-  mensuel: number | null
-  annuel: number | null
-  gratuit?: boolean
-  surDevis?: boolean
-  accroche: string
-  points: string[]
-  cta: string
-  phare?: boolean
+/** Le prix d'un diagnostic acheté à l'unité, en CHF. */
+export const PRIX_DIAGNOSTIC = 300
+
+/** L'abonnement, affiché en CHF par mois. */
+export const PRIX_ABONNEMENT = 850
+
+/** La durée d'engagement de l'abonnement, en mois : il se souscrit pour un an. */
+export const ENGAGEMENT_MOIS = 12
+
+/** Le nombre de diagnostics achetés à partir duquel le prix devient dégressif. */
+export const SEUIL_DEGRESSIF = 10
+
+/** Le nombre de diagnostics par mois à partir duquel l'abonnement coûte moins cher que l'unité. */
+export const SEUIL_RENTABLE = Math.ceil(PRIX_ABONNEMENT / PRIX_DIAGNOSTIC)
+
+/** Un montant en francs, à la suisse : 1’234 CHF. */
+export function francs(n: number) {
+  return `${Math.round(n).toLocaleString('fr-CH').replace(/[\u202f\u00a0 ]/g, '’')}\u00a0CHF`
 }
-
-export const PLANS: Plan[] = [
-  {
-    nom: 'Découverte', mensuel: 0, annuel: 0, gratuit: true,
-    accroche: 'Pour voir ce que donne un rapport sur votre propre immeuble.',
-    points: ['1 diagnostic offert', 'Rapport PDF avec filigrane', '1 utilisateur'],
-    cta: 'Commencer',
-  },
-  {
-    nom: 'Starter', mensuel: 49, annuel: 490,
-    accroche: 'Pour un indépendant, quelques immeubles par mois.',
-    points: ['5 diagnostics par mois', 'Rapports PDF sans filigrane', 'Lien de partage au client'],
-    cta: 'Choisir Starter',
-  },
-  {
-    nom: 'Pro', mensuel: 149, annuel: 1490, phare: true,
-    accroche: 'Pour un bureau qui en fait son outil de relevé.',
-    points: ['20 diagnostics par mois', '3 utilisateurs', 'Export Excel et rapports à votre logo'],
-    cta: 'Choisir Pro',
-  },
-  {
-    nom: 'Entreprise', mensuel: null, annuel: null, surDevis: true,
-    accroche: 'Pour une régie ou un groupe qui gère un parc.',
-    points: ['Diagnostics illimités', 'Utilisateurs illimités', 'API et connecteurs'],
-    cta: 'Nous écrire',
-  },
-]
 
 export const CONTACT = 'mailto:contact@finalyn.com'
 
@@ -78,8 +63,8 @@ export const QUESTIONS: { q: string; r: string }[] = [
     r: 'Oui. Chaque ouvrage porte son code CFC, son unité et sa quantité, et le rapport comme les exports suivent cette structure.',
   },
   {
-    q: 'Faut-il l’app pour relever sur le terrain ?',
-    r: 'Non. Diagly fonctionne dans le navigateur de l’iPad, de l’iPhone et de l’ordinateur. L’app iPhone et iPad, en test, arrivera bientôt sur l’App Store : elle ajoute la barre de navigation native d’iOS et son scanner de documents.',
+    q: 'Sur quels appareils fonctionne Diagly ?',
+    r: 'Partout. L’app iPhone et iPad est faite pour le terrain : la navigation d’iOS, son scanner de documents, le relevé hors connexion. Sur Mac et PC, Diagly s’installe comme une application. Et sans rien installer, il fonctionne dans le navigateur.',
   },
   {
     q: 'Et sans réseau, au sous-sol ?',
@@ -87,14 +72,25 @@ export const QUESTIONS: { q: string; r: string }[] = [
   },
   {
     q: 'Où sont hébergées mes données ?',
-    r: 'En Suisse, chez Infomaniak. Quand vous lancez une analyse par l’IA (photo, plan, document ou question à l’assistant), les éléments concernés sont transmis à notre fournisseur d’IA, Anthropic, hors de Suisse. Le Guide IA des photos peut être réglé sur « Sans guide ».',
+    r: 'En Suisse, chez Infomaniak. Quand vous lancez une analyse par l’IA (photo, plan, document ou question à l’assistant), les éléments concernés sont envoyés à notre fournisseur d’IA, Anthropic, aux États-Unis, pour y être analysés ; vos dossiers restent stockés en Suisse. Le Guide IA des photos peut être réglé sur « Sans guide ».',
   },
   {
     q: 'Puis-je exporter mes données ?',
     r: 'Oui. Les données d’un diagnostic sortent en Excel, CSV ou JSON, les métrés en Excel, les rapports en PDF. Une API en lecture et des webhooks relient Diagly à vos propres outils.',
   },
   {
-    q: 'Puis-je arrêter quand je veux ?',
-    r: 'Oui. Les plans sont sans engagement et résiliables sans préavis.',
+    q: 'Combien coûte un diagnostic ?',
+    r: `${francs(PRIX_DIAGNOSTIC)} à l’unité, et moins cher à partir de ${SEUIL_DEGRESSIF} diagnostics achetés. L’abonnement, à ${francs(PRIX_ABONNEMENT)} par mois avec un engagement d’un an, donne des diagnostics illimités : il revient moins cher que l’unité dès ${SEUIL_RENTABLE} diagnostics par mois, et comprend une heure de formation la première année.`,
+  },
+  {
+    q: 'Puis-je voir Diagly avant d’acheter ?',
+    r: 'Oui. Réservez une démo : nous vous montrons l’outil, du plan au rapport, et répondons à vos questions. Elle est offerte.',
   },
 ]
+
+/**
+ * L'adresse de Diagly sur l'App Store. Vide tant que l'app n'y est pas
+ * publiée : le badge s'affiche alors sans mener nulle part, plutôt que vers
+ * une page qui n'existe pas.
+ */
+export const LIEN_APP_STORE = ''

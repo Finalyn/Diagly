@@ -7,3 +7,8 @@ Disallow: /preview
 Disallow: /api/
 Disallow: /uploads/
 Allow: /
+
+# Les moteurs de recherche et les assistants d'IA sont les bienvenus sur les
+# pages publiques. Le résumé de Diagly pour les assistants : /llms.txt (et sa
+# version longue, /llms-full.txt).
+Sitemap: https://diagly.ch/sitemap.xml

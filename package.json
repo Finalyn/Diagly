@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/prerendu.mjs",
     "build:app": "tsc -b && vite build --mode app && cap sync ios",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -32,6 +32,7 @@
     "jspdf-autotable": "^5.0.8",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.8.0",
+    "modern-screenshot": "4.7.0",
     "pdfjs-dist": "^4.10.38",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

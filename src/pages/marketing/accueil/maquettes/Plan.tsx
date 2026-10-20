@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
 import { PIECES } from './donnees'
+import { CAGE, CLOISON, FENETRE_OUEST, L, MUR, MUR_CAGE, NORD, P, PALIERE, PORTES, PORTES_CLOISON, SUD, VUE, Y, miroir } from './geometrie'
 
 /**
  * Le plan d'étage des maquettes, en vecteurs.
@@ -13,25 +14,6 @@ import { PIECES } from './donnees'
  * Coordonnées en mètres, origine au coin sud-ouest, l'axe y vers le nord ;
  * le SVG retourne l'axe à l'affichage.
  */
-
-const L = 20
-const P = 11
-const MUR = 0.3
-const CLOISON = 0.12
-const MUR_CAGE = 0.25
-const CAGE = { gauche: 8.5, droite: 11.5 }
-const PALIERE = { y1: 1.6, y2: 2.5 }
-const PORTES_CLOISON: [number, number][] = [[2.0, 2.8], [4.2, 4.9], [6.5, 7.3]]
-const FENETRES_SUD: [number, number][] = [[1.5, 3.0], [5.0, 6.5]]
-const FENETRES_NORD: [number, number][] = [[1.2, 2.4], [4.1, 4.9], [6.4, 7.6]]
-const FENETRE_OUEST: [number, number] = [2.0, 3.4]
-
-const miroir = (x: number) => L - x
-const Y = (y: number) => P - y
-const sym = (o: [number, number][]) => [...o, ...o.map(([a, b]) => [miroir(b), miroir(a)] as [number, number])]
-const SUD = sym(FENETRES_SUD)
-const NORD = sym(FENETRES_NORD)
-const PORTES = sym(PORTES_CLOISON)
 
 /** Les morceaux pleins d'un mur interrompu par des ouvertures. */
 function pleins(debut: number, fin: number, ouvertures: [number, number][]): [number, number][] {
@@ -71,7 +53,7 @@ export function PlanEtage({ pieces = false, numeros = false, fenetres = false, p
     <rect key={`${k}${x}-${y}`} x={x} y={Y(y + h)} width={l} height={h} />
 
   return (
-    <svg viewBox="-2 -0.9 23 14.4" className={cn('block h-auto w-full', className)} fontFamily="Inter Variable, Inter, system-ui, sans-serif">
+    <svg viewBox={VUE} className={cn('block h-auto w-full', className)} fontFamily="Inter Variable, Inter, system-ui, sans-serif">
       {/* Murs porteurs et façades, interrompus aux ouvertures. */}
       <g fill={plein}>
         {pleins(0, L, SUD).map(([a, b]) => pave(a, 0, b - a, MUR, 's'))}

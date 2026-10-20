@@ -36,6 +36,9 @@ const ProjectPhotos = lazy(() => named(import('@/pages/app/ProjectPhotos'), 'Pro
 // La page d'accueil et ses maquettes : chargées à la demande, elles ne pèsent
 // pas sur le paquet que tout utilisateur de l'application télécharge.
 const Accueil = lazy(() => named(import('@/pages/marketing/accueil/Accueil'), 'Accueil'))
+const PageFonctionnalites = lazy(() => named(import('@/pages/marketing/accueil/PageFonctionnalites'), 'PageFonctionnalites'))
+const PageBlog = lazy(() => named(import('@/pages/marketing/blog/PageBlog'), 'PageBlog'))
+const PageArticle = lazy(() => named(import('@/pages/marketing/blog/PageArticle'), 'PageArticle'))
 const ProjectRapports = lazy(() => named(import('@/pages/app/ProjectRapports'), 'ProjectRapports'))
 const ProjectVariantes = lazy(() => named(import('@/pages/app/ProjectVariantes'), 'ProjectVariantes'))
 const ProjectCECB = lazy(() => named(import('@/pages/app/ProjectCECB'), 'ProjectCECB'))
@@ -102,13 +105,16 @@ function App() {
           {/* L'app iPhone/iPad n'a pas de vitrine : elle s'ouvre sur le travail
               (ou sur la connexion, que ProtectedRoute impose au besoin). */}
           <Route path="/" element={estAppNative ? <Navigate to="/app" replace /> : <Accueil />} />
+          <Route path="/fonctionnalites" element={estAppNative ? <Navigate to="/app" replace /> : <PageFonctionnalites />} />
+          <Route path="/blog" element={estAppNative ? <Navigate to="/app" replace /> : <PageBlog />} />
+          <Route path="/blog/:slug" element={estAppNative ? <Navigate to="/app" replace /> : <PageArticle />} />
           <Route path="/bientot" element={<Soon />} />
           {/* Les adresses des anciennes versions de la page mènent à l'accueil :
               un lien gardé quelque part ne tombe pas sur une page vide. */}
           <Route path="/landing" element={<Navigate to="/" replace />} />
           <Route path="/landing-2" element={<Navigate to="/" replace />} />
           <Route path="/landing-3" element={<Navigate to="/" replace />} />
-          <Route path="/tarifs" element={<Navigate to="/" replace />} />
+          <Route path="/tarifs" element={<Navigate to={{ pathname: '/', hash: '#tarifs' }} replace />} />
 
           {/* Raccourci : /dashboard -> app (redirige vers /login si non connecté) */}
           <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />
