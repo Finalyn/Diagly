@@ -53,5 +53,5 @@ export function rendre(page: PageARendre): string {
 }
 
 export { ARTICLES } from './pages/marketing/blog/articles'
-export { QUESTIONS, PRIX_DIAGNOSTIC, PRIX_ABONNEMENT, SEUIL_DEGRESSIF, SEUIL_RENTABLE, ENGAGEMENT_MOIS, francs, CONTACT } from './pages/marketing/accueil/contenu'
+export { QUESTIONS, PRIX_DIAGNOSTIC, PLUS, PRO, SEUIL_PLUS, SEUIL_PRO, ENGAGEMENT_MOIS, remise, francs, CONTACT } from './pages/marketing/accueil/contenu'
 export { SITE, FONCTIONNALITES_CLES } from './pages/marketing/seo'

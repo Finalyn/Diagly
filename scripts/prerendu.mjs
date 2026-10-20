@@ -100,8 +100,10 @@ ${m.FONCTIONNALITES_CLES.map((x) => `- ${x}`).join('\n')}
 ## Tarifs
 
 - Diagnostic à l’unité : ${f(m.PRIX_DIAGNOSTIC)} par diagnostic.
-- Tarif dégressif dès ${m.SEUIL_DEGRESSIF} diagnostics achetés, sur demande.
-- Abonnement : ${f(m.PRIX_ABONNEMENT)} par mois, avec un engagement de ${m.ENGAGEMENT_MOIS} mois ; diagnostics illimités ; rentable dès ${m.SEUIL_RENTABLE} diagnostics par mois ; une heure de formation incluse la première année.
+- Abonnement ${m.PLUS.nom} : ${f(m.PLUS.prixMois)} par mois, ${m.PLUS.inclus} diagnostics compris par mois, puis ${f(m.PLUS.prixSuivant)} le diagnostic (${m.remise(m.PLUS)} % de moins) ; moins cher que l’unité dès ${m.SEUIL_PLUS} diagnostics par mois.
+- Abonnement ${m.PRO.nom} : ${f(m.PRO.prixMois)} par mois, ${m.PRO.inclus} diagnostics compris par mois, puis ${f(m.PRO.prixSuivant)} le diagnostic (${m.remise(m.PRO)} % de moins) ; plus avantageux que ${m.PLUS.nom} dès ${m.SEUIL_PRO} diagnostics par mois.
+- Les abonnements se souscrivent pour ${m.ENGAGEMENT_MOIS} mois et comprennent une heure de formation la première année.
+- Entreprise : sur devis (volume sur mesure, plusieurs équipes, API et webhooks).
 - La démo est offerte.
 
 ## Pages

@@ -30,7 +30,7 @@ export function Hero() {
         </LienSite>
 
         {/* L'accroche, puis la promesse : deux lignes de la même couleur, chacune d'un tenant sur ordinateur. */}
-        <h1 id="titre-accueil" className="mx-auto mt-6 text-balance text-[clamp(2.1rem,4.6vw,3.5rem)] font-semibold leading-[1.1] tracking-[-0.035em] text-[#0b1f44]">
+        <h1 id="titre-accueil" className="mx-auto mt-6 text-balance text-[clamp(2.25rem,10.3vw,3.5rem)] md:text-[clamp(2.75rem,5.6vw,3.5rem)] font-semibold leading-[1.1] tracking-[-0.035em] text-[#0b1f44]">
           <span className="block lg:whitespace-nowrap">Diagnostic bâtiment, simplifié.</span>
           <span className="block lg:whitespace-nowrap">Des plans au rapport chiffré.</span>
         </h1>
@@ -39,11 +39,13 @@ export function Hero() {
           Diagly chiffre par code CFC et sort le rapport à votre en-tête.
         </p>
 
+        {/* Sur téléphone, les deux boutons gardent une même largeur, mais pas
+            celle de l'écran : en pleine largeur, ils écrasaient le titre. */}
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Bouton to="/register" className="w-full px-6 sm:w-auto">
+          <Bouton to="/register" className="w-[16.5rem] max-w-full px-6 sm:w-auto">
             Créer un compte gratuit<ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Bouton>
-          <Bouton to="/fonctionnalites" variante="contour" className="w-full px-6 sm:w-auto">Découvrir l’app</Bouton>
+          <Bouton to="/fonctionnalites" variante="contour" className="w-[16.5rem] max-w-full px-6 sm:w-auto">Découvrir l’app</Bouton>
         </div>
       </div>
 

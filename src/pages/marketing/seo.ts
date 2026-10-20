@@ -1,4 +1,4 @@
-import { CONTACT, PRIX_ABONNEMENT, PRIX_DIAGNOSTIC, QUESTIONS } from './accueil/contenu'
+import { CONTACT, PLUS, PRIX_DIAGNOSTIC, PRO, QUESTIONS, remise, type Abonnement } from './accueil/contenu'
 import { ARTICLES, type Article } from './blog/articles'
 
 /**
@@ -55,6 +55,18 @@ export const FONCTIONNALITES_CLES = [
   'Données hébergées en Suisse chez Infomaniak',
 ]
 
+/** Un abonnement, tel qu'un moteur doit le lire : un prix par mois, engagement d'un an. */
+function offreAbonnement(a: Abonnement) {
+  return {
+    '@type': 'Offer',
+    name: `Abonnement ${a.nom}, engagement d’un an, prix par mois`,
+    description: `${a.inclus} diagnostics compris par mois, puis ${a.prixSuivant} CHF le diagnostic (${remise(a)} % de moins qu’à l’unité) ; une heure de formation incluse la première année`,
+    price: String(a.prixMois),
+    priceCurrency: 'CHF',
+    priceSpecification: { '@type': 'UnitPriceSpecification', price: String(a.prixMois), priceCurrency: 'CHF', unitText: 'mois' },
+  }
+}
+
 const APPLICATION = {
   '@type': 'SoftwareApplication',
   '@id': `${SITE}/#application`,
@@ -69,10 +81,9 @@ const APPLICATION = {
   publisher: { '@id': `${SITE}/#organisation` },
   offers: [
     { '@type': 'Offer', name: 'Diagnostic à l’unité', price: String(PRIX_DIAGNOSTIC), priceCurrency: 'CHF' },
-    {
-      '@type': 'Offer', name: 'Abonnement annuel, prix par mois', description: 'Diagnostics illimités, une heure de formation incluse la première année', price: String(PRIX_ABONNEMENT), priceCurrency: 'CHF',
-      priceSpecification: { '@type': 'UnitPriceSpecification', price: String(PRIX_ABONNEMENT), priceCurrency: 'CHF', unitText: 'mois' },
-    },
+    offreAbonnement(PLUS),
+    offreAbonnement(PRO),
+    { '@type': 'Offer', name: 'Entreprise', description: 'Sur devis : volume sur mesure, plusieurs équipes, API et webhooks.', priceCurrency: 'CHF' },
   ],
 }
 

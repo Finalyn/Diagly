@@ -1,18 +1,21 @@
 import { useId, useState } from 'react'
 import { ArrowUpRight, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { CONTACT, ENGAGEMENT_MOIS, PRIX_ABONNEMENT, PRIX_DIAGNOSTIC, SEUIL_DEGRESSIF, SEUIL_RENTABLE, francs } from '../contenu'
+import {
+  CONTACT, ENGAGEMENT_MOIS, PLUS, PRIX_DIAGNOSTIC, PRO, SEUIL_PLUS, SEUIL_PRO,
+  coutAbonnement, coutUnite, francs, remise,
+} from '../contenu'
 import { Apparition, Bouton, Conteneur, EnTeteCentre, FOCUS } from '../ui'
 import { typo } from '../typo'
 
 /**
- * Les tarifs : le diagnostic à l'unité, le tarif dégressif dès quelques
- * diagnostics achetés, l'abonnement (souscrit pour un an, affiché par mois). Les montants viennent de
- * contenu.ts ; rien n'est écrit en dur ici.
+ * Les tarifs : le diagnostic à l'unité, les abonnements Plus et Pro (des
+ * diagnostics compris chaque mois, les suivants moins chers ; souscrits pour
+ * un an, affichés par mois) et l'offre Entreprise sur devis. Les montants
+ * viennent de contenu.ts ; rien n'est écrit en dur ici.
  *
  * Dessous, un calculateur : on choisit combien de diagnostics on fait par
- * mois, et il compare l'unité à l'abonnement, en disant lequel revient moins
- * cher et de combien.
+ * mois, et il dit quelle formule revient le moins cher, et de combien.
  */
 
 interface Offre {
@@ -37,21 +40,40 @@ const OFFRES: Offre[] = [
     action: { libelle: 'Réserver une démo', href: '#demo' },
   },
   {
-    nom: 'Abonnement',
-    prix: francs(PRIX_ABONNEMENT),
+    nom: PLUS.nom,
+    prix: francs(PLUS.prixMois),
     unite: 'par mois',
-    condition: `Engagement d’un an, soit ${francs(PRIX_ABONNEMENT * ENGAGEMENT_MOIS)} par an`,
-    accroche: 'Pour un bureau qui en fait son outil de tous les jours.',
-    points: ['Diagnostics illimités', `Rentable dès ${SEUIL_RENTABLE} diagnostics par mois`, 'Une heure de formation incluse la première année', 'Un prix fixe, chaque mois'],
+    condition: `Engagement d’un an, soit ${francs(PLUS.prixMois * ENGAGEMENT_MOIS)} par an`,
+    accroche: 'Pour un bureau qui diagnostique chaque mois.',
+    points: [
+      `${PLUS.inclus} diagnostics compris chaque mois`,
+      `Les suivants à ${francs(PLUS.prixSuivant)}, ${remise(PLUS)} % de moins`,
+      `Moins cher que l’unité dès ${SEUIL_PLUS} diagnostics par mois`,
+      'Une heure de formation incluse la première année',
+    ],
     phare: true,
     action: { libelle: 'Réserver une démo', href: '#demo' },
   },
   {
-    nom: `Dès ${SEUIL_DEGRESSIF} diagnostics`,
-    prix: 'Dégressif',
-    accroche: 'Pour une campagne de diagnostics ou un parc immobilier.',
-    points: [`Un prix plus bas dès ${SEUIL_DEGRESSIF} diagnostics achetés`, 'Plus vous en prenez, moins chacun coûte', 'Sans abonnement'],
-    action: { libelle: 'Demander un tarif', href: CONTACT },
+    nom: PRO.nom,
+    prix: francs(PRO.prixMois),
+    unite: 'par mois',
+    condition: `Engagement d’un an, soit ${francs(PRO.prixMois * ENGAGEMENT_MOIS)} par an`,
+    accroche: 'Pour un bureau dont le diagnostic est le métier.',
+    points: [
+      `${PRO.inclus} diagnostics compris chaque mois`,
+      `Les suivants à ${francs(PRO.prixSuivant)}, ${remise(PRO)} % de moins`,
+      `Plus avantageux que ${PLUS.nom} dès ${SEUIL_PRO} diagnostics par mois`,
+      'Une heure de formation incluse la première année',
+    ],
+    action: { libelle: 'Réserver une démo', href: '#demo' },
+  },
+  {
+    nom: 'Entreprise',
+    prix: 'Sur devis',
+    accroche: 'Pour un parc immobilier ou plusieurs équipes.',
+    points: ['Un volume de diagnostics sur mesure', 'Plusieurs équipes dans un même compte', 'Relié à vos outils par l’API et les webhooks'],
+    action: { libelle: 'Demander un devis', href: CONTACT },
   },
 ]
 
@@ -62,10 +84,10 @@ export function Tarifs() {
         <EnTeteCentre
           id="titre-tarifs"
           titre="Payez au diagnostic, ou abonnez-vous"
-          sousTitre={`Un diagnostic à ${francs(PRIX_DIAGNOSTIC)}, un tarif dégressif dès ${SEUIL_DEGRESSIF} diagnostics, ou l’abonnement annuel, rentable dès ${SEUIL_RENTABLE} diagnostics par mois. La démo est offerte.`}
+          sousTitre={`Un diagnostic à ${francs(PRIX_DIAGNOSTIC)}, ou un abonnement qui en comprend chaque mois : ${PLUS.nom} dès ${francs(PLUS.prixMois)} par mois, ${PRO.nom} pour les gros volumes, Entreprise sur devis. La démo est offerte.`}
         />
 
-        <ul className="mx-auto mt-12 grid max-w-[1080px] gap-4 sm:mt-16 md:grid-cols-3">
+        <ul className="mx-auto mt-12 grid max-w-[1200px] gap-4 sm:mt-16 md:grid-cols-2 xl:grid-cols-4">
           {OFFRES.map((o, i) => (
             <Apparition as="li" key={o.nom} delai={i * 60} className="flex">
               <CarteOffre offre={o} />
@@ -119,19 +141,23 @@ function CarteOffre({ offre: o }: { offre: Offre }) {
 
 /**
  * Le calculateur : combien de diagnostics par mois, et ce que coûte chaque
- * formule. La formule la moins chère est mise en avant, avec l'économie
- * qu'elle fait faire.
+ * formule ce mois-là. La moins chère est mise en avant, avec ce qu'elle fait
+ * économiser par rapport à l'unité.
  */
 function Calculateur() {
-  const [n, setN] = useState(SEUIL_RENTABLE)
+  const [n, setN] = useState(SEUIL_PLUS)
   const id = useId()
-  const unite = n * PRIX_DIAGNOSTIC
-  const abonnementGagne = PRIX_ABONNEMENT < unite
-  const ecart = Math.abs(unite - PRIX_ABONNEMENT)
-  const max = Math.max(unite, PRIX_ABONNEMENT)
+  const formules = [
+    { nom: 'À l’unité', detail: `${n} × ${francs(PRIX_DIAGNOSTIC)}`, montant: coutUnite(n) },
+    { nom: PLUS.nom, detail: n > PLUS.inclus ? `${PLUS.inclus} compris, ${n - PLUS.inclus} × ${francs(PLUS.prixSuivant)}` : `${PLUS.inclus} compris`, montant: coutAbonnement(PLUS, n) },
+    { nom: PRO.nom, detail: n > PRO.inclus ? `${PRO.inclus} compris, ${n - PRO.inclus} × ${francs(PRO.prixSuivant)}` : `${PRO.inclus} compris`, montant: coutAbonnement(PRO, n) },
+  ]
+  const meilleure = formules.reduce((a, b) => (b.montant < a.montant ? b : a))
+  const economie = coutUnite(n) - meilleure.montant
+  const max = Math.max(...formules.map((f) => f.montant))
 
   return (
-    <Apparition className="mx-auto mt-6 max-w-[1080px] rounded-[24px] bg-white p-6 ring-1 ring-black/[0.08] sm:p-8">
+    <Apparition className="mx-auto mt-6 max-w-[1200px] rounded-[24px] bg-white p-6 ring-1 ring-black/[0.08] sm:p-8">
       <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-center lg:gap-12">
         <div>
           <label htmlFor={id} className="block text-[17px] font-semibold tracking-[-0.01em] text-[#0b1220]">
@@ -142,7 +168,7 @@ function Calculateur() {
               id={id}
               type="range"
               min={1}
-              max={12}
+              max={30}
               value={n}
               onChange={(e) => setN(Number(e.target.value))}
               className="h-2 w-full cursor-pointer accent-[#0167EA]"
@@ -150,29 +176,31 @@ function Calculateur() {
             <output htmlFor={id} className="w-12 shrink-0 text-right text-[28px] font-semibold tabular-nums tracking-[-0.03em] text-[#0b1220]">{n}</output>
           </div>
           <p aria-live="polite" className="mt-5 text-pretty text-[15px] leading-[1.6] text-[#545458]">
-            {ecart === 0
-              ? 'Les deux formules reviennent au même prix.'
-              : abonnementGagne
-                ? <>L’abonnement vous fait économiser <strong className="font-semibold text-[#0b1220]">{francs(ecart)}</strong> par mois.</>
-                : <>À l’unité, vous économisez <strong className="font-semibold text-[#0b1220]">{francs(ecart)}</strong> par mois.</>}
+            {economie > 0
+              ? <>{typo(`${meilleure.nom} revient le moins cher : `)}<strong className="font-semibold text-[#0b1220]">{francs(economie)}</strong>{typo(' de moins par mois qu’à l’unité.')}</>
+              : typo('À ce rythme, l’unité revient le moins cher.')}
           </p>
         </div>
 
         <div className="space-y-4">
-          <Barre libelle={`À l’unité, ${n} × ${francs(PRIX_DIAGNOSTIC)}`} montant={unite} max={max} gagne={!abonnementGagne && ecart > 0} />
-          <Barre libelle="Abonnement" montant={PRIX_ABONNEMENT} max={max} gagne={abonnementGagne} />
-          <p className="text-[12.5px] text-[#8a8f98]">{typo(`L’abonnement se souscrit pour un an ; son prix est donné par mois.`)}</p>
+          {formules.map((f) => (
+            <Barre key={f.nom} libelle={f.nom} detail={f.detail} montant={f.montant} max={max} gagne={f === meilleure} />
+          ))}
+          <p className="text-[12.5px] text-[#8a8f98]">{typo('Les abonnements se souscrivent pour un an ; leur prix est donné par mois. Au-delà de 30 diagnostics par mois, l’offre Entreprise est sur devis.')}</p>
         </div>
       </div>
     </Apparition>
   )
 }
 
-function Barre({ libelle, montant, max, gagne }: { libelle: string; montant: number; max: number; gagne: boolean }) {
+function Barre({ libelle, detail, montant, max, gagne }: { libelle: string; detail: string; montant: number; max: number; gagne: boolean }) {
   return (
     <div>
       <div className="flex items-baseline justify-between gap-3 text-[14px]">
-        <span className="font-medium text-[#0b1220]">{libelle}</span>
+        <span className="min-w-0">
+          <span className="font-medium text-[#0b1220]">{libelle}</span>
+          <span className="ml-2 text-[13px] text-[#8a8f98]">{detail}</span>
+        </span>
         <span className={cn('font-semibold tabular-nums', gagne ? 'text-[#0167EA]' : 'text-[#0b1220]')}>{francs(montant)} / mois</span>
       </div>
       <div className="mt-2 h-3 overflow-hidden rounded-full bg-[#eef0f3]">
