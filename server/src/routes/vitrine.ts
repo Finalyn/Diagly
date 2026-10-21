@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { logger } from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
-import { sendMail } from "../lib/mail.js";
+import { mailConfigured, sendMail } from "../lib/mail.js";
 import { occupationsDeLAgenda } from "../lib/agenda-ics.js";
 import { REGLES, bornesDeLaDemo, creneauxLibres } from "../lib/demos.js";
 import { dateSuisse, heureSuisse } from "../lib/heure-suisse.js";
@@ -146,7 +146,7 @@ const evenement = (d: { nom: string; bureau: string | null; debut: Date; fin: Da
 router.get("/demo/creneaux", limiteur, async (_req, res) => {
   try {
     res.setHeader("Cache-Control", "no-store");
-    res.json({ duree: REGLES.duree, jours: await joursLibres() });
+    res.json({ duree: REGLES.duree, jours: await joursLibres(), mail: mailConfigured() });
   } catch {
     res.status(503).json({ error: "Les disponibilités sont momentanément indisponibles." });
   }
@@ -200,7 +200,8 @@ router.post("/demo", limiteurReservation, async (req, res) => {
   envoyer(nouvelleDemoHote(demo, Boolean(hubEventId)));
   logger.info({ demo: demo.id, quand: resumeDemo(demo), hub: Boolean(hubEventId) }, "démos : démo réservée");
 
-  res.status(201).json({ ok: true, jeton: demo.jetonClient, debut: demo.debut, fin: demo.fin, quand: resumeDemo(demo) });
+  // `mail` : la page ne promet la confirmation par e-mail que si le serveur sait l'envoyer.
+  res.status(201).json({ ok: true, jeton: demo.jetonClient, debut: demo.debut, fin: demo.fin, quand: resumeDemo(demo), mail: mailConfigured() });
 });
 
 /** La démo d'un lien, et qui le tient. */

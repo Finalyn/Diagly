@@ -30,7 +30,7 @@ const ATOUTS = [
 type Etat =
   | { type: 'chargement' }
   | { type: 'indisponible' }
-  | { type: 'pret'; jours: JourLibre[]; duree: number }
+  | { type: 'pret'; jours: JourLibre[]; duree: number; mail: boolean }
 
 export function Demo() {
   const [etat, setEtat] = useState<Etat>({ type: 'chargement' })
@@ -44,11 +44,11 @@ export function Demo() {
   const [site, setSite] = useState('')
   const [envoi, setEnvoi] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
-  const [reservee, setReservee] = useState<{ quand: string; jeton?: string; email: string } | null>(null)
+  const [reservee, setReservee] = useState<{ quand: string; jeton?: string; email: string; mail: boolean } | null>(null)
 
   const charger = () => api.demo.creneaux()
     .then((r) => {
-      setEtat({ type: 'pret', jours: r.jours, duree: r.duree })
+      setEtat({ type: 'pret', jours: r.jours, duree: r.duree, mail: r.mail !== false })
       // Le premier jour libre est déjà choisi : ses heures s'affichent d'emblée.
       setCreneau((c) => c ?? (r.jours[0] ? { date: r.jours[0].date, heure: '' } : null))
     })
@@ -67,7 +67,7 @@ export function Demo() {
         date: creneau.date, heure: creneau.heure, nom: nom.trim(), email: email.trim(),
         bureau: bureau.trim() || undefined, telephone: telephone.trim() || undefined, message: message.trim() || undefined, site,
       })
-      setReservee({ quand: creneauLisible(creneau), jeton: r.jeton, email: email.trim() })
+      setReservee({ quand: creneauLisible(creneau), jeton: r.jeton, email: email.trim(), mail: r.mail !== false })
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setErreur('Ce créneau vient d’être pris. Choisissez-en un autre.')
@@ -166,9 +166,11 @@ export function Demo() {
                       {creneau?.heure ? `Réserver : ${creneauLisible(creneau)}` : 'Réserver ce créneau'}
                       {!envoi && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
                     </button>
-                    <p className="mt-3 text-center text-[12.5px] text-[#8a8f98]">
-                      {typo('La confirmation vous arrive par e-mail, avec l’invitation pour votre agenda.')}
-                    </p>
+                    {etat.mail && (
+                      <p className="mt-3 text-center text-[12.5px] text-[#8a8f98]">
+                        {typo('La confirmation vous arrive par e-mail, avec l’invitation pour votre agenda.')}
+                      </p>
+                    )}
                   </form>
                 )}
               </div>
@@ -181,7 +183,7 @@ export function Demo() {
 }
 
 /** Ce que voit le visiteur une fois la démo réservée. */
-function Confirmation({ quand, jeton, email }: { quand: string; jeton?: string; email: string }) {
+function Confirmation({ quand, jeton, email, mail }: { quand: string; jeton?: string; email: string; mail: boolean }) {
   return (
     <div role="status" className="flex min-h-[22rem] flex-col items-center justify-center px-2 text-center">
       <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#e7f0ff] text-[#0167EA]">
@@ -190,7 +192,9 @@ function Confirmation({ quand, jeton, email }: { quand: string; jeton?: string; 
       <p className="mt-5 text-[22px] font-semibold tracking-[-0.02em]">C’est réservé</p>
       <p className="mt-2 text-[16px] font-medium text-[#0b1220]">{quand}</p>
       <p className="mt-3 max-w-[24rem] text-pretty text-[14px] leading-relaxed text-[#6b7280]">
-        {typo(`La confirmation vient de partir à ${email}, avec l’invitation pour votre agenda. À très bientôt.`)}
+        {mail
+          ? typo(`La confirmation vient de partir à ${email}, avec l’invitation pour votre agenda. À très bientôt.`)
+          : typo('Gardez cette page ou le lien ci-dessous : il permet de déplacer ou d’annuler le rendez-vous. À très bientôt.')}
       </p>
       {jeton && (
         <Link to={`/demo/${jeton}`} className={cn('mt-5 text-[14px] font-medium text-[#0167EA] hover:underline', FOCUS)}>

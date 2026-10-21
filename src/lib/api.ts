@@ -359,9 +359,9 @@ export const api = {
   // Les démos réservées sur la page d'accueil (aucun compte : le lien reçu est la clé).
   demo: {
     creneaux: () =>
-      request<{ duree: number; jours: { date: string; heures: string[] }[] }>('/api/vitrine/demo/creneaux', { withAuth: false }),
+      request<{ duree: number; jours: { date: string; heures: string[] }[]; mail?: boolean }>('/api/vitrine/demo/creneaux', { withAuth: false }),
     reserver: (body: { date: string; heure: string; nom: string; email: string; bureau?: string; telephone?: string; message?: string; site?: string }) =>
-      request<{ ok: boolean; jeton?: string; debut?: string; fin?: string; quand?: string }>('/api/vitrine/demo', { method: 'POST', body, withAuth: false }),
+      request<{ ok: boolean; jeton?: string; debut?: string; fin?: string; quand?: string; mail?: boolean }>('/api/vitrine/demo', { method: 'POST', body, withAuth: false }),
     get: (jeton: string) =>
       request<import('./api-types').DemoReservee>(`/api/vitrine/demo/reservation/${encodeURIComponent(jeton)}`, { withAuth: false }),
     creneauxPourDeplacer: (jeton: string) =>
