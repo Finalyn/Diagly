@@ -41,7 +41,11 @@ function logoDiagly(): Buffer | null {
   return logo;
 }
 
-export async function sendMail(opts: { to: string; subject: string; html: string; text?: string; replyTo?: string; fromName?: string }): Promise<boolean> {
+export async function sendMail(opts: {
+  to: string; subject: string; html: string; text?: string; replyTo?: string; fromName?: string
+  /** Une invitation d'agenda (.ics) : les messageries proposent alors de l'ajouter, ou la mettent à jour. */
+  icalEvent?: { method: "REQUEST" | "CANCEL"; content: string; filename?: string }
+}): Promise<boolean> {
   const t = getTransport();
   if (!t) {
     logger.info({ to: opts.to, subject: opts.subject }, "SMTP non configuré : email non envoyé (dégradation gracieuse)");
@@ -55,6 +59,9 @@ export async function sendMail(opts: { to: string; subject: string; html: string
     await t.sendMail({
       from, to: opts.to, subject: opts.subject, html: opts.html, text: opts.text, replyTo: opts.replyTo,
       attachments: image ? [{ filename: "diagly.png", content: image, cid: CID_LOGO }] : undefined,
+      icalEvent: opts.icalEvent
+        ? { method: opts.icalEvent.method, content: opts.icalEvent.content, filename: opts.icalEvent.filename ?? "invitation.ics" }
+        : undefined,
     });
     return true;
   } catch (err) {

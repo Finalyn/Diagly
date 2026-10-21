@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { enSuisse, heureSuisse } from './heure-suisse.js'
+import { dateSuisse, enSuisse, heureSuisse, instantSuisse } from './heure-suisse.js'
 
 describe('l’heure suisse', () => {
   it('lit l’heure d’été (UTC + 2)', () => {
@@ -57,5 +57,21 @@ describe('l’heure suisse sur un serveur réglé ailleurs', () => {
     // Ce qu'affichait l'ancien rappel sur un serveur en UTC.
     expect(instant.toLocaleTimeString('fr-CH', { hour: '2-digit', minute: '2-digit' })).toBe('07:30')
     expect(heureSuisse(instant)).toBe('09:30')
+  })
+})
+
+describe('l’instant d’une heure suisse', () => {
+  it('convertit une heure d’été et une heure d’hiver', () => {
+    expect(instantSuisse('2026-10-12', '09:30').toISOString()).toBe('2026-10-12T07:30:00.000Z')
+    expect(instantSuisse('2026-12-07', '09:30').toISOString()).toBe('2026-12-07T08:30:00.000Z')
+  })
+
+  it('tient le jour du changement d’heure', () => {
+    expect(instantSuisse('2026-10-25', '10:00').toISOString()).toBe('2026-10-25T09:00:00.000Z')
+    expect(instantSuisse('2026-03-29', '10:00').toISOString()).toBe('2026-03-29T08:00:00.000Z')
+  })
+
+  it('rend la date suisse d’un instant', () => {
+    expect(dateSuisse(new Date('2026-10-27T23:30:00Z'))).toBe('2026-10-28')
   })
 })

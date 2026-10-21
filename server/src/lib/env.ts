@@ -22,6 +22,22 @@ const schema = z.object({
   SUPPORT_EMAIL: z.string().default("contact@finalyn.com"),
   /** Comptes Finalyn qui gèrent l'annuaire des partenaires (en plus du rôle ADMIN), séparés par des virgules. */
   FINALYN_ADMINS: z.string().default("contact@finalyn.com"),
+  // Les démos réservées sur diagly.ch (routes/vitrine.ts, lib/demos.ts).
+  // Le flux .ics privé de l'agenda de l'hôte (Finalyn Hub) : ses occupations
+  // ferment les créneaux. Absent : tous les créneaux sont proposés (développement).
+  DEMO_AGENDA_ICS: z.string().url().optional(),
+  // Durée d'une démo, en minutes.
+  DEMO_DUREE_MIN: z.coerce.number().int().min(15).max(120).default(30),
+  // Qui reçoit les réservations, les déplacements et les annulations.
+  DEMO_HOTE_EMAIL: z.string().email().default("contact@finalyn.com"),
+  DEMO_HOTE_NOM: z.string().default("L’équipe Diagly"),
+  // Le lien de visioconférence des démos, s'il est fixe. Absent : les e-mails
+  // annoncent que le lien suit avant le rendez-vous.
+  DEMO_VISIO_URL: z.string().url().optional(),
+  // L'agenda du Finalyn Hub, où chaque démo s'inscrit (outils create_event,
+  // update_event, delete_event du serveur MCP). Jeton personnel « fh_mcp_ ».
+  HUB_MCP_URL: z.string().url().default("https://finalyn.app/mcp"),
+  HUB_MCP_TOKEN: z.string().optional(),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
   // URL publique de l'app (pour construire les redirect_uri OAuth). En dev : localhost.
   APP_URL: z.string().default("http://localhost:4000"),

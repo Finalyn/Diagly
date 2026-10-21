@@ -57,3 +57,31 @@ export function heureSuisse(d: Date): string {
   const m = enSuisse(d);
   return `${deux(m.heure)}:${deux(m.minute)}`;
 }
+
+/** « 2026-10-28 » : la date d'un instant à Zurich. */
+export function dateSuisse(d: Date): string {
+  const m = enSuisse(d);
+  return `${m.annee}-${deux(m.mois)}-${deux(m.jour)}`;
+}
+
+/**
+ * L'instant d'une heure lue à Zurich : « 2026-10-28 » à « 10:00 ».
+ *
+ * L'écart avec UTC change deux fois par an : on le mesure à l'instant visé
+ * plutôt que de le supposer. Une heure qui n'existe pas (2 h 30 le jour du
+ * passage à l'heure d'été) tombe une heure plus tard ; une heure qui existe
+ * deux fois (2 h 30 le jour du retour à l'heure d'hiver) prend la première.
+ */
+export function instantSuisse(date: string, heure: string): Date {
+  const [a, mo, j] = date.split("-").map(Number);
+  const [h, mi] = heure.split(":").map(Number);
+  const voulu = Date.UTC(a, mo - 1, j, h, mi);
+  const ecartA = (t: number) => {
+    const m = enSuisse(new Date(t));
+    return Date.UTC(m.annee, m.mois - 1, m.jour, m.heure, m.minute) - t;
+  };
+  let t = voulu - ecartA(voulu);
+  const ecart = ecartA(t);
+  if (voulu - ecart !== t) t = voulu - ecart;
+  return new Date(t);
+}

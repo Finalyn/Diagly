@@ -69,6 +69,7 @@ const NewSupportRequest = lazy(() => named(import('@/pages/app/NewSupportRequest
 const SupportArticle = lazy(() => named(import('@/pages/app/SupportArticle'), 'SupportArticle'))
 const SupportTutoriel = lazy(() => named(import('@/pages/app/SupportTutoriel'), 'SupportTutoriel'))
 const PublicReport = lazy(() => named(import('@/pages/PublicReport'), 'PublicReport'))
+const GererDemo = lazy(() => named(import('@/pages/GererDemo'), 'GererDemo'))
 const DashboardPreview = lazy(() => named(import('@/pages/DashboardPreview'), 'DashboardPreview'))
 
 // Arrivée : liste des diagnostics sur mobile (app épurée), tableau de bord sur desktop.
@@ -122,6 +123,9 @@ function App() {
           {/* Auth */}
           {/* Rapport client public (lecture seule, sans auth) */}
           <Route path="/share/:token" element={<PublicReport />} />
+
+          {/* Une démo réservée sur la vitrine : le lien de l'e-mail, pour la déplacer ou l'annuler */}
+          <Route path="/demo/:jeton" element={<GererDemo />} />
 
           {/* Vitrine design (mockup, sans auth) */}
           <Route path="/preview" element={<DashboardPreview />} />

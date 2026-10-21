@@ -1205,3 +1205,20 @@ export interface DemandePartenaireAdmin {
   auteur: string
   societe: string | null
 }
+
+/** Une démo réservée sur la page d'accueil, telle que son lien la montre. */
+export interface DemoReservee {
+  /** Le lien du visiteur, ou celui de l'hôte (qui voit aussi ses coordonnées). */
+  role: 'client' | 'hote'
+  statut: 'CONFIRMEE' | 'ANNULEE'
+  passee: boolean
+  nom: string
+  bureau: string | null
+  email?: string
+  telephone?: string | null
+  message?: string | null
+  debut: string
+  fin: string
+  quand: string
+  duree: number
+}

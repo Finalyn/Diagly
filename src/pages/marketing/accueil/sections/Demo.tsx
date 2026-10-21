@@ -1,24 +1,25 @@
-import { useId, useMemo, useState, type FormEvent } from 'react'
-import { ArrowRight, Check } from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowRight, Check, Loader2, CalendarCheck } from 'lucide-react'
+import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { CONTACT } from '../contenu'
 import { Apparition, Conteneur, FOCUS } from '../ui'
 import { typo } from '../typo'
+import { ChoixDuCreneau } from '../ChoixDuCreneau'
+import { creneauLisible, type Creneau, type JourLibre } from '../creneaux'
 
 /**
  * Réserver une démo : la proposition du site, à la place d'un diagnostic
  * offert.
  *
- * Une grande carte bleue, comme l'offre d'essai d'avant : à gauche, « Votre
- * démo est offerte » et ce qu'elle apporte ; à droite, posée sur le bleu, la
- * carte blanche de réservation : les dix prochains jours ouvrables, six
- * créneaux, puis le nom et l'adresse e-mail. Le bouton prépare la demande dans la messagerie du
- * visiteur, adressée à Diagly (CONTACT) : rien n'est envoyé à un service
- * tiers, et le créneau est confirmé par retour d'e-mail. Quand un outil de
- * réservation sera choisi, c'est ce bouton qui changera.
+ * Une grande carte bleue : à gauche, « Votre démo est offerte » et ce qu'elle
+ * apporte ; à droite, posée sur le bleu, la carte blanche de réservation. Les
+ * jours et les heures sont les vrais créneaux libres (du lundi au vendredi,
+ * de 8 h à 18 h, hors agenda de l'hôte) : réserver inscrit la démo dans
+ * l'agenda de Finalyn et envoie la confirmation par e-mail, avec l'invitation
+ * pour l'agenda du visiteur. Rien ne passe par un service tiers.
  */
-
-const CRENEAUX = ['09:00', '10:00', '11:00', '14:00', '15:00', '16:00']
 
 const ATOUTS = [
   'Diagly en direct, du plan au rapport',
@@ -26,47 +27,58 @@ const ATOUTS = [
   'Le tarif adapté à votre volume',
 ]
 
-/** Les dix prochains jours ouvrables, à partir de demain. */
-function prochainsJours(): Date[] {
-  const jours: Date[] = []
-  const d = new Date()
-  d.setHours(12, 0, 0, 0)
-  while (jours.length < 10) {
-    d.setDate(d.getDate() + 1)
-    const j = d.getDay()
-    if (j !== 0 && j !== 6) jours.push(new Date(d))
-  }
-  return jours
-}
-
-const JOUR_COURT = new Intl.DateTimeFormat('fr-CH', { weekday: 'short' })
-const MOIS_COURT = new Intl.DateTimeFormat('fr-CH', { month: 'short' })
-const DATE_LONGUE = new Intl.DateTimeFormat('fr-CH', { weekday: 'long', day: 'numeric', month: 'long' })
+type Etat =
+  | { type: 'chargement' }
+  | { type: 'indisponible' }
+  | { type: 'pret'; jours: JourLibre[]; duree: number }
 
 export function Demo() {
-  const jours = useMemo(() => prochainsJours(), [])
-  const [jour, setJour] = useState<number | null>(null)
-  const [creneau, setCreneau] = useState<string | null>(null)
+  const [etat, setEtat] = useState<Etat>({ type: 'chargement' })
+  const [creneau, setCreneau] = useState<Creneau | null>(null)
   const [nom, setNom] = useState('')
   const [email, setEmail] = useState('')
   const [bureau, setBureau] = useState('')
-  const id = useId()
-  const pret = jour !== null && creneau !== null && nom.trim() !== '' && /\S+@\S+\.\S+/.test(email)
+  const [telephone, setTelephone] = useState('')
+  const [message, setMessage] = useState('')
+  // Le piège à robots : invisible, personne ne le remplit.
+  const [site, setSite] = useState('')
+  const [envoi, setEnvoi] = useState(false)
+  const [erreur, setErreur] = useState<string | null>(null)
+  const [reservee, setReservee] = useState<{ quand: string; jeton?: string; email: string } | null>(null)
 
-  const envoyer = (e: FormEvent) => {
+  const charger = () => api.demo.creneaux()
+    .then((r) => {
+      setEtat({ type: 'pret', jours: r.jours, duree: r.duree })
+      // Le premier jour libre est déjà choisi : ses heures s'affichent d'emblée.
+      setCreneau((c) => c ?? (r.jours[0] ? { date: r.jours[0].date, heure: '' } : null))
+    })
+    .catch(() => setEtat({ type: 'indisponible' }))
+  useEffect(() => { void charger() }, [])
+
+  const pret = creneau?.heure && nom.trim().length >= 2 && /\S+@\S+\.\S+/.test(email)
+
+  const envoyer = async (e: FormEvent) => {
     e.preventDefault()
-    if (!pret || jour === null) return
-    const quand = `${DATE_LONGUE.format(jours[jour])} à ${creneau.replace(':', ' h ')}`
-    const corps = [
-      'Bonjour,',
-      '',
-      `Je souhaite une démo de Diagly le ${quand}.`,
-      '',
-      `Nom : ${nom.trim()}`,
-      `E-mail : ${email.trim()}`,
-      bureau.trim() ? `Bureau : ${bureau.trim()}` : null,
-    ].filter((l) => l !== null).join('\n')
-    window.location.href = `${CONTACT}?subject=${encodeURIComponent('Démo Diagly')}&body=${encodeURIComponent(corps)}`
+    if (!pret || !creneau || envoi) return
+    setEnvoi(true)
+    setErreur(null)
+    try {
+      const r = await api.demo.reserver({
+        date: creneau.date, heure: creneau.heure, nom: nom.trim(), email: email.trim(),
+        bureau: bureau.trim() || undefined, telephone: telephone.trim() || undefined, message: message.trim() || undefined, site,
+      })
+      setReservee({ quand: creneauLisible(creneau), jeton: r.jeton, email: email.trim() })
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setErreur('Ce créneau vient d’être pris. Choisissez-en un autre.')
+        setCreneau(null)
+        void charger()
+      } else {
+        setErreur('La réservation n’a pas abouti. Réessayez dans un instant, ou écrivez-nous.')
+      }
+    } finally {
+      setEnvoi(false)
+    }
   }
 
   const champ = cn('min-h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3.5 text-[15px] text-[#0b1220] placeholder:text-[#9aa1ab] focus:border-[#0167EA] focus:outline-none focus:ring-2 focus:ring-[#0167EA]/20')
@@ -82,7 +94,7 @@ export function Demo() {
                 {typo('Votre démo est offerte.')}
               </h2>
               <p className="mt-5 max-w-[28rem] text-pretty text-[16.5px] leading-[1.65] text-white/75">
-                {typo('Choisissez un créneau : nous vous montrons Diagly, du plan au rapport, et répondons à vos questions.')}
+                {typo(`Choisissez un créneau : en ${etat.type === 'pret' ? etat.duree : 30} minutes de visioconférence, nous vous montrons Diagly, du plan au rapport, et répondons à vos questions.`)}
               </p>
               <ul className="mt-7 space-y-3">
                 {ATOUTS.map((a) => (
@@ -96,76 +108,95 @@ export function Demo() {
               </ul>
             </div>
 
-            <form onSubmit={envoyer} className="text-[#0b1220]">
+            <div className="text-[#0b1220]">
               <div className="rounded-[24px] bg-white p-5 shadow-[0_30px_60px_-24px_rgba(4,20,60,0.55)] sm:p-7">
-                <fieldset>
-                  <legend className="text-[15px] font-semibold text-[#0b1220]">Quel jour&nbsp;?</legend>
-                  <div className="mt-3 grid grid-cols-5 gap-2">
-                    {jours.map((d, i) => (
-                      <label key={d.toISOString()} className="relative">
-                        <input type="radio" name={`${id}-jour`} className="peer sr-only" checked={jour === i} onChange={() => setJour(i)} />
-                        <span className={cn(
-                          'flex min-h-[68px] cursor-pointer flex-col items-center justify-center rounded-xl border px-1 text-center leading-tight transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#0167EA]',
-                          jour === i ? 'border-[#0167EA] bg-[#0167EA] text-white' : 'border-black/[0.08] text-[#0b1220] hover:border-[#0167EA]/40',
-                        )}>
-                          <span className={cn('text-[10.5px] font-medium uppercase', jour === i ? 'text-white/80' : 'text-[#6b7280]')}>{JOUR_COURT.format(d).replace('.', '')}</span>
-                          <span className="text-[18px] font-semibold tabular-nums">{d.getDate()}</span>
-                          <span className={cn('text-[11px]', jour === i ? 'text-white/80' : 'text-[#6b7280]')}>{MOIS_COURT.format(d)}</span>
-                        </span>
-                      </label>
-                    ))}
+                {reservee ? (
+                  <Confirmation {...reservee} />
+                ) : etat.type === 'chargement' ? (
+                  <div className="flex min-h-[22rem] items-center justify-center gap-2 text-[14px] text-[#6b7280]">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Chargement des disponibilités…
                   </div>
-                </fieldset>
-
-                <fieldset className="mt-6">
-                  <legend className="text-[15px] font-semibold text-[#0b1220]">À quelle heure&nbsp;?</legend>
-                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
-                    {CRENEAUX.map((c) => (
-                      <label key={c} className="relative">
-                        <input type="radio" name={`${id}-heure`} className="peer sr-only" checked={creneau === c} onChange={() => setCreneau(c)} />
-                        <span className={cn(
-                          'flex min-h-11 cursor-pointer items-center justify-center rounded-xl border text-[14px] font-semibold tabular-nums transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#0167EA]',
-                          creneau === c ? 'border-[#0167EA] bg-[#0167EA] text-white' : 'border-black/[0.08] text-[#0b1220] hover:border-[#0167EA]/40',
-                        )}>
-                          {c.replace(':', ' h ')}
-                        </span>
-                      </label>
-                    ))}
+                ) : etat.type === 'indisponible' || etat.jours.length === 0 ? (
+                  <div className="flex min-h-[18rem] flex-col items-center justify-center px-4 text-center">
+                    <p className="text-[16px] font-semibold">{etat.type === 'indisponible' ? 'Les disponibilités ne se chargent pas' : 'Aucun créneau libre ces prochaines semaines'}</p>
+                    <p className="mt-2 max-w-[22rem] text-[14px] leading-relaxed text-[#6b7280]">{typo('Écrivez-nous : nous vous proposons un rendez-vous par retour d’e-mail.')}</p>
+                    <a href={`${CONTACT}?subject=${encodeURIComponent('Démo Diagly')}`} className={cn('mt-5 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#0167EA] px-6 text-[15px] font-semibold text-white hover:bg-[#0154c4]', FOCUS)}>
+                      Écrire pour une démo<ArrowRight className="h-4 w-4" aria-hidden="true" />
+                    </a>
                   </div>
-                </fieldset>
+                ) : (
+                  <form onSubmit={(e) => void envoyer(e)}>
+                    <ChoixDuCreneau jours={etat.jours} valeur={creneau} onChange={setCreneau} />
 
-                <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="text-[13px] font-medium text-[#4b5563]">Nom</span>
-                    <input value={nom} onChange={(e) => setNom(e.target.value)} autoComplete="name" required className={cn(champ, 'mt-1.5')} />
-                  </label>
-                  <label className="block">
-                    <span className="text-[13px] font-medium text-[#4b5563]">E-mail</span>
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required className={cn(champ, 'mt-1.5')} />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <span className="text-[13px] font-medium text-[#4b5563]">Bureau <span className="font-normal text-[#9aa1ab]">(facultatif)</span></span>
-                    <input value={bureau} onChange={(e) => setBureau(e.target.value)} autoComplete="organization" className={cn(champ, 'mt-1.5')} />
-                  </label>
-                </div>
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="text-[13px] font-medium text-[#4b5563]">Nom</span>
+                        <input value={nom} onChange={(e) => setNom(e.target.value)} autoComplete="name" required className={cn(champ, 'mt-1.5')} />
+                      </label>
+                      <label className="block">
+                        <span className="text-[13px] font-medium text-[#4b5563]">E-mail</span>
+                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required className={cn(champ, 'mt-1.5')} />
+                      </label>
+                      <label className="block">
+                        <span className="text-[13px] font-medium text-[#4b5563]">Bureau <span className="font-normal text-[#9aa1ab]">(facultatif)</span></span>
+                        <input value={bureau} onChange={(e) => setBureau(e.target.value)} autoComplete="organization" className={cn(champ, 'mt-1.5')} />
+                      </label>
+                      <label className="block">
+                        <span className="text-[13px] font-medium text-[#4b5563]">Téléphone <span className="font-normal text-[#9aa1ab]">(facultatif)</span></span>
+                        <input type="tel" value={telephone} onChange={(e) => setTelephone(e.target.value)} autoComplete="tel" className={cn(champ, 'mt-1.5')} />
+                      </label>
+                      <label className="block sm:col-span-2">
+                        <span className="text-[13px] font-medium text-[#4b5563]">Ce que vous aimeriez voir <span className="font-normal text-[#9aa1ab]">(facultatif)</span></span>
+                        <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={2} className={cn(champ, 'mt-1.5 resize-none py-2.5')} />
+                      </label>
+                      <label className="sr-only" aria-hidden="true">
+                        Site web
+                        <input tabIndex={-1} autoComplete="off" value={site} onChange={(e) => setSite(e.target.value)} />
+                      </label>
+                    </div>
 
-                <button
-                  type="submit"
-                  disabled={!pret}
-                  className={cn('mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0167EA] px-6 text-[15.5px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(1,103,234,0.6)] transition-colors hover:bg-[#0154c4] disabled:cursor-not-allowed disabled:bg-[#b9cdea] disabled:shadow-none', FOCUS)}
-                >
-                  Demander ce créneau<ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </button>
-                <p className="mt-3 text-center text-[12.5px] text-[#8a8f98]">
-                  {jour !== null && creneau
-                    ? `${DATE_LONGUE.format(jours[jour]).replace(/^./, (x) => x.toUpperCase())} à ${creneau.replace(':', ' h ')}. Votre messagerie s’ouvre avec la demande, nous vous confirmons par e-mail.`
-                    : 'Votre messagerie s’ouvre avec la demande, nous vous confirmons le créneau par e-mail.'}
-                </p>
+                    {erreur && <p role="alert" className="mt-4 rounded-xl bg-[#fdf2f2] px-3.5 py-2.5 text-[13.5px] text-[#b83232]">{erreur}</p>}
+
+                    <button
+                      type="submit"
+                      disabled={!pret || envoi}
+                      className={cn('mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0167EA] px-6 text-[15.5px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(1,103,234,0.6)] transition-colors hover:bg-[#0154c4] disabled:cursor-not-allowed disabled:bg-[#b9cdea] disabled:shadow-none', FOCUS)}
+                    >
+                      {envoi ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                      {creneau?.heure ? `Réserver : ${creneauLisible(creneau)}` : 'Réserver ce créneau'}
+                      {!envoi && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
+                    </button>
+                    <p className="mt-3 text-center text-[12.5px] text-[#8a8f98]">
+                      {typo('La confirmation vous arrive par e-mail, avec l’invitation pour votre agenda.')}
+                    </p>
+                  </form>
+                )}
               </div>
-            </form>
+            </div>
           </div>
         </Apparition>
       </Conteneur>
     </section>
+  )
+}
+
+/** Ce que voit le visiteur une fois la démo réservée. */
+function Confirmation({ quand, jeton, email }: { quand: string; jeton?: string; email: string }) {
+  return (
+    <div role="status" className="flex min-h-[22rem] flex-col items-center justify-center px-2 text-center">
+      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#e7f0ff] text-[#0167EA]">
+        <CalendarCheck className="h-7 w-7" aria-hidden="true" />
+      </span>
+      <p className="mt-5 text-[22px] font-semibold tracking-[-0.02em]">C’est réservé</p>
+      <p className="mt-2 text-[16px] font-medium text-[#0b1220]">{quand}</p>
+      <p className="mt-3 max-w-[24rem] text-pretty text-[14px] leading-relaxed text-[#6b7280]">
+        {typo(`La confirmation vient de partir à ${email}, avec l’invitation pour votre agenda. À très bientôt.`)}
+      </p>
+      {jeton && (
+        <Link to={`/demo/${jeton}`} className={cn('mt-5 text-[14px] font-medium text-[#0167EA] hover:underline', FOCUS)}>
+          Déplacer ou annuler
+        </Link>
+      )}
+    </div>
   )
 }

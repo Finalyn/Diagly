@@ -356,6 +356,22 @@ export const api = {
       request<void>(`/api/projects/${id}/share`, { method: 'DELETE' }),
   },
 
+  // Les démos réservées sur la page d'accueil (aucun compte : le lien reçu est la clé).
+  demo: {
+    creneaux: () =>
+      request<{ duree: number; jours: { date: string; heures: string[] }[] }>('/api/vitrine/demo/creneaux', { withAuth: false }),
+    reserver: (body: { date: string; heure: string; nom: string; email: string; bureau?: string; telephone?: string; message?: string; site?: string }) =>
+      request<{ ok: boolean; jeton?: string; debut?: string; fin?: string; quand?: string }>('/api/vitrine/demo', { method: 'POST', body, withAuth: false }),
+    get: (jeton: string) =>
+      request<import('./api-types').DemoReservee>(`/api/vitrine/demo/reservation/${encodeURIComponent(jeton)}`, { withAuth: false }),
+    creneauxPourDeplacer: (jeton: string) =>
+      request<{ duree: number; jours: { date: string; heures: string[] }[] }>(`/api/vitrine/demo/reservation/${encodeURIComponent(jeton)}/creneaux`, { withAuth: false }),
+    deplacer: (jeton: string, body: { date: string; heure: string }) =>
+      request<{ ok: boolean; quand: string }>(`/api/vitrine/demo/reservation/${encodeURIComponent(jeton)}/deplacer`, { method: 'POST', body, withAuth: false }),
+    annuler: (jeton: string, motif?: string) =>
+      request<{ ok: boolean }>(`/api/vitrine/demo/reservation/${encodeURIComponent(jeton)}/annuler`, { method: 'POST', body: { motif }, withAuth: false }),
+  },
+
   // Rapport public en lecture seule (aucune auth requise).
   share: {
     get: (token: string) =>

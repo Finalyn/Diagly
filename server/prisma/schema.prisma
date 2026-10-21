@@ -1115,3 +1115,44 @@ model Notification {
   @@index([userId, creeLe], map: "idx_notif_user")
   @@map("notifications")
 }
+
+// ---------- Démos réservées sur diagly.ch ----------
+
+enum StatutDemo {
+  CONFIRMEE
+  ANNULEE
+}
+
+/// Une démo réservée depuis la page d'accueil (routes/vitrine.ts, lib/demos.ts).
+/// Le visiteur la déplace ou l'annule par son lien (jetonClient), l'hôte par le
+/// sien (jetonHote) : aucun compte n'est demandé ni à l'un ni à l'autre.
+model DemoReservation {
+  id             String     @id @default(cuid())
+  jetonClient    String     @unique @map("jeton_client") @db.VarChar(64)
+  jetonHote      String     @unique @map("jeton_hote") @db.VarChar(64)
+  nom            String     @db.VarChar(120)
+  email          String     @db.VarChar(200)
+  bureau         String?    @db.VarChar(150)
+  telephone      String?    @db.VarChar(40)
+  message        String?    @db.Text
+  debut          DateTime
+  fin            DateTime
+  /// Le créneau tenu, « 2026-10-28T10:00 », tant que la démo est confirmée.
+  /// Unique : deux réservations du même créneau ne peuvent pas passer. null une fois annulée.
+  creneau        String?    @unique @db.VarChar(20)
+  statut         StatutDemo @default(CONFIRMEE)
+  /// L'événement correspondant dans l'agenda du Finalyn Hub, quand il a pu être créé.
+  hubEventId     String?    @map("hub_event_id") @db.VarChar(64)
+  /// Numéro de version de l'invitation .ics : chaque déplacement l'incrémente.
+  sequence       Int        @default(0)
+  rappelEnvoyeLe DateTime?  @map("rappel_envoye_le")
+  annuleeLe      DateTime?  @map("annulee_le")
+  /// « client » ou « hote ».
+  annuleePar     String?    @map("annulee_par") @db.VarChar(10)
+  motif          String?    @db.VarChar(500)
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  @@index([statut, debut])
+  @@map("demo_reservations")
+}

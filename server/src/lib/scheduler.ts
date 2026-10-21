@@ -7,6 +7,8 @@ import {
 } from "./notifications-regles.js";
 import { heureSuisse } from "./heure-suisse.js";
 import { logger } from "./logger.js";
+import { sendMail } from "./mail.js";
+import { rappelClient } from "./mails-demo.js";
 
 /**
  * Ce que l'application signale d'elle-même, sans qu'on ait rien fait.
@@ -28,6 +30,7 @@ export function startReminderScheduler(): void {
   setInterval(() => { rappelerLesVisites().catch(bruit("rappels")) }, MINUTE);
   setInterval(() => { envoyerLesResumes().catch(bruit("résumé hebdomadaire")) }, 60 * MINUTE);
   setInterval(() => { relancerLesAbsents().catch(bruit("rappels d'absence")) }, 60 * MINUTE);
+  setInterval(() => { rappelerLesDemos().catch(bruit("rappels des démos")) }, 15 * MINUTE);
   // Au démarrage : un serveur relancé un lundi matin ne doit pas sauter le résumé.
   setTimeout(() => { envoyerLesResumes().catch(bruit("résumé hebdomadaire")) }, MINUTE);
   logger.info("Planificateur de notifications démarré");
@@ -154,5 +157,27 @@ async function relancerLesAbsents(): Promise<void> {
       url: diag ? `/app/diagnostic/${diag.id}` : "/app/projects/new",
       cle,
     });
+  }
+}
+
+/**
+ * Le rappel d'une démo réservée sur diagly.ch, la veille : 24 heures avant,
+ * une fois. Une démo réservée moins d'un jour et demi avant n'en reçoit pas :
+ * la confirmation vient d'arriver, un rappel aussitôt ferait doublon.
+ */
+async function rappelerLesDemos(): Promise<void> {
+  const maintenant = Date.now();
+  const demos = await prisma.demoReservation.findMany({
+    where: {
+      statut: "CONFIRMEE",
+      rappelEnvoyeLe: null,
+      debut: { gt: new Date(maintenant + 2 * 3600_000), lte: new Date(maintenant + 24 * 3600_000) },
+    },
+  });
+  for (const d of demos) {
+    if (d.debut.getTime() - d.createdAt.getTime() < 36 * 3600_000) continue;
+    // Marquée avant l'envoi : deux passes qui se chevauchent n'envoient pas deux rappels.
+    await prisma.demoReservation.update({ where: { id: d.id }, data: { rappelEnvoyeLe: new Date() } });
+    await sendMail(rappelClient(d));
   }
 }
