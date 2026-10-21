@@ -99,7 +99,12 @@ vaut « absente ».
 | `API_KEY_PEPPER` | `JWT_ACCESS_SECRET` | poivre du hachage des clés d'API (16 caractères min.) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | vides | envoi des emails ; sans eux, pas d'email (voir plus bas) |
 | `SMTP_FROM` | `Diagly <noreply@diagly.ch>` | expéditeur |
-| `SUPPORT_EMAIL` | `contact@finalyn.com` | reçoit les demandes de support |
+| `SUPPORT_EMAIL` | `support@diagly.ch` | reçoit les demandes de support |
+| `DEMO_AGENDA_ICS` | vide | flux .ics de l'agenda de l'hôte (secret) : ses événements ferment les créneaux de démo de l'accueil ; sans lui, la page propose d'écrire |
+| `DEMO_DUREE_MIN` | `30` | durée d'une démo, en minutes (15 à 120) |
+| `DEMO_HOTE_EMAIL`, `DEMO_HOTE_NOM` | `contact@diagly.ch`, `L’équipe Diagly` | reçoit les démos réservées, organisateur des invitations |
+| `DEMO_VISIO_URL` | vide | lien de visioconférence mis dans les invitations |
+| `HUB_MCP_URL`, `HUB_MCP_TOKEN` | `https://finalyn.app/mcp`, vide | calendrier du Finalyn Hub où chaque démo s'inscrit ; jeton personnel « fh_mcp_ » (Hub, Mon compte > Assistant IA) |
 | `FINALYN_ADMINS` | `contact@finalyn.com` | comptes qui gèrent l'annuaire des prestataires (en plus du rôle ADMIN), séparés par des virgules |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | vides | connexion Google |
 | `ANTHROPIC_API_KEY` | vide | assistant IA ; sans elle, l'assistant se dit indisponible |

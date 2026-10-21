@@ -64,7 +64,7 @@ export function francs(n: number) {
   return `${Math.round(n).toLocaleString('fr-CH').replace(/[\u202f\u00a0 ]/g, '’')}\u00a0CHF`
 }
 
-export const CONTACT = 'mailto:contact@finalyn.com'
+export const CONTACT = 'mailto:contact@diagly.ch'
 
 /**
  * Les questions qu'un diagnostiqueur pose avant d'essayer. Chaque réponse

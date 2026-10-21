@@ -53,7 +53,7 @@ export function ForgotPassword() {
                attendre indéfiniment : on le dit et on donne la marche à suivre. */
             <p className="text-sm text-muted-foreground mb-6">
               L'envoi d'emails n'est pas activé sur ce serveur, aucun message ne partira.
-              Contactez <a href="mailto:contact@finalyn.com" className="font-medium text-foreground underline">contact@finalyn.com</a> pour
+              Contactez <a href="mailto:support@diagly.ch" className="font-medium text-foreground underline">support@diagly.ch</a> pour
               faire réinitialiser votre mot de passe.
             </p>
           )}

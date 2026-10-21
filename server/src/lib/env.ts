@@ -19,7 +19,7 @@ const schema = z.object({
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().default("Diagly <noreply@diagly.ch>"),
   // Adresse qui reçoit les demandes de support.
-  SUPPORT_EMAIL: z.string().default("contact@finalyn.com"),
+  SUPPORT_EMAIL: z.string().default("support@diagly.ch"),
   /** Comptes Finalyn qui gèrent l'annuaire des partenaires (en plus du rôle ADMIN), séparés par des virgules. */
   FINALYN_ADMINS: z.string().default("contact@finalyn.com"),
   // Les démos réservées sur diagly.ch (routes/vitrine.ts, lib/demos.ts).
@@ -29,7 +29,7 @@ const schema = z.object({
   // Durée d'une démo, en minutes.
   DEMO_DUREE_MIN: z.coerce.number().int().min(15).max(120).default(30),
   // Qui reçoit les réservations, les déplacements et les annulations.
-  DEMO_HOTE_EMAIL: z.string().email().default("contact@finalyn.com"),
+  DEMO_HOTE_EMAIL: z.string().email().default("contact@diagly.ch"),
   DEMO_HOTE_NOM: z.string().default("L’équipe Diagly"),
   // Le lien de visioconférence des démos, s'il est fixe. Absent : les e-mails
   // annoncent que le lien suit avant le rendez-vous.

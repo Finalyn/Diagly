@@ -16,7 +16,7 @@ export function Soon() {
       </p>
 
       <div className="mt-10 text-xs text-muted-foreground">
-        Une question ? <a href="mailto:contact@finalyn.com" className="text-primary hover:underline">contact@finalyn.com</a>
+        Une question ? <a href="mailto:contact@diagly.ch" className="text-primary hover:underline">contact@diagly.ch</a>
       </div>
     </div>
   )

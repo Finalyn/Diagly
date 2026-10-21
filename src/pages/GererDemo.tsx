@@ -93,7 +93,7 @@ export function GererDemo() {
         </div>
 
         <p className="mt-6 text-center text-[12.5px] text-[#8a8f98]">
-          Une question ? <a href="mailto:contact@finalyn.com" className="font-medium text-[#0167EA] hover:underline">contact@finalyn.com</a>
+          Une question ? <a href="mailto:contact@diagly.ch" className="font-medium text-[#0167EA] hover:underline">contact@diagly.ch</a>
         </p>
       </div>
     </div>
