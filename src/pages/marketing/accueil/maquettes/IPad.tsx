@@ -4,10 +4,11 @@ import { cn } from '@/lib/utils'
  * Un iPad Pro à l'horizontale, avec un vrai écran de Diagly.
  *
  * Les images viennent des maquettes d'appareil faites sur les captures de
- * l'application (dossier d'exemple Résidence Les Tilleuls), exportées en
- * WebP dans public/accueil/ipad/ : cadre, écran et, pour l'iPad qu'on voit en
- * premier, son Apple Pencil posé sur le dessus. La toile garde la place du
- * crayon même quand il n'y est pas : deux iPad côte à côte restent alignés.
+ * l'application (dossier d'exemple Résidence Les Tilleuls ; le relevé guidé
+ * est une vraie capture prise sur iPad), exportées en WebP dans
+ * public/accueil/ipad/ : le cadre et l'écran, sans Apple Pencil. Toutes ont
+ * la même toile, le haut du cadre au même endroit : deux iPad côte à côte
+ * restent alignés.
  *
  * L'ombre est portée par le dessin lui-même (drop-shadow) : elle suit le
  * cadre arrondi et détache un iPad posé sur un autre.

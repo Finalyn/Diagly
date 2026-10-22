@@ -32,7 +32,7 @@ const CARTES: { id: string; surtitre: string; titre: string; texte: string; ecra
     titre: 'Sur place, rien n’est oublié.',
     texte: 'Le tour du bâtiment en 7 étapes, photo par photo, et le Guide IA qui vérifie chaque ouvrage.',
     ecran: 'releve-guide-ia',
-    alt: 'Le relevé d’une fenêtre en bois sur iPad, avec le Guide IA qui suggère l’état Mauvais.',
+    alt: 'Le relevé d’une porte palière en bois sur iPad : la photo prise sur place, ses vignettes et le bouton Suivant.',
     large: false,
   },
   {

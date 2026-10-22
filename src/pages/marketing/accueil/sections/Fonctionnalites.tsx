@@ -75,7 +75,7 @@ export function Fonctionnalites() {
         coches={['Le Guide IA vérifie chaque photo', 'Les travaux suivent l’état choisi', 'Même sans réseau, au sous-sol']}
         visuel={
           <PaireIPad
-            principal={{ nom: 'releve-guide-ia', alt: 'Le relevé d’une fenêtre en bois sur iPad, avec le Guide IA qui confirme le CFC 221.0 et suggère l’état Mauvais.' }}
+            principal={{ nom: 'releve-guide-ia', alt: 'Le relevé d’une porte palière en bois sur iPad : la photo de la poignée prise sur place, les vignettes, le Guide IA et le bouton Suivant.' }}
             second={{ nom: 'releve-etapes', alt: 'Le tour du bâtiment, de la façade aux aménagements extérieurs, avec les relevés de chaque partie.' }}
           />
         }
