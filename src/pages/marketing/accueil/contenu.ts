@@ -67,6 +67,14 @@ export function francs(n: number) {
 export const CONTACT = 'mailto:contact@diagly.ch'
 
 /**
+ * Devenir partenaire : un e-mail déjà préparé. L'annuaire est tenu par
+ * l'équipe, qui ajoute chaque partenaire elle-même après vérification.
+ */
+export const DEVENIR_PARTENAIRE = `${CONTACT}?subject=${encodeURIComponent('Devenir partenaire Diagly')}&body=${encodeURIComponent(
+  'Bonjour,\n\nNous aimerions figurer dans l’annuaire des partenaires Diagly.\n\nEntreprise :\nMétier :\nCantons :\nSite web :\nTéléphone :\n\nMerci et à bientôt,',
+)}`
+
+/**
  * Les questions qu'un diagnostiqueur pose avant d'essayer. Chaque réponse
  * décrit ce que l'application fait aujourd'hui, rien de plus.
  */
@@ -102,6 +110,14 @@ export const QUESTIONS: { q: string; r: string }[] = [
   {
     q: 'Puis-je exporter mes données ?',
     r: 'Oui. Les données d’un diagnostic sortent en Excel, CSV ou JSON, les métrés en Excel, les rapports en PDF. Une API en lecture et des webhooks relient Diagly à vos propres outils.',
+  },
+  {
+    q: 'Diagly peut-il m’aider à trouver des mandats ?',
+    r: 'C’est l’une de ses meilleures utilisations. Proposé à un propriétaire, une régie ou une PPE, le diagnostic montre l’état du bâtiment et les travaux à prévoir, chiffrés par code CFC : c’est le point de départ naturel du mandat de rénovation, que vous le meniez vous-même ou avec des partenaires de l’annuaire Diagly.',
+  },
+  {
+    q: 'Comment devenir partenaire ?',
+    r: 'Écrivez-nous à contact@diagly.ch avec votre métier, vos cantons et vos coordonnées. L’annuaire est tenu par l’équipe Diagly : nous vous y ajoutons après vérification, et le titre d’expert CECB® est contrôlé sur la liste officielle. Les utilisateurs de Diagly vous contactent ensuite depuis leur dossier : leur demande vous arrive par e-mail, avec le résumé du bâtiment et le lien du rapport s’ils les joignent.',
   },
   {
     q: 'Combien coûte un diagnostic ?',

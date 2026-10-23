@@ -47,7 +47,7 @@ export function AppelFinal({ demoIci = false }: { demoIci?: boolean }) {
  */
 const COLONNES: { titre: string; liens: [string, string][] }[] = [
   { titre: 'Produit', liens: [['Fonctionnalités', '/fonctionnalites'], ['Métrés par l’IA', '/fonctionnalites#metres'], ['Relevé sur le terrain', '/fonctionnalites#releve'], ['Chiffrage', '/fonctionnalites#chiffrage'], ['Rapports', '/fonctionnalites#rapports'], ['App iPhone et iPad', '/fonctionnalites#app'], ['Tarifs', '/#tarifs']] },
-  { titre: 'Ressources', liens: [['Blog', '/blog'], ['Questions fréquentes', '/#faq'], ['Aide et support', '/app/support'], ['Nous écrire', CONTACT]] },
+  { titre: 'Ressources', liens: [['Blog', '/blog'], ['Questions fréquentes', '/#faq'], ['Devenir partenaire', '/#partenaires'], ['Aide et support', '/app/support'], ['Nous écrire', CONTACT]] },
   { titre: 'Compte', liens: [['Se connecter', '/login'], ['Créer un compte', '/register']] },
   { titre: 'Légal', liens: [['Mentions légales', '/mentions-legales'], ['Confidentialité', '/confidentialite'], ['Conditions générales', '/cgu']] },
 ]

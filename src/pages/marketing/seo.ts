@@ -50,6 +50,7 @@ export const FONCTIONNALITES_CLES = [
   'Variantes de travaux comparées, priorités I à III et horizons de travaux',
   'Rapports à l’en-tête du bureau, en PDF ou par lien au client',
   'Présentation 16:9 des plans de repérage et métrés',
+  'Mise en relation depuis le dossier avec les partenaires de l’annuaire Diagly : architectes, experts CECB®, ingénieurs, entreprises générales',
   'Assistant IA sur les dossiers, API en lecture, webhooks et serveur MCP',
   'App iPhone et iPad, installable sur Mac et PC, et dans le navigateur',
   'Données hébergées en Suisse chez Infomaniak',

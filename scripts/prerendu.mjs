@@ -93,6 +93,8 @@ const llms = `# Diagly
 
 Diagly s’adresse aux diagnostiqueurs, architectes, bureaux d’ingénieurs, régies et gérances de Suisse romande. Il est publié par Finalyn. Contact : ${m.CONTACT.replace('mailto:', '')}.
 
+Le diagnostic y est aussi un outil de prospection : proposé à un propriétaire, une régie ou une PPE, il montre les travaux à prévoir et ouvre le mandat de rénovation. Pour la suite, Diagly met en relation avec les partenaires de son annuaire (architectes, experts CECB®, ingénieurs, entreprises générales) ; les professionnels peuvent demander à le rejoindre en écrivant à ${m.CONTACT.replace('mailto:', '')}.
+
 ## Ce que fait Diagly
 
 ${m.FONCTIONNALITES_CLES.map((x) => `- ${x}`).join('\n')}
