@@ -6,7 +6,9 @@ import { Button, Card, CardHeader, CardTitle, CardContent, Input, Select } from 
 import { buildingTypeLabels, type BuildingType } from '@/data/mock'
 import { api, ApiError } from '@/lib/api'
 import { sourcesApresSaisie } from '@/lib/sources-dimensions'
-import type { ApiProject, ProjectStatus } from '@/lib/api-types'
+import { batimentsDuDossier, cumulerLesBatiments } from '@/lib/base-cfc/batiments'
+import { BatimentsDuDossier } from '@/components/BatimentsDuDossier'
+import type { ApiBatiment, ApiProject, ProjectStatus } from '@/lib/api-types'
 
 const buildingTypeOrder: BuildingType[] = ['LOGEMENT', 'VILLA', 'CHALET', 'SCOLAIRE', 'BUREAU', 'ADMINISTRATIF', 'INDUSTRIEL', 'HOTEL', 'COMMERCIAL', 'AUTRE']
 
@@ -31,6 +33,8 @@ type FormState = {
   windowPct: string
   honoraryPct: string
   reservePct: string
+  /** Les bâtiments du dossier. Vide : le dossier n'en décrit qu'un. */
+  batiments: ApiBatiment[]
 }
 
 const fromProject = (p: ApiProject): FormState => ({
@@ -42,6 +46,7 @@ const fromProject = (p: ApiProject): FormState => ({
   yearBuilt: p.yearBuilt?.toString() ?? '',
   buildingType: p.buildingType as BuildingType,
   status: p.status,
+  batiments: p.batiments ?? [],
   nbApartments: p.nbApartments?.toString() ?? '',
   nbFloors: p.nbFloors?.toString() ?? '',
   floorHeight: p.floorHeight?.toString() ?? '',
@@ -77,6 +82,8 @@ const toPayload = (f: FormState) => ({
   windowPct: f.windowPct ? Number(f.windowPct) : undefined,
   honoraryPct: f.honoraryPct ? Number(f.honoraryPct) : undefined,
   reservePct: f.reservePct ? Number(f.reservePct) : undefined,
+  // Un tableau vide retire les bâtiments : le dossier redevient un bâtiment seul.
+  batiments: f.batiments,
 })
 
 export function ProjectEdit() {
@@ -135,6 +142,12 @@ export function ProjectEdit() {
 
   const set = <K extends keyof FormState>(field: K, value: FormState[K]) =>
     setEdited(prev => (prev ?? form) ? { ...(prev ?? form)!, [field]: value } : prev)
+
+  // Dès qu'un bâtiment est décrit, ce sont les bâtiments qui donnent le plancher,
+  // l'emprise, les logements, les cages et les étages : les champs du dossier ne
+  // servent plus, et les montrer saisissables ferait croire qu'ils comptent.
+  const batiments = batimentsDuDossier(form.batiments)
+  const cumul = batiments ? cumulerLesBatiments(batiments) : null
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -202,15 +215,46 @@ export function ProjectEdit() {
         </CardContent>
       </Card>
 
+      <BatimentsDuDossier batiments={form.batiments} onChange={(b) => set('batiments', b)} />
+
       <Card>
-        <CardHeader><CardTitle>Dimensions et surfaces</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Dimensions et surfaces</CardTitle>
+          {cumul && (
+            <p className="text-sm text-muted-foreground">
+              Le plancher, l'emprise, les logements, les cages et les étages viennent des
+              {' '}{cumul.nombre} bâtiments ci-dessus. Le périmètre et la façade se mesurent
+              sur l'ensemble.
+            </p>
+          )}
+        </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-4">
-            <div><label className="text-sm font-medium mb-1 block">Nombre d'appartements</label><Input type="number" value={form.nbApartments} onChange={e => set('nbApartments', e.target.value)} /></div>
-            <div><label className="text-sm font-medium mb-1 block">Nombre d'étages</label><Input type="number" value={form.nbFloors} onChange={e => set('nbFloors', e.target.value)} /></div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Nombre d'appartements</label>
+              {cumul
+                ? <Input value={cumul.nbApartments ?? ''} readOnly disabled title="Somme des bâtiments" />
+                : <Input type="number" value={form.nbApartments} onChange={e => set('nbApartments', e.target.value)} />}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Nombre d'étages</label>
+              {cumul
+                ? <Input value={cumul.nbFloors ?? ''} readOnly disabled title="Le bâtiment le plus haut" />
+                : <Input type="number" value={form.nbFloors} onChange={e => set('nbFloors', e.target.value)} />}
+            </div>
             <div><label className="text-sm font-medium mb-1 block">Hauteur d'étage (m)</label><Input type="number" step="0.1" value={form.floorHeight} onChange={e => set('floorHeight', e.target.value)} /></div>
-            <div><label className="text-sm font-medium mb-1 block">Surface plancher (m²)</label><Input type="number" value={form.floorArea} onChange={e => set('floorArea', e.target.value)} /></div>
-            <div><label className="text-sm font-medium mb-1 block">Surface bâtie (m²)</label><Input type="number" value={form.builtArea} onChange={e => set('builtArea', e.target.value)} /></div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Surface plancher (m²)</label>
+              {cumul
+                ? <Input value={cumul.floorArea ?? ''} readOnly disabled title="Somme des bâtiments" />
+                : <Input type="number" value={form.floorArea} onChange={e => set('floorArea', e.target.value)} />}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Surface bâtie (m²)</label>
+              {cumul
+                ? <Input value={cumul.builtArea ?? ''} readOnly disabled title="Somme des bâtiments" />
+                : <Input type="number" value={form.builtArea} onChange={e => set('builtArea', e.target.value)} />}
+            </div>
             <div><label className="text-sm font-medium mb-1 block">Surface façade (m²)</label><Input type="number" value={form.facadeArea} onChange={e => set('facadeArea', e.target.value)} /></div>
             <div><label className="text-sm font-medium mb-1 block">Surface terrain (m²)</label><Input type="number" value={form.terrainArea} onChange={e => set('terrainArea', e.target.value)} /></div>
             <div><label className="text-sm font-medium mb-1 block">Périmètre (ml)</label><Input type="number" value={form.perimeter} onChange={e => set('perimeter', e.target.value)} /></div>
@@ -225,7 +269,12 @@ export function ProjectEdit() {
           <div className="grid grid-cols-3 gap-4">
             <div><label className="text-sm font-medium mb-1 block">Honoraires (%)</label><Input type="number" value={form.honoraryPct} onChange={e => set('honoraryPct', e.target.value)} /></div>
             <div><label className="text-sm font-medium mb-1 block">Réserve (%)</label><Input type="number" value={form.reservePct} onChange={e => set('reservePct', e.target.value)} /></div>
-            <div><label className="text-sm font-medium mb-1 block">Nombre de cages</label><Input type="number" value={form.nbStaircases} onChange={e => set('nbStaircases', e.target.value)} /></div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Nombre de cages</label>
+              {cumul
+                ? <Input value={cumul.nbStaircases ?? ''} readOnly disabled title="Somme des bâtiments" />
+                : <Input type="number" value={form.nbStaircases} onChange={e => set('nbStaircases', e.target.value)} />}
+            </div>
           </div>
         </CardContent>
       </Card>

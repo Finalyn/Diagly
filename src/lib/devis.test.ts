@@ -22,7 +22,11 @@ const article = (o: Partial<ApiArticle>): ApiArticle => ({
   groupeAlternatives: 'Revêtement de façade', echafaudage: true, uniteEntretien: 'm2',
   uniteRemplacement: 'm2', baseQuantite: 'surface_facade', indicationQuantite: null, coefficient: 1,
   noteDiagnostiqueur: null, articleLieId: null, actif: true, ligneOrigine: null,
-  etats: [], etapes: [{ articleId: 'A015', etapeNumero: 1, ordreDansEtape: 8 }], ...o,
+  // Les 111 articles de la base portent leurs six lignes d'état, et « bon » y
+  // dit « Néant » pour 71 d'entre eux : une fixture sans aucune ligne ferait
+  // croire que la base se tait, ce qui est le cas qu'on traite autrement.
+  etats: [{ etat: 'bon', travaux: 'Néant', prix: null, partPrixMauvais: null, unite: 'm2' }],
+  etapes: [{ articleId: 'A015', etapeNumero: 1, ordreDansEtape: 8 }], ...o,
 })
 
 const A015 = article({})
@@ -136,6 +140,42 @@ describe('les enveloppes d’un ouvrage', () => {
     const l = travaux(d)[0]
     expect(l).toMatchObject({ enveloppe: 'Réparation', aChiffrer: true, montant: 0, priorite: 'II' })
     expect(d.aChiffrer.filter((x) => x.releveId)).toHaveLength(1)
+  })
+
+  it('garde au devis, à chiffrer, un entretien prescrit en bon état', () => {
+    // La base facture de vrais entretiens en bon état : nettoyage à haute
+    // pression des tuiles à 40.-/m², mousse d'une étanchéité plate à 10.-/m²,
+    // ascenseur à 10 000.-. Faute de quantité, le montant ne se calcule pas,
+    // et le relevé disparaissait du devis sans un mot — ni ligne, ni point à
+    // compléter : le lecteur ne pouvait pas savoir que la toiture avait été
+    // relevée.
+    const avecEntretien = {
+      ...BASE,
+      articles: [article({ etats: [{ etat: 'bon', travaux: 'Nettoyage à haute pression des tuiles', prix: 40, partPrixMauvais: null, unite: 'm2' }] }), A009, A100],
+    }
+    const d = buildDevis([ouvrage({ state: 'BON', priority: 'III', estimatedCost: null })], LABELS, avecEntretien, NU)
+    expect(travaux(d)).toEqual([expect.objectContaining({
+      enveloppe: 'Réparation', aChiffrer: true, montant: 0, raisonAChiffrer: 'quantité manquante',
+    })])
+    expect(d.aChiffrer.filter((x) => x.releveId)).toHaveLength(1)
+  })
+
+  it('chiffre l’entretien en bon état dès que la quantité est là', () => {
+    const avecEntretien = {
+      ...BASE,
+      articles: [article({ etats: [{ etat: 'bon', travaux: 'Nettoyage à haute pression des tuiles', prix: 40, partPrixMauvais: null, unite: 'm2' }] }), A009, A100],
+    }
+    const d = buildDevis([ouvrage({ state: 'BON', priority: 'III', estimatedCost: '10280', area: 257 })], LABELS, avecEntretien, NU)
+    expect(travaux(d)).toEqual([expect.objectContaining({
+      enveloppe: 'Réparation', aChiffrer: false, montant: 10_280, prixUnitaire: 40,
+    })])
+  })
+
+  it('laisse dehors un bon état que la base déclare « Néant »', () => {
+    // 71 des 111 articles ne demandent rien en bon état : ils ne doivent pas
+    // encombrer le devis d'une ligne à zéro.
+    const d = buildDevis([ouvrage({ state: 'BON', priority: 'III', estimatedCost: null })], LABELS, BASE, NU)
+    expect(travaux(d)).toHaveLength(0)
   })
 
   it('ne prescrit rien là où la base dit « Néant » pour l’état', () => {

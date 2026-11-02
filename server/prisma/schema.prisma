@@ -416,6 +416,15 @@ model Project {
   /// Organisation de la visite : rendez-vous, créneaux proposés, préparation.
   /// Le rendez-vous est recopié dans un Event (calendrier) et dans visitDate.
   visitPlan             Json?         @map("visit_plan")
+  /// Les batiments du dossier, quand il en compte plusieurs (Champrilly 16-18-20).
+  /// [{ id, adresse, egid, floorArea, builtArea, nbFloors, nbApartments,
+  ///    nbStaircases, apartmentTypes, yearBuilt }]
+  /// Leurs surfaces de plancher, emprises, logements et cages se cumulent ; le
+  /// perimetre et la surface de facade restent ceux du dossier, car pour des
+  /// batiments mitoyens ils se mesurent sur l'ensemble et ne s'additionnent pas
+  /// (src/lib/base-cfc/batiments.ts). Vide = un seul batiment, decrit par les
+  /// champs ci-dessus.
+  batiments             Json?         @map("batiments")
   /// Elements comptes : portes, fenetres, balcons, cuisines, appareils sanitaires.
   /// { "porte_paliere": { nombre, source, detail, pages, confiance, valide, majLe } }
   /// Lus sur les plans, comptes dans l'outil Plan ou saisis au dossier, ils

@@ -157,6 +157,10 @@ export function vraimentRelevee(it: ApiDiagnosticItem, calcul: ReturnType<typeof
  * Une quantité reprise à la main n'est jamais touchée, un coût forcé non
  * plus. Un relevé dont l'article a quitté la base est laissé tel quel.
  */
+/** Montant enregistré d'un relevé, 0 quand il n'y en a pas encore. */
+const num = (v: string | number | null | undefined) =>
+  v == null ? 0 : typeof v === 'number' ? v : Number(v) || 0
+
 export function recalculsDesComptages(
   items: ApiDiagnosticItem[],
   articles: ApiArticle[],
@@ -167,21 +171,53 @@ export function recalculsDesComptages(
 
   const recalculs: Recalcul[] = []
   for (const it of items) {
-    if (it.quantityManual) continue
     const categorie = categorieDuReleve(it, articles)
     if (categories !== 'tous' && (!categorie || !categories.includes(categorie))) continue
     const c = calcul(it)
     if (!c) continue
     const { ouvrage, quantite } = c
+
+    // Le verrou de la quantité ne verrouille pas le prix.
+    //
+    // Une étanchéité de toiture mesurée au mètre sur place gardait bien sa
+    // mesure — c'est ce qu'on veut — mais ne recevait jamais son montant : la
+    // passe s'arrêtait avant. Le devis l'annonçait alors « aucun prix pour cet
+    // état dans la base » alors que la base en a un, et la ligne sortait à
+    // chiffrer au lieu de ses 34 835 CHF. Le verrou porte sur la quantité ;
+    // c'est `costManual` qui protège un prix repris à la main.
+    const figee = Boolean(it.quantityManual)
+    if (!figee && quantite == null && categories === 'tous') continue
     // Une dimension manquante ne vide pas une quantité déjà là : la donnée
     // qui manque est une question, pas un zéro.
-    if (quantite == null && categories === 'tous') continue
-    const area = quantite ?? null
-    if (area === it.area) continue
-    const patch: Partial<ApiDiagnosticItem> = { area }
+    const area = figee ? it.area ?? null : quantite ?? null
+    const quantiteChange = !figee && area !== it.area
+    // Un montant absent se calcule même quand la quantité ne bouge pas : sans
+    // cela, un relevé bien mesuré mais jamais chiffré le restait pour toujours.
+    const montantManque = !it.costManual && Boolean(it.state) && num(it.estimatedCost) === 0
+
+    // Une amélioration ou une mise aux normes retenue sans montant.
+    //
+    // Leur coût ne s'écrivait qu'au moment où on les retenait dans l'éditeur,
+    // et `suit` ne sait que faire suivre un montant déjà là. Retenue avant que
+    // la base ait son prix — ou sur un relevé repris d'une version précédente
+    // — l'enveloppe restait « à chiffrer » pour toujours, alors que la base
+    // dit son prix : 310.-/m² pour une façade ventilée, par exemple.
+    const enveloppeManque = (retenue: string | null, montant: string | null, prix: number | null) =>
+      retenue != null && prix != null && num(montant) === 0
+    const ameliorationManque = enveloppeManque(it.improvement, it.improvementCost, ouvrage.priceImprovement)
+    const normesManquent = enveloppeManque(it.norms, it.normsCost, ouvrage.priceNorms)
+
+    if (!quantiteChange && !montantManque && !ameliorationManque && !normesManquent) continue
+
+    const patch: Partial<ApiDiagnosticItem> = {}
+    if (quantiteChange) patch.area = area
     if (!it.costManual && it.state) {
-      patch.estimatedCost = (computeCost(ouvrage, it.state, quantite) ?? null) as unknown as string | null
-      patch.costIndex = getMarketCoeff()
+      const cout = computeCost(ouvrage, it.state, area) ?? null
+      // On n'écrase un montant existant que si la quantité a bougé.
+      if (quantiteChange || cout != null) {
+        patch.estimatedCost = cout as unknown as string | null
+        patch.costIndex = getMarketCoeff()
+      }
     }
     // L'amélioration et la mise aux normes suivent la quantité quand leur
     // montant est celui de la base : un montant repris à la main, non.
@@ -191,10 +227,21 @@ export function recalculsDesComptages(
       if (avant == null || Math.abs(Number(montant) - avant) > Math.max(1, avant * 0.01)) return undefined
       return (computeCostFromPrice(prix, quantite) ?? null) as unknown as string | null
     }
-    const amelioration = it.improvement != null ? suit(it.improvementCost, ouvrage.priceImprovement) : undefined
-    if (amelioration !== undefined) patch.improvementCost = amelioration
-    const normes = it.norms != null ? suit(it.normsCost, ouvrage.priceNorms) : undefined
-    if (normes !== undefined) patch.normsCost = normes
+    // Un montant absent se calcule ; un montant présent ne bouge que si la
+    // quantité a bougé, et seulement s'il venait de la base. Aucune saisie
+    // n'est écrasée : l'amélioration et la mise aux normes n'ont pas de verrou
+    // « repris à la main », c'est donc l'absence qui sert de garde-fou.
+    const combler = (prix: number | null) => (computeCostFromPrice(prix!, area) ?? null) as unknown as string | null
+    if (ameliorationManque) patch.improvementCost = combler(ouvrage.priceImprovement)
+    else if (quantiteChange && it.improvement != null) {
+      const amelioration = suit(it.improvementCost, ouvrage.priceImprovement)
+      if (amelioration !== undefined) patch.improvementCost = amelioration
+    }
+    if (normesManquent) patch.normsCost = combler(ouvrage.priceNorms)
+    else if (quantiteChange && it.norms != null) {
+      const normes = suit(it.normsCost, ouvrage.priceNorms)
+      if (normes !== undefined) patch.normsCost = normes
+    }
     recalculs.push({ releveId: it.id, patch })
   }
   return recalculs

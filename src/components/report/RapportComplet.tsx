@@ -53,6 +53,7 @@ import { BudgetParEnveloppe, SousTitre, TableauPriorites } from './devis-tableau
 import { blocsMethode } from './methode'
 import { ComparaisonVariantes, DetailVariante, TitreVariante } from './variantes-rapport'
 import { photoDeGarde } from '@/lib/photo-de-garde'
+import { batimentsDuDossier, cumulerLesBatiments, ficheCumulee, nomDuBatiment } from '@/lib/base-cfc/batiments'
 
 /** Le document entier, ou l'un de ses extraits. */
 export type PartieDuRapport = 'complet' | 'devis' | 'photos' | 'energie'
@@ -97,7 +98,7 @@ export function RapportComplet({
     [entreprise, reglages, marque],
   )
   const signataire = marque.auteur || auteur
-  const metrics = computeProjectMetrics(project)
+  const metrics = computeProjectMetrics(ficheCumulee(project))
   const catalogue = useMemo(() => new Map(catalogItems.map((c) => [c.id, c])), [catalogItems])
   const articlesBruts = useMemo(() => new Map(base.articles.map((a) => [a.id, a])), [base.articles])
   /** Les articles de la base, prêts à être lus par la fiche d'ouvrage. */
@@ -576,6 +577,14 @@ function MetresDuProjet({ project, metrics, devis }: {
   metrics: ReturnType<typeof computeProjectMetrics>
   devis: Devis
 }) {
+  // Plusieurs bâtiments : ce sont leurs totaux qui chiffrent le devis, donc eux
+  // que le rapport doit annoncer. Les afficher bâtiment par bâtiment en plus du
+  // total, c'est ce qui permet au lecteur de refaire l'addition.
+  const batiments = batimentsDuDossier(project.batiments)
+  const cumul = batiments ? cumulerLesBatiments(batiments) : null
+  const fiche = ficheCumulee(project)
+  const sommeDe = (n: number) => `somme des ${n} bâtiments`
+
   const source = (champ: DimensionSuivie, valeur: unknown, sinon = 'fiche du dossier') => {
     const s = sourceDe(project, champ)
     if (s) return LIBELLE_SOURCE[s]
@@ -585,10 +594,14 @@ function MetresDuProjet({ project, metrics, devis }: {
   const hauteur = project.floorHeight ?? 2.7
   const coefToit = project.roofType ? ROOF_COEFF[project.roofType] : null
   const lignes: [string, string, string][] = [
-    ['Surface de plancher', m2(project.floorArea), source('floorArea', project.floorArea)],
-    ['Surface bâtie (emprise)', m2(project.builtArea), source('builtArea', project.builtArea)],
-    ['Périmètre', project.perimeter ? `${nb(project.perimeter)} ml` : 'n.c.', source('perimeter', project.perimeter)],
-    ["Nombre d'étages", project.nbFloors != null ? String(project.nbFloors) : 'n.c.', source('nbFloors', project.nbFloors)],
+    ['Surface de plancher', m2(fiche.floorArea),
+      cumul ? sommeDe(cumul.nombre) : source('floorArea', project.floorArea)],
+    ['Surface bâtie (emprise)', m2(fiche.builtArea),
+      cumul ? sommeDe(cumul.nombre) : source('builtArea', project.builtArea)],
+    ['Périmètre', project.perimeter ? `${nb(project.perimeter)} ml` : 'n.c.',
+      cumul ? "mesuré sur l'ensemble : des bâtiments mitoyens le partagent" : source('perimeter', project.perimeter)],
+    ["Nombre d'étages", fiche.nbFloors != null ? String(fiche.nbFloors) : 'n.c.',
+      cumul ? 'le bâtiment le plus haut' : source('nbFloors', project.nbFloors)],
     ["Hauteur d'étage", `${nb(hauteur)} m`, project.floorHeight ? source('floorHeight', project.floorHeight) : 'valeur par défaut, non relevée'],
     ['Surface de façade', m2(metrics.facade),
       facadeMesuree(project) != null
@@ -606,12 +619,57 @@ function MetresDuProjet({ project, metrics, devis }: {
     // Au dixième près, comme au devis : la même surface, écrite de la même façon.
     ['Surface à échafauder', devis.surfaceEchafaudee != null ? `${nb(devis.surfaceEchafaudee)} m²` : 'aucune',
       devis.surfaceEchafaudee != null ? 'chiffrée au devis (CFC 211.1)' : "aucun ouvrage chiffré ne demande d'échafaudage"],
-    ['Logements', project.nbApartments != null ? String(project.nbApartments) : 'n.c.', source('nbApartments', project.nbApartments)],
-    ["Cages d'escalier", project.nbStaircases != null ? String(project.nbStaircases) : 'n.c.', source('nbStaircases', project.nbStaircases)],
+    ['Logements', fiche.nbApartments != null ? String(fiche.nbApartments) : 'n.c.',
+      cumul ? sommeDe(cumul.nombre) : source('nbApartments', project.nbApartments)],
+    ["Cages d'escalier", fiche.nbStaircases != null ? String(fiche.nbStaircases) : 'n.c.',
+      cumul ? sommeDe(cumul.nombre) : source('nbStaircases', project.nbStaircases)],
     ['Indice de la construction', `× ${nb(getMarketInfo().coeff)}`, 'indice suisse des prix de la construction (OFS)'],
   ]
   return (
     <>
+      {batiments && (
+        <>
+          <p className="mb-1 font-semibold">Les {batiments.length} bâtiments du dossier</p>
+          <table className="mb-4 w-full">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground">
+                <th className="py-1 font-medium">Bâtiment</th>
+                <th className="w-24 py-1 text-right font-medium">Plancher</th>
+                <th className="w-24 py-1 text-right font-medium">Emprise</th>
+                <th className="w-16 py-1 text-right font-medium">Étages</th>
+                <th className="w-20 py-1 text-right font-medium">Logements</th>
+                <th className="w-16 py-1 text-right font-medium">Cages</th>
+              </tr>
+            </thead>
+            <tbody>
+              {batiments.map((b, i) => (
+                <tr key={b.id} className="border-t">
+                  <td className="py-1">{nomDuBatiment(b, i)}</td>
+                  <td className="py-1 text-right tabular-nums">{m2(b.floorArea)}</td>
+                  <td className="py-1 text-right tabular-nums">{m2(b.builtArea)}</td>
+                  <td className="py-1 text-right tabular-nums">{b.nbFloors ?? 'n.c.'}</td>
+                  <td className="py-1 text-right tabular-nums">{b.nbApartments ?? 'n.c.'}</td>
+                  <td className="py-1 text-right tabular-nums">{b.nbStaircases ?? 'n.c.'}</td>
+                </tr>
+              ))}
+              <tr className="border-t-2 font-semibold">
+                <td className="py-1">Total</td>
+                <td className="py-1 text-right tabular-nums">{m2(cumul!.floorArea)}</td>
+                <td className="py-1 text-right tabular-nums">{m2(cumul!.builtArea)}</td>
+                <td className="py-1 text-right tabular-nums">{cumul!.nbFloors ?? 'n.c.'}</td>
+                <td className="py-1 text-right tabular-nums">{cumul!.nbApartments ?? 'n.c.'}</td>
+                <td className="py-1 text-right tabular-nums">{cumul!.nbStaircases ?? 'n.c.'}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="mb-4 text-muted-foreground">
+            Les surfaces, les logements et les cages s'additionnent. Le nombre d'étages retenu
+            est celui du bâtiment le plus haut, puisque c'est lui qui fixe l'échafaudage. Le
+            périmètre et la surface de façade se mesurent sur l'ensemble : des bâtiments
+            mitoyens les partagent, et les additionner compterait les murs mitoyens.
+          </p>
+        </>
+      )}
       <table className="w-full">
         <thead>
           <tr className="border-b text-left text-muted-foreground">

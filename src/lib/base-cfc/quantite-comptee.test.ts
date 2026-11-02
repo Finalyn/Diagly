@@ -163,3 +163,110 @@ describe('changer le nombre d’unités d’un type', () => {
     expect(patchDesUnites(items[1], null, ouvrageDeLArticle(METAL, 2), batiment(), r)).toEqual({ unites: null, area: null })
   })
 })
+
+describe('une quantité mesurée sur place garde sa mesure, pas son silence', () => {
+  // France 78 : l'étanchéité de toiture plate, en mauvais état, 232,23 m²
+  // relevés au mètre sur place, sortait du devis « à chiffrer : aucun prix
+  // pour cet état dans la base » — alors que la base en a un. La passe de
+  // recalcul s'arrêtait sur `quantityManual` avant d'écrire le montant, et le
+  // verrou de la quantité verrouillait aussi le prix.
+  const MESURE = { quantityManual: true, area: 232.23, state: 'MAUVAIS' as const }
+
+  it('chiffre le relevé sans toucher à la mesure', () => {
+    const r = recalculsDesComptages(
+      [releve('x', FENETRE_BOIS, MESURE)], ARTICLES, batiment(), 'tous',
+    )
+    expect(r).toHaveLength(1)
+    // 232,23 m² × 1 000.-/m² : la mesure du terrain, le prix de la base.
+    expect(r[0].patch.estimatedCost).toBe(232_230)
+    expect(r[0].patch.area).toBeUndefined()
+  })
+
+  it('ne touche pas à un montant déjà chiffré', () => {
+    const r = recalculsDesComptages(
+      [releve('x', FENETRE_BOIS, { ...MESURE, estimatedCost: '180000' })], ARTICLES, batiment(), 'tous',
+    )
+    expect(r).toHaveLength(0)
+  })
+
+  it('ne touche pas à un prix repris à la main, même absent', () => {
+    const r = recalculsDesComptages(
+      [releve('x', FENETRE_BOIS, { ...MESURE, costManual: true })], ARTICLES, batiment(), 'tous',
+    )
+    expect(r).toHaveLength(0)
+  })
+
+  it('chiffre aussi un relevé dont la quantité automatique est déjà juste', () => {
+    // Même panne, sans mesure sur place : la quantité ne bougeait pas, donc le
+    // montant ne s'écrivait jamais.
+    const auto = recalculsDesComptages([releve('x', BOIS, { state: 'MAUVAIS' })], ARTICLES, batiment(), 'tous')
+    const quantite = auto[0].patch.area
+    const r = recalculsDesComptages(
+      [releve('x', BOIS, { state: 'MAUVAIS', area: quantite as number })], ARTICLES, batiment(), 'tous',
+    )
+    expect(r).toHaveLength(1)
+    expect(r[0].patch.estimatedCost).toBe(auto[0].patch.estimatedCost)
+  })
+
+  it('laisse tranquille un relevé sans état : il n’a rien à chiffrer', () => {
+    const r = recalculsDesComptages([releve('x', FENETRE_BOIS, { quantityManual: true, area: 232.23 })], ARTICLES, batiment(), 'tous')
+    expect(r).toHaveLength(0)
+  })
+})
+
+describe('une amélioration retenue sans montant se chiffre', () => {
+  // France 78 : « Façade en crépi non isolée · Amélioration · à chiffrer :
+  // amélioration retenue sans montant », alors que la base dit 310.-/m². Le
+  // montant ne s'écrivait qu'au moment où on retenait l'enveloppe ; retenue
+  // avant que la base ait son prix, elle le restait pour toujours.
+  const AVEC_PRIX = article('A015', 'Façade crépie non isolée', {
+    cfcCode: '226.1', uniteEntretien: 'm2', uniteRemplacement: 'm2', baseQuantite: 'surface_facade',
+    etats: [
+      ...etats(400).map((e) => ({ ...e, unite: 'm2' as const })),
+      { etat: 'amelioration' as const, travaux: 'Façade ventilée', prix: 310, partPrixMauvais: null, unite: 'm2' as const },
+      { etat: 'normes' as const, travaux: 'Garde-corps au gabarit', prix: 90, partPrixMauvais: null, unite: 'm2' as const },
+    ],
+    etapes: [{ articleId: 'A015', etapeNumero: 1, ordreDansEtape: 1 }],
+  })
+  const AVEC = [...ARTICLES, AVEC_PRIX]
+  const quantite = () => resolutionDeQuantite(ouvrageDeLArticle(AVEC_PRIX, 1), batiment()).quantity!
+
+  it('comble le montant depuis le prix de la base', () => {
+    const r = recalculsDesComptages(
+      [releve('x', AVEC_PRIX, { state: 'MOYEN', area: quantite(), improvement: 'Façade ventilée' })],
+      AVEC, batiment(), 'tous',
+    )
+    expect(r[0].patch.improvementCost).toBe(Math.round(quantite() * 310))
+  })
+
+  it('comble aussi une mise aux normes retenue sans montant', () => {
+    const r = recalculsDesComptages(
+      [releve('x', AVEC_PRIX, { state: 'MOYEN', area: quantite(), norms: 'Garde-corps au gabarit' })],
+      AVEC, batiment(), 'tous',
+    )
+    expect(r[0].patch.normsCost).toBe(Math.round(quantite() * 90))
+  })
+
+  it('n’écrase pas une amélioration déjà chiffrée à la main', () => {
+    const r = recalculsDesComptages(
+      [releve('x', AVEC_PRIX, { state: 'MOYEN', area: quantite(), improvement: 'Façade ventilée', improvementCost: '99000' })],
+      AVEC, batiment(), 'tous',
+    )
+    expect(r.find((x) => x.patch.improvementCost !== undefined)).toBeUndefined()
+  })
+
+  it('laisse « à chiffrer » ce que la base ne chiffre pas', () => {
+    // 36 améliorations du classeur n'ont pas de prix : elles doivent rester
+    // visibles à chiffrer, pas sortir un montant inventé.
+    const sansPrix = article('A038', 'Volets roulants', {
+      cfcCode: '228.1',
+      etats: [...etats(180), { etat: 'amelioration' as const, travaux: 'Isolation des caissons', prix: null, partPrixMauvais: null, unite: 'pce' as const }],
+      etapes: [{ articleId: 'A038', etapeNumero: 1, ordreDansEtape: 3 }],
+    })
+    const r = recalculsDesComptages(
+      [releve('x', sansPrix, { state: 'MAUVAIS', area: 93, improvement: 'Isolation des caissons' })],
+      [...ARTICLES, sansPrix], batiment(), 'tous',
+    )
+    expect(r.find((x) => x.patch.improvementCost !== undefined)).toBeUndefined()
+  })
+})

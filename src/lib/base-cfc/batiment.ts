@@ -14,7 +14,8 @@
  * périmètre.
  */
 
-import type { SourcesDimensions } from '../api-types'
+import type { ApiBatiment, SourcesDimensions } from '../api-types'
+import { batimentsDuDossier, cumulerLesBatiments } from './batiments'
 import { facadeMesuree } from '../formulas'
 import {
   surfaceFacade, surfaceFenetres,
@@ -40,6 +41,11 @@ export interface FicheDuBatiment {
   windowPct?: number | null
   /** Surface de parking, facultative : les sprinklers la prennent si elle existe. */
   parkingArea?: number | null
+  /**
+   * Les bâtiments du dossier, quand il en compte plusieurs. Leurs grandeurs
+   * l'emportent sur les champs de la fiche, qui ne décrivent qu'un bâtiment.
+   */
+  batiments?: ApiBatiment[] | null
   /** Les éléments comptés du dossier, tels que stockés (JSON). */
   comptages?: unknown
   /** D'où vient chaque dimension : une façade mesurée passe avant le périmètre. */
@@ -88,24 +94,39 @@ export function repartitionDesLogements(
   return trouve ? r : null
 }
 
-/** Les données du bâtiment, telles que les règles de quantité les attendent. */
+/**
+ * Les données du bâtiment, telles que les règles de quantité les attendent.
+ *
+ * Un dossier qui porte plusieurs bâtiments cumule ce qui est extensif — plancher,
+ * emprise, logements, cages — et prend la hauteur du plus haut. Le périmètre et
+ * la surface de façade restent ceux de la fiche : pour des bâtiments mitoyens,
+ * ils se mesurent sur l'ensemble, et les additionner par bâtiment compterait les
+ * murs mitoyens. Voir batiments.ts.
+ *
+ * Sans bâtiments déclarés, rien ne change : la fiche décrit un bâtiment unique,
+ * comme avant.
+ */
 export function donneesDuBatiment(fiche: FicheDuBatiment): DonneesBatiment {
-  const etages = valeur(fiche.nbFloors)
+  const batiments = batimentsDuDossier(fiche.batiments)
+  const cumul = batiments ? cumulerLesBatiments(batiments) : null
+
+  const etages = cumul?.nbFloors ?? valeur(fiche.nbFloors)
   const hauteurEtage = valeur(fiche.floorHeight) ?? HAUTEUR_DETAGE_PAR_DEFAUT
   const facade = facadeMesuree(fiche)
     ?? surfaceFacade(valeur(fiche.perimeter), etages, hauteurEtage)
     ?? valeur(fiche.facadeArea)
-  const logements = valeur(fiche.nbApartments)
-  const cages = valeur(fiche.nbStaircases)
+  const logements = cumul?.nbApartments ?? valeur(fiche.nbApartments)
+  const cages = cumul?.nbStaircases ?? valeur(fiche.nbStaircases)
+  const typologies = cumul?.apartmentTypes ?? fiche.apartmentTypes
 
   return {
-    surfacePlancher: valeur(fiche.floorArea),
-    surfaceBatie: valeur(fiche.builtArea),
+    surfacePlancher: cumul?.floorArea ?? valeur(fiche.floorArea),
+    surfaceBatie: cumul?.builtArea ?? valeur(fiche.builtArea),
     surfaceTerrain: valeur(fiche.terrainArea),
     surfaceFacade: facade,
     surfaceFenetres: surfaceFenetres(facade, partVitree(fiche.windowPct)),
     nombreLogements: logements,
-    logementsParTypologie: repartitionDesLogements(fiche.apartmentTypes),
+    logementsParTypologie: repartitionDesLogements(typologies),
     nombrePiecesEau: logements === null ? null : logements * PIECES_DEAU_PAR_LOGEMENT,
     nombreEtages: etages,
     nombreCages: cages,

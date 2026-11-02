@@ -21,6 +21,7 @@ import { computeProjectMetrics } from '@/lib/formulas'
 import { getMarketCoeff, phraseIndexation, priceBasisNote } from '@/lib/diagnostic-auto'
 import { cn, formatCHF, formatDate } from '@/lib/utils'
 import type { ApiDiagnosticItem, ApiProject, ElementState } from '@/lib/api-types'
+import { ficheCumulee } from '@/lib/base-cfc/batiments'
 
 /**
  * Prix unitaire réellement appliqué : le coût rapporté à la quantité. C'est la valeur
@@ -78,7 +79,7 @@ export function RapportStandard({
   project, items, groups, etatExistant, auteur, titre, sommaire, avecPhotos, variants,
 }: RapportStandardProps) {
   const aujourdhui = formatDate(new Date())
-  const metrics = computeProjectMetrics(project)
+  const metrics = computeProjectMetrics(ficheCumulee(project))
   const roof = metrics.roof
 
   const couts = useMemo(() => {

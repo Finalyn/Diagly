@@ -18,6 +18,7 @@ import type { PanneauQuantites } from './plans/quantites'
 import type { Sia416 } from './plans/sia416'
 import { rangDuNiveau } from './plans/presentation'
 import { computeProjectMetrics, type ProjectGeometry } from './formulas'
+import { ficheCumulee } from './base-cfc/batiments'
 
 /** Ce qu'on dit d'une source dans la fiche et dans le rapport. */
 export const LIBELLE_SOURCE: Record<SourceDimension, string> = {
@@ -141,7 +142,7 @@ export function miseAJourDepuisPlans(
   const ecartees: MiseAJourDepuisPlans['ecartees'] = []
   // Ce que la fiche donne aujourd'hui : la façade et la toiture se calculent,
   // elles ne sont pas toujours écrites.
-  const metrics = computeProjectMetrics(project)
+  const metrics = computeProjectMetrics(ficheCumulee(project))
   const fiche = (champ: DimensionSuivie): number | null | undefined =>
     champ === 'facadeArea' ? metrics.facade || null
     : champ === 'roofArea' ? metrics.roof

@@ -99,6 +99,29 @@ export interface DiagnosticExportPayload {
   items: unknown[]
 }
 
+/**
+ * Un bâtiment d'un dossier. Un dossier peut en porter plusieurs : Champrilly
+ * 16-18-20 est une seule affaire et trois adresses.
+ *
+ * Seules les grandeurs propres au bâtiment vivent ici. Le périmètre, la surface
+ * de façade et la surface de terrain restent sur le dossier : pour des bâtiments
+ * mitoyens, elles se mesurent une fois sur l'ensemble et ne s'additionnent pas.
+ */
+export interface ApiBatiment {
+  /** Identifiant local, stable le temps de la saisie. */
+  id: string
+  /** « Avenue de Champrilly 18 ». Vide, le bâtiment est nommé par son rang. */
+  adresse?: string | null
+  egid?: string | null
+  floorArea?: number | null
+  builtArea?: number | null
+  nbFloors?: number | null
+  nbApartments?: number | null
+  nbStaircases?: number | null
+  apartmentTypes?: Record<string, number> | null
+  yearBuilt?: number | null
+}
+
 export interface ApiProject {
   id: string
   ownerId: string
@@ -169,6 +192,13 @@ export interface ApiProject {
    * saisis au dossier, ils l'emportent sur les règles de quantité de la base.
    */
   comptages?: Partial<Record<CategorieComptee, Comptage>> | null
+  /**
+   * Les bâtiments du dossier, quand il en compte plusieurs (Champrilly 16-18-20).
+   * Leurs surfaces de plancher, emprises, logements et cages se cumulent ;
+   * `perimeter` et `facadeArea` restent ceux de l'ensemble. Absent ou vide : le
+   * dossier ne décrit qu'un bâtiment, par ses propres champs.
+   */
+  batiments?: ApiBatiment[] | null
   /** D'où vient chaque dimension de la fiche (lib/sources-dimensions.ts). */
   sources?: SourcesDimensions | null
   /** Installation de chantier et frais secondaires propres au dossier. */

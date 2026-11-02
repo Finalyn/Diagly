@@ -5,7 +5,8 @@ import { ArrowLeft, ArrowRight, Check, Loader2, AlertCircle, AlertTriangle, Plus
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Select, Badge } from '@/components/ui'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AddressAutocomplete, type AddressSelection } from '@/components/AddressAutocomplete'
-import { fetchRegistryInfo } from '@/lib/geoadmin'
+import { fetchRegistryInfo, type EntreeRegistre } from '@/lib/geoadmin'
+import { cumulerLesBatiments } from '@/lib/base-cfc/batiments'
 import { ChoixDepart, ImportFichier, type Depart } from '@/components/demarrage/Demarrage'
 import { ImportPlans } from '@/components/demarrage/ImportPlans'
 import { AVERTISSEMENT_VALEURS_PUBLIQUES, champsEnergie, relevesPourLeDiagnostic, type ImportPret } from '@/lib/demarrage'
@@ -17,7 +18,7 @@ import { computeProjectMetrics, perimeterWarning } from '@/lib/formulas'
 import { buildingTypeLabels, type BuildingType } from '@/data/mock'
 import { cn } from '@/lib/utils'
 import { api, ApiError } from '@/lib/api'
-import type { AggregationMode, ApiProject, DimensionSuivie, RoofType, SourcesDimensions } from '@/lib/api-types'
+import type { AggregationMode, ApiBatiment, ApiProject, DimensionSuivie, RoofType, SourcesDimensions } from '@/lib/api-types'
 
 const buildingTypeOrder: BuildingType[] = ['LOGEMENT', 'VILLA', 'CHALET', 'SCOLAIRE', 'BUREAU', 'ADMINISTRATIF', 'INDUSTRIEL', 'HOTEL', 'COMMERCIAL', 'AUTRE']
 
@@ -103,6 +104,35 @@ function sourcesALaCreation(origines: Partial<Record<string, Origine>>, form: Re
   return Object.keys(sources).length ? sources : undefined
 }
 
+/**
+ * Les entrées du registre, en bâtiments du dossier.
+ *
+ * Le dossier recalcule plancher, emprise, logements, cages et étages depuis ses
+ * bâtiments (lib/base-cfc/batiments.ts). On ne les envoie donc que si la fiche
+ * porte encore leur cumul : une valeur lue sur les plans ou corrigée à la main
+ * passe avant, et les bâtiments l'écraseraient sans le dire.
+ */
+function batimentsALaCreation(liste: EntreeRegistre[] | undefined, form: FormState): ApiBatiment[] | undefined {
+  if (!liste || liste.length < 2) return undefined
+  const batiments: ApiBatiment[] = liste.map((e, i) => ({
+    id: `b-${e.egid ?? i}`,
+    adresse: e.adresse ?? null,
+    egid: e.egid ?? null,
+    floorArea: e.floorArea ?? null,
+    builtArea: e.builtArea ?? null,
+    nbFloors: e.nbFloors ?? null,
+    nbApartments: e.nbApartments ?? null,
+    nbStaircases: 1,
+    yearBuilt: e.yearBuilt ?? null,
+  }))
+  const c = cumulerLesBatiments(batiments)
+  const pareil = (a: number | null, b: Num) => (a || 0) === (b === '' ? 0 : b)
+  const intact = pareil(c.floorArea, form.floorArea) && pareil(c.builtArea, form.builtArea)
+    && pareil(c.nbApartments, form.nbApartments) && pareil(c.nbStaircases, form.nbStaircases)
+    && pareil(c.nbFloors, form.nbFloors)
+  return intact ? batiments : undefined
+}
+
 /** Les champs des métrés dont une valeur des registres déclenche l'avertissement. */
 const CHAMPS_DES_METRES: { key: keyof FormState; label: string }[] = [
   { key: 'builtArea', label: 'surface bâtie' },
@@ -186,6 +216,11 @@ export function ProjectNew() {
 
   const [enriching, setEnriching] = useState(false)
   const [enrichNote, setEnrichNote] = useState<string | null>(null)
+  /**
+   * Les entrées que le registre a trouvées pour l'adresse (Champrilly 16-18-20),
+   * et celle de l'adresse choisie. La fiche reçoit leur cumul.
+   */
+  const [entrees, setEntrees] = useState<{ liste: EntreeRegistre[]; choisie?: string } | null>(null)
 
   /**
    * Le point de départ : des plans (recommandé), les valeurs publiques ou
@@ -248,6 +283,8 @@ export function ProjectNew() {
         reservePct: num(form.reservePct),
         // D'où vient chaque dimension : le rapport cite la source de chaque métré.
         sources: sourcesALaCreation(origines, form as unknown as Record<string, unknown>),
+        // Les entrées du registre, tant que la fiche porte encore leur cumul.
+        batiments: batimentsALaCreation(entrees?.liste, form),
         // Un fichier importé apporte l'EGID et, pour un CECB, l'étiquette.
         egid: importPret?.batiment.egid?.slice(0, 20) || undefined,
         ...(importPret ? champsEnergie(importPret) : {}),
@@ -419,6 +456,7 @@ export function ProjectNew() {
     }))
     clearError('address', 'postalCode', 'city', 'canton')
     setEnrichNote(null)
+    setEntrees(null)
     if (sel.east == null || sel.north == null) return
 
     setEnriching(true)
@@ -435,6 +473,7 @@ export function ProjectNew() {
         ['buildingType', info.buildingType, 'type de bâtiment'],
         ['nbFloors', info.nbFloors, 'étages'],
         ['nbApartments', info.nbApartments, 'logements'],
+        ['nbStaircases', info.nbStaircases, 'cages'],
       ]
       // Une mesure lue sur les plans ne cède pas la place à une estimation du
       // registre : il ne complète que ce que les plans n'ont pas donné.
@@ -444,9 +483,13 @@ export function ProjectNew() {
       setForm(prev => ({ ...prev, ...Object.fromEntries(retenus.map(([k, v]) => [k, v])) }))
       setOrigines(prev => ({ ...prev, ...Object.fromEntries(retenus.map(([k]) => [k, 'registre' as const])) }))
       clearError('yearBuilt', 'nbApartments', 'nbFloors', 'floorArea', 'builtArea', 'perimeter')
+      if (info.entrees) setEntrees({ liste: info.entrees, choisie: info.egid })
+      const immeuble = info.entrees
+        ? `Immeuble à ${info.entrees.length} entrées (${info.entrees.map(e => e.adresse ?? e.egid).join(', ')}) : surfaces, logements et cages cumulés. `
+        : ''
       setEnrichNote(
         retenus.length
-          ? `Pré-rempli automatiquement (registre fédéral RegBL + cadastre) : ${retenus.map(([, , l]) => l).join(', ')}. Vérifiez et ajustez si besoin.${gardes ? ' Les mesures lues sur vos plans sont gardées.' : ''}`
+          ? `${immeuble}Pré-rempli automatiquement (registre fédéral RegBL + cadastre) : ${retenus.map(([, , l]) => l).join(', ')}. Vérifiez et ajustez si besoin.${gardes ? ' Les mesures lues sur vos plans sont gardées.' : ''}`
           : gardes
             ? 'Adresse trouvée. Les mesures lues sur vos plans sont gardées.'
             : 'Adresse trouvée, mais aucune donnée registre disponible pour ce bâtiment.',
@@ -456,6 +499,30 @@ export function ProjectNew() {
     } finally {
       setEnriching(false)
     }
+  }
+
+  /**
+   * Ne garder que l'entrée de l'adresse choisie, quand le diagnostic ne porte
+   * que sur elle. Le périmètre du bloc ne vaut pas pour une entrée mitoyenne :
+   * il redevient une estimation depuis l'emprise.
+   */
+  const garderLEntreeSeule = () => {
+    const e = entrees?.liste.find(x => x.egid === entrees.choisie)
+    if (!e) return
+    const valeurs: Partial<Record<keyof FormState, number | ''>> = {
+      builtArea: e.builtArea ?? '',
+      floorArea: e.floorArea ?? '',
+      nbFloors: e.nbFloors ?? '',
+      nbApartments: e.nbApartments ?? '',
+      nbStaircases: 1,
+      perimeter: e.builtArea ? Math.round(4.3 * Math.sqrt(e.builtArea)) : '',
+    }
+    // Ce qui vient des plans reste.
+    const retenus = (Object.keys(valeurs) as (keyof FormState)[]).filter(k => origines[k] !== 'plans')
+    setForm(prev => ({ ...prev, ...Object.fromEntries(retenus.map(k => [k, valeurs[k]])) }))
+    setOrigines(prev => ({ ...prev, ...Object.fromEntries(retenus.map(k => [k, 'registre' as const])) }))
+    setEntrees(null)
+    setEnrichNote(`Seule l'entrée ${e.adresse ?? e.egid} est retenue. Le périmètre est déduit de son emprise : vérifiez-le.`)
   }
 
   const addExtra = () => setExtras(p => [...p, emptyBuilding()])
@@ -599,7 +666,14 @@ export function ProjectNew() {
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />Récupération des infos du bâtiment…
                   </p>
                 ) : enrichNote ? (
-                  <p className="text-xs text-emerald-700 mt-1">{enrichNote}</p>
+                  <p className="text-xs text-emerald-700 mt-1">
+                    {enrichNote}
+                    {entrees && (
+                      <button type="button" onClick={garderLEntreeSeule} className="ml-1 underline hover:text-emerald-900">
+                        Ne garder que {entrees.liste.find(e => e.egid === entrees.choisie)?.adresse ?? "l'entrée choisie"}
+                      </button>
+                    )}
+                  </p>
                 ) : (
                   <p className="text-xs text-muted-foreground mt-1">Commencez à taper, puis choisissez l'adresse : NPA, ville, canton, parcelle, terrain, année et surface se remplissent automatiquement.</p>
                 )}
@@ -977,7 +1051,10 @@ function ExtraBuildingCard({ index, value, onChange, onRemove }: {
     if (sel.east == null || sel.north == null) return
     setEnriching(true)
     try {
-      const info = await fetchRegistryInfo(sel.east, sel.north)
+      const tout = await fetchRegistryInfo(sel.east, sel.north)
+      // Un bâtiment supplémentaire est une adresse : pas le cumul de l'immeuble,
+      // que le premier bâtiment porte peut-être déjà.
+      const info = { ...tout, ...tout.entrees?.find(e => e.egid === tout.egid) }
       onChange({
         parcelNumber: info.parcelNumber ?? value.parcelNumber,
         terrainArea: info.terrainArea ?? '',

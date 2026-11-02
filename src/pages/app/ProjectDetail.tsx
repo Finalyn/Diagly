@@ -15,6 +15,8 @@ import { LIBELLE_SOURCE, sourceDe, sourcesApresSaisie } from '@/lib/sources-dime
 import { formatDate } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { aAppeler, lienItineraire } from '@/lib/visite-mails'
+import { batimentsDuDossier, cumulerLesBatiments, ficheCumulee } from '@/lib/base-cfc/batiments'
+import { BatimentsDuDossier } from '@/components/BatimentsDuDossier'
 
 const STATUSES: ProjectStatus[] = ['NON_PLANIFIE', 'PLANIFIE', 'EN_COURS', 'EN_REVUE', 'TERMINE', 'ARCHIVE']
 const STATUS_OPTIONS = STATUSES.map(s => ({ value: s, label: statusLabels[s], color: statusColors[s] }))
@@ -111,8 +113,13 @@ export function ProjectDetail({ aiguillage = false }: { aiguillage?: boolean } =
 
   const { project, diagnostics } = data
   const diagnostic = diagnostics[0]
-  const metrics = computeProjectMetrics(project)
+  const metrics = computeProjectMetrics(ficheCumulee(project))
   // Garde-fous : les données de registre couvrent parfois un îlot entier, pas le bâtiment.
+  // Plusieurs bâtiments : ce sont eux qui donnent le plancher, l'emprise, les
+  // logements et les étages. Laisser ces champs saisissables ferait croire
+  // qu'ils comptent encore.
+  const batiments = batimentsDuDossier(project.batiments)
+  const cumul = batiments ? cumulerLesBatiments(batiments) : null
   const perimetreDouteux = perimeterWarning(project.perimeter, project.builtArea)
   const etagesDouteux = floorsWarning(project.nbFloors, project.floorArea, project.builtArea)
   const tropDeRenoves = (project.renovatedApartments ?? 0) > (project.nbApartments ?? 0)
@@ -197,6 +204,11 @@ export function ProjectDetail({ aiguillage = false }: { aiguillage?: boolean } =
         </div>
       </div>
 
+      <BatimentsDuDossier
+        batiments={project.batiments ?? []}
+        onChange={(batiments) => update.mutate({ batiments })}
+      />
+
       <div className="grid gap-4 md:gap-6 lg:grid-cols-2">
         {/* Informations principales — éditables */}
         <Card className="flex flex-col">
@@ -229,16 +241,22 @@ export function ProjectDetail({ aiguillage = false }: { aiguillage?: boolean } =
               </Field>
               {isResidential && (
                 <>
-                <Field label="Appartements"><Input type="number" defaultValue={project.nbApartments ?? ''} onBlur={saveNum('nbApartments', project.nbApartments)} /></Field>
+                <Field label="Appartements" source={cumul ? undefined : src('nbApartments')}>
+                  {cumul
+                    ? <Input value={cumul.nbApartments ?? ''} readOnly disabled title="Somme des bâtiments" />
+                    : <Input type="number" defaultValue={project.nbApartments ?? ''} onBlur={saveNum('nbApartments', project.nbApartments)} />}
+                </Field>
                 <Field label="Dont rénovés">
                   <Input type="number" min="0" defaultValue={project.renovatedApartments ?? ''} onBlur={saveNum('renovatedApartments', project.renovatedApartments ?? null)} />
                   {tropDeRenoves && <p className="mt-1 text-[11px] text-amber-700">Plus de logements rénovés que de logements.</p>}
                 </Field>
                 </>
               )}
-              <Field label="Étages" source={src('nbFloors')}>
-                <Input type="number" defaultValue={project.nbFloors ?? ''} onBlur={saveNum('nbFloors', project.nbFloors)} />
-                {etagesDouteux && <p className="mt-1 text-[11px] text-amber-700">{etagesDouteux}</p>}
+              <Field label="Étages" source={cumul ? undefined : src('nbFloors')}>
+                {cumul
+                  ? <Input value={cumul.nbFloors ?? ''} readOnly disabled title="Le bâtiment le plus haut" />
+                  : <Input type="number" defaultValue={project.nbFloors ?? ''} onBlur={saveNum('nbFloors', project.nbFloors)} />}
+                {!cumul && etagesDouteux && <p className="mt-1 text-[11px] text-amber-700">{etagesDouteux}</p>}
               </Field>
               <Field label="Hauteur étage (m)"><Input type="number" step="0.1" defaultValue={project.floorHeight ?? ''} onBlur={saveNum('floorHeight', project.floorHeight)} /></Field>
             </div>
@@ -253,8 +271,16 @@ export function ProjectDetail({ aiguillage = false }: { aiguillage?: boolean } =
             <CardHeader><CardTitle>Surfaces</CardTitle></CardHeader>
             <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <Field label="Plancher (m²)" source={src('floorArea')}><Input type="number" defaultValue={project.floorArea ?? ''} onBlur={saveNum('floorArea', project.floorArea)} /></Field>
-              <Field label="Bâtie (m²)" source={src('builtArea')}><Input type="number" defaultValue={project.builtArea ?? ''} onBlur={saveNum('builtArea', project.builtArea)} /></Field>
+              <Field label="Plancher (m²)" source={cumul ? undefined : src('floorArea')}>
+                {cumul
+                  ? <Input value={cumul.floorArea ?? ''} readOnly disabled title="Somme des bâtiments" />
+                  : <Input type="number" defaultValue={project.floorArea ?? ''} onBlur={saveNum('floorArea', project.floorArea)} />}
+              </Field>
+              <Field label="Bâtie (m²)" source={cumul ? undefined : src('builtArea')}>
+                {cumul
+                  ? <Input value={cumul.builtArea ?? ''} readOnly disabled title="Somme des bâtiments" />
+                  : <Input type="number" defaultValue={project.builtArea ?? ''} onBlur={saveNum('builtArea', project.builtArea)} />}
+              </Field>
               <Field label="Périmètre (ml)" source={src('perimeter')}>
                 <Input type="number" defaultValue={project.perimeter ?? ''} onBlur={saveNum('perimeter', project.perimeter)} />
                 {perimetreDouteux && <p className="mt-1 text-[11px] text-amber-700">{perimetreDouteux}</p>}

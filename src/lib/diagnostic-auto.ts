@@ -3,6 +3,7 @@
 
 import type { ElementState, Priority } from './api-types'
 import { computeProjectMetrics, type ProjectGeometry } from './formulas'
+import { ficheCumulee } from './base-cfc/batiments'
 
 /** Priorité déduite de l'état (Mauvais = urgent). Modifiable à la main. */
 export const STATE_PRIORITY: Record<ElementState, Priority> = {
@@ -115,7 +116,7 @@ export interface QuantityContext {
 
 /** Construit le contexte de quantités d'un dossier. Point d'entrée unique de tous les écrans. */
 export function buildQuantityContext(project: ProjectGeometry): QuantityContext {
-  const m = computeProjectMetrics(project)
+  const m = computeProjectMetrics(ficheCumulee(project))
   const terrainArea = project.terrainArea ?? 0
   return {
     builtArea: project.builtArea ?? 0,

@@ -308,14 +308,26 @@ function prixCatalogueDe(it: ApiDiagnosticItem, article: ApiArticle | undefined,
 /**
  * Un état qui appelle des travaux selon la base.
  *
- * Moyen et Mauvais prescrivent un travail, sauf quand la base dit « Néant »
- * pour cet état. Sans article (relevé d'avant la bascule), on s'en tient aux
- * travaux retenus sur le relevé : rien de retenu, rien de prescrit.
+ * C'est la base qui le dit, et non le rang de l'état. Un ouvrage en bon état
+ * demande souvent un entretien chiffré — nettoyage à haute pression des tuiles
+ * à 40.-/m², enlèvement de la mousse sur une étanchéité plate à 10.-/m²,
+ * entretien d'ascenseur à 10 000.- — et 39 des 111 articles du classeur en
+ * prescrivent un. N'ouvrir la porte qu'à Moyen et Mauvais faisait disparaître
+ * ces relevés du devis sans un mot dès que leur montant ne se calculait pas,
+ * faute de quantité : ni ligne à chiffrer, ni mention dans les points à
+ * compléter. Un relevé dont le montant manque doit toujours se voir.
+ *
+ * Très bon reste dehors : aucun article du classeur n'y porte de prix.
+ *
+ * Sans article (relevé d'avant la bascule), on s'en tient aux travaux retenus
+ * sur le relevé : rien de retenu, rien de prescrit.
  */
 function travailPrescrit(it: ApiDiagnosticItem, article: ApiArticle | undefined): boolean {
-  if (it.state !== 'MOYEN' && it.state !== 'MAUVAIS') return false
+  if (!it.state || it.state === 'TRES_BON') return false
   if (!article) return it.works.some((w) => w && w !== 'Néant')
   const ligne = article.etats.find((e) => e.etat === ETATS_BASE[it.state!])
+  // Une base muette ne vaut pas « rien à faire » : le relevé reste au devis, à
+  // chiffrer, plutôt que de disparaître sans qu'on sache qu'il a existé.
   return !(ligne && aucunTravail(ligne.travaux))
 }
 

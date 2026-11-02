@@ -47,7 +47,7 @@ function comptagesPourPrisma(v: unknown) {
 }
 
 /** Les sources des dimensions et les majorations : même règle que l'apparence. */
-function jsonPourPrisma<K extends "sources" | "majorations">(cle: K, v: unknown) {
+function jsonPourPrisma<K extends "sources" | "majorations" | "batiments">(cle: K, v: unknown) {
   if (v === undefined) return {};
   return { [cle]: v === null ? Prisma.JsonNull : (v as Prisma.InputJsonValue) } as Record<K, Prisma.InputJsonValue | typeof Prisma.JsonNull>;
 }
@@ -139,6 +139,23 @@ const projectBaseSchema = z.object({
    * garde les règles de quantité de la base.
    */
   comptages: comptagesSchema.nullable().optional(),
+  /**
+   * Les batiments du dossier, quand il en compte plusieurs. Leurs grandeurs se
+   * cumulent ; le perimetre et la facade restent ceux du dossier, mesures sur
+   * l'ensemble (src/lib/base-cfc/batiments.ts).
+   */
+  batiments: z.array(z.object({
+    id: z.string().min(1).max(40),
+    adresse: z.string().max(255).nullish(),
+    egid: z.string().max(20).nullish(),
+    floorArea: z.number().nonnegative().max(1e7).nullish(),
+    builtArea: z.number().nonnegative().max(1e7).nullish(),
+    nbFloors: z.number().int().min(0).max(200).nullish(),
+    nbApartments: z.number().int().min(0).max(5000).nullish(),
+    nbStaircases: z.number().int().min(0).max(500).nullish(),
+    apartmentTypes: z.record(z.string().max(10), z.number().int().min(0).max(5000)).nullish(),
+    yearBuilt: z.number().int().min(1000).max(2200).nullish(),
+  }).strict()).max(60).nullable().optional(),
   sources: sourcesSchema.nullable().optional(),
   majorations: majorationsSchema.nullable().optional(),
   // Données énergétiques (import certificat)
@@ -178,7 +195,7 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", validateBody(createSchema), async (req, res) => {
-  const { apartmentTypes, reportBranding, comptages, sources, majorations, ...data } = req.body as z.infer<typeof createSchema>;
+  const { apartmentTypes, reportBranding, comptages, batiments, sources, majorations, ...data } = req.body as z.infer<typeof createSchema>;
   await assertOperationOwnership(data.operationId, req.auth!.sub);
   const project = await prisma.project.create({
     data: {
@@ -186,6 +203,7 @@ router.post("/", validateBody(createSchema), async (req, res) => {
       ...typologiesPourPrisma(apartmentTypes),
       ...apparencePourPrisma(reportBranding),
       ...comptagesPourPrisma(comptages),
+      ...jsonPourPrisma("batiments", batiments),
       ...jsonPourPrisma("sources", sources),
       ...jsonPourPrisma("majorations", majorations),
       ownerId: req.auth!.sub,
@@ -212,11 +230,11 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", validateBody(updateSchema), async (req, res) => {
   const before = await loadOwnedProject(req.params.id, req.auth!.sub);
-  const { apartmentTypes, reportBranding, comptages, sources, majorations, ...data } = req.body as z.infer<typeof updateSchema>;
+  const { apartmentTypes, reportBranding, comptages, batiments, sources, majorations, ...data } = req.body as z.infer<typeof updateSchema>;
   await assertOperationOwnership(data.operationId, req.auth!.sub);
   const project = await prisma.project.update({
     where: { id: req.params.id },
-    data: { ...data, ...typologiesPourPrisma(apartmentTypes), ...apparencePourPrisma(reportBranding), ...comptagesPourPrisma(comptages), ...jsonPourPrisma("sources", sources), ...jsonPourPrisma("majorations", majorations) },
+    data: { ...data, ...typologiesPourPrisma(apartmentTypes), ...apparencePourPrisma(reportBranding), ...comptagesPourPrisma(comptages), ...jsonPourPrisma("batiments", batiments), ...jsonPourPrisma("sources", sources), ...jsonPourPrisma("majorations", majorations) },
   });
   // Finalisation (transition vers TERMINE uniquement).
   if (data.status === "TERMINE" && before.status !== "TERMINE") {
