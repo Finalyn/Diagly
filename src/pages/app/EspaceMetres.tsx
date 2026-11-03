@@ -773,6 +773,7 @@ export function EspaceMetres() {
                   groupes={groupes}
                   selection={vue === 'tableau' ? (feuilleDuTableau ? selection : null) : selection}
                   onChoisir={vue === 'tableau' ? choisirPourLeTableau : choisir}
+                  etagesDuDossier={projet?.nbFloors}
                   onAnalyser={analyser} onCorriger={corriger}
                   echellesAPoser={echellesEnAttente} onPoserEchelles={() => void moteur.poserLesEchellesProposees()}
                   onSupprimer={(plan) => void supprimerPlan(plan)}

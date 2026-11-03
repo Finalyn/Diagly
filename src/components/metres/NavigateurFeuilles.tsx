@@ -16,7 +16,7 @@
  * échelles proposées qui restent, après confirmation.
  */
 import { useState } from 'react'
-import { AlertTriangle, Check, Loader2, Pencil, RotateCcw, Ruler, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, Layers, Loader2, Pencil, Plus, RotateCcw, Ruler, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ApiPlan, ChampCorrigeable, FeuillePlan, TypePageAnalysee } from '@/lib/api-types'
 import { useApercusPages, useRenduPlan } from '@/components/plans/rendu'
@@ -24,6 +24,7 @@ import { MarqueDiagly } from '@/components/plans/AnalyseIA'
 import {
   NOMS_STATUTS, NOMS_VUES, libelleFeuille, multiplicateur, type EtatAnalyse, type RefFeuille, type StatutEchelleFeuille,
 } from '@/lib/plans/feuilles'
+import { COMBLES, libelleEtages, lireEtages, nomCourt, nomDuNiveau } from '@/lib/plans/etages'
 
 /** Une feuille telle que le navigateur la montre. */
 export interface FeuilleVue extends RefFeuille {
@@ -56,11 +57,13 @@ const ANALYSES: Record<EtatAnalyse, string> = {
   erreur: 'bg-red-50 text-red-700',
 }
 
-export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir, onAnalyser, onCorriger, echellesAPoser = 0, onPoserEchelles, onSupprimer }: {
+export function NavigateurFeuilles({ groupes, selection, lectureSeule, etagesDuDossier, onChoisir, onAnalyser, onCorriger, echellesAPoser = 0, onPoserEchelles, onSupprimer }: {
   groupes: GroupeDeFeuilles[]
   selection: RefFeuille | null
   /** Sur téléphone : on regarde l'état des feuilles, on ne les corrige pas. */
   lectureSeule?: boolean
+  /** Les étages hors sol du dossier : ceux qu'on propose de cocher sur une feuille. */
+  etagesDuDossier?: number | null
   onChoisir?: (f: RefFeuille) => void
   onAnalyser?: (f: RefFeuille, relance: boolean) => void
   onCorriger?: (f: RefFeuille, patch: Partial<Pick<FeuillePlan, ChampCorrigeable>>) => void
@@ -111,6 +114,7 @@ export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir
           plusieurs={groupes.length > 1}
           selection={selection}
           lectureSeule={lectureSeule}
+          etagesDuDossier={etagesDuDossier}
           onChoisir={onChoisir}
           onAnalyser={onAnalyser}
           onCorriger={onCorriger}
@@ -121,13 +125,14 @@ export function NavigateurFeuilles({ groupes, selection, lectureSeule, onChoisir
   )
 }
 
-function GroupePlan({ groupe, premier, plusieurs, selection, lectureSeule, onChoisir, onAnalyser, onCorriger, onSupprimer }: {
+function GroupePlan({ groupe, premier, plusieurs, selection, lectureSeule, etagesDuDossier, onChoisir, onAnalyser, onCorriger, onSupprimer }: {
   groupe: GroupeDeFeuilles
   /** Le premier document du jeu : sa première feuille sert de repère à la visite guidée. */
   premier: boolean
   plusieurs: boolean
   selection: RefFeuille | null
   lectureSeule?: boolean
+  etagesDuDossier?: number | null
   onChoisir?: (f: RefFeuille) => void
   onAnalyser?: (f: RefFeuille, relance: boolean) => void
   onCorriger?: (f: RefFeuille, patch: Partial<Pick<FeuillePlan, ChampCorrigeable>>) => void
@@ -175,6 +180,7 @@ function GroupePlan({ groupe, premier, plusieurs, selection, lectureSeule, onCho
               vignette={vignette(f.page)}
               choisie={selection?.planId === f.planId && selection.page === f.page}
               lectureSeule={lectureSeule}
+              etagesDuDossier={etagesDuDossier}
               onChoisir={onChoisir && (() => onChoisir(f))}
               onAnalyser={onAnalyser && ((relance) => onAnalyser(f, relance))}
               onCorriger={onCorriger && ((patch) => onCorriger(f, patch))}
@@ -186,7 +192,7 @@ function GroupePlan({ groupe, premier, plusieurs, selection, lectureSeule, onCho
   )
 }
 
-function CarteFeuille({ vue, repere, nomDuPlan, vignette, choisie, lectureSeule, onChoisir, onAnalyser, onCorriger }: {
+function CarteFeuille({ vue, repere, nomDuPlan, vignette, choisie, lectureSeule, etagesDuDossier, onChoisir, onAnalyser, onCorriger }: {
   vue: FeuilleVue
   /** La feuille que montre la visite guidée, avec ses pastilles. */
   repere: boolean
@@ -194,6 +200,7 @@ function CarteFeuille({ vue, repere, nomDuPlan, vignette, choisie, lectureSeule,
   vignette: string | null
   choisie: boolean
   lectureSeule?: boolean
+  etagesDuDossier?: number | null
   onChoisir?: () => void
   onAnalyser?: (relance: boolean) => void
   onCorriger?: (patch: Partial<Pick<FeuillePlan, ChampCorrigeable>>) => void
@@ -268,9 +275,28 @@ function CarteFeuille({ vue, repere, nomDuPlan, vignette, choisie, lectureSeule,
           </div>
         )}
       </div>
+      {/* La feuille ouverte dit d'emblée quels étages elle représente : un
+          étage type oublié fausserait toutes ses quantités. */}
+      {choisie && !edition && !lectureSeule && onCorriger && (
+        <button
+          onClick={() => setEdition(true)}
+          className={cn('flex w-full items-center gap-1.5 border-t px-2.5 py-1.5 text-left text-[11px] transition-colors hover:bg-muted pointer-coarse:min-h-11',
+            feuille.niveau?.trim() ? 'text-muted-foreground' : 'text-amber-700')}
+          title="Choisir les étages que ce plan représente"
+        >
+          <Layers className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">
+            {feuille.niveau?.trim()
+              ? <>Étages : <span className="font-medium text-foreground">{feuille.niveau.trim()}</span>{mult > 1 && <> · compte × {mult}</>}</>
+              : 'Étages à préciser'}
+          </span>
+          <Pencil className="h-3 w-3 shrink-0" />
+        </button>
+      )}
       {edition && onCorriger && (
         <EditionFeuille
           feuille={feuille}
+          etagesDuDossier={etagesDuDossier}
           onAnnuler={() => setEdition(false)}
           onEnregistrer={(patch) => { onCorriger(patch); setEdition(false) }}
         />
@@ -287,21 +313,46 @@ function Pastille({ classe, titre, children }: { classe: string; titre?: string;
   )
 }
 
+/** Les étages hors sol proposés au moins, quoi que dise le dossier : « + » en ajoute. */
+const ETAGES_PROPOSES = 6
+
 /**
  * Corriger ce que l'IA a lu d'une feuille. Seuls les champs changés partent :
  * ce sont eux qu'une nouvelle analyse ne touchera plus.
+ *
+ * Les étages se cochent : le libellé (« 1er au 4ème ») et le nombre de fois
+ * que la feuille compte s'en déduisent, tant qu'on ne les a pas tapés soi-même.
  */
-function EditionFeuille({ feuille, onAnnuler, onEnregistrer }: {
+function EditionFeuille({ feuille, etagesDuDossier, onAnnuler, onEnregistrer }: {
   feuille: FeuillePlan
+  etagesDuDossier?: number | null
   onAnnuler: () => void
   onEnregistrer: (patch: Partial<Pick<FeuillePlan, ChampCorrigeable>>) => void
 }) {
   const [titre, setTitre] = useState(feuille.titre ?? '')
   const [type, setType] = useState<TypePageAnalysee | ''>(feuille.type ?? '')
   const [niveau, setNiveau] = useState(feuille.niveau ?? '')
+  const [coches, setCoches] = useState<number[]>(() => lireEtages(feuille.niveau) ?? [])
   const [etages, setEtages] = useState(String(multiplicateur(feuille)))
+  // Un nombre tapé à la main ne suit plus les étages cochés.
+  const [etagesTapes, setEtagesTapes] = useState(false)
   const nombre = Number(etages)
   const etagesValide = Number.isInteger(nombre) && nombre >= 1 && nombre <= 60
+
+  const plusHaut = Math.max(etagesDuDossier ?? 0, ETAGES_PROPOSES, ...coches.filter((n) => n < COMBLES))
+  const [hauts, setHauts] = useState(plusHaut)
+  const sousSols = Math.max(1, ...coches.filter((n) => n < 0).map((n) => -n))
+  const choix = [
+    ...Array.from({ length: sousSols }, (_, i) => -(sousSols - i)),
+    ...Array.from({ length: Math.max(hauts, plusHaut) + 1 }, (_, i) => i),
+    COMBLES,
+  ]
+  const basculer = (n: number) => {
+    const suite = coches.includes(n) ? coches.filter((x) => x !== n) : [...coches, n].sort((a, b) => a - b)
+    setCoches(suite)
+    setNiveau(libelleEtages(suite))
+    if (!etagesTapes) setEtages(String(Math.max(1, suite.length)))
+  }
 
   const enregistrer = () => {
     const patch: Partial<Pick<FeuillePlan, ChampCorrigeable>> = {}
@@ -320,27 +371,64 @@ function EditionFeuille({ feuille, onAnnuler, onEnregistrer }: {
         Titre
         <input value={titre} onChange={(e) => setTitre(e.target.value)} maxLength={120} className={cn(champ, 'mt-0.5')} />
       </label>
-      <div className="grid grid-cols-2 gap-2">
+      <label className="block text-[11px] text-muted-foreground">
+        Vue
+        <select value={type} onChange={(e) => setType(e.target.value as TypePageAnalysee | '')} className={cn(champ, 'mt-0.5')}>
+          <option value="">Non précisée</option>
+          {(Object.keys(NOMS_VUES) as TypePageAnalysee[]).map((t) => <option key={t} value={t}>{NOMS_VUES[t]}</option>)}
+        </select>
+      </label>
+      <fieldset>
+        <legend className="text-[11px] text-muted-foreground">Étages que ce plan représente</legend>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {choix.map((n) => {
+            const coche = coches.includes(n)
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => basculer(n)}
+                aria-pressed={coche}
+                title={nomDuNiveau(n)}
+                className={cn('h-7 min-w-9 rounded-md border px-1.5 text-xs font-medium transition-colors pointer-coarse:h-10 pointer-coarse:min-w-11',
+                  coche ? 'border-foreground bg-foreground text-background' : 'bg-background hover:bg-muted')}
+              >
+                {nomCourt(n)}
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => setHauts(Math.max(hauts, plusHaut) + 1)}
+            className="h-7 rounded-md border border-dashed px-1.5 text-muted-foreground hover:bg-muted pointer-coarse:h-10 pointer-coarse:min-w-11"
+            title="Proposer un étage de plus"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </fieldset>
+      <div className="grid grid-cols-[1fr_5.5rem] gap-2">
         <label className="block text-[11px] text-muted-foreground">
-          Vue
-          <select value={type} onChange={(e) => setType(e.target.value as TypePageAnalysee | '')} className={cn(champ, 'mt-0.5')}>
-            <option value="">Non précisée</option>
-            {(Object.keys(NOMS_VUES) as TypePageAnalysee[]).map((t) => <option key={t} value={t}>{NOMS_VUES[t]}</option>)}
-          </select>
+          Libellé
+          <input value={niveau} onChange={(e) => setNiveau(e.target.value)} maxLength={40} placeholder="Rez, 1er au 4ème…" className={cn(champ, 'mt-0.5')} />
         </label>
-        <label className="block text-[11px] text-muted-foreground">
-          Étage
-          <input value={niveau} onChange={(e) => setNiveau(e.target.value)} maxLength={40} placeholder="Rez, 1er…" className={cn(champ, 'mt-0.5')} />
+        <label className="block text-[11px] text-muted-foreground" title="Le nombre de fois que les quantités de cette feuille comptent : 4 pour un étage type du 1er au 4ème">
+          Compte
+          <span className="relative mt-0.5 block">
+            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">×</span>
+            <input
+              type="number" inputMode="numeric" min={1} max={60} step={1} value={etages}
+              onChange={(e) => { setEtages(e.target.value); setEtagesTapes(true) }}
+              className={cn(champ, 'pl-5', !etagesValide && 'border-red-400')}
+            />
+          </span>
         </label>
       </div>
-      <label className="block text-[11px] text-muted-foreground">
-        Étages identiques représentés
-        <input
-          type="number" inputMode="numeric" min={1} max={60} step={1} value={etages}
-          onChange={(e) => setEtages(e.target.value)}
-          className={cn(champ, 'mt-0.5', !etagesValide && 'border-red-400')}
-        />
-      </label>
+      {etagesValide && nombre > 1 && (
+        <p className="text-[11px] text-muted-foreground">
+          Les surfaces, longueurs et éléments relevés sur cette feuille compteront {nombre} fois.
+        </p>
+      )}
       <div className="flex gap-1.5">
         <button onClick={onAnnuler} className="flex h-8 flex-1 items-center justify-center gap-1 rounded-md border text-xs font-medium hover:bg-muted">
           <X className="h-3.5 w-3.5" />Annuler
