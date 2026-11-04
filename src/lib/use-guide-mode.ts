@@ -24,3 +24,10 @@ export const GUIDE_MODE_LABELS: Record<GuideMode, string> = {
   ask: 'À la demande',
   always: 'Toujours',
 }
+
+/** Ce que fait chaque mode, dit au survol : on choisit en sachant. */
+export const GUIDE_MODE_DESCRIPTIONS: Record<GuideMode, string> = {
+  off: 'Le guide se tait : vous relevez seul.',
+  ask: 'Le guide analyse une photo quand vous le lui demandez.',
+  always: 'Le guide analyse chaque photo prise. Il propose, vous décidez.',
+}

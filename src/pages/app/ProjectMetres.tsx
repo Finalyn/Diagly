@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, AlertCircle, AlertTriangle, ClipboardCheck, FileText, Plus, RotateCcw, X } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Loader2, AlertCircle, AlertTriangle, ClipboardCheck, FileText, Plus, RefreshCw, RotateCcw, X } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardContent, Input } from '@/components/ui'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { priorityTextColors } from '@/data/mock'
@@ -311,6 +311,7 @@ export function ProjectMetres() {
                   Honoraires sur les travaux, réserve sur les travaux et les honoraires, puis frais secondaires et TVA. Estimation ±15 %.
                 </p>
                 <p className="border-t pt-2 text-[11px] text-muted-foreground">{priceBasisNote()}</p>
+                <ReindexPanel diagnosticId={diagnostic.id} />
               </CardContent>
             </Card>
 
@@ -358,6 +359,81 @@ export function ProjectMetres() {
 }
 
 /** Le prix unitaire d'une ligne, saisi à la main ; vide pour une ligne à chiffrer. */
+/**
+ * Réindexation des coûts au marché du jour.
+ *
+ * Ici, dans les Coûts, et non dans le relevé : on ne chiffre pas pendant
+ * qu'on relève. Les coûts sont figés à la saisie. Quand l'indice de construction change, ce
+ * bouton les ramène tous au coefficient courant, sans ressaisir le dossier.
+ * On montre l'effet avant de l'appliquer : un chiffrage qui bouge tout seul
+ * derrière le dos de celui qui l'a remis n'est pas acceptable.
+ */
+function ReindexPanel({ diagnosticId }: { diagnosticId: string }) {
+  const qc = useQueryClient()
+  const [apercu, setApercu] = useState<Awaited<ReturnType<typeof api.diagnostics.reindex>> | null>(null)
+
+  const simuler = useMutation({
+    mutationFn: () => api.diagnostics.reindex(diagnosticId, true),
+    onSuccess: setApercu,
+  })
+  const appliquer = useMutation({
+    mutationFn: () => api.diagnostics.reindex(diagnosticId, false),
+    onSuccess: () => {
+      setApercu(null)
+      qc.invalidateQueries({ queryKey: ['diagnostic', diagnosticId] })
+      qc.invalidateQueries({ queryKey: ['diagnostic-items', diagnosticId] })
+      qc.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+
+  if (!apercu) {
+    return (
+      <button
+        onClick={() => simuler.mutate()}
+        disabled={simuler.isPending}
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+      >
+        {simuler.isPending
+          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          : <RefreshCw className="h-3.5 w-3.5" />}
+        Actualiser les prix au marché du jour
+      </button>
+    )
+  }
+
+  const rien = apercu.items.updated === 0
+  return (
+    <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
+      {rien ? (
+        <p>Les coûts sont déjà au coefficient du jour (×{apercu.market.coeff}). Rien à changer.</p>
+      ) : (
+        <>
+          <p>
+            {apercu.items.updated} poste{apercu.items.updated > 1 ? 's' : ''} sur {apercu.items.total} passerai
+            {apercu.items.updated > 1 ? 'ent' : 't'} au coefficient ×{apercu.market.coeff}.
+            {apercu.items.manual > 0 && ` ${apercu.items.manual} coût${apercu.items.manual > 1 ? 's' : ''} repris à la main ${apercu.items.manual > 1 ? 'restent' : 'reste'} inchangé${apercu.items.manual > 1 ? 's' : ''}.`}
+          </p>
+          <p className="tabular-nums">
+            Total {formatCHF(apercu.before)} → <strong>{formatCHF(apercu.after)}</strong>{' '}
+            <span className={apercu.delta >= 0 ? 'text-amber-600' : 'text-green-600'}>
+              ({apercu.delta >= 0 ? '+' : ''}{formatCHF(apercu.delta)})
+            </span>
+          </p>
+        </>
+      )}
+      <div className="flex gap-2">
+        {!rien && (
+          <Button size="sm" onClick={() => appliquer.mutate()} disabled={appliquer.isPending}>
+            {appliquer.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+            Appliquer
+          </Button>
+        )}
+        <Button size="sm" variant="outline" onClick={() => setApercu(null)}>Fermer</Button>
+      </div>
+    </div>
+  )
+}
+
 function PrixSaisi({ ligne, onSaisi }: { ligne: DevisLigne; onSaisi: (pu: number) => void }) {
   const valeur = ligne.prixUnitaire != null ? String(ligne.prixUnitaire) : ''
   const valider = (brut: string, champ: HTMLInputElement) => {

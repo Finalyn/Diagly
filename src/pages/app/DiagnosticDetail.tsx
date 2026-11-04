@@ -2,12 +2,12 @@ import { useMemo, useState, useEffect, type ReactNode } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Loader2, AlertCircle, AlertTriangle, Search, Plus, Check, ImagePlus, X, ArrowRight, ScanSearch, Trash2, ChevronDown, RefreshCw,
+  ArrowLeft, Loader2, AlertCircle, AlertTriangle, Search, Plus, Check, ImagePlus, X, ArrowRight, ScanSearch, Trash2, ChevronDown,
 } from 'lucide-react'
 import {
   Button, Card, CardHeader, CardTitle, CardContent, Badge, Textarea, Input,
 } from '@/components/ui'
-import { useGuideMode, GUIDE_MODE_LABELS, type GuideMode } from '@/lib/use-guide-mode'
+import { useGuideMode, GUIDE_MODE_DESCRIPTIONS, GUIDE_MODE_LABELS, type GuideMode } from '@/lib/use-guide-mode'
 import { DiagnosticGuide } from '@/components/DiagnosticGuide'
 import { stateLabels, stateColors, priorityColors, priorityDescriptions } from '@/data/mock'
 import {
@@ -22,7 +22,7 @@ import { RecapOublis } from '@/components/diagnostic/RecapOublis'
 import { Visionneuse } from '@/components/Visionneuse'
 import {
   STATE_PRIORITY, workForState, priceForState, computeCost, computeCostFromPrice,
-  appliedUnitPrice, getMarketCoeff, priceBasisNote, priceToNumber, type PrixCatalogue,
+  appliedUnitPrice, getMarketCoeff, priceToNumber, type PrixCatalogue,
 } from '@/lib/diagnostic-auto'
 // La base CFC du bureau remplace l'ancien catalogue : les étapes de visite, les
 // états et les prix viennent d'elle, et le relevé est le couple article et étape.
@@ -55,81 +55,6 @@ import { PanneauGlissant } from '@/components/PanneauGlissant'
 import { vibrer } from '@/lib/motion'
 import { useIsMobile, useEstTablette } from '@/lib/use-mobile'
 import type { ApiDiagnosticItem, ElementState, Priority } from '@/lib/api-types'
-
-/**
- * Réindexation des coûts au marché du jour.
- *
- * Les coûts sont figés à la saisie. Quand l'indice de construction change, ce
- * bouton les ramène tous au coefficient courant, sans ressaisir le dossier.
- * On montre l'effet avant de l'appliquer : un chiffrage qui bouge tout seul
- * derrière le dos de celui qui l'a remis n'est pas acceptable.
- */
-function ReindexPanel({ diagnosticId }: { diagnosticId: string }) {
-  const qc = useQueryClient()
-  const [apercu, setApercu] = useState<Awaited<ReturnType<typeof api.diagnostics.reindex>> | null>(null)
-
-  const simuler = useMutation({
-    mutationFn: () => api.diagnostics.reindex(diagnosticId, true),
-    onSuccess: setApercu,
-  })
-  const appliquer = useMutation({
-    mutationFn: () => api.diagnostics.reindex(diagnosticId, false),
-    onSuccess: () => {
-      setApercu(null)
-      qc.invalidateQueries({ queryKey: ['diagnostic', diagnosticId] })
-      qc.invalidateQueries({ queryKey: ['diagnostic-items', diagnosticId] })
-      qc.invalidateQueries({ queryKey: ['projects'] })
-    },
-  })
-
-  if (!apercu) {
-    return (
-      <button
-        onClick={() => simuler.mutate()}
-        disabled={simuler.isPending}
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-      >
-        {simuler.isPending
-          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          : <RefreshCw className="h-3.5 w-3.5" />}
-        Actualiser les prix au marché du jour
-      </button>
-    )
-  }
-
-  const rien = apercu.items.updated === 0
-  return (
-    <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-2">
-      {rien ? (
-        <p>Les coûts sont déjà au coefficient du jour (×{apercu.market.coeff}). Rien à changer.</p>
-      ) : (
-        <>
-          <p>
-            {apercu.items.updated} poste{apercu.items.updated > 1 ? 's' : ''} sur {apercu.items.total} passerai
-            {apercu.items.updated > 1 ? 'ent' : 't'} au coefficient ×{apercu.market.coeff}.
-            {apercu.items.manual > 0 && ` ${apercu.items.manual} coût${apercu.items.manual > 1 ? 's' : ''} repris à la main ${apercu.items.manual > 1 ? 'restent' : 'reste'} inchangé${apercu.items.manual > 1 ? 's' : ''}.`}
-          </p>
-          <p className="tabular-nums">
-            Total {formatCHF(apercu.before)} → <strong>{formatCHF(apercu.after)}</strong>{' '}
-            <span className={apercu.delta >= 0 ? 'text-amber-600' : 'text-green-600'}>
-              ({apercu.delta >= 0 ? '+' : ''}{formatCHF(apercu.delta)})
-            </span>
-          </p>
-        </>
-      )}
-      <div className="flex gap-2">
-        {!rien && (
-          <Button size="sm" onClick={() => appliquer.mutate()} disabled={appliquer.isPending}>
-            {appliquer.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-            Appliquer
-          </Button>
-        )}
-        <Button size="sm" variant="outline" onClick={() => setApercu(null)}>Fermer</Button>
-      </div>
-      <p className="text-[11px] text-muted-foreground border-t pt-2">{priceBasisNote()}</p>
-    </div>
-  )
-}
 
 // ---------- Helpers ----------
 
@@ -471,6 +396,26 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     />
   )
 
+  // Les montants par priorité sont dans le résumé du projet : ici, pendant
+  // qu'on relève, ce qui se décide est ce qu'il reste à voir.
+  const avancement = (
+    <AvancementVisite
+      faits={avancementVisite.faits}
+      total={avancementVisite.total}
+      etapes={avancementVisite.etapes}
+      etape={etape}
+      // Une répartition qui ne fait pas le compte se dit avec les oublis :
+      // c'est le même bouton qui mène au récapitulatif.
+      alerte={[
+        phraseDAlerte(bilanDesOublis(items)),
+        malRepartis.length === 1 ? malRepartis[0].phrase
+          : malRepartis.length > 1 ? `${malRepartis.length} éléments comptés à répartir` : null,
+      ].filter(Boolean).join(' · ') || null}
+      onAlerte={() => setRecap(true)}
+    />
+  )
+  const guide = <GuideModeToggle mode={guideMode} onChange={setGuideMode} />
+
   return (
     // Encastré, l'éditeur prend la hauteur que son conteneur lui laisse : la barre
     // d'onglets occupe déjà une place qu'un calcul en hauteur de fenêtre ignorerait,
@@ -487,14 +432,15 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
         {/* Dans le dossier, sur grand écran : le même en-tête que les autres
             pages du dossier (Photos, Coûts, Rapports). Sur téléphone, la barre
             du dossier dit déjà où l'on est, et la place manque. */}
+        {/* Le titre, l'avancement et le guide tiennent sur une ligne : empilés,
+            ils occupaient le haut de l'écran et repoussaient le tour du
+            bâtiment, qui est ce qu'on regarde. La phrase « suivez les étapes »
+            est partie : le parcours, dessous, le dit déjà. */}
         {encastre && !isMobile && (
-          <div>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             <h1 className="text-xl font-bold md:text-2xl">Relevé</h1>
-            <p className="text-sm text-muted-foreground">
-              {items.length === 0
-                ? 'Aucun élément relevé pour le moment. Suivez les étapes du tour du bâtiment.'
-                : `${items.length} élément${items.length !== 1 ? 's' : ''} relevé${items.length !== 1 ? 's' : ''}. Suivez les étapes du tour du bâtiment.`}
-            </p>
+            {avancement}
+            <div className="ml-auto">{guide}</div>
           </div>
         )}
         {!encastre && (
@@ -515,27 +461,15 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
 
           </div>
         )}
-        {/* Le même bandeau sur les deux tailles d'écran. Les montants par priorité
-            sont partis dans le résumé du projet, avec les autres statistiques : ici,
-            pendant qu'on relève, ce qui se décide est ce qu'il reste à voir. */}
-        <AvancementVisite
-          faits={avancementVisite.faits}
-          total={avancementVisite.total}
-          etapes={avancementVisite.etapes}
-          etape={etape}
-          // Une répartition qui ne fait pas le compte se dit avec les oublis :
-          // c'est le même bouton qui mène au récapitulatif.
-          alerte={[
-            phraseDAlerte(bilanDesOublis(items)),
-            malRepartis.length === 1 ? malRepartis[0].phrase
-              : malRepartis.length > 1 ? `${malRepartis.length} éléments comptés à répartir` : null,
-          ].filter(Boolean).join(' · ') || null}
-          onAlerte={() => setRecap(true)}
-        />
-
-        <ReindexPanel diagnosticId={id!} />
-
-        <GuideModeToggle mode={guideMode} onChange={setGuideMode} />
+        {/* Hors du dossier ou sur téléphone, sous l'en-tête, sur une ligne aussi.
+            L'actualisation des prix est dans l'onglet Coûts : on ne chiffre pas
+            pendant qu'on relève. */}
+        {!(encastre && !isMobile) && (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            {avancement}
+            <div className="ml-auto">{guide}</div>
+          </div>
+        )}
       </div>
 
       <div className="relative flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
@@ -1061,20 +995,17 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte }: {
 }) {
   const rang = etapes.findIndex((g) => g.numero === etape)
   const courante = rang >= 0 ? etapes[rang] : null
-  const titre = courante
-    ? `${courante.nom} · étape ${rang + 1} sur ${etapes.length}`
-    : `Tour du bâtiment · ${etapes.length} étape${etapes.length > 1 ? 's' : ''}`
   const part = total > 0 ? Math.round((faits / total) * 100) : 0
 
   return (
-    // La barre est courte, le pourcentage collé à sa fin : sur téléphone comme
-    // sur grand écran, elle ne traverse plus toute la largeur. Pleine largeur,
-    // elle prenait plus de place que ce qu'elle dit.
-    <div className="space-y-1.5 lg:max-w-96" data-visite="releve-avancement">
-      <p className="min-w-0 truncate text-sm font-medium">{titre}</p>
+    // Une seule ligne : la barre courte, puis les chiffres. Sur trois lignes
+    // (titre, barre, compte), elle prenait plus de place que ce qu'elle dit.
+    // Le nombre d'étapes se lit dans le parcours, dessous ; seule l'étape
+    // ouverte se rappelle ici.
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5" data-visite="releve-avancement">
       <div className="flex items-center gap-2.5">
         <div
-          className="h-1.5 min-w-0 max-w-56 flex-1 overflow-hidden rounded-full bg-border"
+          className="h-1.5 w-24 overflow-hidden rounded-full bg-border sm:w-32"
           role="progressbar"
           aria-valuenow={faits}
           aria-valuemin={0}
@@ -1083,12 +1014,12 @@ function AvancementVisite({ faits, total, etapes, etape, alerte, onAlerte }: {
         >
           <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${part}%` }} />
         </div>
-        <p className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{part} %</p>
+        <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          <span className="font-semibold text-foreground">{faits}/{total}</span> ouvrage{total > 1 ? 's' : ''} · {part} %
+          {courante && <> · {courante.nom}, étape {rang + 1}/{etapes.length}</>}
+        </p>
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <p className="text-xs text-muted-foreground">
-          {faits} ouvrage{faits > 1 ? 's' : ''} relevé{faits > 1 ? 's' : ''} sur {total}
-        </p>
         {/* Dit pendant la visite, tant qu'on peut encore y retourner. Au moment du
             rapport, il faudrait remonter trois étages pour une photo. L'alerte est
             un bouton : nommer un manque sans donner le chemin oblige à redescendre
@@ -2534,8 +2465,10 @@ function GuideModeToggle({ mode, onChange }: { mode: GuideMode; onChange: (m: Gu
           <button
             key={m}
             onClick={() => onChange(m)}
+            title={GUIDE_MODE_DESCRIPTIONS[m]}
+            aria-pressed={mode === m}
             className={cn(
-              'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+              'px-2 py-0.5 rounded-md text-xs font-medium transition-colors',
               mode === m ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground',
             )}
           >
