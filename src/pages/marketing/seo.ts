@@ -1,4 +1,4 @@
-import { CONTACT, PLUS, PRIX_DIAGNOSTIC, PRO, QUESTIONS, remise, type Abonnement } from './accueil/contenu'
+import { CONTACT, QUESTIONS } from './accueil/contenu'
 import { ARTICLES, type Article } from './blog/articles'
 
 /**
@@ -11,7 +11,8 @@ import { ARTICLES, type Article } from './blog/articles'
  * dans le navigateur, où la page met sa tête à jour en arrivant (tete.ts).
  *
  * Les données structurées disent les faits utiles à un moteur : ce qu'est
- * Diagly (SoftwareApplication, avec ses offres et ses fonctionnalités), qui
+ * Diagly (SoftwareApplication, avec ses fonctionnalités ; sans ses offres tant
+ * que le site n'affiche pas de tarif, voir contenu.ts), qui
  * le publie (Organization), les questions fréquentes (FAQPage), les articles
  * (BlogPosting) et le fil d'Ariane des pages intérieures.
  */
@@ -56,18 +57,6 @@ export const FONCTIONNALITES_CLES = [
   'Données hébergées en Suisse chez Infomaniak',
 ]
 
-/** Un abonnement, tel qu'un moteur doit le lire : un prix par mois, engagement d'un an. */
-function offreAbonnement(a: Abonnement) {
-  return {
-    '@type': 'Offer',
-    name: `Abonnement ${a.nom}, engagement d’un an, prix par mois`,
-    description: `${a.inclus} diagnostics compris par mois, puis ${a.prixSuivant} CHF le diagnostic (${remise(a)} % de moins qu’à l’unité) ; une heure de formation incluse la première année`,
-    price: String(a.prixMois),
-    priceCurrency: 'CHF',
-    priceSpecification: { '@type': 'UnitPriceSpecification', price: String(a.prixMois), priceCurrency: 'CHF', unitText: 'mois' },
-  }
-}
-
 const APPLICATION = {
   '@type': 'SoftwareApplication',
   '@id': `${SITE}/#application`,
@@ -80,12 +69,6 @@ const APPLICATION = {
   description: 'Logiciel suisse de diagnostic de bâtiment : métrés tirés des plans par l’IA, relevé de l’état sur iPad et iPhone, chiffrage par code CFC et rapports à l’en-tête du bureau.',
   featureList: FONCTIONNALITES_CLES,
   publisher: { '@id': `${SITE}/#organisation` },
-  offers: [
-    { '@type': 'Offer', name: 'Diagnostic à l’unité', price: String(PRIX_DIAGNOSTIC), priceCurrency: 'CHF' },
-    offreAbonnement(PLUS),
-    offreAbonnement(PRO),
-    { '@type': 'Offer', name: 'Entreprise', description: 'Sur devis : volume sur mesure, plusieurs équipes, API et webhooks.', priceCurrency: 'CHF' },
-  ],
 }
 
 function filDAriane(etapes: [string, string][]) {

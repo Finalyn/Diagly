@@ -1,3 +1,5 @@
+import { Calculator, ClipboardCheck, Database, FileText, MessageCircle, Ruler, Smartphone, type LucideIcon } from 'lucide-react'
+
 /**
  * Le contenu du site public qui n'est pas de la mise en page : la
  * navigation, les tarifs et les questions fréquentes.
@@ -7,16 +9,41 @@
  * 20 octobre 2026 : le diagnostic à l'unité, deux abonnements qui comprennent
  * des diagnostics chaque mois et facturent les suivants moins cher, et une
  * offre Entreprise sur devis. Pas de diagnostic offert : c'est la démo qui l'est.
+ *
+ * Depuis le 4 novembre 2026, les tarifs ne sont plus sur le site : ni section
+ * sur l'accueil, ni montant dans la FAQ ou les données pour les moteurs. Le
+ * tarif est présenté pendant la démo. Les montants restent notés ici.
  */
 
-/** Le menu du haut, le même sur toutes les pages du site (LienSite, ui.tsx). */
-export const NAV = [
-  { href: '/fonctionnalites', label: 'Fonctionnalités' },
-  { href: '/fonctionnalites#metres', label: 'Métrés IA' },
-  { href: '/fonctionnalites#app', label: 'App' },
-  { href: '/#tarifs', label: 'Tarifs' },
+/** Un outil de Diagly dans le menu déroulant « Fonctionnalités ». */
+export interface OutilNav {
+  href: string
+  label: string
+  /** Ce qu'il fait, en quelques mots. */
+  detail: string
+  icone: LucideIcon
+}
+
+/** Le menu déroulant « Fonctionnalités » : chaque outil mène à sa section de la page. */
+export const OUTILS_NAV: OutilNav[] = [
+  { href: '/fonctionnalites#metres', label: 'Métrés par l’IA', detail: 'Vos plans, lus et mesurés', icone: Ruler },
+  { href: '/fonctionnalites#releve', label: 'Relevé guidé', detail: 'Le tour du bâtiment en 7 étapes', icone: ClipboardCheck },
+  { href: '/fonctionnalites#base', label: 'Base de prix CFC', detail: 'Vos prix, par ouvrage et par état', icone: Database },
+  { href: '/fonctionnalites#chiffrage', label: 'Chiffrage CFC', detail: 'Le coût, ouvrage par ouvrage', icone: Calculator },
+  { href: '/fonctionnalites#rapports', label: 'Rapports', detail: 'À l’en-tête de votre bureau', icone: FileText },
+  { href: '/fonctionnalites#assistant', label: 'Assistant Diagly', detail: 'Vos dossiers, en questions', icone: MessageCircle },
+  { href: '/fonctionnalites#app', label: 'App iPhone et iPad', detail: 'Sur le terrain, même sans réseau', icone: Smartphone },
+]
+
+/**
+ * Le menu du haut, le même sur toutes les pages du site (LienSite, ui.tsx).
+ * Fonctionnalités ouvre la liste des outils (OUTILS_NAV). Le blog n'y figure
+ * pas : il sert au référencement, et le pied de page y mène.
+ */
+export const NAV: { href: string; label: string; outils?: OutilNav[] }[] = [
+  { href: '/fonctionnalites', label: 'Fonctionnalités', outils: OUTILS_NAV },
+  { href: '/#pros', label: 'Pourquoi Diagly' },
   { href: '/#faq', label: 'FAQ' },
-  { href: '/blog', label: 'Blog' },
 ]
 
 /** Le prix d'un diagnostic acheté à l'unité, en CHF. */
@@ -35,34 +62,9 @@ export interface Abonnement {
 
 export const PLUS: Abonnement = { nom: 'Plus', prixMois: 890, inclus: 5, prixSuivant: 180 }
 export const PRO: Abonnement = { nom: 'Pro', prixMois: 2490, inclus: 20, prixSuivant: 120 }
-export const ABONNEMENTS = [PLUS, PRO]
 
 /** La durée d'engagement d'un abonnement, en mois : il se souscrit pour un an. */
 export const ENGAGEMENT_MOIS = 12
-
-/** La réduction des diagnostics au-delà de ceux compris, en pourcent du prix à l'unité. */
-export const remise = (a: Abonnement) => Math.round((1 - a.prixSuivant / PRIX_DIAGNOSTIC) * 100)
-
-/** Ce que coûtent n diagnostics dans le mois, à l'unité ou avec un abonnement. */
-export const coutUnite = (n: number) => n * PRIX_DIAGNOSTIC
-export const coutAbonnement = (a: Abonnement, n: number) => a.prixMois + Math.max(0, n - a.inclus) * a.prixSuivant
-
-/** Le premier nombre de diagnostics par mois à partir duquel une formule coûte moins que l'autre. */
-function seuil(moinsCher: (n: number) => boolean): number {
-  for (let n = 1; n <= 100; n++) if (moinsCher(n)) return n
-  return 100
-}
-
-/** Plus revient moins cher que l'unité dès ce nombre de diagnostics par mois. */
-export const SEUIL_PLUS = seuil((n) => coutAbonnement(PLUS, n) < coutUnite(n))
-
-/** Pro revient moins cher que Plus dès ce nombre de diagnostics par mois. */
-export const SEUIL_PRO = seuil((n) => coutAbonnement(PRO, n) < coutAbonnement(PLUS, n))
-
-/** Un montant en francs, à la suisse : 1’234 CHF. */
-export function francs(n: number) {
-  return `${Math.round(n).toLocaleString('fr-CH').replace(/[\u202f\u00a0 ]/g, '’')}\u00a0CHF`
-}
 
 export const CONTACT = 'mailto:contact@diagly.ch'
 
@@ -120,8 +122,8 @@ export const QUESTIONS: { q: string; r: string }[] = [
     r: 'Écrivez-nous à contact@diagly.ch avec votre métier, vos cantons et vos coordonnées. L’annuaire est tenu par l’équipe Diagly : nous vous y ajoutons après vérification, et le titre d’expert CECB® est contrôlé sur la liste officielle. Les utilisateurs de Diagly vous contactent ensuite depuis leur dossier : leur demande vous arrive par e-mail, avec le résumé du bâtiment et le lien du rapport s’ils les joignent.',
   },
   {
-    q: 'Combien coûte un diagnostic ?',
-    r: `${francs(PRIX_DIAGNOSTIC)} à l’unité. L’abonnement ${PLUS.nom}, à ${francs(PLUS.prixMois)} par mois, comprend ${PLUS.inclus} diagnostics chaque mois, puis ${francs(PLUS.prixSuivant)} le diagnostic (${remise(PLUS)} % de moins) : il revient moins cher que l’unité dès ${SEUIL_PLUS} diagnostics par mois. L’abonnement ${PRO.nom}, à ${francs(PRO.prixMois)} par mois, en comprend ${PRO.inclus}, puis ${francs(PRO.prixSuivant)} le diagnostic (${remise(PRO)} % de moins) : il devient plus avantageux que ${PLUS.nom} dès ${SEUIL_PRO} diagnostics par mois. Les abonnements se souscrivent pour un an et comprennent une heure de formation la première année. Pour un parc immobilier ou plusieurs équipes, l’offre Entreprise est sur devis.`,
+    q: 'Combien coûte Diagly ?',
+    r: `Vous payez au diagnostic, à l’unité, ou vous prenez un abonnement. ${PLUS.nom} comprend ${PLUS.inclus} diagnostics chaque mois et ${PRO.nom} en comprend ${PRO.inclus} ; les suivants sont facturés moins cher. Les abonnements se souscrivent pour un an et comprennent une heure de formation la première année. Pour un parc immobilier ou plusieurs équipes, l’offre Entreprise est sur devis. Le tarif adapté à votre volume vous est présenté pendant la démo, qui est offerte.`,
   },
   {
     q: 'Puis-je voir Diagly avant d’acheter ?',
@@ -135,3 +137,16 @@ export const QUESTIONS: { q: string; r: string }[] = [
  * une page qui n'existe pas.
  */
 export const LIEN_APP_STORE = ''
+
+/**
+ * La vidéo de présentation, dans l'écran de l'ordinateur du héros. Vide, l'écran
+ * montre sa place (« La vidéo arrive bientôt »), sans lecteur.
+ *
+ * En attente pour la mise en ligne : l'écran montre sa place. Le film
+ * « parcours » du 3 novembre 2026 (projet diagly-film, 48 s, réduit pour le
+ * web en public/accueil/diagly-presentation.mp4) n'est pas publié.
+ */
+export const VIDEO_PRESENTATION = ''
+
+/** Vrai quand la vidéo a une bande son : le bouton du son n'apparaît qu'alors. Le film du 3 novembre est muet. */
+export const VIDEO_A_DU_SON = false

@@ -4,7 +4,7 @@ import { ArrowRight, Check, Loader2, CalendarCheck } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { CONTACT } from '../contenu'
-import { Apparition, Conteneur, FOCUS } from '../ui'
+import { Accent, Apparition, Conteneur, FOCUS } from '../ui'
 import { typo } from '../typo'
 import { ChoixDuCreneau } from '../ChoixDuCreneau'
 import { creneauLisible, type Creneau, type JourLibre } from '../creneaux'
@@ -90,8 +90,8 @@ export function Demo() {
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 [background-image:linear-gradient(to_right,rgba(255,255,255,0.07)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.07)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:radial-gradient(ellipse_80%_80%_at_15%_0%,#000_20%,transparent_75%)]" />
           <div className="relative grid gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-center lg:gap-14">
             <div>
-              <h2 id="titre-demo" className="max-w-[12ch] text-balance text-[clamp(2.2rem,4.8vw,3.6rem)] font-medium leading-[1.02] tracking-[-0.045em]">
-                {typo('Votre démo est offerte.')}
+              <h2 id="titre-demo" className="max-w-[12ch] text-balance text-[clamp(2.2rem,4.8vw,3.6rem)] font-semibold leading-[1.02] tracking-[-0.045em]">
+                Votre démo <Accent clair>est offerte.</Accent>
               </h2>
               <p className="mt-5 max-w-[28rem] text-pretty text-[16.5px] leading-[1.65] text-white/75">
                 {typo(`Choisissez un créneau : en ${etat.type === 'pret' ? etat.duree : 30} minutes de visioconférence, nous vous montrons Diagly, du plan au rapport, et répondons à vos questions.`)}
@@ -120,7 +120,7 @@ export function Demo() {
                   <div className="flex min-h-[18rem] flex-col items-center justify-center px-4 text-center">
                     <p className="text-[16px] font-semibold">{etat.type === 'indisponible' ? 'Les disponibilités ne se chargent pas' : 'Aucun créneau libre ces prochaines semaines'}</p>
                     <p className="mt-2 max-w-[22rem] text-[14px] leading-relaxed text-[#6b7280]">{typo('Écrivez-nous : nous vous proposons un rendez-vous par retour d’e-mail.')}</p>
-                    <a href={`${CONTACT}?subject=${encodeURIComponent('Démo Diagly')}`} className={cn('mt-5 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#0167EA] px-6 text-[15px] font-semibold text-white hover:bg-[#0154c4]', FOCUS)}>
+                    <a href={`${CONTACT}?subject=${encodeURIComponent('Démo Diagly')}`} className={cn('mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#0167EA] px-6 text-[15px] font-medium text-white hover:bg-[#0154c4]', FOCUS)}>
                       Écrire pour une démo<ArrowRight className="h-4 w-4" aria-hidden="true" />
                     </a>
                   </div>
@@ -160,7 +160,7 @@ export function Demo() {
                     <button
                       type="submit"
                       disabled={!pret || envoi}
-                      className={cn('mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#0167EA] px-6 text-[15.5px] font-semibold text-white shadow-[0_8px_20px_-8px_rgba(1,103,234,0.6)] transition-colors hover:bg-[#0154c4] disabled:cursor-not-allowed disabled:bg-[#b9cdea] disabled:shadow-none', FOCUS)}
+                      className={cn('mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#0167EA] px-6 text-[15.5px] font-medium text-white transition-colors hover:bg-[#0154c4] disabled:cursor-not-allowed disabled:bg-[#b9cdea]', FOCUS)}
                     >
                       {envoi ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
                       {creneau?.heure ? `Réserver : ${creneauLisible(creneau)}` : 'Réserver ce créneau'}

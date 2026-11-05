@@ -8,13 +8,12 @@ import { useTete } from '../tete'
 /**
  * La page d'accueil publique, diagly.ch.
  *
- * Elle se lit de haut en bas comme un dossier se traite : les plans, les
- * métrés, la visite, le chiffrage, le rapport. Les écrans montrés sont de
+ * Elle suit le modèle d'inview.ch, en clair : le héros, dont l'écran
+ * devient la vidéo au défilement, ce que Diagly change, les principales fonctionnalités, la
+ * réservation d'une démo et les questions (voir Suite.tsx). Les écrans montrés sont de
  * vraies captures de l'application, prises sur le dossier d'exemple
  * Résidence Les Tilleuls (aucune donnée de client) : le haut de l'accueil
- * dans le héros, puis l'application page par page sur iPad. Le plan de
- * « Tout commence par un plan », animé, et les iPhone de la section App
- * restent dessinés en code.
+ * dans le héros, puis l'application page par page sur iPad.
  *
  * Le haut de la page (barre, titre, appareils) arrive seul ; le reste est un
  * second paquet, demandé dès que ce module s'exécute, pour que le titre ne

@@ -41,7 +41,7 @@ export function CorpsArticle({ article: a }: { article: Article }) {
     <div className="min-h-screen overflow-x-clip bg-white text-[#1d1d1f] antialiased">
       <Entete />
       <main id="contenu">
-        <article id="haut" aria-labelledby="titre-article" className="relative -mt-[72px] pt-[72px]">
+        <article id="haut" aria-labelledby="titre-article" className="relative -mt-[92px] pt-[92px]">
           <div className="bg-gradient-to-b from-[#f3f7fe] to-white">
             <Conteneur className="max-w-[860px] pb-8 pt-10 sm:pt-14">
               <nav aria-label="Fil d’Ariane">

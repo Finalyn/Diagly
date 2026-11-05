@@ -50,6 +50,10 @@ self.addEventListener('fetch', (event) => {
   // Le contrôle de santé dit si le serveur répond (lib/rechargement.ts) : une
   // copie gardée répondrait à sa place pendant une mise en ligne.
   if (url.pathname === '/health') return
+  // Une vidéo se lit par morceaux (en-tête Range, réponses 206) : le cache ne
+  // garde pas ces réponses partielles et Safari ne lit pas une vidéo servie
+  // d'un bloc. Le navigateur les demande lui-même au serveur.
+  if (request.destination === 'video' || request.headers.has('range')) return
 
   if (request.mode === 'navigate') {
     event.respondWith(naviguer(event, url))

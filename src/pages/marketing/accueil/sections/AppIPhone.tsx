@@ -23,7 +23,7 @@ export function AppIPhone() {
       <Conteneur className="relative">
         <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
           <Apparition>
-            <h2 id="titre-iphone" className="max-w-[13ch] text-balance text-[clamp(2.6rem,6vw,4.6rem)] font-medium leading-[0.98] tracking-[-0.05em] text-[#0b1220]">
+            <h2 id="titre-iphone" className="max-w-[13ch] text-balance text-[clamp(2.6rem,6vw,4.6rem)] font-semibold leading-[0.98] tracking-[-0.05em] text-[#0b1220]">
               {typo('Le chantier, dans votre poche.')}
             </h2>
             <p className="mt-6 max-w-[30rem] text-pretty text-[17px] leading-[1.65] text-[#6b7280]">

@@ -1,28 +1,25 @@
 import { useAncre, useFinDuPrerendu } from './ancre'
-import { QuEstCe } from './sections/QuEstCe'
+import { ParDesPros } from './sections/ParDesPros'
 import { Atouts } from './sections/Atouts'
-import { Ressaisie } from './sections/Ressaisie'
-import { Partenaires } from './sections/Partenaires'
-import { AppIPhone } from './sections/AppIPhone'
 import { Demo } from './sections/Demo'
-import { Confiance } from './sections/Confiance'
-import { Tarifs } from './sections/Tarifs'
 import { Questions } from './sections/Questions'
-import { AppelFinal, PiedDePage } from './sections/Fin'
+import { PiedDePage } from './sections/Fin'
 
 /**
  * Tout ce qui suit le héros, chargé à part : le haut de la page s'affiche
  * sans attendre ces maquettes, qui arrivent pendant qu'on lit le titre.
  *
- * L'accueil vend : ce qu'est Diagly, ce qu'il fait pour vous (avec un lien
- * vers chaque fonctionnalité), la ressaisie qu'il vous évite, le diagnostic
- * comme outil de prospection et les partenaires qui prennent la suite, l'app,
- * la confiance, les tarifs, la réservation d'une démo, les questions et
- * l'appel final. Le détail de chaque
- * outil vit sur la page Fonctionnalités (PageFonctionnalites.tsx).
+ * L'accueil suit le modèle d'inview.ch, en clair. Sous le héros, dont
+ * l'écran devient la vidéo de présentation (Hero.tsx) : ce que Diagly change
+ * (imaginé par des pros du bâtiment, il ramène un diagnostic de trois jours
+ * au temps de la visite), les principales fonctionnalités, puis la réservation d'une démo, que visent
+ * tous les boutons « Réserver une démo », et les questions. Ni tarifs ni
+ * blog : le tarif est présenté pendant la démo, le blog sert au référencement.
+ * Le détail de chaque outil vit sur la page Fonctionnalités
+ * (PageFonctionnalites.tsx).
  */
 export function Sections() {
-  // Arrivé par une adresse avec ancre (/#tarifs), le navigateur a cherché la
+  // Arrivé par une adresse avec ancre (/#faq), le navigateur a cherché la
   // section avant qu'elle existe : on y va une fois la suite affichée.
   useAncre()
   // La suite est là : le HTML pré-rendu peut laisser la place à la page vivante.
@@ -30,16 +27,10 @@ export function Sections() {
 
   return (
     <>
-      <QuEstCe />
+      <ParDesPros />
       <Atouts />
-      <Ressaisie />
-      <Partenaires />
-      <AppIPhone />
-      <Confiance />
-      <Tarifs />
       <Demo />
       <Questions />
-      <AppelFinal demoIci />
     </>
   )
 }

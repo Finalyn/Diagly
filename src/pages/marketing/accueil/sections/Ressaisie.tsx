@@ -25,7 +25,7 @@ export function Ressaisie() {
       <Conteneur>
         <div className="grid items-center gap-14 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-16">
           <Apparition>
-            <h2 id="titre-pourquoi" className="max-w-[10ch] text-balance text-[clamp(2.8rem,6.5vw,5rem)] font-medium leading-[0.96] tracking-[-0.055em] text-[#0b1220]">
+            <h2 id="titre-pourquoi" className="max-w-[10ch] text-balance text-[clamp(2.8rem,6.5vw,5rem)] font-semibold leading-[0.96] tracking-[-0.055em] text-[#0b1220]">
               {typo('Fini la ressaisie.')}
             </h2>
             <p className="mt-6 max-w-[28rem] text-pretty text-[17px] leading-[1.65] text-[#6b7280]">

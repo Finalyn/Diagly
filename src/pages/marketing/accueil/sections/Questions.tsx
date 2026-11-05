@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CONTACT, QUESTIONS } from '../contenu'
-import { Conteneur, FOCUS } from '../ui'
+import { Accent, Conteneur, FOCUS } from '../ui'
 import { typo } from '../typo'
 
 /**
@@ -20,12 +20,12 @@ export function Questions() {
     return n
   })
   return (
-    <section id="faq" aria-labelledby="titre-faq" className="scroll-mt-16 bg-white py-20 sm:py-28">
+    <section id="faq" aria-labelledby="titre-faq" className="scroll-mt-16 bg-gradient-to-b from-white to-[#f3f7fe] py-20 sm:py-28">
       <Conteneur>
         <div className="grid gap-10 lg:grid-cols-12 lg:gap-14">
           <div className="lg:col-span-4">
-            <h2 id="titre-faq" className="text-balance text-[clamp(2.1rem,4.2vw,3.1rem)] font-medium leading-[1.06] tracking-[-0.04em] text-[#0b1220]">
-              Questions fréquentes
+            <h2 id="titre-faq" className="text-balance text-[clamp(2.1rem,4.2vw,3.1rem)] font-semibold leading-[1.06] tracking-[-0.04em] text-[#0b1220]">
+              Questions <Accent>fréquentes</Accent>
             </h2>
             <p className="mt-4 text-[15.5px] leading-[1.6] text-[#6b7280]">
               Une autre question&nbsp;? <a href={CONTACT} className={cn('font-medium text-[#0167EA] underline-offset-4 hover:underline', FOCUS)}>Écrivez-nous</a>.

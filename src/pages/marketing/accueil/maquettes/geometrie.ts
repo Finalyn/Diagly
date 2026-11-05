@@ -17,6 +17,16 @@ const FENETRES_SUD: [number, number][] = [[1.5, 3.0], [5.0, 6.5]]
 const FENETRES_NORD: [number, number][] = [[1.2, 2.4], [4.1, 4.9], [6.4, 7.6]]
 export const FENETRE_OUEST: [number, number] = [2.0, 3.4]
 
+/** Les morceaux pleins d'un mur interrompu par des ouvertures. */
+export function pleins(debut: number, fin: number, ouvertures: [number, number][]): [number, number][] {
+  const tri = [...ouvertures].sort((u, v) => u[0] - v[0])
+  const r: [number, number][] = []
+  let x = debut
+  for (const [a, b] of tri) { if (a > x) r.push([x, a]); x = Math.max(x, b) }
+  if (fin > x) r.push([x, fin])
+  return r
+}
+
 export const miroir = (x: number) => L - x
 export const Y = (y: number) => P - y
 const sym = (o: [number, number][]) => [...o, ...o.map(([a, b]) => [miroir(b), miroir(a)] as [number, number])]

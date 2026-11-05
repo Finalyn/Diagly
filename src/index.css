@@ -301,6 +301,55 @@ html.natif :where(img, svg) {
   .accueil-apparition { opacity: 1 !important; transform: none !important; }
 }
 
+/* Les scènes des fonctionnalités de l'accueil (maquettes/Scenes.tsx). Sans
+   .sc-joue, une scène montre son image finale ; avec, elle se joue depuis le
+   début, chaque élément à son heure (animation-delay posé en ligne). En
+   mouvement réduit, la règle générale plus bas fait tout finir d'emblée : il
+   reste l'image finale. */
+@keyframes sc-entre { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes sc-fondu { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sc-sort { from { opacity: 1; } to { opacity: 0; } }
+@keyframes sc-glisse { from { opacity: 0; transform: translateX(-45%) rotate(-4deg); } to { opacity: 1; transform: none; } }
+
+/* Métrés : le plan se couche (sc-plateau, sc-pivote), puis les murs du rez
+   se lèvent sur son dessin (sc-leve), chaque pan debout sur son bord
+   (sc-face-*), leur dessus monte avec eux (sc-arase), en --d secondes, et
+   n'apparaît qu'à son départ. Le rez tourne ensuite doucement (sc-tourne)
+   jusqu'à ce qu'on le prenne en main. */
+@keyframes sc-plateau { from { transform: none; } to { transform: translateY(5cqw) rotateX(56deg) scale3d(0.92, 0.92, 0.92); } }
+@keyframes sc-pivote { from { transform: none; } to { transform: rotateZ(-32deg); } }
+@keyframes sc-face-s { from { transform: rotateX(-90deg) scaleY(0); } to { transform: rotateX(-90deg) scaleY(1); } }
+@keyframes sc-face-n { from { transform: rotateX(90deg) scaleY(0); } to { transform: rotateX(90deg) scaleY(1); } }
+@keyframes sc-face-o { from { transform: rotateY(-90deg) scaleX(0); } to { transform: rotateY(-90deg) scaleX(1); } }
+@keyframes sc-face-e { from { transform: rotateY(90deg) scaleX(0); } to { transform: rotateY(90deg) scaleX(1); } }
+@keyframes sc-arase { from { opacity: 0; transform: translateZ(0); } 6% { opacity: 1; } to { transform: translateZ(var(--h)); } }
+
+@keyframes sc-tourne { from { transform: none; } to { transform: rotateZ(-360deg); } }
+
+.sc-passe, .sc-efface { opacity: 0; }
+.sc-plateau { transform: translateY(5cqw) rotateX(56deg) scale3d(0.92, 0.92, 0.92); }
+.sc-pivote { transform: rotateZ(-32deg); }
+.sc-face-s, .sc-face-n, .sc-face-o, .sc-face-e { backface-visibility: hidden; }
+.sc-face-s { transform-origin: bottom; transform: rotateX(-90deg); }
+.sc-face-n { transform-origin: top; transform: rotateX(90deg); }
+.sc-face-o { transform-origin: left; transform: rotateY(-90deg); }
+.sc-face-e { transform-origin: right; transform: rotateY(90deg); }
+.sc-arase { transform: translateZ(var(--h)); }
+.sc-joue .sc-entre { animation: sc-entre 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.sc-joue .sc-fondu { animation: sc-fondu 0.5s ease both; }
+.sc-joue .sc-passe { animation: sc-entre 0.5s cubic-bezier(0.22, 1, 0.36, 1) both, sc-sort 0.4s ease forwards; }
+.sc-joue .sc-glisse { animation: sc-glisse 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.sc-joue .sc-efface { animation: sc-sort 0.4s ease both; }
+.sc-joue .sc-plateau { animation: sc-plateau 1.6s cubic-bezier(0.65, 0, 0.35, 1) both; }
+.sc-joue .sc-pivote { animation: sc-pivote 1.6s cubic-bezier(0.65, 0, 0.35, 1) both; }
+.sc-joue .sc-leve, .sc-joue .sc-arase { animation-duration: var(--d, 0.6s); animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1); animation-fill-mode: both; }
+.sc-joue .sc-leve.sc-face-s { animation-name: sc-face-s; }
+.sc-joue .sc-leve.sc-face-n { animation-name: sc-face-n; }
+.sc-joue .sc-leve.sc-face-o { animation-name: sc-face-o; }
+.sc-joue .sc-leve.sc-face-e { animation-name: sc-face-e; }
+.sc-joue .sc-arase { animation-name: sc-arase; }
+.sc-joue .sc-tourne { animation: sc-tourne 48s linear infinite both; }
+
 /* Les iPad arrivent de plus loin et plus lentement : de leur côté, ou d'en bas. */
 .accueil-apparition.accueil-ipad { transition-duration: 1.1s; }
 .accueil-apparition.accueil-ipad:not(.est-visible) { transform: translateY(56px) scale(0.97); }

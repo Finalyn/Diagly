@@ -15,9 +15,13 @@ import { typo } from './typo'
 /** L'anneau de focus de la page : bleu Diagly, décalé, visible au clavier seulement. */
 export const FOCUS = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-[#0167EA]'
 
-const BOUTON = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-[15px] font-medium transition-colors'
+const BOUTON = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-[15px] font-medium transition-colors'
 
-/** Bouton principal : plein, bleu Diagly. `to` pour une route, `href` pour une ancre ou un lien externe. */
+/**
+ * Bouton principal : plein, bleu Diagly, plat, sans halo coloré (le halo faisait
+ * « néon »), rectangulaire à coins légèrement arrondis. `to` pour une route, `href`
+ * pour une ancre ou un lien externe.
+ */
 export function Bouton({ children, to, href, variante = 'plein', className }: {
   children: ReactNode
   to?: string
@@ -27,7 +31,7 @@ export function Bouton({ children, to, href, variante = 'plein', className }: {
 }) {
   const styles = cn(
     BOUTON, FOCUS,
-    variante === 'plein' && 'bg-[#0167EA] text-white shadow-[0_1px_2px_rgba(1,103,234,0.25),0_8px_20px_-8px_rgba(1,103,234,0.6)] hover:bg-[#0154c4]',
+    variante === 'plein' && 'bg-[#0167EA] text-white shadow-[0_1px_2px_rgba(15,23,42,0.14)] hover:bg-[#0154c4]',
     variante === 'contour' && 'bg-white text-[#1d1d1f] ring-1 ring-inset ring-black/[0.12] hover:bg-[#f5f5f7]',
     variante === 'clair' && 'bg-white text-[#0b1220] hover:bg-white/90',
     className,
@@ -66,9 +70,9 @@ export function LienFleche({ children, href, to, className }: { children: ReactN
 }
 
 /**
- * L'en-tête centré d'une section : un grand titre d'un trait fin, puis une
- * ligne de sous-titre. Le titre est en poids moyen : la page parle calmement,
- * seul le héros parle fort.
+ * L'en-tête centré d'une section : un grand titre, puis une ligne de
+ * sous-titre. La partie du titre qui porte la promesse passe en bleu
+ * (Accent).
  */
 export function EnTeteCentre({ titre, sousTitre, id, sombre, className }: {
   titre: ReactNode
@@ -82,7 +86,7 @@ export function EnTeteCentre({ titre, sousTitre, id, sombre, className }: {
       <h2
         id={id}
         className={cn(
-          'text-balance text-[clamp(2.1rem,4.6vw,3.4rem)] font-medium leading-[1.06] tracking-[-0.04em]',
+          'text-balance text-[clamp(2.1rem,4.6vw,3.4rem)] font-semibold leading-[1.06] tracking-[-0.04em]',
           sombre ? 'text-white' : 'text-[#0b1220]',
         )}
       >
@@ -95,6 +99,14 @@ export function EnTeteCentre({ titre, sousTitre, id, sombre, className }: {
       )}
     </Apparition>
   )
+}
+
+/**
+ * La partie d'un titre qui porte la promesse, en bleu Diagly. Elle passe à la
+ * ligne d'un bloc plutôt que de laisser un mot bleu seul en fin de ligne.
+ */
+export function Accent({ children, clair }: { children: ReactNode; clair?: boolean }) {
+  return <span className={cn('inline-block', clair ? 'text-[#a9cbff]' : 'text-[#0167EA]')}>{children}</span>
 }
 
 /** La largeur commune des sections, avec la gouttière de 16 px sur téléphone. */

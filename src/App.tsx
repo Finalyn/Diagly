@@ -115,7 +115,7 @@ function App() {
           <Route path="/landing" element={<Navigate to="/" replace />} />
           <Route path="/landing-2" element={<Navigate to="/" replace />} />
           <Route path="/landing-3" element={<Navigate to="/" replace />} />
-          <Route path="/tarifs" element={<Navigate to={{ pathname: '/', hash: '#tarifs' }} replace />} />
+          <Route path="/tarifs" element={<Navigate to={{ pathname: '/', hash: '#demo' }} replace />} />
 
           {/* Raccourci : /dashboard -> app (redirige vers /login si non connecté) */}
           <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />

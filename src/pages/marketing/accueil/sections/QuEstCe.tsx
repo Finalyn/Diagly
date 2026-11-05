@@ -32,7 +32,7 @@ export function QuEstCe() {
       <Conteneur>
         <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
           <Apparition className="lg:sticky lg:top-32 lg:self-start lg:pt-10">
-            <h2 id="titre-diagly" className="max-w-[16ch] text-balance text-[clamp(2.1rem,4.4vw,3.3rem)] font-medium leading-[1.06] tracking-[-0.04em] text-[#0b1220]">
+            <h2 id="titre-diagly" className="max-w-[16ch] text-balance text-[clamp(2.1rem,4.4vw,3.3rem)] font-semibold leading-[1.06] tracking-[-0.04em] text-[#0b1220]">
               {typo('Le diagnostic de bâtiment, sans la ressaisie.')}
             </h2>
             <p className="mt-5 max-w-[30rem] text-pretty text-[16px] leading-[1.65] text-[#6b7280]">

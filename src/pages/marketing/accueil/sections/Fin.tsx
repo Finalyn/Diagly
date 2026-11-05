@@ -1,6 +1,6 @@
 import { ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { CONTACT } from '../contenu'
+import { CONTACT, DEVENIR_PARTENAIRE } from '../contenu'
 import { Apparition, Bouton, Conteneur, FOCUS, LienSite } from '../ui'
 
 /**
@@ -21,7 +21,7 @@ export function AppelFinal({ demoIci = false }: { demoIci?: boolean }) {
             <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-[0_10px_30px_-10px_rgba(1,103,234,0.45)] ring-1 ring-[#0167EA]/10">
               <img src="/diagly-mark.svg" alt="" aria-hidden="true" className="h-7 w-7" />
             </span>
-            <h2 id="titre-fin" className="mt-7 text-balance text-[clamp(2.1rem,4.6vw,3.4rem)] font-medium leading-[1.05] tracking-[-0.04em] text-[#0b1220]">
+            <h2 id="titre-fin" className="mt-7 text-balance text-[clamp(2.1rem,4.6vw,3.4rem)] font-semibold leading-[1.05] tracking-[-0.04em] text-[#0b1220]">
               Prenez un immeuble que vous connaissez.
             </h2>
             <p className="mx-auto mt-5 max-w-xl text-pretty text-[16.5px] leading-[1.65] text-[#6b7280]">
@@ -46,8 +46,8 @@ export function AppelFinal({ demoIci = false }: { demoIci?: boolean }) {
  * compte rendu de cette refonte).
  */
 const COLONNES: { titre: string; liens: [string, string][] }[] = [
-  { titre: 'Produit', liens: [['Fonctionnalités', '/fonctionnalites'], ['Métrés par l’IA', '/fonctionnalites#metres'], ['Relevé sur le terrain', '/fonctionnalites#releve'], ['Chiffrage', '/fonctionnalites#chiffrage'], ['Rapports', '/fonctionnalites#rapports'], ['App iPhone et iPad', '/fonctionnalites#app'], ['Tarifs', '/#tarifs']] },
-  { titre: 'Ressources', liens: [['Blog', '/blog'], ['Questions fréquentes', '/#faq'], ['Devenir partenaire', '/#partenaires'], ['Aide et support', '/app/support'], ['Nous écrire', CONTACT]] },
+  { titre: 'Produit', liens: [['Fonctionnalités', '/fonctionnalites'], ['Métrés par l’IA', '/fonctionnalites#metres'], ['Relevé sur le terrain', '/fonctionnalites#releve'], ['Chiffrage', '/fonctionnalites#chiffrage'], ['Rapports', '/fonctionnalites#rapports'], ['App iPhone et iPad', '/fonctionnalites#app']] },
+  { titre: 'Ressources', liens: [['Blog', '/blog'], ['Questions fréquentes', '/#faq'], ['Devenir partenaire', DEVENIR_PARTENAIRE], ['Aide et support', '/app/support'], ['Nous écrire', CONTACT]] },
   { titre: 'Compte', liens: [['Se connecter', '/login'], ['Créer un compte', '/register']] },
   { titre: 'Légal', liens: [['Mentions légales', '/mentions-legales'], ['Confidentialité', '/confidentialite'], ['Conditions générales', '/cgu']] },
 ]

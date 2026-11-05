@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 import { PIECES } from './donnees'
-import { CAGE, CLOISON, FENETRE_OUEST, L, MUR, MUR_CAGE, NORD, P, PALIERE, PORTES, PORTES_CLOISON, SUD, VUE, Y, miroir } from './geometrie'
+import { CAGE, CLOISON, FENETRE_OUEST, L, MUR, MUR_CAGE, NORD, P, PALIERE, PORTES, PORTES_CLOISON, SUD, VUE, Y, miroir, pleins } from './geometrie'
 
 /**
  * Le plan d'étage des maquettes, en vecteurs.
@@ -14,16 +14,6 @@ import { CAGE, CLOISON, FENETRE_OUEST, L, MUR, MUR_CAGE, NORD, P, PALIERE, PORTE
  * Coordonnées en mètres, origine au coin sud-ouest, l'axe y vers le nord ;
  * le SVG retourne l'axe à l'affichage.
  */
-
-/** Les morceaux pleins d'un mur interrompu par des ouvertures. */
-function pleins(debut: number, fin: number, ouvertures: [number, number][]): [number, number][] {
-  const tri = [...ouvertures].sort((u, v) => u[0] - v[0])
-  const r: [number, number][] = []
-  let x = debut
-  for (const [a, b] of tri) { if (a > x) r.push([x, a]); x = Math.max(x, b) }
-  if (fin > x) r.push([x, fin])
-  return r
-}
 
 const INDIGO = '#6366f1'
 const AMBRE = '#f59e0b'

@@ -204,7 +204,7 @@ function SectionSimple({ id, produit, titre, texte, coches, visuel, inverse, fon
             <p className="mb-4 flex items-center gap-2 text-[14px] font-semibold text-[#0167EA]">
               <MarqueIA className="h-4 w-4" />{produit}
             </p>
-            <h2 id={titreId} className="max-w-[15ch] text-balance text-[clamp(2.1rem,4.4vw,3.3rem)] font-medium leading-[1.04] tracking-[-0.045em] text-[#0b1220]">
+            <h2 id={titreId} className="max-w-[15ch] text-balance text-[clamp(2.1rem,4.4vw,3.3rem)] font-semibold leading-[1.04] tracking-[-0.045em] text-[#0b1220]">
               {typo(titre)}
             </h2>
             <p className="mt-5 max-w-[28rem] text-pretty text-[17px] leading-[1.6] text-[#6b7280]">{typo(texte)}</p>

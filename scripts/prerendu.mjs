@@ -86,7 +86,6 @@ ${m.PAGES.map((p) => `  <url><loc>${m.SITE}${p.tete.chemin === '/' ? '/' : p.tet
 writeFileSync(join(DIST, 'sitemap.xml'), sitemap)
 
 // 4. Ce que lisent les assistants d'IA : llms.txt (le résumé) et llms-full.txt (avec les articles).
-const f = m.francs
 const llms = `# Diagly
 
 > Diagly est un logiciel suisse de diagnostic de bâtiment et de planification de rénovation, créé par des professionnels du bâtiment en Suisse romande. Il tire les métrés des plans avec l’IA, guide le relevé de l’état sur iPad et iPhone (même hors connexion), chiffre les travaux par code CFC et produit le rapport à l’en-tête du bureau. Les données sont hébergées en Suisse.
@@ -101,16 +100,16 @@ ${m.FONCTIONNALITES_CLES.map((x) => `- ${x}`).join('\n')}
 
 ## Tarifs
 
-- Diagnostic à l’unité : ${f(m.PRIX_DIAGNOSTIC)} par diagnostic.
-- Abonnement ${m.PLUS.nom} : ${f(m.PLUS.prixMois)} par mois, ${m.PLUS.inclus} diagnostics compris par mois, puis ${f(m.PLUS.prixSuivant)} le diagnostic (${m.remise(m.PLUS)} % de moins) ; moins cher que l’unité dès ${m.SEUIL_PLUS} diagnostics par mois.
-- Abonnement ${m.PRO.nom} : ${f(m.PRO.prixMois)} par mois, ${m.PRO.inclus} diagnostics compris par mois, puis ${f(m.PRO.prixSuivant)} le diagnostic (${m.remise(m.PRO)} % de moins) ; plus avantageux que ${m.PLUS.nom} dès ${m.SEUIL_PRO} diagnostics par mois.
+- Diagnostic à l’unité, sans abonnement.
+- Abonnement ${m.PLUS.nom} : ${m.PLUS.inclus} diagnostics compris par mois, les suivants facturés moins cher.
+- Abonnement ${m.PRO.nom} : ${m.PRO.inclus} diagnostics compris par mois, les suivants facturés moins cher encore.
 - Les abonnements se souscrivent pour ${m.ENGAGEMENT_MOIS} mois et comprennent une heure de formation la première année.
 - Entreprise : sur devis (volume sur mesure, plusieurs équipes, API et webhooks).
-- La démo est offerte.
+- Le tarif adapté au volume est présenté pendant la démo, qui est offerte.
 
 ## Pages
 
-- [Accueil](${m.SITE}/): ce qu’est Diagly, ce qu’il fait, tarifs et questions fréquentes.
+- [Accueil](${m.SITE}/): ce qu’est Diagly, ce qu’il fait et questions fréquentes.
 - [Fonctionnalités](${m.SITE}/fonctionnalites): chaque outil de Diagly, montré sur l’application.
 - [Blog](${m.SITE}/blog): guides pratiques sur le diagnostic de bâtiment en Suisse.
 ${m.ARTICLES.map((a) => `- [${a.titre}](${m.SITE}/blog/${a.slug}): ${a.description}`).join('\n')}
