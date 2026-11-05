@@ -28,13 +28,18 @@
  * L'éditeur est celui du dossier, encastré : la page lui est imposée par le
  * navigateur, et ses panneaux de feuille passent dans la colonne de droite.
  *
- * Une bascule « Plan | Tableau », gardée dans l'adresse, remplace le plan et
+ * Une bascule « Plan | Tableau | 3D », gardée dans l'adresse, remplace le plan et
  * la colonne de droite par le tableau de toutes les formes du jeu
  * (components/metres/TableauMetres.tsx) : une ligne par forme, regroupée et
  * sous-totalisée comme on veut, et reliée au plan. Toucher une ligne revient
  * au plan, sur sa feuille, la forme sélectionnée et cadrée ; ce qu'on y
  * change s'écrit sur la forme. Le navigateur des feuilles reste à gauche et
  * filtre le tableau sur une feuille, ou le laisse sur tout le jeu.
+ *
+ * La vue 3D (components/metres/Maquette3D.tsx) monte le bâtiment des formes
+ * validées, sans IA (lib/plans/maquette3d.ts), sur toute la largeur : on
+ * tourne autour, et une pièce ou une ouverture touchée rouvre sa feuille en
+ * vue plan, la forme cadrée.
  *
  * Des plans papier s'ajoutent en les scannant (components/metres/ScannerPlans.tsx) :
  * le PDF obtenu suit le chemin d'un dépôt ordinaire.
@@ -59,7 +64,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useFicheDepuisPlans } from '@/components/metres/fiche-depuis-plans'
 import {
   AlertCircle, AlertTriangle, ChevronLeft, Compass, FileSpreadsheet, FolderOpen, Layers, ListChecks, Loader2, Map as Carte, Plus, Presentation,
-  ScanLine, SendHorizontal, Square, Table2, X,
+  Box, ScanLine, SendHorizontal, Square, Table2, X,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { ApiPlan, ChampCorrigeable, FeuillePlan, PlanAnnotation } from '@/lib/api-types'
@@ -82,6 +87,8 @@ import { CartesTableau, TableauMetres, type ActionsTableau } from '@/components/
 import { ScannerPlans } from '@/components/metres/ScannerPlans'
 import { ExempleMetres } from '@/components/metres/ExempleMetres'
 import { FenetrePresentation } from '@/components/metres/FenetrePresentation'
+import { Maquette3DVue, type OuvrageCfc } from '@/components/metres/Maquette3D'
+import { maquetteDuJeu } from '@/lib/plans/maquette3d'
 import type { JeuDePlans } from '@/components/metres/presentation-donnees'
 import { useEnregistrerComptages } from '@/components/comptages/enregistrer'
 import { VisiteGuidee } from '@/components/visite/VisiteGuidee'
@@ -157,6 +164,13 @@ interface Revue {
   decisions: Record<string, 'validee' | 'rejetee'>
 }
 
+type Vue = 'plan' | 'tableau' | '3d'
+const TITRES_VUES: Record<Vue, string> = {
+  plan: 'Le plan de la feuille et ses quantités',
+  tableau: 'Toutes les formes du jeu, en tableau',
+  '3d': 'Le bâtiment monté en 3D, à partir des formes validées',
+}
+
 const FICHIERS_ADMIS = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp']
 const TAILLE_MAX = 30 * 1024 * 1024
 
@@ -170,8 +184,8 @@ export function EspaceMetres() {
   // La visite des Métrés se propose aussi ici, à qui y entre par le menu d'un dossier.
   useVisiteAuto(location.pathname, !telephone)
   const [params, setParams] = useSearchParams()
-  // La vue (plan ou tableau) et le regroupement du tableau, gardés dans l'adresse comme la feuille.
-  const vue: 'plan' | 'tableau' = params.get('vue') === 'tableau' ? 'tableau' : 'plan'
+  // La vue (plan, tableau ou 3D) et le regroupement du tableau, gardés dans l'adresse comme la feuille.
+  const vue: Vue = params.get('vue') === 'tableau' ? 'tableau' : params.get('vue') === '3d' ? '3d' : 'plan'
   const groupe = params.get('groupe')
   const regroupement: Regroupement = estUnRegroupement(groupe) ? groupe : 'classification'
   const tableauSurLaFeuille = params.get('filtre') === 'feuille'
@@ -202,8 +216,8 @@ export function EspaceMetres() {
   // Ce que l'éditeur ouvert tient : le panneau et les pastilles le suivent sans attendre l'enregistrement.
   const [live, setLive] = useState<EtatEditeur | null>(null)
   const planVu = useCallback((plan: ApiPlan): ApiPlan => {
-    // En vue tableau, l'éditeur est fermé : ce qu'il tenait est parti au serveur, le cache le tient.
-    if (vue === 'tableau' || live?.planId !== plan.id) return plan
+    // En vue tableau ou 3D, l'éditeur est fermé : ce qu'il tenait est parti au serveur, le cache le tient.
+    if (vue !== 'plan' || live?.planId !== plan.id) return plan
     const table: PlanAnnotation[] = Object.keys(live.echelles).length
       ? [{ id: 'pages', type: 'pages', points: [], pageScales: live.echelles }]
       : []
@@ -246,6 +260,12 @@ export function EspaceMetres() {
   const projet = projetQ.data?.project
   const hauteurDuDossier = projet?.floorHeight ?? null
   const panneau = useMemo(() => panneauDesQuantites(jeu, { hauteurDuDossier }), [jeu, hauteurDuDossier])
+  // La maquette 3D ne se calcule que pour sa vue.
+  const maquette = useMemo(() => (vue === '3d' ? maquetteDuJeu(jeu, { hauteurDuDossier }) : null), [vue, jeu, hauteurDuDossier])
+  const ouvragesCfc: OuvrageCfc[] = useMemo(
+    () => items.map((o) => ({ id: o.id, articleId: o.articleId ?? null, cfcCode: o.cfcCode ?? null, libelle: o.cfcLabel })),
+    [items],
+  )
   const sia = useMemo(() => surfacesSia416(entreesSia416(panneau)), [panneau])
   const aValiderJeu = useMemo(() => jeu.reduce((s, x) => s + (x.plan.annotations ?? []).filter(enAttente).length, 0), [jeu])
   // Les métrés validés remplacent les dimensions de la fiche, « issu des plans ».
@@ -381,15 +401,16 @@ export function EspaceMetres() {
   }, [vue, tableauSurLaFeuille, selection, groupes])
 
   /** Une ligne du tableau ouvre sa feuille en vue plan, la forme sélectionnée et cadrée. */
-  const voirSurLePlan = useCallback((l: LigneTableau) => {
-    majParams({ vue: null, feuille: `${l.planId}~${l.page}` })
-    setCible({ id: l.id, jeton: Date.now() })
-    setSelectionPlan(l.id)
+  const allerALaForme = useCallback((planId: string, page: number, id: string) => {
+    majParams({ vue: null, feuille: `${planId}~${page}` })
+    setCible({ id, jeton: Date.now() })
+    setSelectionPlan(id)
   }, [majParams])
+  const voirSurLePlan = useCallback((l: LigneTableau) => allerALaForme(l.planId, l.page, l.id), [allerALaForme])
 
-  const basculerVue = (v: 'plan' | 'tableau') => {
+  const basculerVue = (v: Vue) => {
     if (v === vue) return
-    if (v === 'tableau') {
+    if (v !== 'plan') {
       // L'éditeur va se fermer et enregistrer ce qu'il tenait : le cache le
       // prend tout de suite, pour que le tableau ne montre pas l'état d'avant.
       const tenu = live
@@ -405,7 +426,7 @@ export function EspaceMetres() {
       // Revenir au plan par la bascule ne recadre pas sur une forme d'avant.
       setCible(null)
     }
-    majParams({ vue: v === 'tableau' ? 'tableau' : null })
+    majParams({ vue: v === 'plan' ? null : v })
   }
 
   /** Les lignes d'un geste, rangées par plan : une écriture par document. */
@@ -676,8 +697,8 @@ export function EspaceMetres() {
       onAnalyserTout={() => void moteur.analyserTout()}
       onArreter={() => void moteur.arreter()}
       onRevoir={() => {
-        // La revue se fait sur le plan : la vue tableau lui laisse la place.
-        if (vue === 'tableau') basculerVue('plan')
+        // La revue se fait sur le plan : le tableau et la 3D lui laissent la place.
+        if (vue !== 'plan') basculerVue('plan')
         demarrerRevue()
       }}
       onPresentation={() => setPresentation(true)}
@@ -703,7 +724,7 @@ export function EspaceMetres() {
           groupes={groupes}
           panneau={panneau}
           chargement={plansQ.isLoading}
-          vue={vue}
+          vue={vue === 'tableau' ? 'tableau' : 'plan'}
           onVue={(v) => majParams({ vue: v === 'tableau' ? 'tableau' : null })}
           lignes={lignesTableau}
           regroupement={regroupement}
@@ -791,7 +812,7 @@ export function EspaceMetres() {
       {bandeauAvis}
       <div className="safe-sides relative flex min-h-0 flex-1">
         {/* Navigateur : colonne fixe à l'horizontale, tiroir sur iPad debout. */}
-        {!tiroir && <aside className="w-72 shrink-0 border-r bg-muted/30" data-visite="metres-feuilles">{navigateur}</aside>}
+        {!tiroir && vue !== '3d' && <aside className="w-72 shrink-0 border-r bg-muted/30" data-visite="metres-feuilles">{navigateur}</aside>}
         {tiroir && tiroirOuvert && (
           <div className="absolute inset-0 z-[55] flex" role="dialog" aria-label="Feuilles">
             <aside className="w-80 max-w-[85%] border-r bg-background shadow-2xl">{navigateur}</aside>
@@ -799,7 +820,13 @@ export function EspaceMetres() {
           </div>
         )}
 
-        {vue === 'tableau' ? (
+        {vue === '3d' && maquette ? (
+          <main className="relative min-w-0 flex-1">
+            {plansQ.isLoading
+              ? <p className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Chargement…</p>
+              : <Maquette3DVue maquette={maquette} ouvrages={ouvragesCfc} onVoir={allerALaForme} />}
+          </main>
+        ) : vue === 'tableau' ? (
           <main className="relative min-w-0 flex-1">
             {plansQ.isLoading
               ? <p className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Chargement…</p>
@@ -1005,8 +1032,8 @@ function BarreDuHaut({
   nombresConnus: boolean
   telephone: boolean
   tiroir: boolean
-  vue: 'plan' | 'tableau'
-  onVue: (v: 'plan' | 'tableau') => void
+  vue: Vue
+  onVue: (v: Vue) => void
   /** Éléments à valider dans tout le jeu. */
   aValider: number
   revueActive: boolean
@@ -1051,16 +1078,16 @@ function BarreDuHaut({
           <p className="truncate text-xs text-muted-foreground">{adresse || 'Métrés'}</p>
         </div>
 
-        {/* Le plan et sa colonne, ou toutes les formes du jeu en tableau. */}
+        {/* Le plan et sa colonne, toutes les formes du jeu en tableau, ou le bâtiment en 3D. */}
         {!telephone && (
           <div className="flex shrink-0 rounded-lg bg-muted p-0.5" role="group" aria-label="Vue" data-visite="metres-vue">
-            {([['plan', 'Plan', Carte], ['tableau', 'Tableau', Table2]] as const).map(([cle, libelle, Icone]) => (
+            {([['plan', 'Plan', Carte], ['tableau', 'Tableau', Table2], ['3d', '3D', Box]] as const).map(([cle, libelle, Icone]) => (
               <button
                 key={cle}
                 onClick={() => onVue(cle)}
                 aria-pressed={vue === cle}
                 aria-label={libelle}
-                title={cle === 'plan' ? 'Le plan de la feuille et ses quantités' : 'Toutes les formes du jeu, en tableau'}
+                title={TITRES_VUES[cle]}
                 className={cn('flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium transition-colors pointer-coarse:min-h-11',
                   vue === cle ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
               >

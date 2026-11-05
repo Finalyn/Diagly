@@ -34,11 +34,13 @@
     "lucide-react": "^1.8.0",
     "modern-screenshot": "4.7.0",
     "pdfjs-dist": "^4.10.38",
+    "polygon-clipping": "^0.15.7",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.14.0",
     "recharts": "^3.8.1",
     "tailwind-merge": "^3.5.0",
+    "three": "^0.186.1",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
@@ -49,6 +51,7 @@
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
