@@ -107,6 +107,26 @@ describe('assemblerArticle', () => {
   })
 })
 
+describe('les colonnes de la v6', () => {
+  it('lit la base « Périmètre du bâtiment », le mode de quantité et le métré avec plans', () => {
+    const a = assemblerArticle(ligneArticle({
+      'Base de quantité': 'Périmètre du bâtiment', 'Coefficient': 0.12,
+      'Mode de quantité': 'Métré (compté)', 'Avec plans : métré automatique': 'Fenêtres de sous-sol comptées sur les plans',
+    }))
+    expect(a.baseQuantite).toBe('perimetre_batiment')
+    expect(a.modeQuantite).toBe('metre_compte')
+    expect(a.metreAvecPlans).toBe('Fenêtres de sous-sol comptées sur les plans')
+  })
+
+  it('accepte une base d’avant la v6, sans mode', () => {
+    expect(assemblerArticle(ligneArticle()).modeQuantite).toBeNull()
+  })
+
+  it('refuse un mode qu’il ne connaît pas', () => {
+    expect(() => assemblerArticle(ligneArticle({ 'Mode de quantité': 'Au doigt mouillé' }))).toThrow(/mode inconnu/)
+  })
+})
+
 describe('assemblerEtapes', () => {
   const l = (numero: number, nom: string, zone: string, id: string, ordre: number): Ligne => ({
     'N° étape': numero, 'Étape de visite': nom, 'Zone': zone, 'ID': id, 'Ordre dans l’étape': ordre,
@@ -182,6 +202,20 @@ describe('assemblerPostes', () => {
     ])
     expect(p.map((x) => x.declencheur)).toEqual(['echafaudage_facade', 'communs_mauvais', 'toujours', 'toujours'])
     expect(p.map((x) => x.regleQuantite)).toEqual(['surface_echafaudee', 'par_cage_escalier', 'surface_plancher', 'forfait'])
+  })
+
+  it('lit les deux postes de la v6, et garde au pont de couvreur une clé à lui', () => {
+    const p = assemblerPostes([
+      poste(),
+      poste({ 'Code CFC': '211.0', 'Poste': 'Installations de chantier', 'Déclencheur': 'Dès qu\'au moins un article porte des travaux chiffrés', 'Unité': 'forfait', 'Prix CHF HT': 6000, 'Quantité': '1' }),
+      poste({ 'Code CFC': '211.1', 'Poste': 'Pont de couvreur', 'Déclencheur': 'Un article Toiture avec « Échafaudage = Oui » et des travaux chiffrés (état Moyen ou Mauvais)', 'Unité': 'ml', 'Prix CHF HT': 115, 'Quantité': 'Longueur des avant-toits (périmètre du bâtiment)', 'Avec plans : métré automatique': 'Longueur des avant-toits mesurée sur le plan de toiture' }),
+    ])
+    expect(p.map((x) => [x.cle, x.declencheur, x.regleQuantite])).toEqual([
+      ['211.1', 'echafaudage_facade', 'surface_echafaudee'],
+      ['211.0', 'travaux_chiffres', 'forfait'],
+      ['211.1:toiture_pente', 'toiture_pente', 'perimetre'],
+    ])
+    expect(p[2].metreAvecPlans).toBe('Longueur des avant-toits mesurée sur le plan de toiture')
   })
 
   it('refuse un poste sans prix : il serait invisible au devis', () => {

@@ -48,6 +48,13 @@ describe('le rattachement d’un article à sa catégorie', () => {
   })
 })
 
+describe('les fenêtres de sous-sol', () => {
+  it('ne rejoignent pas les fenêtres comptées : elles en prendraient le nombre', () => {
+    expect(categorieDeLArticle({ id: 'N005', nom: 'Fenêtres de sous-sol (caves)', uniteEntretien: 'pce' })).toBeNull()
+    expect(categorieDeLArticle({ nom: 'Fenêtres en bois', uniteEntretien: 'm2' })).toBe('fenetre')
+  })
+})
+
 describe('les noms courts', () => {
   it('retirent ce que les types d’une catégorie partagent', () => {
     expect(nomCourt('Portes palières en bois', 'porte_paliere')).toBe('en bois')

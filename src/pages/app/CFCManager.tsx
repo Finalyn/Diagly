@@ -1218,7 +1218,7 @@ function PostesAutomatiques({ postes }: { postes: ApiPosteAutomatique[] }) {
           </thead>
           <tbody>
             {postes.map((p) => (
-              <tr key={p.cfcCode} className="border-b align-top">
+              <tr key={p.cle} className="border-b align-top">
                 <td className="px-3 py-2 font-mono text-[11px]">{p.cfcCode}</td>
                 <td className="px-2 py-2">
                   {p.libelle}
@@ -1227,7 +1227,7 @@ function PostesAutomatiques({ postes }: { postes: ApiPosteAutomatique[] }) {
                 <td className="px-2 py-2 text-muted-foreground">{DECLENCHEURS[p.declencheur] ?? p.declencheur}</td>
                 <td className="px-2 py-2 text-muted-foreground">{QUANTITES[p.regleQuantite] ?? p.regleQuantite}</td>
                 <td className="px-2 py-2 text-right tabular-nums">
-                  {edite === p.cfcCode ? (
+                  {edite === p.cle ? (
                     <Input
                       className="h-7 w-24 text-right text-xs" type="number" step="0.01" min="0"
                       value={prix} onChange={(e) => setPrix(e.target.value)} autoFocus
@@ -1237,9 +1237,9 @@ function PostesAutomatiques({ postes }: { postes: ApiPosteAutomatique[] }) {
                   )}
                 </td>
                 <td className="px-2 py-2 text-right">
-                  {edite === p.cfcCode ? (
+                  {edite === p.cle ? (
                     <span className="flex justify-end gap-1">
-                      <Button size="sm" disabled={enregistrer.isPending} onClick={() => enregistrer.mutate(p.cfcCode)}>
+                      <Button size="sm" disabled={enregistrer.isPending} onClick={() => enregistrer.mutate(p.cle)}>
                         Enregistrer
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => { setEdite(null); setErreur(null) }}>
@@ -1248,7 +1248,7 @@ function PostesAutomatiques({ postes }: { postes: ApiPosteAutomatique[] }) {
                     </span>
                   ) : (
                     <button
-                      onClick={() => { setEdite(p.cfcCode); setPrix(String(p.prix)); setErreur(null) }}
+                      onClick={() => { setEdite(p.cle); setPrix(String(p.prix)); setErreur(null) }}
                       className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
                     >
                       <Pencil className="h-3 w-3" />Modifier le prix

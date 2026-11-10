@@ -21,6 +21,7 @@ export function optionsDuDevis(project: ApiProject, batiment = donneesDuBatiment
     frais: project.majorations?.frais ?? [],
     installation: project.majorations?.installation ?? undefined,
     prixPostes: project.majorations?.prixPostes ?? null,
+    typeToiture: project.roofType ?? null,
   }
 }
 

@@ -18,7 +18,7 @@ export type BaseQuantite =
   | 'surface_plancher' | 'surface_batie' | 'surface_terrain' | 'surface_facade'
   | 'surface_fenetres' | 'facade_moins_fenetres' | 'nombre_logements'
   | 'nombre_pieces_eau' | 'nombre_etages' | 'nombre_cages' | 'nombre_portes_entree'
-  | 'forfait' | 'saisie_manuelle'
+  | 'perimetre_batiment' | 'forfait' | 'saisie_manuelle'
   | 'regle_stores' | 'regle_eaux_pluviales' | 'regle_sprinklers'
 
 /** Une valeur du classeur que le module refuse de traduire. */
@@ -88,6 +88,7 @@ const BASES: Record<string, BaseQuantite> = {
   'nombre d etages': 'nombre_etages',
   'nombre de cages d escalier': 'nombre_cages',
   'nombre de portes d entree': 'nombre_portes_entree',
+  'perimetre du batiment': 'perimetre_batiment',
   'forfait': 'forfait',
   'saisie manuelle': 'saisie_manuelle',
 }
@@ -121,6 +122,31 @@ export function normaliserBase(brut: unknown, champ = 'Base de quantité'): { ba
   const base = BASES[cle(sansParenthese)]
   if (!base) throw new ErreurBase(champ, brut, 'base de quantité inconnue')
   return { base, indication: parentheses ? parentheses[2].trim() : null }
+}
+
+/**
+ * Comment l'ouvrage se quantifie quand le dossier a des plans.
+ *
+ * Sans plans, rien ne change : base × coefficient. Avec plans, un métré
+ * (compté ou mesuré) remplace la règle ; un ratio garde sa base, la SP ou la
+ * surface bâtie, devenue exacte par les plans ; un forfait n'a pas de métré.
+ */
+export type ModeQuantite = 'metre_compte' | 'metre_mesure' | 'ratio_sp' | 'ratio_surface_batie' | 'forfait'
+
+const MODES: Record<string, ModeQuantite> = {
+  'metre compte': 'metre_compte',
+  'metre mesure': 'metre_mesure',
+  'ratio sur sp': 'ratio_sp',
+  'ratio sur surface batie': 'ratio_surface_batie',
+  'forfait': 'forfait',
+}
+
+/** Le mode de quantité. Une cellule vide vaut null : les bases d'avant la v6 n'en ont pas. */
+export function normaliserMode(brut: unknown, champ = 'Mode de quantité'): ModeQuantite | null {
+  if (brut === null || brut === undefined || String(brut).trim() === '') return null
+  const mode = MODES[cle(brut)]
+  if (!mode) throw new ErreurBase(champ, brut, 'mode inconnu, attendu Métré (compté), Métré (mesuré), Ratio sur SP, Ratio sur surface bâtie ou Forfait')
+  return mode
 }
 
 /** Un prix : un nombre, ou rien. Une cellule vide vaut « pas de travail chiffré ». */

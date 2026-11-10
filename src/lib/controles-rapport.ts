@@ -121,7 +121,7 @@ export function surfacesDepassees(
     const article = membres.map((m) => (m.articleId ? parId.get(m.articleId) : undefined)).find(Boolean)
     if (!article || article.baseQuantite === 'saisie_manuelle' || article.baseQuantite === 'forfait') continue
     // La surface du groupe, avant tout partage entre ses types.
-    const reference = quantiteDeBase({ baseQuantite: article.baseQuantite, coefficient: article.coefficient }, batiment)
+    const reference = quantiteDeBase({ baseQuantite: article.baseQuantite, coefficient: article.coefficient, unite: article.uniteEntretien }, batiment)
     if (reference == null || reference <= 0) continue
     const saisi = membres.reduce((s, m) => s + (m.area ?? 0), 0)
     if (saisi > reference * 1.02 + 0.5) {

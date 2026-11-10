@@ -74,7 +74,9 @@ export const CATEGORIES_COMPTEES: readonly DefinitionCategorie[] = [
   {
     cle: 'fenetre', libelle: 'Fenêtres et portes-fenêtres', singulier: 'fenêtre', pluriel: 'fenêtres',
     feminin: true, articles: ['A019', 'A020', 'A021', 'A022', 'A023', 'A024'],
-    motif: /^(fenetres?|portes?-fenetres?|vitrines?)(\s|$|,)/, prefixe: /^fenetres?\s*/, unite: 'm2',
+    // Les fenêtres de sous-sol n'en sont pas : petites, à la pièce, comptées à
+    // part. Les y ranger leur donnerait le nombre de toutes les fenêtres.
+    motif: /^(fenetres?|portes?-fenetres?|vitrines?)(?!\s+de\s+(sous-sol|caves?))(\s|$|,)/, prefixe: /^fenetres?\s*/, unite: 'm2',
   },
   {
     cle: 'fenetre_toit', libelle: 'Fenêtres de toit et lanterneaux', singulier: 'fenêtre de toit', pluriel: 'fenêtres de toit',

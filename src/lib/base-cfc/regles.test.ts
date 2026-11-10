@@ -147,6 +147,26 @@ describe('règle 3, les bases de quantité', () => {
   })
 })
 
+describe('base v6 : le périmètre et les pièces arrondies', () => {
+  // Le bâtiment de contrôle : SP 910 m², périmètre 59 ml, 7 logements.
+  const controle = batiment({ surfacePlancher: 910, perimetre: 59, nombreLogements: 7 })
+
+  it('donne les quantités attendues sur le bâtiment de contrôle', () => {
+    expect(quantiteDeBase({ baseQuantite: 'nombre_logements', coefficient: 6, unite: 'pce' }, controle)).toBe(42)
+    expect(quantiteDeBase({ baseQuantite: 'surface_plancher', coefficient: 0.8, unite: 'ml' }, controle)).toBe(728)
+    expect(quantiteDeBase({ baseQuantite: 'perimetre_batiment', coefficient: 0.12, unite: 'pce' }, controle)).toBe(7)
+  })
+
+  it('n’arrondit que les pièces, et jamais à zéro', () => {
+    expect(quantiteDeBase({ baseQuantite: 'perimetre_batiment', coefficient: 0.12, unite: 'ml' }, controle)).toBe(7.08)
+    expect(quantiteDeBase({ baseQuantite: 'nombre_logements', coefficient: 0.05, unite: 'pce' }, controle)).toBe(1)
+  })
+
+  it('ne devine pas un périmètre absent', () => {
+    expect(quantiteDeBase({ baseQuantite: 'perimetre_batiment', coefficient: 1 }, batiment())).toBeNull()
+  })
+})
+
 describe('la quantité retenue', () => {
   const article = { baseQuantite: 'surface_plancher' as const, coefficient: 1 }
 

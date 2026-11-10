@@ -75,7 +75,7 @@ const majorationsSchema = z.object({
     montant: z.number().min(0).max(10_000_000).nullable(),
   }).strict()).max(12).optional(),
   /** Prix d'un poste de chantier propre à ce dossier, déjà indexé : { "211.1": 32 }. */
-  prixPostes: z.record(z.string().min(1).max(12), z.number().min(0).max(10_000_000)).optional(),
+  prixPostes: z.record(z.string().min(1).max(40), z.number().min(0).max(10_000_000)).optional(),
 }).strict();
 
 /** Vérifie que l'opération (si fournie) est accessible (parc de l'organisation ou compte solo). */

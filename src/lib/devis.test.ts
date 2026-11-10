@@ -41,10 +41,10 @@ const A100 = article({
 })
 
 const POSTES: ApiPosteAutomatique[] = [
-  { cfcCode: '121', libelle: 'Protection des ouvrages existants', declencheur: 'toujours', unite: 'forfait', prix: 5000, regleQuantite: 'forfait', remarque: null },
-  { cfcCode: '211.1', libelle: 'Échafaudage de façade', declencheur: 'echafaudage_facade', unite: 'm2', prix: 35, regleQuantite: 'surface_echafaudee', remarque: null },
-  { cfcCode: '285.0', libelle: 'Échafaudage cage d’escalier', declencheur: 'communs_mauvais', unite: 'forfait', prix: 5000, regleQuantite: 'par_cage_escalier', remarque: null },
-  { cfcCode: '287', libelle: 'Nettoyage complet du bâtiment', declencheur: 'toujours', unite: 'm2', prix: 10, regleQuantite: 'surface_plancher', remarque: null },
+  { cle: '121', metreAvecPlans: null, cfcCode: '121', libelle: 'Protection des ouvrages existants', declencheur: 'toujours', unite: 'forfait', prix: 5000, regleQuantite: 'forfait', remarque: null },
+  { cle: '211.1', metreAvecPlans: null, cfcCode: '211.1', libelle: 'Échafaudage de façade', declencheur: 'echafaudage_facade', unite: 'm2', prix: 35, regleQuantite: 'surface_echafaudee', remarque: null },
+  { cle: '285.0', metreAvecPlans: null, cfcCode: '285.0', libelle: 'Échafaudage cage d’escalier', declencheur: 'communs_mauvais', unite: 'forfait', prix: 5000, regleQuantite: 'par_cage_escalier', remarque: null },
+  { cle: '287', metreAvecPlans: null, cfcCode: '287', libelle: 'Nettoyage complet du bâtiment', declencheur: 'toujours', unite: 'm2', prix: 10, regleQuantite: 'surface_plancher', remarque: null },
 ]
 
 const ETAPES: ApiEtapeVisite[] = [
@@ -277,17 +277,27 @@ describe('une amélioration remplace la réparation qu’elle rend inutile', () 
 
 describe('l’installation de chantier', () => {
   const lignes = [ouvrage({ estimatedCost: '100000' })]
+  /** Les travaux et les postes de chantier du devis, hors installation : l'assiette du pourcentage. */
+  const assiette = (d: ReturnType<typeof buildDevis>) =>
+    d.lignes.filter((l) => l.cfcCode !== '211.0' && l.enveloppe !== 'Amélioration').reduce((s, l) => s + l.montant, 0)
 
-  it('paraît à chiffrer tant que le dossier ne l’a pas réglée', () => {
-    const d = buildDevis(lignes, LABELS, BASE, { ...NU, installation: undefined })
-    expect(d.lignes.find((l) => l.cfcCode === '211.0')).toMatchObject({ aChiffrer: true, enveloppe: 'Poste de chantier' })
+  it('vaut 5 % des travaux hors honoraires tant que le dossier ne l’a pas réglée', () => {
+    const d = buildDevis(lignes, LABELS, BASE, { ...NU, honoraryPct: 12, installation: undefined })
+    expect(d.lignes.find((l) => l.cfcCode === '211.0')).toMatchObject({ montant: Math.round(assiette(d) * 0.05), aChiffrer: false, enveloppe: 'Poste de chantier' })
   })
 
   it('prend un pourcentage des travaux, avec un minimum', () => {
     const pct = buildDevis(lignes, LABELS, BASE, { ...NU, installation: { pct: 4, minimum: 3000 } })
-    expect(pct.lignes.find((l) => l.cfcCode === '211.0')!.montant).toBe(4000)
+    expect(pct.lignes.find((l) => l.cfcCode === '211.0')!.montant).toBe(Math.round(assiette(pct) * 0.04))
     const min = buildDevis(lignes, LABELS, BASE, { ...NU, installation: { pct: 2, minimum: 5000 } })
     expect(min.lignes.find((l) => l.cfcCode === '211.0')!.montant).toBe(5000)
+  })
+
+  it('porte aussi sur les postes de chantier retenus au devis', () => {
+    const d = buildDevis(lignes, LABELS, BASE, { ...NU, installation: { pct: 5, minimum: null } })
+    const postes = d.lignes.filter((l) => l.automatique && l.cfcCode !== '211.0').reduce((s, l) => s + l.montant, 0)
+    expect(postes).toBeGreaterThan(0)
+    expect(d.lignes.find((l) => l.cfcCode === '211.0')!.montant).toBe(Math.round((100_000 + postes) * 0.05))
   })
 
   it('disparaît quand le dossier la met à zéro', () => {

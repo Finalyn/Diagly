@@ -217,8 +217,10 @@ export interface DevisOptions {
    * pourcentage et un minimum à zéro disent qu'il n'y en a pas.
    */
   installation?: ReglageInstallation | null
-  /** Prix d'un poste de chantier propre au dossier, déjà indexé : il remplace celui de la base. */
+  /** Prix d'un poste de chantier propre au dossier, déjà indexé : il remplace celui de la base. Par clé de poste. */
   prixPostes?: Record<string, number> | null
+  /** Type de toiture de la fiche : le pont de couvreur ne vaut que pour une toiture en pente. */
+  typeToiture?: 'PLATE' | 'PENTE' | 'MIXTE' | null
 }
 
 const num = (v: string | null | undefined) => (v ? Number(v) : 0)
@@ -484,7 +486,7 @@ function posteIndexe(p: ApiPosteAutomatique): ApiPosteAutomatique {
 
 /** Le poste tel que le dossier le chiffre : son propre prix s'il en a un, sinon celui de la base. */
 function posteDuDossier(p: ApiPosteAutomatique, options: DevisOptions): ApiPosteAutomatique {
-  const propre = options.prixPostes?.[p.cfcCode]
+  const propre = options.prixPostes?.[p.cle ?? p.cfcCode]
   return propre != null ? { ...p, prix: propre } : posteIndexe(p)
 }
 
@@ -541,12 +543,14 @@ export function postesDeChantier(
     surfacePlancher: options.batiment.surfacePlancher,
     surfaceFacade: options.batiment.surfaceFacade,
     nombreCages: options.batiment.nombreCages,
+    perimetre: options.batiment.perimetre ?? null,
+    typeToiture: options.typeToiture ?? null,
   }).map((l) => {
-    const ligne = lignePoste(l)
+    const ligne = lignePoste(l, undefined, `auto:${l.cle}`)
     // Le prix de la base, indexé : un prix propre au dossier s'en écarte, et doit se voir.
-    const dela = base.postes.find((p) => p.cfcCode === l.cfcCode)
+    const dela = base.postes.find((p) => (p.cle ?? p.cfcCode) === l.cle)
     const prixBase = dela ? posteIndexe(dela).prix : null
-    const propre = options.prixPostes?.[l.cfcCode]
+    const propre = options.prixPostes?.[l.cle]
     return { ...ligne, prixBase, prixModifie: propre != null && prixBase != null && Math.abs(propre - prixBase) > 0.005 }
   })
 }
@@ -566,7 +570,7 @@ function echafaudageDesAmeliorations(
   base: BaseDuDevis,
   options: DevisOptions,
 ): DevisLigne | null {
-  const poste = base.postes.find((p) => p.cfcCode === '211.1')
+  const poste = base.postes.find((p) => p.cfcCode === '211.1' && p.declencheur === 'echafaudage_facade')
   if (!poste) return null
   const facade = options.batiment.surfaceFacade
   const avant = surfaceEchafaudee(relevesPourLesPostes(items, base.articles, engages), facade)
@@ -608,21 +612,23 @@ export function listeEnClair(noms: string[], max = 3): string {
 }
 
 /**
+ * L'installation de chantier d'un dossier qui ne l'a pas réglée : 5 % du
+ * montant des travaux, hors honoraires (règle de Chloé, 3 nov. 2026, d'abord 2,5 %). Elle
+ * remplace le forfait de 6000 CHF que propose la base v6.
+ */
+export const INSTALLATION_PAR_DEFAUT: ReglageInstallation = { pct: 5, minimum: null }
+
+/**
  * L'installation de chantier : un pourcentage des travaux, avec un minimum.
  *
- * Tant que le dossier ne l'a pas réglée, elle paraît à chiffrer plutôt que de
- * manquer : c'est son absence qui faisait sortir un premier devis à 30 % sous
- * celui d'un architecte.
+ * Tant que le dossier ne l'a pas réglée, elle vaut 5 % des travaux : c'est
+ * son absence qui faisait sortir un premier devis à 30 % sous celui d'un
+ * architecte. Les travaux sont ceux des relevés et les postes de chantier
+ * retenus au devis (échafaudages, protection, nettoyage…), avant honoraires et
+ * réserve (règle de Chloé, 4 nov. 2026).
  */
 function installationDeChantier(travaux: number, reglage: ReglageInstallation | null | undefined): DevisLigne | null {
-  const regle = (r: string) => lignePoste({
-    cfcCode: '211.0', libelle: 'Installation de chantier', unite: 'forfait', quantite: 1,
-    prixUnitaire: null, montant: null, priorite: null, remarque: r,
-  })
-  if (reglage == null || (reglage.pct == null && reglage.minimum == null)) {
-    const l = regle('Un pourcentage des travaux, avec un minimum forfaitaire.')
-    return { ...l, raisonAChiffrer: "pourcentage et minimum à fixer dans l'onglet Coûts", quantite: null }
-  }
+  if (reglage == null || (reglage.pct == null && reglage.minimum == null)) reglage = INSTALLATION_PAR_DEFAUT
   const pct = reglage.pct ?? 0
   const minimum = reglage.minimum ?? 0
   if (pct <= 0 && minimum <= 0) return null
@@ -741,7 +747,7 @@ export function buildDevis(
 
   // 2. Les postes de chantier, et l'échafaudage que les améliorations ajoutent.
   const postes = postesDeChantier(items, base, options)
-  const htTravaux = travaux.reduce((s, l) => s + l.montant, 0)
+  const htTravaux = [...travaux, ...postes].reduce((s, l) => s + l.montant, 0)
   const installation = travaux.length > 0 ? installationDeChantier(htTravaux, options.installation) : null
   if (installation) postes.push(installation)
   const complement = echafaudageDesAmeliorations(items, base, options)
@@ -778,7 +784,7 @@ export function buildDevis(
     })
     .filter((p) => p.cle !== 'NC' || p.lignes > 0)
 
-  const echafaudage = postes.find((l) => l.cfcCode === '211.1')
+  const echafaudage = postes.find((l) => l.cle === 'auto:211.1')
   const surface = (echafaudage?.quantite ?? 0) + (complement?.quantite ?? 0)
 
   return {

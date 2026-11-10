@@ -8,20 +8,20 @@ import type { PosteBase } from './assembler'
 /** Les quatre postes, tels qu'ils sont lus dans postes_automatiques. */
 const POSTES: PosteBase[] = [
   {
-    cfcCode: '121', libelle: 'Protection des ouvrages existants', declencheur: 'toujours',
+    cle: '121', metreAvecPlans: null, cfcCode: '121', libelle: 'Protection des ouvrages existants', declencheur: 'toujours',
     unite: 'forfait', prix: 5000, regleQuantite: 'forfait', remarque: null,
   },
   {
-    cfcCode: '211.1', libelle: 'Échafaudage de façade', declencheur: 'echafaudage_facade',
+    cle: '211.1', metreAvecPlans: null, cfcCode: '211.1', libelle: 'Échafaudage de façade', declencheur: 'echafaudage_facade',
     unite: 'm2', prix: 35, regleQuantite: 'surface_echafaudee',
     remarque: 'Quantité = surface des façades concernées.',
   },
   {
-    cfcCode: '285.0', libelle: 'Échafaudage cage d’escalier (communs)', declencheur: 'communs_mauvais',
+    cle: '285.0', metreAvecPlans: null, cfcCode: '285.0', libelle: 'Échafaudage cage d’escalier (communs)', declencheur: 'communs_mauvais',
     unite: 'forfait', prix: 5000, regleQuantite: 'par_cage_escalier', remarque: 'Parties communes uniquement.',
   },
   {
-    cfcCode: '287', libelle: 'Nettoyage complet du bâtiment', declencheur: 'toujours',
+    cle: '287', metreAvecPlans: null, cfcCode: '287', libelle: 'Nettoyage complet du bâtiment', declencheur: 'toujours',
     unite: 'm2', prix: 10, regleQuantite: 'surface_plancher', remarque: null,
   },
 ]
@@ -214,5 +214,44 @@ describe('règle 8, l’échafaudage des options', () => {
 
   it('laisse le montant en attente quand la surface de l’option manque', () => {
     expect(echafaudageDeLOption({ ...option, quantite: null }, poste, false)?.montant).toBeNull()
+  })
+})
+
+describe('le pont de couvreur', () => {
+  const PONT: PosteBase = {
+    cle: '211.1:toiture_pente', metreAvecPlans: null, cfcCode: '211.1', libelle: 'Pont de couvreur',
+    declencheur: 'toiture_pente', unite: 'ml', prix: 115, regleQuantite: 'perimetre', remarque: null,
+  }
+  const couverture = releve({ articleId: 'A044', nom: 'Couverture de toiture inclinée', baseQuantite: 'surface_batie', etat: 'mauvais', priorite: 'I' })
+  const enPente = { ...BATIMENT, perimetre: 59, typeToiture: 'PENTE' as const }
+
+  it('s’ajoute à l’échafaudage de façade pour une toiture en pente, au périmètre', () => {
+    const l = postesAutomatiques([couverture], [...POSTES, PONT], enPente)
+    const pont = l.find((x) => x.cle === '211.1:toiture_pente')
+    expect(pont).toMatchObject({ cfcCode: '211.1', quantite: 59, montant: 6785, priorite: 'I' })
+    expect(l.find((x) => x.cle === '211.1')?.libelle).toBe('Échafaudage de façade')
+  })
+
+  it('ne vaut pas pour une toiture plate, ni sans type de toiture', () => {
+    for (const typeToiture of ['PLATE', null] as const) {
+      const l = postesAutomatiques([couverture], [...POSTES, PONT], { ...enPente, typeToiture })
+      expect(l.some((x) => x.cle === PONT.cle)).toBe(false)
+    }
+  })
+
+  it('demande un état moyen ou mauvais chiffré sur la couverture, une fenêtre de toit ou une lucarne', () => {
+    const bon = releve({ articleId: 'A044', etat: 'bon' })
+    const ferblanterie = releve({ articleId: 'A048', etat: 'mauvais' })
+    const lucarne = releve({ articleId: 'N009', etat: 'moyen' })
+    const sans = (r: ReleveDuDevis[]) => postesAutomatiques(r, [...POSTES, PONT], enPente).some((x) => x.cle === PONT.cle)
+    expect(sans([bon])).toBe(false)
+    expect(sans([ferblanterie])).toBe(false)
+    expect(sans([lucarne])).toBe(true)
+    expect(sans([releve({ articleId: 'A046', montant: 0 })])).toBe(false)
+  })
+
+  it('reste au devis à chiffrer quand le périmètre manque', () => {
+    const l = postesAutomatiques([couverture], [...POSTES, PONT], { ...enPente, perimetre: null })
+    expect(l.find((x) => x.cle === PONT.cle)).toMatchObject({ quantite: null, montant: null })
   })
 })

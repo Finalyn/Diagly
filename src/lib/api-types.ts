@@ -1,6 +1,6 @@
 import type { CategorieComptee, Comptage } from './base-cfc/comptages'
 import type { MarqueDuDossier } from './marque'
-import type { BaseQuantite, EtatArticle, Unite } from './base-cfc/normaliser'
+import type { BaseQuantite, EtatArticle, ModeQuantite, Unite } from './base-cfc/normaliser'
 
 // Types partagés entre frontend et API. Doivent rester en phase avec server/prisma/schema.prisma.
 
@@ -1079,6 +1079,10 @@ export interface ApiArticle {
   articleLieId: string | null
   actif: boolean
   ligneOrigine: string | null
+  /** Comment l'ouvrage se quantifie avec des plans. null pour une base d'avant la v6. */
+  modeQuantite?: ModeQuantite | null
+  /** Ce que l'app compte ou mesure sur les plans. Gardé en base, pas affiché. */
+  metreAvecPlans?: string | null
   etats: ApiArticleEtat[]
   etapes: ApiArticleEtape[]
 }
@@ -1090,13 +1094,16 @@ export interface ApiEtapeVisite {
 }
 
 export interface ApiPosteAutomatique {
+  /** Le code CFC, sauf pour un second poste du même code (« 211.1:toiture_pente »). */
+  cle: string
   cfcCode: string
   libelle: string
-  declencheur: "toujours" | "echafaudage_facade" | "communs_mauvais"
+  declencheur: "toujours" | "echafaudage_facade" | "communs_mauvais" | "travaux_chiffres" | "toiture_pente"
   unite: Unite
   prix: number
-  regleQuantite: "surface_echafaudee" | "par_cage_escalier" | "surface_plancher" | "forfait"
+  regleQuantite: "surface_echafaudee" | "par_cage_escalier" | "surface_plancher" | "forfait" | "perimetre"
   remarque: string | null
+  metreAvecPlans: string | null
 }
 
 export interface ApiBaseCfc {

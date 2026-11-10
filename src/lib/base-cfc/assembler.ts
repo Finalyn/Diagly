@@ -8,9 +8,9 @@
  */
 
 import {
-  ErreurBase, aucunTravail, normaliserBase, normaliserCode, normaliserOuiNon,
+  ErreurBase, aucunTravail, normaliserBase, normaliserCode, normaliserMode, normaliserOuiNon,
   normaliserPart, normaliserPrix, normaliserTexte, normaliserUnite,
-  type BaseQuantite, type EtatArticle, type Unite,
+  type BaseQuantite, type EtatArticle, type ModeQuantite, type Unite,
 } from './normaliser'
 
 /** Une ligne de classeur, telle que la lit n'importe quelle bibliothèque. */
@@ -38,6 +38,10 @@ export interface ArticleBase {
   coefficient: number
   noteDiagnostiqueur: string | null
   ligneOrigine: string | null
+  /** Comment l'ouvrage se quantifie avec des plans. null pour une base d'avant la v6. */
+  modeQuantite: ModeQuantite | null
+  /** Ce que l'app compte ou mesure sur les plans. Gardé en base, pas affiché. */
+  metreAvecPlans: string | null
   etats: EtatBase[]
 }
 
@@ -45,13 +49,23 @@ export interface EtapeBase { numero: number; nom: string; zone: string }
 export interface LienEtape { articleId: string; etapeNumero: number; ordreDansEtape: number }
 export interface NoeudCfc { code: string; libelle: string; niveau: number; parentCode: string | null }
 export interface PosteBase {
+  /**
+   * L'identifiant du poste : son code CFC, sauf quand un poste précédent du
+   * classeur porte déjà ce code. Le pont de couvreur et l'échafaudage de
+   * façade sont tous deux en 211.1 ; le second devient « 211.1:toiture_pente ».
+   * Les postes d'avant gardent ainsi leur clé, et les prix propres aux dossiers
+   * qui s'y rattachent.
+   */
+  cle: string
   cfcCode: string
   libelle: string
-  declencheur: 'toujours' | 'echafaudage_facade' | 'communs_mauvais'
+  declencheur: 'toujours' | 'echafaudage_facade' | 'communs_mauvais' | 'travaux_chiffres' | 'toiture_pente'
   unite: Unite
   prix: number
-  regleQuantite: 'surface_echafaudee' | 'par_cage_escalier' | 'surface_plancher' | 'forfait'
+  regleQuantite: 'surface_echafaudee' | 'par_cage_escalier' | 'surface_plancher' | 'forfait' | 'perimetre'
   remarque: string | null
+  /** Ce que l'app mesure sur les plans. Gardé en base, pas affiché. */
+  metreAvecPlans: string | null
 }
 
 /**
@@ -136,6 +150,8 @@ export function assemblerArticle(ligne: Ligne): ArticleBase {
     coefficient,
     noteDiagnostiqueur: normaliserTexte(cellule(ligne, 'Note diagnostiqueur')),
     ligneOrigine: normaliserTexte(cellule(ligne, 'Ligne d’origine')),
+    modeQuantite: normaliserMode(cellule(ligne, 'Mode de quantité'), `${id} / Mode de quantité`),
+    metreAvecPlans: normaliserTexte(cellule(ligne, 'Avec plans : métré automatique')),
     etats,
   }
 }
@@ -178,20 +194,29 @@ export function assemblerNomenclature(lignes: Ligne[]): NoeudCfc[] {
   })
 }
 
+/**
+ * Dans l'ordre où les tester : le pont de couvreur parle aussi d'« Échafaudage
+ * = Oui » et de travaux chiffrés, l'échafaudage de façade aussi de travaux
+ * chiffrés. Le plus précis passe d'abord.
+ */
 const DECLENCHEURS: { motif: RegExp; valeur: PosteBase['declencheur'] }[] = [
   { motif: /toujours/i, valeur: 'toujours' },
+  { motif: /toiture/i, valeur: 'toiture_pente' },
   { motif: /echafaudage\s*=\s*oui|échafaudage\s*=\s*oui/i, valeur: 'echafaudage_facade' },
   { motif: /mauvais/i, valeur: 'communs_mauvais' },
+  { motif: /travaux chiffr/i, valeur: 'travaux_chiffres' },
 ]
 
 const REGLES: { motif: RegExp; valeur: PosteBase['regleQuantite'] }[] = [
   { motif: /échafauder|echafauder/i, valeur: 'surface_echafaudee' },
   { motif: /cage/i, valeur: 'par_cage_escalier' },
   { motif: /plancher|sp\b/i, valeur: 'surface_plancher' },
+  { motif: /périmètre|perimetre/i, valeur: 'perimetre' },
   { motif: /^1$|forfait/i, valeur: 'forfait' },
 ]
 
 export function assemblerPostes(lignes: Ligne[]): PosteBase[] {
+  const cles = new Set<string>()
   return lignes.map((l) => {
     const cfcCode = normaliserCode(cellule(l, 'Code CFC'), 'Poste / Code CFC')
     const libelle = normaliserTexte(cellule(l, 'Poste'))
@@ -204,9 +229,13 @@ export function assemblerPostes(lignes: Ligne[]): PosteBase[] {
     const regleQuantite = REGLES.find((r) => r.motif.test(quantiteTexte))?.valeur
     if (!declencheur) throw new ErreurBase(`Poste ${cfcCode} / déclencheur`, declencheurTexte, 'déclencheur non reconnu')
     if (!regleQuantite) throw new ErreurBase(`Poste ${cfcCode} / quantité`, quantiteTexte, 'règle de quantité non reconnue')
+    const cle = cles.has(cfcCode) ? `${cfcCode}:${declencheur}` : cfcCode
+    if (cles.has(cle)) throw new ErreurBase(`Poste ${cfcCode}`, libelle, 'deux postes du même code avec le même déclencheur')
+    cles.add(cle)
     return {
-      cfcCode, libelle, declencheur, unite: normaliserUnite(cellule(l, 'Unité'), `Poste ${cfcCode} / unité`).unite,
+      cle, cfcCode, libelle, declencheur, unite: normaliserUnite(cellule(l, 'Unité'), `Poste ${cfcCode} / unité`).unite,
       prix, regleQuantite, remarque: normaliserTexte(cellule(l, 'Remarque')),
+      metreAvecPlans: normaliserTexte(cellule(l, 'Avec plans : métré automatique')),
     }
   })
 }

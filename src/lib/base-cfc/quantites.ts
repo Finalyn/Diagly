@@ -12,7 +12,7 @@
  * sur place, et sa correction ne doit plus jamais être écrasée.
  */
 
-import type { BaseQuantite } from './normaliser'
+import type { BaseQuantite, Unite } from './normaliser'
 import type { Comptages } from './comptages'
 
 /**
@@ -31,6 +31,8 @@ export interface DonneesBatiment {
   surfaceTerrain: number | null
   surfaceFacade: number | null
   surfaceFenetres: number | null
+  /** Le périmètre de la fiche, celui qui donne la surface de façade. */
+  perimetre?: number | null
   nombreLogements: number | null
   /** Répartition par typologie : c'est elle qui compte les stores. */
   logementsParTypologie?: RepartitionLogements | null
@@ -103,7 +105,20 @@ export function storesEnToile(repartition: RepartitionLogements | null | undefin
 export interface Article {
   baseQuantite: BaseQuantite
   coefficient: number
+  /** Unité de l'ouvrage : une quantité en pièces s'arrondit à l'unité. */
+  unite?: Unite | string | null
 }
+
+/**
+ * Une pièce ne se coupe pas : 59 ml × 0,12 font 7 fenêtres de sous-sol, pas
+ * 7,08. Arrondi à l'unité la plus proche, mais jamais à zéro : un ouvrage
+ * relevé existe, et zéro le chiffrerait gratuit sans rien en dire.
+ */
+function enPieces(v: number): number {
+  return v > 0 ? Math.max(1, Math.round(v)) : v
+}
+
+const estEnPieces = (u: Article['unite']) => u === 'pce'
 
 /**
  * La quantité d'un ouvrage, avant partage entre alternatives.
@@ -115,7 +130,8 @@ export interface Article {
 export function quantiteDeBase(article: Article, b: DonneesBatiment): number | null {
   const brute = valeurDeBase(article.baseQuantite, b)
   if (brute === null) return null
-  return arrondi(brute * article.coefficient)
+  const quantite = arrondi(brute * article.coefficient)
+  return estEnPieces(article.unite) ? enPieces(quantite) : quantite
 }
 
 function valeurDeBase(base: BaseQuantite, b: DonneesBatiment): number | null {
@@ -130,6 +146,7 @@ function valeurDeBase(base: BaseQuantite, b: DonneesBatiment): number | null {
     case 'nombre_etages': return b.nombreEtages
     case 'nombre_cages': return b.nombreCages
     case 'nombre_portes_entree': return b.nombrePortesEntree
+    case 'perimetre_batiment': return b.perimetre ?? null
     case 'forfait': return 1
 
     // Une saisie manuelle n'a pas de valeur calculée, par définition.

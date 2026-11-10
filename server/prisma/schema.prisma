@@ -936,6 +936,7 @@ enum BaseQuantite {
   nombre_etages
   nombre_cages
   nombre_portes_entree
+  perimetre_batiment
   forfait
   saisie_manuelle
   regle_stores
@@ -948,6 +949,17 @@ enum DeclencheurPoste {
   toujours
   echafaudage_facade
   communs_mauvais
+  travaux_chiffres
+  toiture_pente
+}
+
+/// Comment un article se quantifie quand le dossier a des plans (base v6).
+enum ModeQuantite {
+  metre_compte
+  metre_mesure
+  ratio_sp
+  ratio_surface_batie
+  forfait
 }
 
 /// Comment se calcule la quantite d'un poste automatique.
@@ -956,6 +968,7 @@ enum RegleQuantitePoste {
   par_cage_escalier
   surface_plancher
   forfait
+  perimetre
 }
 
 /// Nomenclature SN 506 500, quatre niveaux. Le code est du texte : « 221.0 »
@@ -1004,6 +1017,10 @@ model Article {
   actif              Boolean      @default(true)
   /// Trace de la ligne du classeur d'origine, pour les reprises ulterieures.
   ligneOrigine       String?      @map("ligne_origine") @db.VarChar(16)
+  /// Avec plans : metre (compte ou mesure), ratio ou forfait. null avant la v6.
+  modeQuantite       ModeQuantite? @map("mode_quantite")
+  /// Ce que l'app compte ou mesure sur les plans. Garde en base, pas affiche.
+  metreAvecPlans     String?      @map("metre_avec_plans") @db.Text
   creeLe             DateTime     @default(now()) @map("cree_le")
   modifieLe          DateTime     @updatedAt @map("modifie_le")
 
@@ -1073,13 +1090,17 @@ model ArticleEtape {
 /// Postes ajoutes au devis sans etre releves : echafaudages, nettoyage,
 /// protection des ouvrages. Les prix sont lus ici, jamais ecrits en dur.
 model PosteAutomatique {
-  cfcCode       String             @id @map("cfc_code") @db.VarChar(12)
+  /// Le code CFC, sauf pour un second poste du meme code : le pont de couvreur
+  /// partage le 211.1 avec l'echafaudage de facade et devient « 211.1:toiture_pente ».
+  cle           String             @id @db.VarChar(40)
+  cfcCode       String             @map("cfc_code") @db.VarChar(12)
   libelle       String             @db.VarChar(255)
   declencheur   DeclencheurPoste
   unite         Unite
   prix          Decimal            @db.Decimal(12, 2)
   regleQuantite RegleQuantitePoste @map("regle_quantite")
   remarque      String?            @db.Text
+  metreAvecPlans String?           @map("metre_avec_plans") @db.Text
 
   @@map("postes_automatiques")
 }

@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   assemblerArticle, assemblerEtapes, assemblerNomenclature, assemblerPostes, controler,
-  type ArticleBase, type NoeudCfc,
+  type ArticleBase, type LienEtape, type NoeudCfc,
 } from "../../../src/lib/base-cfc/assembler";
 import { choisirEtape, redirection, type Correspondance } from "../../../src/lib/base-cfc/migration";
 import { lireClasseur } from "./classeur";
@@ -37,7 +37,7 @@ const rapport = {
   nomenclature: { crees: 0, modifies: 0, parentsRecrees: [] as string[] },
   articles: { crees: 0, modifies: 0, inchanges: 0, desactives: [] as string[] },
   etats: { ecrits: 0 },
-  etapes: { crees: 0, liens: 0 },
+  etapes: { crees: 0, liens: 0, corrections: [] as string[] },
   postes: { ecrits: 0 },
   releves: {
     total: 0,
@@ -101,7 +101,7 @@ async function importerNomenclature(noeuds: NoeudCfc[]) {
 const MEMES_CHAMPS: (keyof ArticleBase)[] = [
   "cfcCode", "nom", "domaineRapport", "groupeAlternatives", "echafaudage",
   "uniteEntretien", "uniteRemplacement", "baseQuantite", "indicationQuantite",
-  "coefficient", "noteDiagnostiqueur", "ligneOrigine",
+  "coefficient", "noteDiagnostiqueur", "ligneOrigine", "modeQuantite", "metreAvecPlans",
 ];
 
 async function importerArticles(articles: ArticleBase[]) {
@@ -115,7 +115,8 @@ async function importerArticles(articles: ArticleBase[]) {
       uniteEntretien: a.uniteEntretien, uniteRemplacement: a.uniteRemplacement,
       baseQuantite: a.baseQuantite, indicationQuantite: a.indicationQuantite,
       coefficient: a.coefficient, noteDiagnostiqueur: a.noteDiagnostiqueur,
-      ligneOrigine: a.ligneOrigine, actif: true,
+      ligneOrigine: a.ligneOrigine, modeQuantite: a.modeQuantite, metreAvecPlans: a.metreAvecPlans,
+      actif: true,
     };
 
     rapport.etats.ecrits += a.etats.length;
@@ -169,6 +170,55 @@ const LIENS_ARTICLES: [string, string][] = [["A068", "A064"]];
 
 // ----------------------------------------------------------------- les etapes
 
+/**
+ * Les articles retirés de la base, que l'onglet « Ordre de visite » cite encore.
+ *
+ * A122 Plâtrerie a quitté l'onglet Articles en v6 ; décision de Chloé
+ * (3 nov. 2026) : on l'enlève. Ses liens de visite tombent avec lui, et
+ * l'article est désactivé comme tout article absent du classeur.
+ */
+const ARTICLES_RETIRES = ["A122"];
+
+/**
+ * Les fenêtres se relèvent en tête de l'étape Appartements, et plus en façade
+ * (décision de Chloé, 3 nov. 2026). L'onglet de la v6 ne l'a pas encore fait :
+ * le déplacement est appliqué ici tant que le classeur ne le porte pas. Il ne
+ * fait rien sur un classeur qui le porte déjà.
+ */
+const FENETRES = ["A019", "A020", "A021", "A022", "A023", "A024"];
+const ETAPE_FACADE = 1;
+const ETAPE_APPARTEMENTS = 5;
+
+function corrigerLaVisite(liens: LienEtape[]): LienEtape[] {
+  const retires = liens.filter((l) => ARTICLES_RETIRES.includes(l.articleId));
+  if (retires.length > 0) {
+    rapport.etapes.corrections.push(`${ARTICLES_RETIRES.join(", ")} retiré de la visite (${retires.length} liens)`);
+  }
+  let r = liens.filter((l) => !ARTICLES_RETIRES.includes(l.articleId));
+
+  const enFacade = FENETRES.filter((id) => r.some((l) => l.articleId === id && l.etapeNumero === ETAPE_FACADE));
+  if (enFacade.length === 0) return r;
+  r = r.filter((l) => !(enFacade.includes(l.articleId) && l.etapeNumero === ETAPE_FACADE));
+  // Déjà dans l'étape 5, une fenêtre n'y est pas ajoutée une seconde fois.
+  const aAjouter = enFacade.filter((id) => !r.some((l) => l.articleId === id && l.etapeNumero === ETAPE_APPARTEMENTS));
+  r = r.map((l) => (l.etapeNumero === ETAPE_APPARTEMENTS ? { ...l, ordreDansEtape: l.ordreDansEtape + aAjouter.length } : l));
+  r.push(...aAjouter.map((articleId, i) => ({ articleId, etapeNumero: ETAPE_APPARTEMENTS, ordreDansEtape: i + 1 })));
+  rapport.etapes.corrections.push(`fenêtres ${enFacade.join(", ")} déplacées de la façade en tête des appartements`);
+  return r;
+}
+
+/**
+ * Les relevés de fenêtres faits en façade suivent leur article dans l'étape 5 :
+ * sinon ils pointeraient vers un couple article/étape qui n'existe plus.
+ */
+async function deplacerLesFenetres() {
+  const ou = { articleId: { in: FENETRES }, etapeNumero: ETAPE_FACADE };
+  const n = await prisma.diagnosticItem.count({ where: ou });
+  if (n === 0) return;
+  rapport.etapes.corrections.push(`${n} relevés de fenêtres passés de la façade aux appartements`);
+  if (APPLIQUER) await prisma.diagnosticItem.updateMany({ where: ou, data: { etapeNumero: ETAPE_APPARTEMENTS } });
+}
+
 async function importerEtapes(
   etapes: { numero: number; nom: string; zone: string }[],
   liens: { articleId: string; etapeNumero: number; ordreDansEtape: number }[],
@@ -198,12 +248,13 @@ async function importerPostes(postes: Awaited<ReturnType<typeof assemblerPostes>
     rapport.postes.ecrits++;
     if (!APPLIQUER) continue;
     const donnees = {
-      libelle: p.libelle, declencheur: p.declencheur, unite: p.unite,
+      cfcCode: p.cfcCode, libelle: p.libelle, declencheur: p.declencheur, unite: p.unite,
       prix: new Prisma.Decimal(p.prix), regleQuantite: p.regleQuantite, remarque: p.remarque,
+      metreAvecPlans: p.metreAvecPlans,
     };
     await prisma.posteAutomatique.upsert({
-      where: { cfcCode: p.cfcCode },
-      create: { cfcCode: p.cfcCode, ...donnees },
+      where: { cle: p.cle },
+      create: { cle: p.cle, ...donnees },
       update: donnees,
     });
   }
@@ -303,7 +354,9 @@ async function migrerReleves(
 
 const brut = await lireClasseur(CLASSEUR);
 const articles = brut.articles.map(assemblerArticle);
-const { etapes, liens } = assemblerEtapes(brut.visite);
+const visite = assemblerEtapes(brut.visite);
+const etapes = visite.etapes;
+const liens = corrigerLaVisite(visite.liens);
 const nomenclature = assemblerNomenclature(brut.nomenclature);
 const postes = assemblerPostes(brut.postes);
 
@@ -319,6 +372,7 @@ await importerArticles(articles);
 await importerEtapes(etapes, liens);
 await importerPostes(postes);
 await migrerReleves(liens, etapes);
+await deplacerLesFenetres();
 
 const titre = APPLIQUER ? "IMPORT APPLIQUÉ" : "APERÇU (rien n'est écrit, ajoutez --appliquer)";
 console.log(`\n${"=".repeat(64)}\n${titre}\n${"=".repeat(64)}`);
@@ -330,6 +384,7 @@ console.log(`Articles      ${rapport.articles.crees} créés, ${rapport.articles
 if (rapport.articles.desactives.length > 0) console.log(`              désactivés : ${rapport.articles.desactives.join(", ")}`);
 console.log(`États         ${rapport.etats.ecrits} réécrits`);
 console.log(`Étapes        ${rapport.etapes.crees} écrites, ${rapport.etapes.liens} liens article/étape réécrits`);
+for (const c of rapport.etapes.corrections) console.log(`              correction : ${c}`);
 console.log(`Postes auto   ${rapport.postes.ecrits} écrits`);
 console.log(`\nRelevés       ${rapport.releves.total} au total`);
 console.log(`              ${rapport.releves.redirigesVersArticle} redirigés vers un article v3`);

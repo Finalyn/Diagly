@@ -101,10 +101,13 @@ export function ProjectMetres() {
   }
   const majorer = (m: MajorationsDuDossier) => enregistrerProjet({ majorations: m })
 
+  /** Le poste de la base derrière une ligne automatique : le pont de couvreur et l'échafaudage partagent le 211.1. */
+  const cleDuPoste = (ligne: DevisLigne) => ligne.cle.replace(/^auto:/, '')
+
   /** Le prix appliqué au dossier seulement. */
   const auDossier = async (ligne: DevisLigne, pu: number) => {
     if (ligne.automatique) {
-      await majorer({ ...majorations, prixPostes: { ...(majorations.prixPostes ?? {}), [ligne.cfcCode]: pu } })
+      await majorer({ ...majorations, prixPostes: { ...(majorations.prixPostes ?? {}), [cleDuPoste(ligne)]: pu } })
     } else if (ligne.releveId) {
       await saisir({ type: 'modifier', diagnosticId: diagnostic.id, releveId: ligne.releveId, corps: patchDuPrix(ligne, pu) })
     }
@@ -113,9 +116,9 @@ export function ProjectMetres() {
   /** Le prix écrit aussi dans la base du bureau : le dossier le suit alors comme les autres. */
   const aLaBase = async (ligne: DevisLigne, pu: number) => {
     if (ligne.automatique) {
-      await api.cfc.updatePoste(ligne.cfcCode, { prix: prixDePostePourLaBase(pu) })
+      await api.cfc.updatePoste(cleDuPoste(ligne), { prix: prixDePostePourLaBase(pu) })
       const reste = { ...(majorations.prixPostes ?? {}) }
-      delete reste[ligne.cfcCode]
+      delete reste[cleDuPoste(ligne)]
       await majorer({ ...majorations, prixPostes: reste })
     } else {
       const it = items.find((i) => i.id === ligne.releveId)
@@ -148,7 +151,7 @@ export function ProjectMetres() {
   const revenir = async (ligne: DevisLigne) => {
     if (ligne.automatique) {
       const reste = { ...(majorations.prixPostes ?? {}) }
-      delete reste[ligne.cfcCode]
+      delete reste[cleDuPoste(ligne)]
       await majorer({ ...majorations, prixPostes: reste })
       return
     }
@@ -498,7 +501,7 @@ function Majorations({ majorations, onChange }: { majorations: MajorationsDuDoss
               onBlur={(e) => { const v = num(e.target.value); if (v !== (inst?.minimum ?? null)) onChange({ ...majorations, installation: { pct: inst?.pct ?? null, minimum: v } }) }} />
             <span className="text-muted-foreground">CHF</span>
           </div>
-          {inst == null && <p className="mt-1 text-xs font-medium text-amber-700">Pas encore réglée : elle paraît à chiffrer au devis.</p>}
+          {inst == null && <p className="mt-1 text-xs font-medium text-amber-700">Pas encore réglée : 5 % des travaux par défaut.</p>}
         </div>
         <div>
           <p className="font-medium">Frais secondaires</p>

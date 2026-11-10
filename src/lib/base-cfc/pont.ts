@@ -28,7 +28,7 @@ import type { QuantityResolution } from '../diagnostic-auto'
 import { cleDuReleve } from './etapes'
 import { prixUnitaire } from './prix'
 import { quantiteDeBase, type DonneesBatiment } from './quantites'
-import type { BaseQuantite, EtatArticle, Unite } from './normaliser'
+import type { BaseQuantite, EtatArticle, ModeQuantite, Unite } from './normaliser'
 import { categorieDeLArticle, phraseDuComptage } from './comptages'
 
 /** Les quatre états que le diagnostiqueur constate, tels que l'app les nomme. */
@@ -94,6 +94,8 @@ export interface OuvrageSaisi {
 
   baseQuantite: BaseQuantite
   coefficient: number
+  /** Comment l'ouvrage se quantifie avec des plans. null pour une base d'avant la v6. */
+  modeQuantite: ModeQuantite | null
   /** Part du prix Mauvais retenue pour l'état moyen, telle qu'au catalogue. */
   partPrixMauvais: number | null
   /** Ce que le classeur met entre parenthèses, à afficher à la saisie. */
@@ -159,6 +161,7 @@ export function ouvrageDeLArticle(article: ApiArticle, etapeNumero: number | nul
 
     baseQuantite: article.baseQuantite,
     coefficient: article.coefficient,
+    modeQuantite: article.modeQuantite ?? null,
     partPrixMauvais: ligneMoyen?.partPrixMauvais ?? null,
     indication: article.indicationQuantite,
     note: article.noteDiagnostiqueur,
@@ -206,6 +209,7 @@ export const BASES_EN_CLAIR: Record<BaseQuantite, string> = {
   nombre_etages: "nombre d'étages",
   nombre_cages: "nombre de cages d'escalier",
   nombre_portes_entree: "nombre de portes d'entrée",
+  perimetre_batiment: 'périmètre du bâtiment',
   forfait: 'prix forfaitaire',
   saisie_manuelle: 'quantité relevée sur place',
   regle_stores: 'stores, comptés par taille de logement',
@@ -236,7 +240,7 @@ export function resolutionDeQuantite(ouvrage: OuvrageSaisi, batiment: DonneesBat
     }
   }
 
-  const quantite = quantiteDeBase({ baseQuantite: base, coefficient: ouvrage.coefficient }, batiment)
+  const quantite = quantiteDeBase({ baseQuantite: base, coefficient: ouvrage.coefficient, unite: ouvrage.unit }, batiment)
   if (quantite === null) {
     return { quantity: undefined, origin: 'manuelle', basis: nom, reason: `${nom} non renseignée sur ce dossier` }
   }
@@ -261,6 +265,10 @@ export function resolutionDeQuantite(ouvrage: OuvrageSaisi, batiment: DonneesBat
  * la partager entre les types.
  */
 function resolutionParComptage(ouvrage: OuvrageSaisi, batiment: DonneesBatiment): QuantityResolution | null {
+  // Un ratio garde sa base, la SP ou la surface bâtie, que les plans rendent
+  // exacte par la fiche ; un forfait n'a pas de métré. Ni l'un ni l'autre ne
+  // prend un comptage.
+  if (ouvrage.modeQuantite && !ouvrage.modeQuantite.startsWith('metre')) return null
   const categorie = categorieDeLArticle({ id: ouvrage.articleId, nom: ouvrage.description, uniteEntretien: ouvrage.unit })
   const comptage = categorie ? batiment.comptages?.[categorie] : undefined
   if (!comptage) return null
@@ -271,7 +279,7 @@ function resolutionParComptage(ouvrage: OuvrageSaisi, batiment: DonneesBatiment)
   const nom = BASES_EN_CLAIR[ouvrage.baseQuantite]
   const regle = ouvrage.baseQuantite === 'saisie_manuelle'
     ? null
-    : quantiteDeBase({ baseQuantite: ouvrage.baseQuantite, coefficient: ouvrage.coefficient }, batiment)
+    : quantiteDeBase({ baseQuantite: ouvrage.baseQuantite, coefficient: ouvrage.coefficient, unite: ouvrage.unit }, batiment)
   if (regle === null) {
     return { quantity: undefined, origin: 'manuelle', basis, reason: `${nom} non renseignée sur ce dossier` }
   }

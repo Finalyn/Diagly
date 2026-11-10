@@ -228,7 +228,7 @@ router.get("/base", async (_req, res) => {
       orderBy: { cfcCode: "asc" },
     }),
     prisma.etapeVisite.findMany({ orderBy: { numero: "asc" } }),
-    prisma.posteAutomatique.findMany({ orderBy: { cfcCode: "asc" } }),
+    prisma.posteAutomatique.findMany({ orderBy: [{ cfcCode: "asc" }, { cle: "asc" }] }),
   ]);
   res.json({
     articles: articles.map(serialiserArticle),
@@ -271,7 +271,7 @@ const etatSchema = z.enum(["tres_bon", "bon", "moyen", "mauvais", "amelioration"
 const baseQuantiteSchema = z.enum([
   "surface_plancher", "surface_batie", "surface_terrain", "surface_facade", "surface_fenetres",
   "facade_moins_fenetres", "nombre_logements", "nombre_pieces_eau", "nombre_etages",
-  "nombre_cages", "nombre_portes_entree", "forfait", "saisie_manuelle",
+  "nombre_cages", "nombre_portes_entree", "perimetre_batiment", "forfait", "saisie_manuelle",
   "regle_stores", "regle_eaux_pluviales", "regle_sprinklers",
 ]);
 
@@ -455,10 +455,10 @@ const posteSchema = z.object({
 router.put("/base/postes/:code", validateBody(posteSchema), async (req, res) => {
   await exigerResponsable(req);
   const code = req.params.code;
-  const existant = await prisma.posteAutomatique.findUnique({ where: { cfcCode: code } });
+  const existant = await prisma.posteAutomatique.findUnique({ where: { cle: code } });
   if (!existant) throw notFound(`Poste ${code} introuvable`);
   const poste = await prisma.posteAutomatique.update({
-    where: { cfcCode: code },
+    where: { cle: code },
     data: req.body as z.infer<typeof posteSchema>,
   });
   res.json({ poste: { ...poste, prix: Number(poste.prix) } });

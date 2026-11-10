@@ -1,12 +1,16 @@
 /**
  * Les postes qui s'ajoutent au devis sans venir d'une observation.
  *
- * Quatre postes, et leurs prix sont lus dans la table postes_automatiques, pas
+ * Cinq postes, et leurs prix sont lus dans la table postes_automatiques, pas
  * écrits ici : le bureau doit pouvoir changer le prix d'un échafaudage sans
- * qu'on touche au code.
+ * qu'on touche au code. Le sixième, 211.0 installation de chantier, est réglé
+ * par dossier (devis.ts) : la base n'en donne que le forfait par défaut.
  *
  *  - 211.1 échafaudage de façade, dès qu'un ouvrage qui en demande un porte
  *    des travaux chiffrés ;
+ *  - 211.1 pont de couvreur, au mètre de périmètre, quand la toiture est en
+ *    pente et que sa couverture, ses fenêtres de toit ou ses lucarnes
+ *    demandent des travaux ; il s'ajoute à l'échafaudage de façade ;
  *  - 285.0 échafaudage de cage d'escalier, par cage, quand un mur ou un plafond
  *    des communs est en fin de vie ;
  *  - 287 nettoyage complet, toujours, au m² de surface de plancher ;
@@ -26,6 +30,13 @@ export type Priorite = 'I' | 'II' | 'III'
 
 /** Les ouvrages des communs dont la fin de vie impose un échafaudage de cage. */
 export const DOMAINES_MURS_PLAFONDS = ['Intérieur – murs', 'Intérieur – plafonds']
+
+/**
+ * Les ouvrages d'une toiture en pente dont les travaux demandent un pont de
+ * couvreur : la couverture, les fenêtres de toit, les lucarnes. La
+ * ferblanterie et la protection foudre existent aussi sur un toit plat.
+ */
+export const OUVRAGES_TOITURE_EN_PENTE = ['A044', 'A046', 'N009']
 
 /** Numéro de l'étape « Cage d'escalier » dans l'ordre de visite. */
 export const ETAPE_CAGE = 2
@@ -60,9 +71,15 @@ export interface DonneesDesPostes {
   surfacePlancher: number | null
   surfaceFacade: number | null
   nombreCages: number | null
+  /** Longueur des avant-toits, pour le pont de couvreur. */
+  perimetre?: number | null
+  /** Type de toiture de la fiche : le pont ne vaut que pour une toiture en pente ou mixte. */
+  typeToiture?: 'PLATE' | 'PENTE' | 'MIXTE' | null
 }
 
 export interface LignePoste {
+  /** Le poste de la base : deux postes peuvent partager un code CFC. */
+  cle: string
   cfcCode: string
   libelle: string
   unite: Unite
@@ -133,7 +150,21 @@ export function cageAEchafauder(releves: ReleveDuDevis[]): ReleveDuDevis | null 
   ) ?? null
 }
 
-const dePoste = (postes: PosteBase[], cfcCode: string) => postes.find((p) => p.cfcCode === cfcCode)
+/**
+ * Un poste par son code et son déclencheur : le pont de couvreur et
+ * l'échafaudage de façade partagent le 211.1.
+ */
+const dePoste = (postes: PosteBase[], cfcCode: string, declencheur?: PosteBase['declencheur']) =>
+  postes.find((p) => p.cfcCode === cfcCode && (!declencheur || p.declencheur === declencheur))
+
+/** Le relevé de toiture en pente qui demande un pont de couvreur, s'il y en a. */
+export function toitureAuPont(releves: ReleveDuDevis[]): ReleveDuDevis[] {
+  return releves.filter((r) =>
+    OUVRAGES_TOITURE_EN_PENTE.includes(r.articleId)
+    && (r.etat === 'moyen' || r.etat === 'mauvais')
+    && chiffre(r),
+  )
+}
 
 /**
  * Les postes à ajouter au devis, dans l'ordre de leur code CFC.
@@ -152,6 +183,7 @@ export function postesAutomatiques(
   const protection = dePoste(postes, '121')
   if (protection) {
     lignes.push({
+      cle: protection.cle ?? protection.cfcCode,
       cfcCode: protection.cfcCode,
       libelle: protection.libelle,
       unite: protection.unite,
@@ -163,11 +195,12 @@ export function postesAutomatiques(
     })
   }
 
-  const facade = dePoste(postes, '211.1')
+  const facade = dePoste(postes, '211.1', 'echafaudage_facade')
   if (facade) {
     const s = surfaceEchafaudee(releves, donnees.surfaceFacade)
     if (s.declencheurs.length > 0) {
       lignes.push({
+        cle: facade.cle ?? facade.cfcCode,
         cfcCode: facade.cfcCode,
         libelle: facade.libelle,
         unite: facade.unite,
@@ -180,12 +213,31 @@ export function postesAutomatiques(
     }
   }
 
+  const pont = postes.find((p) => p.declencheur === 'toiture_pente')
+  const enPente = donnees.typeToiture === 'PENTE' || donnees.typeToiture === 'MIXTE'
+  const toiture = pont && enPente ? toitureAuPont(releves) : []
+  if (pont && toiture.length > 0) {
+    const ml = donnees.perimetre ?? null
+    lignes.push({
+      cle: pont.cle ?? pont.cfcCode,
+      cfcCode: pont.cfcCode,
+      libelle: pont.libelle,
+      unite: pont.unite,
+      quantite: ml,
+      prixUnitaire: pont.prix,
+      montant: ml === null ? null : arrondi(ml * pont.prix),
+      priorite: plusUrgente(toiture.map((r) => r.priorite)),
+      remarque: `Toiture en pente : déclenché par ${toiture.map((r) => `« ${r.nom} »`).join(', ')}, au mètre de périmètre du bâtiment.`,
+    })
+  }
+
   const cage = dePoste(postes, '285.0')
   if (cage) {
     const declencheur = cageAEchafauder(releves)
     if (declencheur) {
       const cages = donnees.nombreCages ?? 1
       lignes.push({
+        cle: cage.cle ?? cage.cfcCode,
         cfcCode: cage.cfcCode,
         libelle: cage.libelle,
         unite: cage.unite,
@@ -202,6 +254,7 @@ export function postesAutomatiques(
   if (nettoyage) {
     const sp = donnees.surfacePlancher
     lignes.push({
+      cle: nettoyage.cle ?? nettoyage.cfcCode,
       cfcCode: nettoyage.cfcCode,
       libelle: nettoyage.libelle,
       unite: nettoyage.unite,

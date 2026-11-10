@@ -13,7 +13,7 @@
  * aident à la lecture dans Excel, et l'import les ignore.
  */
 
-import type { BaseQuantite, EtatArticle, Unite } from './normaliser'
+import type { BaseQuantite, EtatArticle, ModeQuantite, Unite } from './normaliser'
 import { prixUnitaire } from './prix'
 
 /** Ce qu'il faut savoir d'un article pour l'écrire au classeur. */
@@ -32,6 +32,8 @@ export interface ArticleAExporter {
   noteDiagnostiqueur: string | null
   actif: boolean
   ligneOrigine: string | null
+  modeQuantite?: ModeQuantite | null
+  metreAvecPlans?: string | null
   etats: { etat: EtatArticle; travaux: string | null; prix: number | null; partPrixMauvais: number | null; unite: Unite }[]
   etapes: { etapeNumero: number; ordreDansEtape: number }[]
 }
@@ -48,7 +50,17 @@ export const ENTETES_ARTICLES = [
   'Amélioration – travaux', 'Amélioration – prix', 'Amélioration – unité',
   'Mise aux normes – travaux', 'Mise aux normes – prix', 'Mise aux normes – unité',
   'Note diagnostiqueur', 'Statut', 'Ligne d’origine', 'Étapes de visite',
+  'Mode de quantité', 'Avec plans : métré automatique',
 ] as const
+
+/** Le mode de quantité, écrit comme le classeur l'écrit. */
+const MODES_DU_CLASSEUR: Record<ModeQuantite, string> = {
+  metre_compte: 'Métré (compté)',
+  metre_mesure: 'Métré (mesuré)',
+  ratio_sp: 'Ratio sur SP',
+  ratio_surface_batie: 'Ratio sur surface bâtie',
+  forfait: 'Forfait',
+}
 
 export const ENTETES_VISITE = [
   'N° étape', 'Étape de visite', 'Zone', 'Ordre dans l’étape', 'ID', 'Article', 'Code CFC',
@@ -80,6 +92,7 @@ const LIBELLE_DE_LA_BASE: Record<BaseQuantite, string> = {
   nombre_etages: "Nombre d'étages",
   nombre_cages: "Nombre de cages d'escalier",
   nombre_portes_entree: "Nombre de portes d'entrée",
+  perimetre_batiment: 'Périmètre du bâtiment',
   forfait: 'Forfait',
   saisie_manuelle: 'Saisie manuelle',
   // Les trois règles portent leur phrase : c'est elle, et pas un mot-clé, que
@@ -158,6 +171,8 @@ export function ligneArticle(
     'Étapes de visite': a.etapes
       .map((e) => contexte.nomDeLEtape?.(e.etapeNumero) ?? String(e.etapeNumero))
       .join(', '),
+    'Mode de quantité': a.modeQuantite ? MODES_DU_CLASSEUR[a.modeQuantite] : '',
+    'Avec plans : métré automatique': texteOuVide(a.metreAvecPlans ?? null),
   }
 }
 
