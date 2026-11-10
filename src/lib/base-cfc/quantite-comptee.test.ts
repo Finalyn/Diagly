@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import type { ApiArticle, ApiDiagnosticItem } from '../api-types'
-import { setMarketCoeff } from '../diagnostic-auto'
+import { computeCost, setMarketCoeff } from '../diagnostic-auto'
 import { donneesDuBatiment } from './batiment'
 import { ouvrageDeLArticle, resolutionDeQuantite } from './pont'
 import { quantiteALAjout, quantiteAutomatique, recalculsDesComptages } from './quantite-comptee'
@@ -268,5 +268,34 @@ describe('une amélioration retenue sans montant se chiffre', () => {
       [...ARTICLES, sansPrix], batiment(), 'tous',
     )
     expect(r.find((x) => x.patch.improvementCost !== undefined)).toBeUndefined()
+  })
+})
+
+describe('un état chiffré au forfait', () => {
+  // La chaudière gaz de la base v6 : entretien au forfait, remplacement au m² de plancher.
+  const CHAUDIERE = article('A062', 'Chaudière gaz à condensation', {
+    cfcCode: '242.0', uniteEntretien: 'forfait', uniteRemplacement: 'm2', baseQuantite: 'surface_plancher',
+    etats: [
+      { etat: 'bon', travaux: 'Nettoyage, réglage et contrôle', prix: 1500, partPrixMauvais: null, unite: 'forfait' },
+      { etat: 'moyen', travaux: 'Remplacement du brûleur', prix: 4000, partPrixMauvais: null, unite: 'forfait' },
+      { etat: 'mauvais', travaux: 'Remplacement de la chaudière', prix: 18, partPrixMauvais: null, unite: 'm2' },
+    ],
+  })
+  const plancher = donneesDuBatiment({ ...FICHE, floorArea: 3620, comptages: null })
+  const chaudiere = (extra: Partial<ApiDiagnosticItem>) => releve('c', CHAUDIERE, { area: 3620, unit: 'forfait', ...extra })
+
+  it('se compte une fois, et le remplacement au m²', () => {
+    const o = ouvrageDeLArticle(CHAUDIERE)
+    expect(computeCost(o, 'MOYEN', 3620)).toBe(4000)
+    expect(computeCost(o, 'MAUVAIS', 3620)).toBe(65160)
+  })
+
+  it('répare un forfait multiplié par les m² de plancher', () => {
+    const [r] = recalculsDesComptages([chaudiere({ state: 'MOYEN', estimatedCost: '14480000' })], [CHAUDIERE], plancher, 'tous')
+    expect(r.patch.estimatedCost).toBe(4000)
+  })
+
+  it('ne touche pas un montant repris à la main', () => {
+    expect(recalculsDesComptages([chaudiere({ state: 'MOYEN', estimatedCost: '14480000', costManual: true })], [CHAUDIERE], plancher, 'tous')).toEqual([])
   })
 })

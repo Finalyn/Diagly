@@ -32,7 +32,8 @@
  * Le calcul est ici, hors des composants, pour être vérifiable par des tests :
  * un devis faux ne se voit pas à l'écran, il se voit chez le client.
  */
-import { getMarketCoeff, priceForState } from './diagnostic-auto'
+import { etatChiffre, getMarketCoeff, priceForState, uniteDeLEtat } from './diagnostic-auto'
+import { DEPOSE_REPOSE, PRIX_DEPOSE_REPOSE, TRAVAUX_DEPOSE_REPOSE } from './base-cfc/facade-stores'
 import { cfcPositionCode } from './cfc'
 import { comparerCodesCfc } from './base-cfc/devis-cfc'
 import { aucunTravail } from './base-cfc/normaliser'
@@ -302,8 +303,9 @@ function prixCatalogueDe(it: ApiDiagnosticItem, article: ApiArticle | undefined,
   const ouvrage = ouvrageDeLArticle(article, it.etapeNumero ?? null)
   if (enveloppe === 'Amélioration') return ouvrage.priceImprovement
   if (enveloppe === 'Mise aux normes') return ouvrage.priceNorms
-  if (!it.state) return null
-  const p = priceForState(ouvrage, it.state)
+  const etat = etatChiffre(it)
+  if (!etat) return null
+  const p = priceForState(ouvrage, etat)
   return typeof p === 'number' ? p : p == null || p === '' ? null : Number(p)
 }
 
@@ -325,9 +327,10 @@ function prixCatalogueDe(it: ApiDiagnosticItem, article: ApiArticle | undefined,
  * sur le relevé : rien de retenu, rien de prescrit.
  */
 function travailPrescrit(it: ApiDiagnosticItem, article: ApiArticle | undefined): boolean {
-  if (!it.state || it.state === 'TRES_BON') return false
+  const etat = etatChiffre(it)
+  if (!etat || etat === 'TRES_BON') return false
   if (!article) return it.works.some((w) => w && w !== 'Néant')
-  const ligne = article.etats.find((e) => e.etat === ETATS_BASE[it.state!])
+  const ligne = article.etats.find((e) => e.etat === ETATS_BASE[etat])
   // Une base muette ne vaut pas « rien à faire » : le relevé reste au devis, à
   // chiffrer, plutôt que de disparaître sans qu'on sache qu'il a existé.
   return !(ligne && aucunTravail(ligne.travaux))
@@ -343,7 +346,11 @@ function ligneDuReleve(
   texte: string,
   aChiffrer: string | null,
 ): DevisLigne {
-  const quantite = it.area ?? null
+  // Une réparation au forfait se compte une fois : la quantité du relevé est
+  // celle du remplacement (les m² de plancher d'une chaudière).
+  const etat = etatChiffre(it)
+  const uniteEtat = enveloppe === 'Réparation' && article && etat ? uniteDeLEtat(ouvrageDeLArticle(article), etat) : null
+  const quantite = uniteEtat === 'forfait' ? 1 : it.area ?? null
   const pu = prixUnitaire(montant, quantite)
   const catalogue = prixCatalogueDe(it, article, enveloppe)
   const coeff = getMarketCoeff()
@@ -368,7 +375,7 @@ function ligneDuReleve(
     enveloppe,
     priorite: it.priority ?? null,
     quantite,
-    unite: uniteCourte(it.unit) ?? (article ? uniteCourte(ouvrageDeLArticle(article).unit) : null),
+    unite: uniteEtat ?? uniteCourte(it.unit) ?? (article ? uniteCourte(ouvrageDeLArticle(article).unit) : null),
     prixUnitaire: pu,
     montant: aChiffrer ? 0 : montant,
     aChiffrer: aChiffrer != null,
@@ -392,7 +399,12 @@ function ligneDuReleve(
  */
 function lignesDuReleve(it: ApiDiagnosticItem, article: ApiArticle | undefined, sousTitre: string | null): DevisLigne[] {
   const lignes: DevisLigne[] = []
-  const travaux = it.works.filter((w) => w && w !== 'Néant').join(' · ')
+  const prescrits = it.works.filter((w) => w && w !== 'Néant').join(' · ')
+  // Un remplacement que l'état n'impose pas se dit : « Remplacement des
+  // volets » à côté d'un état Bon se lirait comme une erreur.
+  const travaux = it.remplacement && it.state !== 'MAUVAIS' && prescrits
+    ? `${prescrits} Au choix du propriétaire : l'état constaté ne l'impose pas.`
+    : prescrits
 
   const reparation = num(it.estimatedCost)
   if (reparation > 0) {
@@ -413,6 +425,52 @@ function lignesDuReleve(it: ApiDiagnosticItem, article: ApiArticle | undefined, 
   }
 
   return lignes
+}
+
+/**
+ * La dépose et repose d'un store ou d'un volet pendant les travaux de façade.
+ *
+ * Une ligne à part, en réparation, en plus des travaux de l'état : des stores
+ * en bon état se nettoient ET se déposent. Le prix est au m² de fenêtre ;
+ * celui réglé dans le dossier l'emporte, sinon celui par défaut, indexé. Sans
+ * l'un ni l'autre, ou pour des stores comptés à la pièce, la ligne est à
+ * chiffrer.
+ */
+export function ligneDeDepose(
+  it: ApiDiagnosticItem,
+  article: ApiArticle | undefined,
+  sousTitre: string | null,
+  prixDuDossier: number | undefined,
+): DevisLigne {
+  const parDefaut = PRIX_DEPOSE_REPOSE != null ? arrondi2(PRIX_DEPOSE_REPOSE * getMarketCoeff()) : null
+  const unite = uniteCourte(it.unit) ?? (article ? uniteCourte(ouvrageDeLArticle(article).unit) : null)
+  const auM2 = /^m[2²]$/.test(unite ?? '')
+  const pu = auM2 ? prixDuDossier ?? parDefaut : null
+  const quantite = it.area ?? null
+  const montant = pu != null && quantite != null && quantite > 0 ? Math.round(pu * quantite) : 0
+  const raison = !auM2 ? 'dépose comptée à la pièce, à chiffrer' : pu == null ? 'aucun prix de dépose et repose' : quantite == null ? 'quantité manquante' : null
+  const nom = nomDuReleve(it, article)
+  return {
+    cle: `${it.id}:depose`,
+    releveId: it.id,
+    cfcCode: it.cfcCode,
+    libelle: `${sousTitre ? `${nom} · ${sousTitre}` : nom}, dépose et repose`,
+    enveloppe: 'Réparation',
+    priorite: it.priority ?? null,
+    quantite,
+    unite,
+    prixUnitaire: pu,
+    montant: raison ? 0 : montant,
+    aChiffrer: raison != null,
+    raisonAChiffrer: raison,
+    remarque: TRAVAUX_DEPOSE_REPOSE,
+    automatique: false,
+    prixBase: parDefaut,
+    prixModifie: prixDuDossier != null && parDefaut != null && Math.abs(prixDuDossier - parDefaut) > 0.01 * parDefaut,
+    indexation: null,
+    variantesADetailler: false,
+    rattacheA: null,
+  }
 }
 
 /**
@@ -741,9 +799,15 @@ export function buildDevis(
   const sousTitres = sousTitresDesReleves(items, base.etapes)
   const articles = new Map(base.articles.map((a) => [a.id, a]))
 
-  // 1. Les travaux relevés, une ligne par enveloppe retenue.
-  const travaux = items.flatMap((it) =>
-    lignesDuReleve(it, it.articleId ? articles.get(it.articleId) : undefined, sousTitres.get(it.id) ?? null))
+  // 1. Les travaux relevés, une ligne par enveloppe retenue, et la dépose des
+  //    stores quand la façade est refaite.
+  const travaux = items.flatMap((it) => {
+    const article = it.articleId ? articles.get(it.articleId) : undefined
+    const sousTitre = sousTitres.get(it.id) ?? null
+    const lignes = lignesDuReleve(it, article, sousTitre)
+    if (it.deposeRepose) lignes.push(ligneDeDepose(it, article, sousTitre, options.prixPostes?.[DEPOSE_REPOSE]))
+    return lignes
+  })
 
   // 2. Les postes de chantier, et l'échafaudage que les améliorations ajoutent.
   const postes = postesDeChantier(items, base, options)

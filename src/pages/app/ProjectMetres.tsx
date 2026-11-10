@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
+import { DEPOSE_REPOSE } from '@/lib/base-cfc/facade-stores'
 import { useParams, Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, AlertCircle, AlertTriangle, ClipboardCheck, FileText, Plus, RefreshCw, RotateCcw, X } from 'lucide-react'
@@ -104,9 +105,14 @@ export function ProjectMetres() {
   /** Le poste de la base derrière une ligne automatique : le pont de couvreur et l'échafaudage partagent le 211.1. */
   const cleDuPoste = (ligne: DevisLigne) => ligne.cle.replace(/^auto:/, '')
 
+  /** La dépose des stores : un seul prix au m² pour tout le dossier, rangé avec ceux des postes. */
+  const estUneDepose = (ligne: DevisLigne) => ligne.cle.endsWith(':depose')
+
   /** Le prix appliqué au dossier seulement. */
   const auDossier = async (ligne: DevisLigne, pu: number) => {
-    if (ligne.automatique) {
+    if (estUneDepose(ligne)) {
+      await majorer({ ...majorations, prixPostes: { ...(majorations.prixPostes ?? {}), [DEPOSE_REPOSE]: pu } })
+    } else if (ligne.automatique) {
       await majorer({ ...majorations, prixPostes: { ...(majorations.prixPostes ?? {}), [cleDuPoste(ligne)]: pu } })
     } else if (ligne.releveId) {
       await saisir({ type: 'modifier', diagnosticId: diagnostic.id, releveId: ligne.releveId, corps: patchDuPrix(ligne, pu) })
@@ -149,9 +155,9 @@ export function ProjectMetres() {
   }
 
   const revenir = async (ligne: DevisLigne) => {
-    if (ligne.automatique) {
+    if (ligne.automatique || estUneDepose(ligne)) {
       const reste = { ...(majorations.prixPostes ?? {}) }
-      delete reste[cleDuPoste(ligne)]
+      delete reste[estUneDepose(ligne) ? DEPOSE_REPOSE : cleDuPoste(ligne)]
       await majorer({ ...majorations, prixPostes: reste })
       return
     }

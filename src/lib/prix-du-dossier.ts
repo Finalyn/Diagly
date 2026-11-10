@@ -11,7 +11,7 @@
  * La base garde des prix avant indexation : on divise par l'indice pour l'y
  * écrire.
  */
-import { getMarketCoeff } from './diagnostic-auto'
+import { etatChiffre, getMarketCoeff } from './diagnostic-auto'
 import type { DevisLigne } from './devis'
 import type { ApiArticle, ApiArticleEtat, ApiDiagnosticItem } from './api-types'
 import type { EtatArticle } from './base-cfc/normaliser'
@@ -24,7 +24,10 @@ const ETAT_DE_LA_BASE: Record<string, EtatArticle> = {
 export function etatDeLaLigne(ligne: DevisLigne, it: ApiDiagnosticItem | undefined): EtatArticle | null {
   if (ligne.enveloppe === 'Amélioration') return 'amelioration'
   if (ligne.enveloppe === 'Mise aux normes') return 'normes'
-  if (ligne.enveloppe === 'Réparation' && it?.state) return ETAT_DE_LA_BASE[it.state]
+  // La dépose des stores n'a pas d'état dans la base : son prix est au dossier.
+  if (ligne.cle.endsWith(':depose')) return null
+  const etat = it ? etatChiffre(it) : null
+  if (ligne.enveloppe === 'Réparation' && etat) return ETAT_DE_LA_BASE[etat]
   return null
 }
 

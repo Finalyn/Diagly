@@ -363,6 +363,14 @@ export interface ApiDiagnosticItem {
    * de la même façade. Le devis en déduit le montant net de l'option.
    */
   improvementReplaces?: string[] | null
+  /**
+   * Remplacer quand même : l'état reste celui constaté (des volets encore
+   * bons), les travaux et le prix sont ceux du remplacement — l'état mauvais
+   * de la base —, en réparation.
+   */
+  remplacement?: boolean
+  /** Dépose et repose pendant les travaux de façade (stores, volets), en réparation. */
+  deposeRepose?: boolean
   createdAt: string
   updatedAt: string
 }

@@ -19,10 +19,12 @@ import { bonEtatSuspect, dureeVieDeReference, dureeVieResiduelle } from '@/lib/d
 import { aUnOubliImportant, bilanDesOublis, oublisDUnReleve, phraseDAlerte, relevesIncomplets } from '@/lib/oublis'
 import { circonference, decalageAnneau, partRemplie } from '@/lib/anneau'
 import { RecapOublis } from '@/components/diagnostic/RecapOublis'
+import { useDevisDuDossier } from '@/components/report/use-devis-du-dossier'
+import { alerteFacade, estUnStore, facadeRefaite, storeTraite } from '@/lib/base-cfc/facade-stores'
 import { Visionneuse } from '@/components/Visionneuse'
 import {
   STATE_PRIORITY, workForState, priceForState, computeCost, computeCostFromPrice,
-  appliedUnitPrice, getMarketCoeff, priceToNumber, type PrixCatalogue,
+  appliedUnitPrice, etatChiffre, getMarketCoeff, priceToNumber, uniteDeLEtat, type PrixCatalogue,
 } from '@/lib/diagnostic-auto'
 // La base CFC du bureau remplace l'ancien catalogue : les étapes de visite, les
 // états et les prix viennent d'elle, et le relevé est le couple article et étape.
@@ -119,6 +121,12 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     queryFn: () => api.projects.get(projectId!),
     enabled: !!projectId,
   })
+
+  // Les relevés se recalent ici comme dans Coûts : une amélioration retenue
+  // sans montant (la façade crépie à 0 après la saisie de l'épaisseur) se
+  // chiffrait seulement quand on ouvrait le devis. Même calcul, même file
+  // d'envoi : le hook réécrit le relevé dès que la page le lit.
+  useDevisDuDossier(projectId)
 
   // Données du bâtiment, d'où les quantités découlent. Un champ vide y vaut null
   // et non zéro : un ouvrage dont on ignore la surface n'est pas un ouvrage de
@@ -1472,42 +1480,6 @@ function StateGuide({ item, catalog, onApply, isMutating }: {
   )
 }
 
-/** Saisie guidée « ajout d'isolation d'épaisseur à définir » : épaisseur (cm) + prix au m² -> coût = surface × prix. */
-function InsulationInputs({ value, quantity, onChange }: {
-  value: string | null; quantity: number | undefined
-  onChange: (work: string | null, cost: number | null) => void
-}) {
-  const ep = value?.match(/([\d.,]+)\s*cm/i)?.[1] ?? ''
-  const prix = value?.match(/([\d.,]+)\s*CHF\s*\/\s*m/i)?.[1] ?? ''
-  const surface = quantity ?? 0
-  const n = (s: string) => { const v = Number(String(s).replace(',', '.')); return Number.isFinite(v) ? v : NaN }
-  const compose = (epv: string, prixv: string) => {
-    const p = n(prixv)
-    const c = Number.isFinite(p) && surface > 0 ? Math.round(p * surface) : null
-    const text = `Ajout d'isolation${epv ? `, épaisseur ${epv} cm` : ''}${prixv ? `, à ${prixv} CHF/m²` : ''}`
-    onChange(text, c)
-  }
-  const p = n(prix)
-  const preview = Number.isFinite(p) && surface > 0 ? Math.round(p * surface) : null
-  return (
-    <div className="mt-2 space-y-2">
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="mb-1 block text-xs text-muted-foreground">Épaisseur d'isolation (cm)</label>
-          <Input type="number" step="0.5" defaultValue={ep} placeholder="ex. 16" onBlur={(e) => compose(e.target.value, prix)} />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-muted-foreground">Prix (CHF/m²)</label>
-          <Input type="number" defaultValue={prix} placeholder="ex. 120" onBlur={(e) => compose(ep, e.target.value)} />
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Surface {surface > 0 ? `${surface} m²` : 'à saisir sur l’élément'}{preview != null ? ` → coût estimé ${preview.toLocaleString('fr-CH')} CHF` : ''}
-      </p>
-    </div>
-  )
-}
-
 /**
  * Un bloc d'enveloppe (Amélioration ou Mise aux normes) : retenable, éditable, chiffré.
  *
@@ -1529,7 +1501,6 @@ function PerfBlock({ label, catalogWork, catalogPrice, unite, value, cost, quant
   const has = !!catalogWork && catalogWork !== 'Néant'
   const retained = value != null
   const costNum = cost != null ? Number(cost) : null
-  const isInsulation = /isolation|isolant|épaisseur/i.test(`${catalogWork ?? ''} ${value ?? ''}`)
   const toggle = () => {
     if (retained) onChange(null, null)
     else onChange(has ? catalogWork! : '', has ? computeCostFromPrice(catalogPrice, quantity) ?? null : null)
@@ -1552,9 +1523,7 @@ function PerfBlock({ label, catalogWork, catalogPrice, unite, value, cost, quant
           {has && catalogPrice != null && catalogPrice !== '' && ` · ${catalogPrice} CHF${unite ? '/' + unite : ''}`}
         </p>
       )}
-      {retained && (isInsulation
-        ? <InsulationInputs value={value} quantity={quantity} onChange={onChange} />
-        : (
+      {retained && (
           <div className="mt-2 space-y-2">
             <Textarea key={`w-${label}-${value === '' ? 'e' : 'f'}`} defaultValue={value ?? ''} rows={2} placeholder="Travaux à réaliser…"
               onBlur={(e) => { if ((e.target.value || '') !== (value ?? '')) onChange(e.target.value || '', costNum) }} />
@@ -1567,7 +1536,7 @@ function PerfBlock({ label, catalogWork, catalogPrice, unite, value, cost, quant
               <p className="text-xs font-medium text-amber-700">Sans coût, elle paraît « à chiffrer » au devis.</p>
             ) : null}
           </div>
-        ))}
+        )}
       {retained && children}
       {retained && onReclasser && reclasserVers && (
         <button type="button" onClick={onReclasser} disabled={isMutating} className="mt-2 text-xs font-medium text-primary hover:underline">
@@ -1747,6 +1716,93 @@ function PartDeSurface({ groupe, item, quantiteDuGroupe, unite, onPart }: {
   )
 }
 
+/**
+ * Les travaux qu'on choisit au-delà de l'état constaté.
+ *
+ * Remplacer quand même : des volets encore bons que le propriétaire veut
+ * changer. Sélectionner « Mauvais » pour obtenir le prix du remplacement
+ * faussait le diagnostic ; l'état reste ici celui vu sur place.
+ *
+ * Façade refaite : ses stores et volets doivent être déposés et reposés, ou
+ * remplacés (voir facade-stores.ts). La question se pose sur chacun, et la
+ * façade rappelle ceux qui l'attendent encore.
+ */
+function ChoixDeTravaux({ item, catalog, voisins, onRemplacement, onUpdate, isMutating }: {
+  item: ApiDiagnosticItem
+  catalog: OuvrageSaisi | null
+  voisins: ApiDiagnosticItem[]
+  onRemplacement: (remplacement: boolean) => void
+  onUpdate: (data: Partial<ApiDiagnosticItem>) => void
+  isMutating: boolean
+}) {
+  const baseQuery = useBaseCfc()
+  const articles = baseQuery.data?.articles ?? []
+  const tous = [item, ...voisins.filter((v) => v.id !== item.id)]
+  const alerte = alerteFacade(tous, articles)
+
+  const travauxRemplacement = catalog?.workMauvais?.trim() || null
+  const peutRemplacer = !!item.state && item.state !== 'MAUVAIS' && !!travauxRemplacement && travauxRemplacement.toLowerCase() !== 'néant'
+  const prix = catalog ? appliedUnitPrice(catalog.priceMauvais) : undefined
+  const prixLu = prix != null ? ` · ${prix.toLocaleString('fr-CH')} CHF${catalog?.uniteRemplacement ? '/' + catalog.uniteRemplacement : ''}` : ''
+
+  const storeAlerte = estUnStore(item) && alerte != null && !storeTraite(item)
+  const facade = facadeRefaite(item, articles) ? alerte : null
+  const storesReleves = tous.filter(estUnStore)
+
+  return (
+    <div className="space-y-2">
+      {storeAlerte && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <p className="text-xs font-medium text-amber-900">
+            La façade est refaite : ces stores ou volets doivent être déposés et reposés, ou remplacés.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={isMutating} onClick={() => onUpdate({ deposeRepose: true })}>
+              Dépose et repose
+            </Button>
+            <Button type="button" size="sm" variant="outline" disabled={isMutating} onClick={() => onRemplacement(true)}>
+              Remplacer{prixLu}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {item.deposeRepose && (
+        <div className="flex items-start justify-between gap-2 rounded-lg border border-primary/30 bg-primary/[0.03] p-3 text-xs">
+          <span>Dépose et repose pendant les travaux de façade, en plus des travaux de l'état.</span>
+          <button type="button" className="shrink-0 font-medium text-primary hover:underline" disabled={isMutating} onClick={() => onUpdate({ deposeRepose: false })}>
+            Retirer
+          </button>
+        </div>
+      )}
+
+      {item.remplacement ? (
+        <div className="flex items-start justify-between gap-2 rounded-lg border border-primary/30 bg-primary/[0.03] p-3 text-xs">
+          <span>
+            <span className="font-medium">Remplacement retenu</span>, l'état constaté reste « {item.state ? stateLabels[item.state] : '·'} » au rapport.
+            {travauxRemplacement && <span className="text-muted-foreground"> {travauxRemplacement}{prixLu}</span>}
+          </span>
+          <button type="button" className="shrink-0 font-medium text-primary hover:underline" disabled={isMutating} onClick={() => onRemplacement(false)}>
+            Revenir aux travaux de l'état
+          </button>
+        </div>
+      ) : peutRemplacer && !storeAlerte && (
+        <button type="button" className="text-xs font-medium text-primary hover:underline" disabled={isMutating} onClick={() => onRemplacement(true)}>
+          Remplacer quand même{prixLu}
+        </button>
+      )}
+
+      {facade && (facade.aTraiter.length > 0 || storesReleves.length === 0) && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+          {facade.aTraiter.length > 0
+            ? <>Façade refaite : stores et volets à déposer et reposer, ou à remplacer : {facade.aTraiter.map((v) => v.cfcLabel).join(', ')}.</>
+            : <>Façade refaite : aucun store ni volet n'est relevé. S'il y en a, relevez-les pour chiffrer leur dépose ou leur remplacement.</>}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, guideMode, projectId, yearBuilt, voisins = [], onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, suivant, cadreExterne }: ItemEditorProps) {
   const [notes, setNotes] = useState(item.notes ?? '')
   /** Moyen ou Mauvais : l'observation est obligatoire, le rapport l'explique au client. */
@@ -1765,7 +1821,9 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
     onUpdate({ notes: merged })
   }
 
-  const suggestedPrice = catalog && item.state ? priceForState(catalog, item.state) : null
+  // L'état qui chiffre : le constaté, ou le mauvais quand on remplace quand même.
+  const etat = etatChiffre(item)
+  const suggestedPrice = catalog && etat ? priceForState(catalog, etat) : null
   const appliedPrice = appliedUnitPrice(suggestedPrice)
   // Quantité dérivée du dossier + d'où elle vient (pour l'expliquer et la justifier).
   const qtyResolution = useMemo(
@@ -1790,8 +1848,15 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
     : groupe
       ? quantiteDuType(qtyResolution.quantity, partDuGroupe)
       : qtyResolution.quantity
-  /** Unité affichée à côté d'une quantité (« CHF/m² fenêtres » -> « m² fenêtres »). */
-  const qtyUnit = catalog?.unit?.replace(/^CHF\s*\/?\s*/i, '') ?? ''
+  /**
+   * Unité affichée à côté d'une quantité (« CHF/m² fenêtres » -> « m² fenêtres »).
+   * Un article entretenu au forfait se mesure dans l'unité de son remplacement :
+   * les 3 620 m² de plancher d'une chaudière ne sont pas « 3 620 forfait ».
+   */
+  const qtyUnit = (catalog?.unit === 'forfait' && catalog.uniteRemplacement !== 'forfait' ? catalog.uniteRemplacement : catalog?.unit)
+    ?.replace(/^CHF\s*\/?\s*/i, '') ?? ''
+  /** L'état se chiffre-t-il au forfait ? Sa quantité ne compte alors pas. */
+  const auForfait = !!etat && uniteDeLEtat(catalog, etat) === 'forfait'
   const [qtyError, setQtyError] = useState<string | null>(null)
   /** Un prix au mètre courant appelle une longueur, pas une « quantité ». */
   const estLongueur = /ml$|metre|mètre/i.test(catalog?.unit ?? '')
@@ -1835,8 +1900,8 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
     if (!item.quantityManual) {
       const q = quantiteDuType(qtyResolution.quantity, valeur)
       patch.area = q ?? null
-      if (!item.costManual && item.state) {
-        patch.estimatedCost = (computeCost(catalog, item.state, q) ?? null) as unknown as string | null
+      if (!item.costManual && etat) {
+        patch.estimatedCost = (computeCost(catalog, etat, q) ?? null) as unknown as string | null
         patch.costIndex = getMarketCoeff()
       }
     }
@@ -1850,8 +1915,8 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
     if (!catalog || item.quantityManual) return
     if (autoQty == null || autoQty === item.area) return
     const patch: Partial<ApiDiagnosticItem> = { area: autoQty }
-    if (!item.costManual && item.state) {
-      patch.estimatedCost = (computeCost(catalog, item.state, autoQty) ?? 0) as unknown as string
+    if (!item.costManual && etat) {
+      patch.estimatedCost = (computeCost(catalog, etat, autoQty) ?? 0) as unknown as string
       patch.costIndex = getMarketCoeff()
     }
     onUpdate(patch)
@@ -1867,7 +1932,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
    * personne sur place ne voyait plus ce qu'elle venait de décider.
    */
   const travauxRetenus = item.works.filter((w) => w && w.trim() && w.trim().toLowerCase() !== 'néant')
-  const travauxCatalogue = (item.state && catalog ? workForState(catalog, item.state) : null)?.trim() || null
+  const travauxCatalogue = (etat && catalog ? workForState(catalog, etat) : null)?.trim() || null
   const aFaire = travauxRetenus.length > 0
     ? travauxRetenus.join(' · ')
     : (travauxCatalogue && travauxCatalogue.toLowerCase() !== 'néant' ? travauxCatalogue : null)
@@ -1890,18 +1955,42 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
     vibrer('leger')
     const quantity = item.area ?? autoQty ?? undefined
     const patch: Partial<ApiDiagnosticItem> = { state, priority: STATE_PRIORITY[state] }
+    // Mauvais, l'ouvrage se remplace de toute façon : le « quand même » n'a plus d'objet.
+    const remplacement = Boolean(item.remplacement) && state !== 'MAUVAIS'
+    if (item.remplacement && !remplacement) patch.remplacement = false
+    const chiffre = etatChiffre({ state, remplacement })!
     if (quantity != null && item.area == null) patch.area = quantity
     if (catalog) {
-      const work = workForState(catalog, state)
+      const work = workForState(catalog, chiffre)
       patch.works = work && work !== 'Néant' ? [work as string] : []
       // Coût = prix de l'état × quantité (indépendant du texte de travail ; états sans prix -> coût 0).
       // Un coût repris à la main n'est jamais écrasé.
       if (!item.costManual) {
-        const cost = computeCost(catalog, state, quantity)
+        const cost = computeCost(catalog, chiffre, quantity)
         patch.estimatedCost = (cost ?? 0) as unknown as string
         patch.costIndex = getMarketCoeff()
       }
     }
+    onUpdate(patch)
+  }
+
+  /**
+   * Remplacer quand même, ou y renoncer : l'état constaté ne bouge pas, les
+   * travaux et le coût passent à ceux du remplacement, ou en reviennent.
+   */
+  const basculerRemplacement = (remplacement: boolean) => {
+    const patch: Partial<ApiDiagnosticItem> = { remplacement }
+    const chiffre = etatChiffre({ state: item.state, remplacement })
+    if (catalog && chiffre) {
+      const work = workForState(catalog, chiffre)
+      patch.works = work && work !== 'Néant' ? [work as string] : []
+      if (!item.costManual) {
+        patch.estimatedCost = (computeCost(catalog, chiffre, item.area ?? autoQty ?? undefined) ?? 0) as unknown as string
+        patch.costIndex = getMarketCoeff()
+      }
+    }
+    // Remplacé, un store ne se dépose plus pour être reposé.
+    if (remplacement && item.deposeRepose) patch.deposeRepose = false
     onUpdate(patch)
   }
 
@@ -1913,7 +2002,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
     const egaleAuCalcul = autoQty != null && v != null && Math.abs(v - autoQty) < 0.01
     const patch: Partial<ApiDiagnosticItem> = { area: v ?? null, quantityManual: manual && !egaleAuCalcul }
     if (!item.costManual) {
-      const cost = item.state ? computeCost(catalog, item.state, v) : undefined
+      const cost = etat ? computeCost(catalog, etat, v) : undefined
       patch.estimatedCost = (cost ?? null) as unknown as string | null
       patch.costIndex = getMarketCoeff()
     }
@@ -1922,7 +2011,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
 
   /** Rend la quantité au calcul automatique (et le coût avec, s'il n'est pas forcé). */
   const restoreAutoQuantity = () => {
-    const cost = item.state ? computeCost(catalog, item.state, autoQty) : undefined
+    const cost = etat ? computeCost(catalog, etat, autoQty) : undefined
     onUpdate({
       area: autoQty ?? null,
       quantityManual: false,
@@ -2036,6 +2125,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
           <section className="space-y-3">
             <StepHeader n={2} label="Évaluer l'état" />
             <StateGuide item={item} catalog={catalog} onApply={applyState} isMutating={isMutating} />
+            <ChoixDeTravaux item={item} catalog={catalog} voisins={voisins} onRemplacement={basculerRemplacement} onUpdate={onUpdate} isMutating={isMutating} />
           </section>
 
           {/* Un état dégradé s'explique au client : l'observation se demande
@@ -2210,6 +2300,9 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
         <div data-visite="releve-etat">
           <p className="text-sm font-medium mb-3">État constaté</p>
           <StateGuide item={item} catalog={catalog} onApply={applyState} isMutating={isMutating} />
+          <div className="mt-3">
+            <ChoixDeTravaux item={item} catalog={catalog} voisins={voisins} onRemplacement={basculerRemplacement} onUpdate={onUpdate} isMutating={isMutating} />
+          </div>
         </div>
 
         {/* 2. Année de pose — elle porte la durée de vie résiduelle du rapport */}
@@ -2315,7 +2408,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
             <div>
               <p className="text-xs text-muted-foreground">Quantité</p>
               {item.area != null ? (
-                <p className="font-semibold mt-0.5">{item.area} {catalog?.unit?.replace(/^CHF\s*\/?\s*/i, '') ?? ''}</p>
+                <p className="font-semibold mt-0.5">{auForfait ? '1 forfait' : `${item.area} ${qtyUnit}`}</p>
               ) : (
                 <p className="font-medium text-amber-600 mt-0.5 text-xs">à saisir</p>
               )}
@@ -2416,8 +2509,8 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
                   </p>
                   {suggestedPrice && (
                     <p>
-                      Prix : {suggestedPrice} {catalog.unit ?? ''}
-                      {appliedPrice != null && <> × indice {getMarketCoeff()} = <strong>{appliedPrice} {catalog.unit ?? ''}</strong></>}
+                      Prix : {suggestedPrice} {(etat && uniteDeLEtat(catalog, etat)) ?? catalog.unit ?? ''}
+                      {appliedPrice != null && <> × indice {getMarketCoeff()} = <strong>{appliedPrice} {(etat && uniteDeLEtat(catalog, etat)) ?? catalog.unit ?? ''}</strong></>}
                     </p>
                   )}
                 </div>

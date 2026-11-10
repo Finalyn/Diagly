@@ -83,6 +83,18 @@ export function priceForState(item: PrixParEtat, state: ElementState): PrixCatal
   }
 }
 
+/**
+ * L'état dont un relevé tire ses travaux et son prix.
+ *
+ * C'est l'état constaté, sauf quand on remplace quand même : des volets
+ * encore bons que le propriétaire veut changer se chiffrent au remplacement,
+ * l'état mauvais de la base, et le rapport garde l'état vu sur place.
+ */
+export function etatChiffre(it: { state?: ElementState | null; remplacement?: boolean }): ElementState | null {
+  if (!it.state) return null
+  return it.remplacement ? 'MAUVAIS' : it.state
+}
+
 // ---------- Contexte de quantités ----------
 
 export interface QuantityContext {
@@ -529,16 +541,44 @@ export function appliedUnitPrice(price: PrixCatalogue): number | undefined {
   return unit == null ? undefined : Math.round(unit * market.coeff * 100) / 100
 }
 
+/**
+ * L'unité de chaque état, quand la base la donne.
+ *
+ * Une chaudière s'entretient au forfait (1 500.- en bon état, 4 000.- en
+ * moyen) et se remplace au m² de plancher (18.-/m²) : l'unité suit l'état,
+ * pas l'article. La quantité du relevé, elle, reste celle du remplacement.
+ */
+export type UnitesParEtat = Partial<Record<ElementState, string | null>>
+
+/** L'unité du prix d'un état, ou null si la base ne la dit pas. */
+export function uniteDeLEtat(catalog: { unitesParEtat?: UnitesParEtat } | null | undefined, state: ElementState): string | null {
+  return catalog?.unitesParEtat?.[state] ?? null
+}
+
+/**
+ * La quantité par laquelle le prix d'un état se multiplie : un forfait se
+ * compte une fois. Le multiplier par les 3 620 m² de plancher chiffrait
+ * l'entretien d'une chaudière à 14 480 000.-.
+ */
+export function quantiteChiffree(
+  catalog: { unitesParEtat?: UnitesParEtat } | null | undefined,
+  state: ElementState,
+  quantity: number | null | undefined,
+): number | null | undefined {
+  return uniteDeLEtat(catalog, state) === 'forfait' ? 1 : quantity
+}
+
 /** Coût estimé = prix unitaire de l'état × quantité × coefficient marché (si le prix est numérique). */
 export function computeCost(
-  catalog: PrixParEtat | null | undefined,
+  catalog: (PrixParEtat & { unitesParEtat?: UnitesParEtat }) | null | undefined,
   state: ElementState,
   quantity: number | null | undefined,
 ): number | undefined {
-  if (!catalog || !quantity) return undefined
+  const q = quantiteChiffree(catalog, state, quantity)
+  if (!catalog || !q) return undefined
   const unit = priceToNumber(priceForState(catalog, state))
   if (unit == null) return undefined
-  return Math.round(unit * quantity * market.coeff)
+  return Math.round(unit * q * market.coeff)
 }
 
 /** Coût générique = prix unitaire catalogue (string) × quantité × coefficient marché. Sert à l'amélioration / remise aux normes. */

@@ -57,6 +57,10 @@ export const itemBaseSchema = z.object({
   /// Releves dont l'amelioration rend la reparation inutile, celui-ci compris :
   /// le devis en deduit le montant net de l'option.
   improvementReplaces: z.array(z.string().min(1).max(40)).max(50).nullable().optional(),
+  /// Remplacer quand meme : l'etat reste celui constate, le prix est celui du remplacement.
+  remplacement: z.boolean().optional(),
+  /// Depose et repose pendant les travaux de facade.
+  deposeRepose: z.boolean().optional(),
 });
 
 // L'identifiant d'un relevé peut venir de l'appareil (UUID) : une saisie faite

@@ -17,7 +17,7 @@
  * synchronisation de la quantité automatique).
  */
 import type { ApiArticle, ApiDiagnosticItem } from '../api-types'
-import { computeCost, computeCostFromPrice, getMarketCoeff } from '../diagnostic-auto'
+import { computeCost, computeCostFromPrice, etatChiffre, getMarketCoeff, uniteDeLEtat } from '../diagnostic-auto'
 import { groupesDuReleve, partEffective, quantiteDuType } from '../groupes-surface'
 import { cleDuReleve } from './etapes'
 import { ouvrageDuReleve, resolutionDeQuantite, type OuvrageSaisi } from './pont'
@@ -194,6 +194,13 @@ export function recalculsDesComptages(
     // Un montant absent se calcule même quand la quantité ne bouge pas : sans
     // cela, un relevé bien mesuré mais jamais chiffré le restait pour toujours.
     const montantManque = !it.costManual && Boolean(it.state) && num(it.estimatedCost) === 0
+    // Un forfait multiplié par la quantité du relevé, tel que l'app le chiffrait
+    // avant le 10 nov. 2026 : l'entretien d'une chaudière à 1 500.- × 3 620 m²
+    // de plancher. Un montant forcé à la main n'est pas touché.
+    const etat = etatChiffre(it)
+    const forfait = etat ? computeCost(ouvrage, etat, 1) : undefined
+    const forfaitMultiplie = !it.costManual && etat != null && uniteDeLEtat(ouvrage, etat) === 'forfait'
+      && forfait != null && num(it.estimatedCost) > forfait * 1.5
 
     // Une amélioration ou une mise aux normes retenue sans montant.
     //
@@ -207,12 +214,12 @@ export function recalculsDesComptages(
     const ameliorationManque = enveloppeManque(it.improvement, it.improvementCost, ouvrage.priceImprovement)
     const normesManquent = enveloppeManque(it.norms, it.normsCost, ouvrage.priceNorms)
 
-    if (!quantiteChange && !montantManque && !ameliorationManque && !normesManquent) continue
+    if (!quantiteChange && !montantManque && !forfaitMultiplie && !ameliorationManque && !normesManquent) continue
 
     const patch: Partial<ApiDiagnosticItem> = {}
     if (quantiteChange) patch.area = area
     if (!it.costManual && it.state) {
-      const cout = computeCost(ouvrage, it.state, area) ?? null
+      const cout = computeCost(ouvrage, etatChiffre(it)!, area) ?? null
       // On n'écrase un montant existant que si la quantité a bougé.
       if (quantiteChange || cout != null) {
         patch.estimatedCost = cout as unknown as string | null
@@ -275,7 +282,7 @@ export function appliquerRecalculs(items: ApiDiagnosticItem[], recalculs: Recalc
  * à la main reste ce qu'elle est, un coût forcé aussi : seul le nombre change.
  */
 export function patchDesUnites(
-  releve: Pick<ApiDiagnosticItem, 'id' | 'quantityManual' | 'costManual' | 'state'>,
+  releve: Pick<ApiDiagnosticItem, 'id' | 'quantityManual' | 'costManual' | 'state' | 'remplacement'>,
   unites: number | null,
   ouvrage: OuvrageSaisi,
   batiment: DonneesBatiment,
@@ -287,7 +294,7 @@ export function patchDesUnites(
   const quantite = quantiteDuTypeCompte(resolutionDeQuantite(ouvrage, batiment).quantity, effectives, repartition.comptage, ouvrage.unit)
   patch.area = quantite ?? null
   if (!releve.costManual && releve.state) {
-    patch.estimatedCost = (computeCost(ouvrage, releve.state, quantite) ?? null) as unknown as string | null
+    patch.estimatedCost = (computeCost(ouvrage, etatChiffre(releve)!, quantite) ?? null) as unknown as string | null
     patch.costIndex = getMarketCoeff()
   }
   return patch

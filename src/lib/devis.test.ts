@@ -495,3 +495,59 @@ describe('affichage du prix unitaire', () => {
     expect(formatPrixUnitaire(90.5)).toMatch(/90[.,]50 CHF/)
   })
 })
+
+describe('remplacer quand même, et la dépose des stores', () => {
+  const A038 = article({
+    id: 'A038', cfcCode: '228.1', nom: 'Volets roulants', groupeAlternatives: null,
+    etats: [
+      { etat: 'bon', travaux: 'Nettoyage des volets', prix: 20, partPrixMauvais: null, unite: 'm2' },
+      { etat: 'mauvais', travaux: 'Remplacement des volets.', prix: 180, partPrixMauvais: null, unite: 'm2' },
+    ],
+  })
+  const base = { ...BASE, articles: [...BASE.articles, A038] }
+  const volets = (o: Partial<ApiDiagnosticItem>) => ouvrage({
+    id: 'v', cfcCode: '228.1', cfcLabel: 'Volets roulants', articleId: 'A038', state: 'BON', area: 100, unit: 'm2', ...o,
+  })
+
+  it('chiffre au prix du remplacement sans toucher à l’état constaté, et le dit', () => {
+    const d = buildDevis([volets({ remplacement: true, works: ['Remplacement des volets.'], estimatedCost: '18000' })], LABELS, base, NU)
+    const [l] = travaux(d)
+    expect(l.enveloppe).toBe('Réparation')
+    expect(l.montant).toBe(18000)
+    expect(l.prixBase).toBe(180)
+    expect(l.prixModifie).toBe(false)
+    expect(l.remarque).toMatch(/au choix du propriétaire/i)
+  })
+
+  it('ajoute la dépose et repose à part, à 50.-/m² indexés', () => {
+    setMarketCoeff(1.1)
+    const d = buildDevis([volets({ deposeRepose: true, works: ['Nettoyage des volets'], estimatedCost: '2000' })], LABELS, base, NU)
+    const depose = travaux(d).find((l) => l.cle === 'v:depose')!
+    expect(depose.enveloppe).toBe('Réparation')
+    expect(depose.prixUnitaire).toBe(55)
+    expect(depose.montant).toBe(5500)
+    expect(depose.aChiffrer).toBe(false)
+    expect(travaux(d).find((l) => l.cle === 'v:Réparation')!.montant).toBe(2000)
+  })
+
+  it('prend le prix de dépose réglé au dossier', () => {
+    const d = buildDevis([volets({ deposeRepose: true })], LABELS, base, { ...NU, prixPostes: { depose_repose: 45 } })
+    const depose = travaux(d).find((l) => l.cle === 'v:depose')!
+    expect(depose.montant).toBe(4500)
+    expect(depose.aChiffrer).toBe(false)
+  })
+})
+
+describe('un état chiffré au forfait', () => {
+  it('sort au devis pour 1 forfait, pas pour les m² du relevé', () => {
+    const A062 = article({
+      id: 'A062', cfcCode: '242.0', nom: 'Chaudière gaz à condensation', groupeAlternatives: null, echafaudage: false,
+      uniteEntretien: 'forfait', baseQuantite: 'surface_plancher',
+      etats: [{ etat: 'moyen', travaux: 'Remplacement du brûleur', prix: 4000, partPrixMauvais: null, unite: 'forfait' }],
+    })
+    const d = buildDevis([ouvrage({ id: 'c', cfcCode: '242.0', articleId: 'A062', state: 'MOYEN', area: 3620, unit: 'forfait', estimatedCost: '4000' })],
+      LABELS, { ...BASE, articles: [...BASE.articles, A062] }, NU)
+    const [l] = travaux(d)
+    expect([l.quantite, l.unite, l.prixUnitaire, l.montant, l.prixModifie]).toEqual([1, 'forfait', 4000, 4000, false])
+  })
+})

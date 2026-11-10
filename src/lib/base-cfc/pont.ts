@@ -24,7 +24,7 @@
  */
 
 import type { ApiArticle } from '../api-types'
-import type { QuantityResolution } from '../diagnostic-auto'
+import type { QuantityResolution, UnitesParEtat } from '../diagnostic-auto'
 import { cleDuReleve } from './etapes'
 import { prixUnitaire } from './prix'
 import { quantiteDeBase, type DonneesBatiment } from './quantites'
@@ -65,6 +65,8 @@ export interface OuvrageSaisi {
   unit: string
   /** Unité du remplacement, qui peut différer de celle de l'entretien. */
   uniteRemplacement: string
+  /** L'unité du prix de chaque état : l'entretien d'une chaudière au forfait, son remplacement au m². */
+  unitesParEtat: UnitesParEtat
 
   workTbe: string | null
   workBon: string | null
@@ -109,6 +111,11 @@ export interface OuvrageSaisi {
 const travaux = (a: ApiArticle, etat: EtatArticle) =>
   a.etats.find((e) => e.etat === etat)?.travaux ?? null
 
+const uniteDe = (a: ApiArticle, etat: EtatArticle) => {
+  const u = a.etats.find((e) => e.etat === etat)?.unite
+  return u ? uniteEnClair(u) : null
+}
+
 const prixDe = (a: ApiArticle, etat: EtatArticle) =>
   a.etats.find((e) => e.etat === etat)?.prix ?? null
 
@@ -132,6 +139,12 @@ export function ouvrageDeLArticle(article: ApiArticle, etapeNumero: number | nul
     category: article.domaineRapport,
     unit: uniteEnClair(article.uniteEntretien),
     uniteRemplacement: uniteEnClair(article.uniteRemplacement),
+    unitesParEtat: {
+      TRES_BON: uniteDe(article, 'tres_bon'),
+      BON: uniteDe(article, 'bon'),
+      MOYEN: uniteDe(article, 'moyen'),
+      MAUVAIS: uniteDe(article, 'mauvais'),
+    },
 
     workTbe: travaux(article, 'tres_bon'),
     workBon: travaux(article, 'bon'),

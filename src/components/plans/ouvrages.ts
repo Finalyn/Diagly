@@ -8,7 +8,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { ApiDiagnosticItem } from '@/lib/api-types'
-import { computeCost, getMarketCoeff } from '@/lib/diagnostic-auto'
+import { computeCost, etatChiffre, getMarketCoeff } from '@/lib/diagnostic-auto'
 
 /**
  * Reporte une quantité relevée sur les plans sur son ouvrage. Même règle qu'à
@@ -20,7 +20,7 @@ export async function reporterSurLOuvrage(it: ApiDiagnosticItem, quantite: numbe
   const patch: Partial<ApiDiagnosticItem> = { area: quantite, quantityManual: true }
   if (!it.costManual && it.state) {
     const catalogue = it.catalogItemId != null ? (await api.cfc.item(it.catalogItemId)).item : null
-    const cout = computeCost(catalogue, it.state, quantite)
+    const cout = computeCost(catalogue, etatChiffre(it)!, quantite)
     patch.estimatedCost = (cout ?? null) as unknown as string | null
     patch.costIndex = getMarketCoeff()
   }

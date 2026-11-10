@@ -19,6 +19,7 @@ import { groupesDuReleve } from './groupes-surface'
 import { bonEtatSuspect, dureeVieResiduelle } from './duree-vie'
 import { LIBELLE_LOCALISATION } from './localisation'
 import { nomDuReleve } from './textes'
+import { alerteFacade, estUnStore } from './base-cfc/facade-stores'
 import type { Devis, DevisLigne } from './devis'
 import type { ApiArticle, ApiDiagnosticItem, ApiEtapeVisite, ElementState } from './api-types'
 
@@ -26,7 +27,7 @@ export type GraviteControle = 'bloquant' | 'a-verifier'
 
 export type GenreControle =
   | 'sans-prix' | 'poste-sans-quantite' | 'installation' | 'doublon' | 'surface-depassee'
-  | 'sans-observation' | 'non-evalue' | 'duree-incoherente' | 'variantes'
+  | 'sans-observation' | 'non-evalue' | 'duree-incoherente' | 'variantes' | 'facade-stores'
 
 export interface ControleRapport {
   cle: string
@@ -226,6 +227,29 @@ export function controlerLeRapport({ items, articles, etapes, fiche, devis }: Do
       titre: `${l.libelle} : plusieurs variantes pour un seul montant`,
       detail: `« ${l.remarque} ». Chiffrez une ligne par variante, et dites si elles s'excluent ou se cumulent.`,
       releveIds: l.releveId ? [l.releveId] : [],
+    })
+  }
+
+  // 6. Les stores d'une façade refaite : sans dépose ni remplacement, le devis
+  //    les oublie, et la façade ne se fait pas avec eux en place.
+  const facade = alerteFacade(items, articles)
+  if (facade && facade.aTraiter.length > 0) {
+    sortie.push({
+      cle: 'facade-stores',
+      genre: 'facade-stores',
+      gravite: 'bloquant',
+      titre: `Façade refaite : ${mots(facade.aTraiter.length, 'store ou volet', 'stores ou volets')} sans dépose ni remplacement`,
+      detail: `Choisissez sur chacun la dépose et repose, ou le remplacement : ${facade.aTraiter.slice(0, 4).map(nom).join(', ')}${facade.aTraiter.length > 4 ? '…' : '.'}`,
+      releveIds: facade.aTraiter.map((i) => i.id),
+    })
+  } else if (facade && !items.some(estUnStore)) {
+    sortie.push({
+      cle: 'facade-stores',
+      genre: 'facade-stores',
+      gravite: 'a-verifier',
+      titre: 'Façade refaite : aucun store ni volet relevé',
+      detail: "S'il y en a, relevez-les : leur dépose ou leur remplacement manque au devis.",
+      releveIds: facade.facades.map((i) => i.id),
     })
   }
 

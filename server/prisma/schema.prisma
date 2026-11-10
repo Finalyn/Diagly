@@ -747,6 +747,13 @@ model DiagnosticItem {
   /// (une ITE rend inutiles la refection du crepi et le nettoyage de la meme
   /// facade). Liste d'identifiants de releves, celui-ci compris. null = aucun.
   improvementReplaces Json?      @map("improvement_replaces")
+  /// Remplacement choisi alors que l'etat ne l'impose pas (des volets encore
+  /// bons que le proprietaire veut changer). L'etat reste celui constate ; les
+  /// travaux et le prix sont ceux de l'etat mauvais, en reparation.
+  remplacement     Boolean       @default(false)
+  /// Depose et repose de l'ouvrage pendant les travaux de facade (stores,
+  /// volets). Chiffree a part, en reparation, en plus des travaux de l'etat.
+  deposeRepose     Boolean       @default(false) @map("depose_repose")
   createdAt        DateTime      @default(now()) @map("created_at")
   updatedAt        DateTime      @updatedAt @map("updated_at")
 

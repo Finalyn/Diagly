@@ -209,6 +209,8 @@ router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
         norms: data.norms,
         normsCost: data.normsCost,
         ...(data.improvementReplaces ? { improvementReplaces: data.improvementReplaces } : {}),
+        remplacement: data.remplacement ?? false,
+        deposeRepose: data.deposeRepose ?? false,
       },
     });
   } catch (e) {
