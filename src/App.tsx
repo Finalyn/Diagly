@@ -47,6 +47,7 @@ const ProjectVisite = lazy(() => named(import('@/pages/app/ProjectVisite'), 'Pro
 const DossierMobile = lazy(() => named(import('@/pages/app/DossierMobile'), 'DossierMobile'))
 const AssistantPage = lazy(() => named(import('@/pages/app/AssistantPage'), 'AssistantPage'))
 const DiagnosticDetail = lazy(() => named(import('@/pages/app/DiagnosticDetail'), 'DiagnosticDetail'))
+const OperationDetail = lazy(() => named(import('@/pages/app/OperationDetail'), 'OperationDetail'))
 const DiagnosticItemDetail = lazy(() => named(import('@/pages/app/DiagnosticItemDetail'), 'DiagnosticItemDetail'))
 const Metres = lazy(() => named(import('@/pages/app/Metres'), 'Metres'))
 const EspaceMetres = lazy(() => named(import('@/pages/app/EspaceMetres'), 'EspaceMetres'))
@@ -167,6 +168,8 @@ function App() {
             <Route path="projects/:id/visite" element={<ProjectVisite />} />
             {/* Le sommaire du dossier sur téléphone (sur ordinateur, la barre de gauche en tient lieu). */}
             <Route path="projects/:id/sommaire" element={<DossierMobile />} />
+            {/* Un dossier multi-bâtiments : la liste et la création y mènent. */}
+            <Route path="diagnostics-multi/:id" element={<OperationDetail />} />
 
             {/* Assistant : page plein écran, le parcours mobile n'ouvre pas de fenêtre */}
             <Route path="assistant" element={<AssistantPage />} />
