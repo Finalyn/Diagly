@@ -33,7 +33,7 @@ export function CorpsFonctionnalites() {
     <div className="min-h-screen overflow-x-clip bg-white text-[#1d1d1f] antialiased">
       <Entete />
       <main id="contenu">
-        <section id="haut" aria-labelledby="titre-page" className="relative -mt-[92px] overflow-hidden bg-gradient-to-b from-[#f3f7fe] to-white pt-[92px]">
+        <section id="haut" aria-labelledby="titre-page" className="relative -mt-[92px] overflow-hidden bg-white pt-[92px]">
           <Quadrillage />
           <div className="relative mx-auto w-full max-w-[1200px] px-4 pb-6 pt-12 text-center sm:px-6 sm:pt-16 lg:px-8 lg:pt-20">
             <h1 id="titre-page" className="mx-auto max-w-[20ch] text-balance text-[clamp(2.25rem,5vw,3.75rem)] font-semibold leading-[1.08] tracking-[-0.035em] text-[#0b1f44]">

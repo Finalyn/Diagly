@@ -55,8 +55,10 @@ const COLONNES: { titre: string; liens: [string, string][] }[] = [
 export function PiedDePage() {
   const lien = cn('inline-flex min-h-11 items-center text-[14px] text-[#48484a] hover:text-[#0167EA]', FOCUS)
   return (
-    <footer className="bg-[#f3f7fe] pb-10 pt-4">
-      <Conteneur>
+    <footer className="relative overflow-hidden bg-[#f3f7fe] pb-10 pt-4">
+      {/* Le petit quadrillage bleu d'autrefois, qui apparaît en dégradé vers le bas de la page. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 [background-image:linear-gradient(to_right,rgba(1,103,234,0.11)_1px,transparent_1px),linear-gradient(to_bottom,rgba(1,103,234,0.11)_1px,transparent_1px)] [background-position:center_bottom] [background-size:72px_72px] [mask-image:linear-gradient(to_top,#000_25%,transparent_95%)]" />
+      <Conteneur className="relative">
         <div className="grid gap-10 lg:grid-cols-12">
           <div className="lg:col-span-4">
             <img src="/diagly-logo.svg" alt="Diagly" width={101} height={32} className="h-8 w-auto" />

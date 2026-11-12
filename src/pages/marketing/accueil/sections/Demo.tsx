@@ -1,12 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Check, Loader2, CalendarCheck } from 'lucide-react'
+import { ArrowRight, Check, Loader2, CalendarCheck, X } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { CONTACT } from '../contenu'
 import { Accent, Apparition, Conteneur, FOCUS } from '../ui'
 import { typo } from '../typo'
-import { ChoixDuCreneau } from '../ChoixDuCreneau'
+import { CalendrierDemo } from '../CalendrierDemo'
 import { creneauLisible, type Creneau, type JourLibre } from '../creneaux'
 
 /**
@@ -14,11 +14,13 @@ import { creneauLisible, type Creneau, type JourLibre } from '../creneaux'
  * offert.
  *
  * Une grande carte bleue : à gauche, « Votre démo est offerte » et ce qu'elle
- * apporte ; à droite, posée sur le bleu, la carte blanche de réservation. Les
- * jours et les heures sont les vrais créneaux libres (du lundi au vendredi,
- * de 8 h à 18 h, hors agenda de l'hôte) : réserver inscrit la démo dans
- * l'agenda de Finalyn et envoie la confirmation par e-mail, avec l'invitation
- * pour l'agenda du visiteur. Rien ne passe par un service tiers.
+ * apporte ; à droite, posée sur le bleu, la carte blanche de réservation. Elle
+ * ne montre d'abord que le calendrier (CalendrierDemo) : le jour, puis
+ * l'heure. L'heure choisie, une fenêtre demande les coordonnées et réserve.
+ * Les jours et les heures sont les vrais créneaux libres (du lundi au
+ * vendredi, de 8 h à 18 h, hors agenda de l'hôte) : réserver inscrit la démo
+ * dans l'agenda de Finalyn et envoie la confirmation par e-mail, avec
+ * l'invitation pour l'agenda du visiteur. Rien ne passe par un service tiers.
  */
 
 const ATOUTS = [
@@ -34,6 +36,7 @@ type Etat =
 
 export function Demo() {
   const [etat, setEtat] = useState<Etat>({ type: 'chargement' })
+  const [jour, setJour] = useState<string | null>(null)
   const [creneau, setCreneau] = useState<Creneau | null>(null)
   const [nom, setNom] = useState('')
   const [email, setEmail] = useState('')
@@ -43,17 +46,30 @@ export function Demo() {
   // Le piège à robots : invisible, personne ne le remplit.
   const [site, setSite] = useState('')
   const [envoi, setEnvoi] = useState(false)
+  // L'erreur de la fenêtre, et l'avis de la carte (le créneau qui vient d'être pris).
   const [erreur, setErreur] = useState<string | null>(null)
+  const [avis, setAvis] = useState<string | null>(null)
   const [reservee, setReservee] = useState<{ quand: string; jeton?: string; email: string; mail: boolean } | null>(null)
+  const fenetre = useRef<HTMLDialogElement>(null)
+  const premierChamp = useRef<HTMLInputElement>(null)
 
   const charger = () => api.demo.creneaux()
-    .then((r) => {
-      setEtat({ type: 'pret', jours: r.jours, duree: r.duree, mail: r.mail !== false })
-      // Le premier jour libre est déjà choisi : ses heures s'affichent d'emblée.
-      setCreneau((c) => c ?? (r.jours[0] ? { date: r.jours[0].date, heure: '' } : null))
-    })
+    .then((r) => setEtat({ type: 'pret', jours: r.jours, duree: r.duree, mail: r.mail !== false }))
     .catch(() => setEtat({ type: 'indisponible' }))
   useEffect(() => { void charger() }, [])
+  // Si la section part fenêtre ouverte, la page retrouve son défilement.
+  useEffect(() => () => { document.documentElement.style.overflow = '' }, [])
+
+  // La page ne défile pas sous la fenêtre ouverte.
+  const ouvrir = (c: Creneau) => {
+    setCreneau(c)
+    setErreur(null)
+    setAvis(null)
+    document.documentElement.style.overflow = 'hidden'
+    fenetre.current?.showModal()
+    premierChamp.current?.focus()
+  }
+  const fermer = () => fenetre.current?.close()
 
   const pret = creneau?.heure && nom.trim().length >= 2 && /\S+@\S+\.\S+/.test(email)
 
@@ -70,7 +86,9 @@ export function Demo() {
       setReservee({ quand: creneauLisible(creneau), jeton: r.jeton, email: email.trim(), mail: r.mail !== false })
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        setErreur('Ce créneau vient d’être pris. Choisissez-en un autre.')
+        // Le créneau est parti : retour au calendrier, rechargé, avec un mot sur la carte.
+        fermer()
+        setAvis('Ce créneau vient d’être pris. Choisissez-en un autre.')
         setCreneau(null)
         void charger()
       } else {
@@ -82,6 +100,7 @@ export function Demo() {
   }
 
   const champ = cn('min-h-11 w-full rounded-xl border border-black/[0.1] bg-white px-3.5 text-[15px] text-[#0b1220] placeholder:text-[#9aa1ab] focus:border-[#0167EA] focus:outline-none focus:ring-2 focus:ring-[#0167EA]/20')
+  const duree = etat.type === 'pret' ? etat.duree : 30
 
   return (
     <section id="demo" aria-labelledby="titre-demo" className="scroll-mt-24 bg-white py-16 sm:py-24">
@@ -94,7 +113,7 @@ export function Demo() {
                 Votre démo <Accent clair>est offerte.</Accent>
               </h2>
               <p className="mt-5 max-w-[28rem] text-pretty text-[16.5px] leading-[1.65] text-white/75">
-                {typo(`Choisissez un créneau : en ${etat.type === 'pret' ? etat.duree : 30} minutes de visioconférence, nous vous montrons Diagly, du plan au rapport, et répondons à vos questions.`)}
+                {typo(`Choisissez un créneau : en ${duree} minutes de visioconférence, nous vous montrons Diagly, du plan au rapport, et répondons à vos questions.`)}
               </p>
               <ul className="mt-7 space-y-3">
                 {ATOUTS.map((a) => (
@@ -109,11 +128,11 @@ export function Demo() {
             </div>
 
             <div className="text-[#0b1220]">
-              <div className="rounded-[24px] bg-white p-5 shadow-[0_30px_60px_-24px_rgba(4,20,60,0.55)] sm:p-7">
+              <div className="mx-auto w-full max-w-[28rem] rounded-[24px] bg-white p-5 shadow-[0_30px_60px_-24px_rgba(4,20,60,0.55)] sm:p-7">
                 {reservee ? (
                   <Confirmation {...reservee} />
                 ) : etat.type === 'chargement' ? (
-                  <div className="flex min-h-[22rem] items-center justify-center gap-2 text-[14px] text-[#6b7280]">
+                  <div className="flex min-h-[18rem] items-center justify-center gap-2 text-[14px] text-[#6b7280]">
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Chargement des disponibilités…
                   </div>
                 ) : etat.type === 'indisponible' || etat.jours.length === 0 ? (
@@ -125,59 +144,106 @@ export function Demo() {
                     </a>
                   </div>
                 ) : (
-                  <form onSubmit={(e) => void envoyer(e)}>
-                    <ChoixDuCreneau jours={etat.jours} valeur={creneau} onChange={setCreneau} />
-
-                    <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                      <label className="block">
-                        <span className="text-[13px] font-medium text-[#4b5563]">Nom</span>
-                        <input value={nom} onChange={(e) => setNom(e.target.value)} autoComplete="name" required className={cn(champ, 'mt-1.5')} />
-                      </label>
-                      <label className="block">
-                        <span className="text-[13px] font-medium text-[#4b5563]">E-mail</span>
-                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required className={cn(champ, 'mt-1.5')} />
-                      </label>
-                      <label className="block">
-                        <span className="text-[13px] font-medium text-[#4b5563]">Bureau <span className="font-normal text-[#9aa1ab]">(facultatif)</span></span>
-                        <input value={bureau} onChange={(e) => setBureau(e.target.value)} autoComplete="organization" className={cn(champ, 'mt-1.5')} />
-                      </label>
-                      <label className="block">
-                        <span className="text-[13px] font-medium text-[#4b5563]">Téléphone <span className="font-normal text-[#9aa1ab]">(facultatif)</span></span>
-                        <input type="tel" value={telephone} onChange={(e) => setTelephone(e.target.value)} autoComplete="tel" className={cn(champ, 'mt-1.5')} />
-                      </label>
-                      <label className="block sm:col-span-2">
-                        <span className="text-[13px] font-medium text-[#4b5563]">Ce que vous aimeriez voir <span className="font-normal text-[#9aa1ab]">(facultatif)</span></span>
-                        <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={2} className={cn(champ, 'mt-1.5 resize-none py-2.5')} />
-                      </label>
-                      <label className="sr-only" aria-hidden="true">
-                        Site web
-                        <input tabIndex={-1} autoComplete="off" value={site} onChange={(e) => setSite(e.target.value)} />
-                      </label>
+                  <>
+                    <p className="text-[16px] font-medium tracking-[-0.01em]">Réservez votre démo · {duree} min</p>
+                    <p className="mt-1 text-[13px] text-[#6b7280]">Visio · du lundi au vendredi · dès 8 h (heure de Zurich)</p>
+                    {avis && <p role="alert" className="mt-4 rounded-xl bg-[#fdf2f2] px-3.5 py-2.5 text-[13.5px] text-[#b83232]">{avis}</p>}
+                    <div className="mt-6">
+                      <CalendrierDemo
+                        jours={etat.jours}
+                        jour={jour}
+                        onJour={(d) => { setJour(d); setAvis(null) }}
+                        onHeure={(h) => jour && ouvrir({ date: jour, heure: h })}
+                      />
                     </div>
-
-                    {erreur && <p role="alert" className="mt-4 rounded-xl bg-[#fdf2f2] px-3.5 py-2.5 text-[13.5px] text-[#b83232]">{erreur}</p>}
-
-                    <button
-                      type="submit"
-                      disabled={!pret || envoi}
-                      className={cn('mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#0167EA] px-6 text-[15.5px] font-medium text-white transition-colors hover:bg-[#0154c4] disabled:cursor-not-allowed disabled:bg-[#b9cdea]', FOCUS)}
-                    >
-                      {envoi ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-                      {creneau?.heure ? `Réserver : ${creneauLisible(creneau)}` : 'Réserver ce créneau'}
-                      {!envoi && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
-                    </button>
-                    {etat.mail && (
-                      <p className="mt-3 text-center text-[12.5px] text-[#8a8f98]">
-                        {typo('La confirmation vous arrive par e-mail, avec l’invitation pour votre agenda.')}
-                      </p>
-                    )}
-                  </form>
+                  </>
                 )}
               </div>
             </div>
           </div>
         </Apparition>
       </Conteneur>
+
+      {/* Les coordonnées, une fois l'heure choisie. Un clic hors de la fenêtre la ferme. */}
+      <dialog
+        ref={fenetre}
+        aria-labelledby="titre-coordonnees"
+        onClose={() => { document.documentElement.style.overflow = '' }}
+        onClick={(e) => { if (e.target === e.currentTarget) fermer() }}
+        className="m-auto max-h-[calc(100dvh-2rem)] w-[min(100%-2rem,34rem)] overflow-y-auto overscroll-contain rounded-[24px] bg-white p-0 text-[#0b1220] shadow-[0_40px_80px_-30px_rgba(4,20,60,0.6)] transition duration-200 backdrop:bg-[#0b1220]/45 backdrop:backdrop-blur-[2px] starting:open:translate-y-3 starting:open:opacity-0"
+      >
+        <div className="p-6 sm:p-8">
+          {reservee ? (
+            <>
+              <Confirmation {...reservee} />
+              <button type="button" onClick={fermer} className={cn('mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-black/[0.1] text-[15px] font-medium hover:border-[#0167EA]/40', FOCUS)}>
+                Fermer
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[13.5px] text-[#6b7280]">Votre démo de {duree} minutes</p>
+                  <p id="titre-coordonnees" className="mt-1 text-[20px] font-semibold leading-snug tracking-[-0.02em]">{creneau ? creneauLisible(creneau) : ''}</p>
+                  <button type="button" onClick={fermer} className={cn('mt-1 text-[13.5px] font-medium text-[#0167EA] hover:underline', FOCUS)}>
+                    Changer de créneau
+                  </button>
+                </div>
+                <button type="button" onClick={fermer} aria-label="Fermer" className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#6b7280] hover:bg-black/[0.05] hover:text-[#0b1220]', FOCUS)}>
+                  <X className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </div>
+
+              <form onSubmit={(e) => void envoyer(e)} className="mt-6 border-t border-black/[0.06] pt-6">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-[13px] font-medium text-[#4b5563]">Nom</span>
+                    <input ref={premierChamp} value={nom} onChange={(e) => setNom(e.target.value)} autoComplete="name" required className={cn(champ, 'mt-1.5')} />
+                  </label>
+                  <label className="block">
+                    <span className="text-[13px] font-medium text-[#4b5563]">E-mail</span>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required className={cn(champ, 'mt-1.5')} />
+                  </label>
+                  <label className="block">
+                    <span className="text-[13px] font-medium text-[#4b5563]">Bureau <span className="font-normal text-[#9aa1ab]">(facultatif)</span></span>
+                    <input value={bureau} onChange={(e) => setBureau(e.target.value)} autoComplete="organization" className={cn(champ, 'mt-1.5')} />
+                  </label>
+                  <label className="block">
+                    <span className="text-[13px] font-medium text-[#4b5563]">Téléphone <span className="font-normal text-[#9aa1ab]">(facultatif)</span></span>
+                    <input type="tel" value={telephone} onChange={(e) => setTelephone(e.target.value)} autoComplete="tel" className={cn(champ, 'mt-1.5')} />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-[13px] font-medium text-[#4b5563]">Ce que vous aimeriez voir <span className="font-normal text-[#9aa1ab]">(facultatif)</span></span>
+                    <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={2} className={cn(champ, 'mt-1.5 resize-none py-2.5')} />
+                  </label>
+                  <label className="sr-only" aria-hidden="true">
+                    Site web
+                    <input tabIndex={-1} autoComplete="off" value={site} onChange={(e) => setSite(e.target.value)} />
+                  </label>
+                </div>
+
+                {erreur && <p role="alert" className="mt-4 rounded-xl bg-[#fdf2f2] px-3.5 py-2.5 text-[13.5px] text-[#b83232]">{erreur}</p>}
+
+                <button
+                  type="submit"
+                  disabled={!pret || envoi}
+                  className={cn('mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#0167EA] px-6 text-[15.5px] font-medium text-white transition-colors hover:bg-[#0154c4] disabled:cursor-not-allowed disabled:bg-[#b9cdea]', FOCUS)}
+                >
+                  {envoi ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                  Réserver la démo
+                  {!envoi && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
+                </button>
+                {etat.type === 'pret' && etat.mail && (
+                  <p className="mt-3 text-center text-[12.5px] text-[#8a8f98]">
+                    {typo('La confirmation vous arrive par e-mail, avec l’invitation pour votre agenda.')}
+                  </p>
+                )}
+              </form>
+            </>
+          )}
+        </div>
+      </dialog>
     </section>
   )
 }

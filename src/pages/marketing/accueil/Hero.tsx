@@ -11,8 +11,8 @@ import { VIDEO_A_DU_SON, VIDEO_PRESENTATION } from './contenu'
  * devient la vidéo de présentation au défilement.
  *
  * L'écran est une vraie capture de l'application, prise sur un dossier
- * d'exemple. Le fond est celui du haut de la page Fonctionnalités : un
- * bleu très pâle qui descend vers le blanc, et le quadrillage fin.
+ * d'exemple. Le fond est celui du haut de la page Fonctionnalités : le
+ * blanc, et le quadrillage à grands carreaux.
  *
  * Le titre et le texte ne s'animent pas : ce sont eux que le navigateur
  * affiche en premier, ils ne doivent rien attendre. Seul l'ordinateur
@@ -24,10 +24,8 @@ export function Hero() {
     // overflow-clip coupe comme overflow-hidden sans faire du héros un
     // conteneur de défilement : l'ordinateur peut y rester collé (sticky).
     <section id="haut" aria-labelledby="titre-accueil" className="relative -mt-[92px] overflow-clip bg-white pt-[92px]">
-      {/* Le fond couvre tout le héros, écran compris, et s'efface dans le blanc de la section suivante. */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#f3f7fe] to-white">
-        <Quadrillage long />
-      </div>
+      {/* La trame couvre tout le héros, écran compris, et s'efface dans le blanc de la section suivante. */}
+      <Quadrillage long />
       <div className="relative mx-auto w-full max-w-[1200px] px-4 pt-12 text-center sm:px-6 sm:pt-16 lg:px-8 lg:pt-24">
         {/* Comme sur inview.ch : d'où vient l'outil, une seule phrase, le sous-texte, deux gros boutons. */}
         <p className="inline-flex items-center gap-2.5 text-[15px] font-medium text-[#0b1f44] sm:text-[16px]">
@@ -71,29 +69,66 @@ function DrapeauSuisse({ className }: { className?: string }) {
 }
 
 /**
- * Le quadrillage fin du fond, à la manière d'un papier millimétré : il
- * s'efface vers les bords pour laisser le titre au centre. Il sert à
- * l'accueil et aux pages Fonctionnalités et Blog.
+ * Le quadrillage du fond, à la manière d'inview.ch : de grands carreaux aux
+ * traits gris très fins, sur le blanc, et quelques traits bleus en dégradé
+ * posés sur la trame. Il sert à l'accueil et aux pages Fonctionnalités et Blog.
+ *
+ * La trame et ses traits bleus sont dans une même boîte, centrée, large de
+ * COLONNES carreaux : ils tombent sur les mêmes pixels quelle que soit la
+ * largeur de l'écran. Le carreau (--carreau) grandit avec l'écran.
  *
  * `long` : pour un haut de page qui descend loin (l'accueil, où l'écran
  * suit le défilement). La trame couvre alors toute la hauteur et ne
- * s'efface que vers le bas ; la tache claire reste sous le titre.
+ * s'efface que vers le bas ; ailleurs, elle s'efface vers les bords.
  */
 export function Quadrillage({ long = false }: { long?: boolean }) {
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+    <div
+      aria-hidden="true"
+      className={cn(
+        'pointer-events-none absolute inset-0 overflow-hidden',
+        long
+          ? '[mask-image:linear-gradient(to_bottom,#000_70%,transparent)]'
+          : '[mask-image:radial-gradient(ellipse_70%_80%_at_50%_25%,#000_45%,transparent_100%)]',
+      )}
+    >
       <div
-        className={cn(
-          'absolute inset-0 [background-image:linear-gradient(to_right,rgba(1,103,234,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(1,103,234,0.08)_1px,transparent_1px)] [background-position:center_top] [background-size:72px_72px]',
-          long
-            ? '[mask-image:linear-gradient(to_bottom,#000_72%,transparent)]'
-            : '[mask-image:radial-gradient(ellipse_75%_65%_at_50%_28%,#000_35%,transparent_100%)]',
-        )}
-      />
-      <div className={cn('absolute left-1/2 h-[620px] w-[1100px] max-w-[160%] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.95),rgba(255,255,255,0))]', long ? 'top-[-60px]' : 'top-[-12%]')} />
+        className="absolute inset-y-0 left-1/2 -translate-x-1/2 [--carreau:96px] sm:[--carreau:136px] [background-image:linear-gradient(to_right,rgba(15,23,42,0.07)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.07)_1px,transparent_1px)] [background-size:var(--carreau)_var(--carreau)]"
+        style={{ width: `calc(${COLONNES} * var(--carreau))` }}
+      >
+        {TRAITS_BLEUS.map(([sens, ligne, de, a]) => (
+          <span
+            key={`${sens}${ligne}-${de}`}
+            className={cn('absolute', sens === 'v' ? 'w-px bg-[linear-gradient(to_bottom,transparent,rgba(1,103,234,0.5),transparent)]' : 'h-px bg-[linear-gradient(to_right,transparent,rgba(1,103,234,0.5),transparent)]')}
+            style={sens === 'v'
+              ? { left: `calc(${ligne} * var(--carreau))`, top: `calc(${de} * var(--carreau))`, height: `calc(${a - de} * var(--carreau))` }
+              : { top: `calc(${ligne} * var(--carreau))`, left: `calc(${de} * var(--carreau))`, width: `calc(${a - de} * var(--carreau))` }}
+          />
+        ))}
+      </div>
     </div>
   )
 }
+
+// Un nombre impair de colonnes : le centre de l'écran tombe au milieu d'un carreau, pas sur un trait.
+const COLONNES = 25
+
+/**
+ * Les traits bleus : sens (vertical ou horizontal), ligne de la trame
+ * (colonne de 0 à 25, le centre de l'écran entre 12 et 13 ; ou rangée,
+ * 0 en haut), puis du carreau au carreau. Loin du centre surtout, pour
+ * laisser le titre au calme ; sur téléphone, seules les colonnes 11 à 14
+ * se voient.
+ */
+const TRAITS_BLEUS: ['v' | 'h', number, number, number][] = [
+  ['v', 9, 0, 4],
+  ['v', 6, 2, 7],
+  ['v', 16, 1, 5],
+  ['v', 18, 0, 3],
+  ['v', 14, 3, 6],
+  ['h', 2, 6, 9],
+  ['h', 4, 16, 19],
+]
 
 /**
  * L'ordinateur, qui devient la vidéo de présentation.
