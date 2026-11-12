@@ -58,6 +58,9 @@ interface Row {
   detailPath: string
 }
 
+function lieu(p: ApiProject): string {
+  return `${p.postalCode ? `${p.postalCode} ` : ''}${p.city}${p.canton ? ` (${p.canton})` : ''}`
+}
 function toProjectRow(p: ApiProject): Omit<Row, 'seq' | 'ref'> {
   const n = p.nbApartments ?? 0
   return {
@@ -65,19 +68,29 @@ function toProjectRow(p: ApiProject): Omit<Row, 'seq' | 'ref'> {
     buildingLabel: buildingTypeLabels[p.buildingType],
     subLabel: n > 0 ? `${n} appartement${n > 1 ? 's' : ''}` : '',
     street: p.address,
-    place: `${p.postalCode ? `${p.postalCode} ` : ''}${p.city}${p.canton ? ` (${p.canton})` : ''}`,
+    place: lieu(p),
     typeLabel: buildingTypeLabels[p.buildingType],
     buildingType: p.buildingType,
     surface: p.floorArea,
     detailPath: `/app/projects/${p.id}`,
   }
 }
-function toOperationRow(o: ApiOperation): Omit<Row, 'seq' | 'ref'> {
-  const n = o._count?.projects ?? 0
+/**
+ * Un dossier multi-bâtiments n'a ni adresse ni surface à lui : il montre l'adresse
+ * du premier bâtiment créé (le principal) et la somme des surfaces connues.
+ */
+function toOperationRow(o: ApiOperation, batiments: ApiProject[]): Omit<Row, 'seq' | 'ref'> {
+  const n = o._count?.projects ?? batiments.length
+  const principal = batiments[0]
+  const autres = new Set(batiments.map(b => b.address)).size - 1
+  const surfaces = batiments.map(b => b.floorArea).filter((s): s is number => s != null)
   return {
     id: o.id, kind: 'operation', name: o.name, status: o.status, createdAt: o.createdAt, updatedAt: o.updatedAt,
     buildingLabel: 'Multi-bâtiments', subLabel: `${n} bâtiment${n > 1 ? 's' : ''}`,
-    street: o.clientName ?? 'n.c.', place: '', typeLabel: 'Multi', surface: null,
+    street: principal?.address ?? o.clientName ?? 'n.c.',
+    place: principal ? `${lieu(principal)}${autres > 0 ? ` · +${autres} adresse${autres > 1 ? 's' : ''}` : ''}` : '',
+    typeLabel: 'Multi',
+    surface: surfaces.length ? surfaces.reduce((a, b) => a + b, 0) : null,
     detailPath: `/app/diagnostics-multi/${o.id}`,
   }
 }
@@ -100,8 +113,14 @@ export function ProjectsList() {
   const { data: opData } = useQuery({ queryKey: ['operations'], queryFn: () => api.operations.list() })
 
   const rows = useMemo<Row[]>(() => {
-    const projects = (data?.projects ?? []).filter(p => !p.operationId).map(toProjectRow)
-    const ops = (opData?.operations ?? []).map(toOperationRow)
+    const tous = data?.projects ?? []
+    const projects = tous.filter(p => !p.operationId).map(toProjectRow)
+    // Les bâtiments de chaque dossier, du plus ancien (le principal) au plus récent.
+    const parDossier = new Map<string, ApiProject[]>()
+    for (const p of [...tous].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+      if (p.operationId) parDossier.set(p.operationId, [...(parDossier.get(p.operationId) ?? []), p])
+    }
+    const ops = (opData?.operations ?? []).map(o => toOperationRow(o, parDossier.get(o.id) ?? []))
     const all = [...projects, ...ops]
     // Numérotation #DIAG-année-#### par ordre de création croissant.
     all.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
