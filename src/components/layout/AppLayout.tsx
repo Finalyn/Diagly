@@ -26,6 +26,8 @@ import { useEffect, useRef, useState } from 'react'
 function isMobileAllowed(pathname: string): boolean {
   if (pathname === '/app' || pathname === '/app/projects' || pathname === '/app/projects/new') return true
   if (/^\/app\/projects\/[^/]+$/.test(pathname)) return true // ouverture d'un dossier -> l'éditeur
+  // Un dossier multi-bâtiments : la liste y mène. Sans lui, le téléphone revenait aussitôt à la liste.
+  if (/^\/app\/diagnostics-multi\/[^/]+$/.test(pathname)) return true
   // Les outils du dossier qui tiennent sur un téléphone ; plans et variantes restent au bureau.
   if (/^\/app\/projects\/[^/]+\/(sommaire|fiche|visite|photos|couts|cecb|rapports|diagnostic)$/.test(pathname)) return true
   if (pathname.startsWith('/app/diagnostic/')) return true    // éditeur de diagnostic + item
