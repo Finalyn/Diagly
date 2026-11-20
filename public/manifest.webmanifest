@@ -1,7 +1,7 @@
 {
   "name": "Diagly",
   "short_name": "Diagly",
-  "description": "Diagnostic de batiments",
+  "description": "Diagnostic de bâtiments",
   "lang": "fr",
   "start_url": "/app",
   "scope": "/",

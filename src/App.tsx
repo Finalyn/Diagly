@@ -9,6 +9,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { estAppNative } from '@/lib/plateforme'
 import { masquerEcranDeLancement } from '@/lib/natif'
 import { FiletDeSecurite } from '@/components/FiletDeSecurite'
+import { GardeAppareil } from '@/components/GardeAppareil'
 import { rechargerUneFois } from '@/lib/rechargement'
 // Entrée : chargée immédiatement pour un premier affichage rapide.
 import { Soon } from '@/pages/marketing/Soon'
@@ -20,6 +21,7 @@ const named = <M extends Record<string, unknown>, K extends keyof M>(p: Promise<
   p.then((m) => ({ default: m[k] as ComponentType })).catch((err) => rechargerUneFois(err))
 
 const Register = lazy(() => named(import('@/pages/auth/Register'), 'Register'))
+const PageInstallation = lazy(() => named(import('@/pages/InstallerLApp'), 'PageInstallation'))
 const ForgotPassword = lazy(() => named(import('@/pages/auth/ForgotPassword'), 'ForgotPassword'))
 const ResetPassword = lazy(() => named(import('@/pages/auth/ResetPassword'), 'ResetPassword'))
 const Onboarding = lazy(() => named(import('@/pages/auth/Onboarding'), 'Onboarding'))
@@ -131,22 +133,26 @@ function App() {
           {/* Vitrine design (mockup, sans auth) */}
           <Route path="/preview" element={<DashboardPreview />} />
 
-          <Route path="/login" element={<Login />} />
+          {/* Sur téléphone et tablette, l'app et ses entrées passent par la porte de
+              l'appareil (GardeAppareil) : l'app de l'App Store, ou la PWA sur Android.
+              /installer montre cette page sans l'appareil (?appareil=ios ou android). */}
+          <Route path="/installer" element={<PageInstallation />} />
+          <Route path="/login" element={<GardeAppareil><Login /></GardeAppareil>} />
           <Route path="/oauth-callback" element={<OAuthCallback />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/register" element={<GardeAppareil><Register /></GardeAppareil>} />
           {/* Pas de paiement dans l'app : l'App Store l'interdit hors de ses achats intégrés. */}
-          <Route path="/register/payment" element={estAppNative ? <Navigate to="/app" replace /> : <Payment />} />
+          <Route path="/register/payment" element={estAppNative ? <Navigate to="/app" replace /> : <GardeAppareil><Payment /></GardeAppareil>} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password/:token" element={<ResetPassword />} />
-          <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/onboarding" element={<GardeAppareil><Onboarding /></GardeAppareil>} />
 
           {/* L'espace de travail des Métrés prend tout l'écran, comme un logiciel
               de métré : il a sa propre barre, et le téléphone y a sa version
               de lecture (voir EspaceMetres). */}
-          <Route path="/app/metres/:projectId" element={<ProtectedRoute><EspaceMetres /></ProtectedRoute>} />
+          <Route path="/app/metres/:projectId" element={<GardeAppareil><ProtectedRoute><EspaceMetres /></ProtectedRoute></GardeAppareil>} />
 
           {/* App (protégée par auth) */}
-          <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+          <Route path="/app" element={<GardeAppareil><ProtectedRoute><AppLayout /></ProtectedRoute></GardeAppareil>}>
             <Route index element={<HomeRedirect />} />
             <Route path="dashboard" element={<Dashboard />} />
 
