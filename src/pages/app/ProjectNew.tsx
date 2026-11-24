@@ -105,6 +105,46 @@ function sourcesALaCreation(origines: Partial<Record<string, Origine>>, form: Re
 }
 
 /**
+ * Les entrées d'un bâtiment saisi avec plusieurs adresses.
+ *
+ * La première est celle de la fiche, avec ses dimensions ; les suivantes sont
+ * les adresses ajoutées. Quand le registre a déjà donné les entrées, on les
+ * garde et on y ajoute celles qu'il ne connaissait pas.
+ */
+function entreesALaCreation(
+  duRegistre: ApiBatiment[] | undefined,
+  form: FormState,
+  ajoutees: ExtraBuilding[],
+): ApiBatiment[] {
+  const nombre = (v: Num) => (v === '' ? null : v)
+  const premiere: ApiBatiment = {
+    id: 'b-1',
+    adresse: form.address || null,
+    floorArea: nombre(form.floorArea),
+    builtArea: nombre(form.builtArea),
+    nbFloors: nombre(form.nbFloors),
+    nbApartments: nombre(form.nbApartments),
+    nbStaircases: nombre(form.nbStaircases) ?? 1,
+    yearBuilt: nombre(form.yearBuilt),
+  }
+  const base = duRegistre && duRegistre.length > 0 ? duRegistre : [premiere]
+  const connues = new Set(base.map((b) => (b.adresse ?? '').trim().toLowerCase()))
+  const autres = ajoutees
+    .filter((b) => !connues.has(b.address.trim().toLowerCase()))
+    .map((b, i): ApiBatiment => ({
+      id: `b-${base.length + i + 1}`,
+      adresse: b.address,
+      floorArea: nombre(b.floorArea),
+      builtArea: nombre(b.builtArea),
+      nbFloors: nombre(b.nbFloors),
+      nbApartments: nombre(b.nbApartments),
+      nbStaircases: 1,
+      yearBuilt: nombre(b.yearBuilt),
+    }))
+  return [...base, ...autres]
+}
+
+/**
  * Les entrées du registre, en bâtiments du dossier.
  *
  * Le dossier recalcule plancher, emprise, logements, cages et étages depuis ses
@@ -207,7 +247,14 @@ export function ProjectNew() {
   const [error, setError] = useState<string | null>(null)
   // Bâtiments supplémentaires ajoutés sur la même fiche (multi-bâtiments).
   const [extras, setExtras] = useState<ExtraBuilding[]>([])
-  const [aggregationMode, setAggregationMode] = useState<AggregationMode>('PER_BUILDING')
+  /**
+   * Plusieurs adresses sont d'abord les entrées d'un même bâtiment
+   * (Champrilly 16-18-20) : un seul dossier, un seul relevé. Des bâtiments
+   * vraiment distincts (un portefeuille de régie) se choisissent exprès, et
+   * reçoivent chacun leur dossier.
+   */
+  const [regroupement, setRegroupement] = useState<'entrees' | 'distincts'>('entrees')
+  const aggregationMode: AggregationMode = 'PER_BUILDING'
   const [stepError, setStepError] = useState<string | null>(null)
   /** Étape dont on demande confirmation des oublis, et étapes déjà confirmées. */
   const [demandeOubli, setDemandeOubli] = useState<number | null>(null)
@@ -291,8 +338,13 @@ export function ProjectNew() {
       }
       const validExtras = extras.filter(b => b.address && b.city)
 
-      // Multi-bâtiments : on crée un regroupement (invisible) + tous les bâtiments.
-      if (validExtras.length > 0) {
+      // Les entrées d'un même bâtiment : un seul dossier, qui les porte.
+      if (validExtras.length > 0 && regroupement === 'entrees') {
+        primary.batiments = entreesALaCreation(primary.batiments, form, validExtras)
+      }
+
+      // Des bâtiments distincts : un regroupement (invisible) + un dossier chacun.
+      if (validExtras.length > 0 && regroupement === 'distincts') {
         const grp = await api.operations.create({ name: form.name, aggregationMode })
         const opId = grp.operation.id
         const principal = await api.projects.create({ ...primary, operationId: opId })
@@ -788,7 +840,7 @@ export function ProjectNew() {
 
         {!operationId && extras.length > 0 && (
           <Card>
-            <CardHeader><CardTitle>Bâtiments supplémentaires</CardTitle></CardHeader>
+            <CardHeader><CardTitle>{regroupement === 'entrees' ? 'Autres entrées' : 'Bâtiments supplémentaires'}</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {extras.map((b, i) => (
                 <ExtraBuildingCard key={i} index={i} value={b} onChange={(patch) => updateExtra(i, patch)} onRemove={() => removeExtra(i)} />
@@ -796,15 +848,19 @@ export function ProjectNew() {
 
               {extras.some(b => b.address && b.city) && (
                 <div className="pt-3 border-t">
-                  <p className="text-sm font-medium mb-1">Comment traiter ces bâtiments ?</p>
-                  <p className="text-xs text-muted-foreground mb-2">Ensemble : coûts et rapport cumulés. Séparé : un par bâtiment.</p>
+                  <p className="text-sm font-medium mb-1">Ces adresses sont…</p>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {regroupement === 'entrees'
+                      ? 'Un seul dossier et un seul relevé sur site. Une entrée qui diffère reçoit son exception pendant la visite.'
+                      : 'Un dossier et un relevé par bâtiment.'}
+                  </p>
                   <div className="inline-flex rounded-lg bg-muted p-1">
-                    {([['TOTAL', 'Ensemble'], ['PER_BUILDING', 'Séparé']] as const).map(([v, label]) => (
+                    {([['entrees', 'Les entrées d’un bâtiment'], ['distincts', 'Des bâtiments distincts']] as const).map(([v, label]) => (
                       <button
                         key={v}
                         type="button"
-                        onClick={() => setAggregationMode(v)}
-                        className={cn('px-4 py-1.5 rounded-md text-sm font-medium transition-colors', aggregationMode === v ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}
+                        onClick={() => setRegroupement(v)}
+                        className={cn('px-4 py-1.5 rounded-md text-sm font-medium transition-colors', regroupement === v ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}
                       >{label}</button>
                     ))}
                   </div>
