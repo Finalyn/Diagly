@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
-  Home, ClipboardCheck, Database, Building2, Settings, Plus, ChevronRight, Plug, LifeBuoy, Handshake,
+  Home, ClipboardCheck, Database, Settings, Plus, ChevronRight, Plug, LifeBuoy, Handshake,
   CircleUser, LogOut, ShieldCheck, Ruler,
 } from 'lucide-react'
 import { useAuth } from '@/stores/auth'
@@ -25,7 +25,6 @@ const NAV: NavEntry[] = [
   { to: '/app/metres', label: 'Métrés', icon: Ruler, visite: 'nav-metres' },
   { to: '/app/cfc', label: 'Base de données', icon: Database, visite: 'nav-cfc' },
   { to: '/app/integrations', label: 'Intégrations', icon: Plug, visite: 'nav-integrations' },
-  { to: '/app/buildings', label: 'Parc immobilier', icon: Building2, visite: 'nav-buildings' },
   { to: '/app/prestataires', label: 'Prestataires', icon: Handshake, visite: 'nav-partenaires' },
   { to: '/app/settings', label: 'Paramètres', icon: Settings, visite: 'nav-settings' },
   { to: '/app/support', label: 'Aide & support', icon: LifeBuoy, visite: 'nav-support' },

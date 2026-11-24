@@ -156,12 +156,6 @@ export const VISITES: Visite[] = [
         texte: 'Pour relier Diagly à vos autres outils : clés d’API pour un ERP ou une gérance, webhooks, et votre propre assistant IA branché sur vos diagnostics.',
       },
       {
-        cible: '[data-visite="nav-buildings"]',
-        cote: 'droite',
-        titre: 'Le parc immobilier',
-        texte: 'La même matière, vue comme un patrimoine plutôt que dossier par dossier. C’est la vue des régies et des propriétaires institutionnels.',
-      },
-      {
         cible: '[data-visite="nav-partenaires"]',
         cote: 'droite',
         titre: 'Les prestataires',
