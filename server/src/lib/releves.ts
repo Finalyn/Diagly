@@ -21,6 +21,9 @@ export const itemBaseSchema = z.object({
   /// Communs / logements : la note generale du classeur veut que les articles du
   /// chapitre interieur se relevent des deux cotes, avec des choix differents.
   localisation: z.nativeEnum(Localisation).nullable().optional(),
+  /// Exception d'une entree, dans un batiment a plusieurs entrees : un second
+  /// releve du meme ouvrage, qui ne couvre que cette entree.
+  entreeId: z.string().min(1).max(64).nullable().optional(),
   state: z.nativeEnum(ElementState).nullable().optional(),
   priority: z.nativeEnum(Priority).nullable().optional(),
   notes: z.string().max(10_000).optional(),

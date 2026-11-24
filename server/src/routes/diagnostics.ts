@@ -189,6 +189,7 @@ router.post("/:id/items", validateBody(createItemSchema), async (req, res) => {
         articleId: data.articleId,
         etapeNumero: data.etapeNumero,
         localisation: data.localisation,
+        entreeId: data.entreeId,
         state: data.state,
         priority: data.priority,
         notes: data.notes,

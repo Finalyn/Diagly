@@ -88,6 +88,32 @@ export interface CumulDesBatiments {
   apartmentTypes: Record<string, number> | null
   /** Intensive : la hauteur du bloc est celle de son bâtiment le plus haut. */
   nbFloors: number | null
+  /**
+   * Les étages de toutes les cages, additionnés : 3 + 3 + 4 = 10 à Champrilly.
+   * C'est ce que monte une main courante, une par étage dans chaque cage. Le
+   * maximum des étages n'en compterait qu'une cage. null si une entrée n'a
+   * pas ses étages.
+   */
+  etagesDesCages: number | null
+}
+
+/** Les étages d'une entrée, multipliés par ses cages (une à défaut). null sans étages. */
+export function etagesDeLEntree(b: ApiBatiment): number | null {
+  const etages = typeof b.nbFloors === 'number' && Number.isFinite(b.nbFloors) && b.nbFloors > 0 ? b.nbFloors : null
+  if (etages === null) return null
+  const cages = typeof b.nbStaircases === 'number' && Number.isFinite(b.nbStaircases) && b.nbStaircases > 0 ? b.nbStaircases : 1
+  return etages * cages
+}
+
+/** Les étages de toutes les cages, additionnés ; null si une entrée n'a pas ses étages. */
+function etagesDesCages(batiments: ApiBatiment[]): number | null {
+  let total = 0
+  for (const b of batiments) {
+    const e = etagesDeLEntree(b)
+    if (e === null) return null
+    total += e
+  }
+  return total
 }
 
 /** Cumule les bâtiments d'un dossier. */
@@ -100,13 +126,14 @@ export function cumulerLesBatiments(batiments: ApiBatiment[]): CumulDesBatiments
     nbStaircases: somme(batiments, 'nbStaircases'),
     apartmentTypes: typologiesCumulees(batiments),
     nbFloors: maximum(batiments, 'nbFloors'),
+    etagesDesCages: etagesDesCages(batiments),
   }
 }
 
 /** Intitulé d'un bâtiment dans la fiche et le rapport. */
 export function nomDuBatiment(b: ApiBatiment, rang: number): string {
   const adresse = (b.adresse ?? '').trim()
-  return adresse || `Bâtiment ${rang + 1}`
+  return adresse || `Entrée ${rang + 1}`
 }
 
 /**

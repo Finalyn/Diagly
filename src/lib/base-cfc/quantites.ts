@@ -14,6 +14,7 @@
 
 import type { BaseQuantite, Unite } from './normaliser'
 import type { Comptages } from './comptages'
+import type { ApiBatiment } from '../api-types'
 
 /**
  * Deux décimales, pas quinze.
@@ -38,6 +39,12 @@ export interface DonneesBatiment {
   logementsParTypologie?: RepartitionLogements | null
   nombrePiecesEau: number | null
   nombreEtages: number | null
+  /**
+   * Les étages de toutes les cages, additionnés : ce que comptent les ouvrages
+   * « par étage » de la cage d'escalier, comme la main courante. Absent, le
+   * nombre d'étages en tient lieu.
+   */
+  etagesDesCages?: number | null
   nombreCages: number | null
   nombrePortesEntree: number | null
   hauteur: number | null
@@ -49,6 +56,11 @@ export interface DonneesBatiment {
    * (voir pont.ts, resolutionDeQuantite).
    */
   comptages?: Comptages | null
+  /**
+   * Les entrées du bâtiment, quand il en compte plusieurs : une exception y
+   * prend la part de quantité de son entrée (entrees.ts).
+   */
+  entrees?: ApiBatiment[] | null
 }
 
 /** Nombre de logements par typologie, en pièces. */
@@ -143,7 +155,9 @@ function valeurDeBase(base: BaseQuantite, b: DonneesBatiment): number | null {
     case 'surface_fenetres': return b.surfaceFenetres
     case 'nombre_logements': return b.nombreLogements
     case 'nombre_pieces_eau': return b.nombrePiecesEau
-    case 'nombre_etages': return b.nombreEtages
+    // Un ouvrage par étage se trouve dans chaque cage : trois entrées de trois
+    // étages ont neuf paliers de main courante, pas trois.
+    case 'nombre_etages': return b.etagesDesCages ?? b.nombreEtages
     case 'nombre_cages': return b.nombreCages
     case 'nombre_portes_entree': return b.nombrePortesEntree
     case 'perimetre_batiment': return b.perimetre ?? null

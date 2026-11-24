@@ -708,6 +708,12 @@ model DiagnosticItem {
   /// Communs / logements pour les articles du chapitre « INTÉRIEUR : » du classeur.
   /// null pour tous les autres, qui ne se relèvent qu'une fois.
   localisation     Localisation?
+  /// Batiment a plusieurs entrees (Champrilly 16-18-20) : l'entree dont ce
+  /// releve est l'exception (identifiant de Project.batiments). Un seul releve
+  /// pour tout le batiment, sauf la ou une entree differe : l'ascenseur du 18
+  /// refait, la cage du 20 repeinte. null = le releve general, qui couvre les
+  /// autres entrees (src/lib/base-cfc/entrees.ts).
+  entreeId         String?       @map("entree_id") @db.VarChar(64)
   /// null = élément ajouté mais pas encore évalué (pas d'état imposé par défaut).
   state            ElementState?
   priority         Priority?

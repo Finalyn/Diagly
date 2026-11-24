@@ -43,7 +43,8 @@ import {
   categorieDeLArticle, comptees, quantiteDuTypeCompte, repartitionsDuDossier, repartitionsIncompletes,
   type Comptages, type EtatRepartition,
 } from '@/lib/base-cfc/comptages'
-import { patchDesUnites, quantiteALAjout } from '@/lib/base-cfc/quantite-comptee'
+import { calculateurDesQuantites, patchDesUnites, quantiteALAjout } from '@/lib/base-cfc/quantite-comptee'
+import { nomDeLEntree, sePartageParEntree } from '@/lib/base-cfc/entrees'
 import { RepartitionDuType } from '@/components/comptages/Compteur'
 import { cleDuReleve } from '@/lib/base-cfc/etapes'
 import type { DonneesBatiment } from '@/lib/base-cfc/quantites'
@@ -225,6 +226,37 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
     ouvrirReleve(releveId)
   }
 
+  /**
+   * Une entrée qui diffère : un second relevé du même ouvrage, rattaché à elle.
+   *
+   * Il part sans état, comme tout ajout : c'est ce qu'on voit devant cette
+   * entrée-là qui le dira. Sa quantité, la part de son entrée, s'écrit à
+   * l'ouverture ; celle du relevé général se réduit d'autant (base-cfc/entrees.ts).
+   */
+  const ajouterException = (general: ApiDiagnosticItem, entreeId: string) => {
+    const releveId = nouvelIdentifiant()
+    void saisir({
+      type: 'creer',
+      diagnosticId: id!,
+      releveId,
+      corps: {
+        cfcCode: general.cfcCode,
+        cfcLabel: general.cfcLabel,
+        articleId: general.articleId,
+        etapeNumero: general.etapeNumero,
+        localisation: general.localisation,
+        entreeId,
+        state: null,
+        priority: null,
+        works: [],
+        photos: [],
+        area: null,
+        unit: general.unit ?? undefined,
+      },
+    }).catch(signalerEchec)
+    ouvrirReleve(releveId)
+  }
+
   const modifierReleve = (itemId: string, data: Partial<ApiDiagnosticItem>) => {
     void saisir({ type: 'modifier', diagnosticId: id!, releveId: itemId, corps: data }).catch(signalerEchec)
   }
@@ -276,7 +308,10 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
    * combien en bois, combien en métal. Calculée ici, où l'on voit tout le
    * relevé ; l'éditeur reçoit celle de l'ouvrage ouvert.
    */
-  const repartitions = repartitionsDuDossier(comptages, items, articles)
+  // Une exception d'entrée n'est pas un type de plus : elle ne compte ni dans
+  // une répartition ni dans un groupe de surface (quantite-comptee.ts).
+  const generaux = items.filter((it) => !it.entreeId)
+  const repartitions = repartitionsDuDossier(comptages, generaux, articles)
   const repartitionDuReleve = (itemId: string) =>
     repartitions.find((r) => r.types.some((t) => t.id === itemId)) ?? null
   const malRepartis = repartitionsIncompletes(repartitions)
@@ -290,7 +325,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
    * l'ouvrage ouvert.
    */
   const groupesSurface = groupesDuReleve(
-    items.map((it) => ({
+    generaux.map((it) => ({
       id: it.id,
       cfcLabel: it.cfcLabel,
       sharePct: it.sharePct,
@@ -336,9 +371,45 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
    * « communs » ou « logements ». On la garde pour eux, plutôt que de laisser
    * deux lignes identiques sans savoir laquelle on regarde.
    */
-  const sousTitreDuReleve = (it: ApiDiagnosticItem): string | null =>
-    parcours.etapes.find((e) => e.numero === it.etapeNumero)?.nom
-    ?? (it.localisation ? LIBELLE_LOCALISATION[it.localisation].toLowerCase() : null)
+  const sousTitreDuReleve = (it: ApiDiagnosticItem): string | null => {
+    const lieu = parcours.etapes.find((e) => e.numero === it.etapeNumero)?.nom
+      ?? (it.localisation ? LIBELLE_LOCALISATION[it.localisation].toLowerCase() : null)
+    if (!it.entreeId) return lieu
+    const entree = nomDeLEntree(batiment.entrees, it.entreeId)
+    return lieu ? `${lieu} · ${entree}` : entree
+  }
+
+  /**
+   * Un bâtiment à plusieurs entrées se relève une fois ; une entrée qui
+   * diffère reçoit son propre relevé de l'ouvrage. Le bloc dit lequel on
+   * regarde, et mène de l'un à l'autre.
+   */
+  const lignes = parcours.etapes.flatMap((e) => e.domaines.flatMap((d) => d.lignes))
+  const ligneDuReleve = (it: ApiDiagnosticItem) =>
+    lignes.find((l) => l.releve?.id === it.id || l.exceptions.some((x) => x.id === it.id)) ?? null
+  const calculDesQuantites = calculateurDesQuantites(items, articles, batiment)
+  const parEntreeDuReleve = (it: ApiDiagnosticItem) => {
+    const entrees = batiment.entrees
+    const ligne = ligneDuReleve(it)
+    if (!entrees || !ligne || !sePartageParEntree(ligne.article.baseQuantite)) return null
+    const general = ligne.releve
+    return (
+      <ExceptionsParEntree
+        item={it}
+        general={general}
+        exceptions={ligne.exceptions}
+        entrees={entrees.map((e) => ({ id: e.id, nom: nomDeLEntree(entrees, e.id) }))}
+        orphelines={ligne.exceptions.filter((x) => !entrees.some((e) => e.id === x.entreeId))}
+        onAjouter={(entreeId) => general && ajouterException(general, entreeId)}
+        onOuvrir={ouvrirReleve}
+      />
+    )
+  }
+  /** La quantité d'un relevé quand l'ouvrage est partagé entre entrées. */
+  const quantiteParEntree = (it: ApiDiagnosticItem) =>
+    it.entreeId || (ligneDuReleve(it)?.exceptions.length ?? 0) > 0
+      ? { quantite: calculDesQuantites(it)?.quantite }
+      : undefined
 
   // Pas d'auto-sélection : au chargement, l'éditeur reste vide tant qu'on ne
   // choisit pas un élément (évite de retomber toujours sur le premier).
@@ -388,7 +459,7 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
   }
   const libelleDeLaSuite = (suite: SuiteDeLaVisite) =>
     'ligne' in suite ? suite.ligne.article.nom : nomCategorie(suite.ouvrageSuivant)
-  const suiteDuReleve = selectedItemId ? suiteDeLaLigne(grouped, (l) => l.releve?.id === selectedItemId) : null
+  const suiteDuReleve = selectedItemId ? suiteDeLaLigne(grouped, (l) => l.releve?.id === selectedItemId || l.exceptions.some((x) => x.id === selectedItemId)) : null
   const suivant = suiteDuReleve ? { libelle: libelleDeLaSuite(suiteDuReleve), aller: () => allerA(suiteDuReleve) } : null
   const ligneAConfirmer = aConfirmer
     ? grouped.flatMap((e) => e.domaines.flatMap((d) => d.lignes)).find((l) => l.cle === aConfirmer) ?? null
@@ -658,6 +729,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
                 sousTitre={sousTitreDuReleve(selectedDiagItem)}
                 groupe={groupeDeLOuvrage(selectedDiagItem.id)}
                 repartition={repartitionDuReleve(selectedDiagItem.id)}
+                parEntree={parEntreeDuReleve(selectedDiagItem)}
+                quantiteParEntree={quantiteParEntree(selectedDiagItem)}
                 mobile
                 guideMode={guideMode}
                 projectId={projectId}
@@ -702,6 +775,8 @@ export function DiagnosticDetail({ diagnosticId, encastre = false }: {
               sousTitre={sousTitreDuReleve(selectedDiagItem)}
               groupe={groupeDeLOuvrage(selectedDiagItem.id)}
               repartition={repartitionDuReleve(selectedDiagItem.id)}
+              parEntree={parEntreeDuReleve(selectedDiagItem)}
+              quantiteParEntree={quantiteParEntree(selectedDiagItem)}
               mobile={isMobile}
               guideMode={guideMode}
               projectId={projectId}
@@ -1260,6 +1335,11 @@ function ParcoursGuide({ etapes, etape, onEtape, categorie, onCategorie, onOuvri
                   ) : (
                     <span className="rounded bg-muted px-1.5 text-[10px] text-muted-foreground">à évaluer</span>
                   )}
+                  {ligne.exceptions.length > 0 && (
+                    <span className="rounded bg-primary/10 px-1.5 text-[10px] font-medium text-primary">
+                      {ligne.exceptions.length === 1 ? '1 entrée diffère' : `${ligne.exceptions.length} entrées diffèrent`}
+                    </span>
+                  )}
                   {/* L'oubli se dit ici, sur la ligne, pendant qu'on est encore devant
                       l'ouvrage. Le signaler au moment du rapport serait trop tard. */}
                   {oublisDUnReleve(existant).map((o) => (
@@ -1363,6 +1443,92 @@ function QuestionPresence({ ligne, ensuite, onPresent, onAbsent, onRetour }: {
   )
 }
 
+/**
+ * Le bloc « Par entrée » d'un ouvrage, dans un bâtiment à plusieurs entrées.
+ *
+ * Sur le relevé général : l'état vaut pour toutes les entrées, sauf celles
+ * qui ont leur exception, et une entrée qui diffère s'ajoute d'un geste. Sur
+ * une exception : elle dit pour quelle entrée elle vaut, et ramène au général.
+ */
+function ExceptionsParEntree({ item, general, exceptions, entrees, orphelines, onAjouter, onOuvrir }: {
+  item: ApiDiagnosticItem
+  general: ApiDiagnosticItem | null
+  exceptions: ApiDiagnosticItem[]
+  entrees: { id: string; nom: string }[]
+  /** Exceptions d'une entrée retirée du dossier depuis : elles ne comptent plus. */
+  orphelines: ApiDiagnosticItem[]
+  onAjouter: (entreeId: string) => void
+  onOuvrir: (itemId: string) => void
+}) {
+  const nomDe = (entreeId: string | null | undefined) =>
+    entrees.find((e) => e.id === entreeId)?.nom ?? 'entrée retirée du dossier'
+
+  if (item.entreeId) {
+    return (
+      <div className="rounded-lg bg-primary/10 px-3 py-2.5 text-sm">
+        <p className="font-medium text-primary">Exception · {nomDe(item.entreeId)}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {orphelines.some((x) => x.id === item.id)
+            ? "Cette entrée n'est plus au dossier : le relevé ne compte plus dans le devis. Retirez-le, ou rétablissez l'entrée dans la fiche."
+            : "Ce relevé ne vaut que pour cette entrée. Les autres suivent le relevé général."}
+        </p>
+        {general && (
+          <button
+            type="button"
+            onClick={() => onOuvrir(general.id)}
+            className="mt-2 flex items-center gap-1 text-xs font-medium text-primary"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />Relevé général
+            {general.state && <span className="font-normal text-muted-foreground">· {stateLabels[general.state]}</span>}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const prises = new Set(exceptions.map((x) => x.entreeId))
+  const libres = entrees.filter((e) => !prises.has(e.id))
+  return (
+    <div className="rounded-lg border px-3 py-2.5 text-sm">
+      <p className="font-medium">
+        {exceptions.length === 0 ? 'Même état dans toutes les entrées' : 'Vaut pour les autres entrées'}
+      </p>
+      {exceptions.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {exceptions.map((x) => (
+            <button
+              key={x.id}
+              type="button"
+              onClick={() => onOuvrir(x.id)}
+              className="flex w-full items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5 text-left text-xs hover:bg-muted"
+            >
+              <span className={cn('h-2 w-2 shrink-0 rounded-full', x.state ? stateColors[x.state] : 'bg-amber-400')} />
+              <span className="min-w-0 flex-1 truncate">{nomDe(x.entreeId)}</span>
+              <span className="text-muted-foreground">{x.state ? stateLabels[x.state] : 'à évaluer'}</span>
+              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          ))}
+        </div>
+      )}
+      {libres.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">Une entrée diffère :</span>
+          {libres.map((e) => (
+            <button
+              key={e.id}
+              type="button"
+              onClick={() => onAjouter(e.id)}
+              className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-muted/50"
+            >
+              <Plus className="h-3 w-3" />{e.nom}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface ItemEditorProps {
   item: ApiDiagnosticItem
   /** L'article de la base, ou null quand elle ne le connaît pas. */
@@ -1377,6 +1543,13 @@ interface ItemEditorProps {
    * elle : les unités du type remplacent alors la part de surface.
    */
   repartition?: EtatRepartition | null
+  /** Le bloc « Par entrée », dans un bâtiment à plusieurs entrées. */
+  parEntree?: ReactNode
+  /**
+   * La quantité automatique quand l'ouvrage se partage entre entrées : une
+   * exception n'en prend que la part de son entrée, le relevé général le reste.
+   */
+  quantiteParEntree?: { quantite: number | undefined }
   guideMode: GuideMode
   projectId?: string
   /** Année de construction, pour mémoire : elle ne remplace plus l'année de pose. */
@@ -1803,7 +1976,7 @@ function ChoixDeTravaux({ item, catalog, voisins, onRemplacement, onUpdate, isMu
   )
 }
 
-function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, guideMode, projectId, yearBuilt, voisins = [], onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, suivant, cadreExterne }: ItemEditorProps) {
+function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, parEntree, quantiteParEntree, guideMode, projectId, yearBuilt, voisins = [], onUpdate, onDelete, isMutating, isDeleting, mobile, onBack, suivant, cadreExterne }: ItemEditorProps) {
   const [notes, setNotes] = useState(item.notes ?? '')
   /** Moyen ou Mauvais : l'observation est obligatoire, le rapport l'explique au client. */
   const etatDegrade = item.state === 'MOYEN' || item.state === 'MAUVAIS'
@@ -1843,7 +2016,7 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
   // Un type d'une catégorie comptée prend ses unités du comptage : 2 portes
   // sur 6, ou, pour les fenêtres, sa part de la surface au prorata du nombre.
   const unitesDuType = repartition?.types.find((t) => t.id === item.id)?.effectives ?? null
-  const autoQty = repartition
+  const autoQty = quantiteParEntree ? quantiteParEntree.quantite : repartition
     ? quantiteDuTypeCompte(qtyResolution.quantity, unitesDuType, repartition.comptage, catalog?.unit)
     : groupe
       ? quantiteDuType(qtyResolution.quantity, partDuGroupe)
@@ -2098,6 +2271,8 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
         {/* Le contenu s'efface en fondu au-dessus du pied « Suivant » au lieu
             d'y être tranché net. */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-6 pb-8 px-0.5 [mask-image:linear-gradient(to_bottom,black_calc(100%_-_32px),transparent)]">
+          {parEntree}
+
           {/* Étape 1 — photo */}
           <section className="space-y-3">
             <StepHeader n={1} label="Prendre une photo" />
@@ -2296,6 +2471,8 @@ function ItemEditor({ item, catalog, batiment, sousTitre, groupe, repartition, g
         )}
       </CardHeader>
       <CardContent className="space-y-6">
+        {parEntree}
+
         {/* 1. État — le seul vrai choix du diagnostiqueur */}
         <div data-visite="releve-etat">
           <p className="text-sm font-medium mb-3">État constaté</p>

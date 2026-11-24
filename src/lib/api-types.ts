@@ -319,6 +319,12 @@ export interface ApiDiagnosticItem {
   etapeNumero?: number | null
   /** Communs / logements pour les ouvrages intérieurs ; null pour tous les autres. */
   localisation?: Localisation | null
+  /**
+   * L'entrée dont ce relevé est l'exception (ApiBatiment.id), dans un bâtiment
+   * à plusieurs entrées. null = le relevé général, qui couvre les autres
+   * (base-cfc/entrees.ts).
+   */
+  entreeId?: string | null
   state: ElementState | null
   priority: Priority | null
   notes: string | null

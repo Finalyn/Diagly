@@ -54,6 +54,7 @@ import { blocsMethode } from './methode'
 import { ComparaisonVariantes, DetailVariante, TitreVariante } from './variantes-rapport'
 import { photoDeGarde } from '@/lib/photo-de-garde'
 import { batimentsDuDossier, cumulerLesBatiments, ficheCumulee, nomDuBatiment } from '@/lib/base-cfc/batiments'
+import { entreesDuDossier, nomDeLEntree } from '@/lib/base-cfc/entrees'
 
 /** Le document entier, ou l'un de ses extraits. */
 export type PartieDuRapport = 'complet' | 'devis' | 'photos' | 'energie'
@@ -109,6 +110,18 @@ export function RapportComplet({
     () => calculateurDesQuantites(items, base.articles, donneesDuBatiment(project)),
     [items, base.articles, project],
   )
+
+  /**
+   * L'entrée dont parle une fiche, dans un bâtiment à plusieurs entrées :
+   * la sienne pour une exception, « autres entrées » pour le relevé général
+   * qu'une exception complète. null quand l'état vaut pour tout le bâtiment.
+   */
+  const entreeDeLaFiche = (it: ApiDiagnosticItem): string | null => {
+    const entrees = entreesDuDossier(project.batiments)
+    if (it.entreeId) return nomDeLEntree(entrees, it.entreeId)
+    const complete = items.some((x) => x.entreeId && x.articleId === it.articleId && x.etapeNumero === it.etapeNumero)
+    return complete ? 'autres entrées' : null
+  }
 
   const evalues = useMemo(() => items.filter((i) => i.state), [items])
   const nonEvalues = useMemo(() => items.filter((i) => !i.state), [items])
@@ -242,6 +255,7 @@ export function RapportComplet({
               article={it.articleId ? articles.get(it.articleId) : it.catalogItemId != null ? catalogue.get(it.catalogItemId) : undefined}
               etape={it.etapeNumero != null ? nomDEtape.get(it.etapeNumero) ?? null : null}
               relevee={vraimentRelevee(it, calcul)}
+              entree={entreeDeLaFiche(it)}
             />
           ))
         }
@@ -629,11 +643,11 @@ function MetresDuProjet({ project, metrics, devis }: {
     <>
       {batiments && (
         <>
-          <p className="mb-1 font-semibold">Les {batiments.length} bâtiments du dossier</p>
+          <p className="mb-1 font-semibold">Les {batiments.length} entrées du bâtiment</p>
           <table className="mb-4 w-full">
             <thead>
               <tr className="border-b text-left text-muted-foreground">
-                <th className="py-1 font-medium">Bâtiment</th>
+                <th className="py-1 font-medium">Entrée</th>
                 <th className="w-24 py-1 text-right font-medium">Plancher</th>
                 <th className="w-24 py-1 text-right font-medium">Emprise</th>
                 <th className="w-16 py-1 text-right font-medium">Étages</th>
@@ -706,7 +720,7 @@ function MetresDuProjet({ project, metrics, devis }: {
  * et les photos de la visite, en vignettes à droite. Plusieurs fiches tiennent
  * sur une page : un seul ouvrage occupait souvent une page entière.
  */
-function FicheOuvrage({ it, nom, constat, article, etape, relevee }: {
+function FicheOuvrage({ it, nom, constat, article, etape, relevee, entree }: {
   it: ApiDiagnosticItem
   nom: string
   constat: string | null
@@ -716,6 +730,8 @@ function FicheOuvrage({ it, nom, constat, article, etape, relevee }: {
   etape: string | null
   /** La quantité a été mesurée sur place, et diffère du calcul. */
   relevee: boolean
+  /** L'entrée dont parle la fiche, quand l'ouvrage a une exception d'entrée. */
+  entree: string | null
 }) {
   const vie = dureeVieResiduelle(it, {})
   const phraseVie = phraseDureeVie(vie, it.cfcCode)
@@ -733,6 +749,7 @@ function FicheOuvrage({ it, nom, constat, article, etape, relevee }: {
           {!etape && it.localisation && (
             <span className="ml-1.5 font-normal text-muted-foreground">({LIBELLE_LOCALISATION[it.localisation].toLowerCase()})</span>
           )}
+          {entree && <span className="ml-1.5 font-normal text-muted-foreground">({entree})</span>}
           <span className="ml-2 font-mono font-normal text-muted-foreground">{it.cfcCode}</span>
         </p>
         <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[8.5pt]">

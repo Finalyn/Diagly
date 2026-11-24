@@ -52,13 +52,15 @@ function lieu(it: ApiDiagnosticItem, etapes: Map<number, string>): string {
  * Les doublons : le même ouvrage relevé deux fois dans la même zone.
  *
  * La même étape et la même localisation (communs ou logements) : la peinture
- * de la cage et celle des appartements sont deux relevés, pas un doublon.
+ * de la cage et celle des appartements sont deux relevés, pas un doublon. La
+ * même entrée aussi : l'exception du n° 18 double le général sans le répéter.
  */
 export function doublons(items: ApiDiagnosticItem[]): ApiDiagnosticItem[][] {
   const paquets = new Map<string, ApiDiagnosticItem[]>()
   for (const it of items) {
     const ouvrage = it.articleId ?? `${it.cfcCode}|${it.cfcLabel.trim().toLowerCase()}`
-    const cle = `${ouvrage}#${it.etapeNumero ?? ''}#${it.localisation ?? ''}`
+    // L'exception d'une entrée n'est pas un doublon du relevé général.
+    const cle = `${ouvrage}#${it.etapeNumero ?? ''}#${it.localisation ?? ''}#${it.entreeId ?? ''}`
     if (!paquets.has(cle)) paquets.set(cle, [])
     paquets.get(cle)!.push(it)
   }
@@ -106,8 +108,10 @@ export function surfacesDepassees(
 ): { nom: string; etapeNumero: number | null; saisi: number; reference: number; releveIds: string[] }[] {
   const batiment = donneesDuBatiment(fiche)
   const parId = new Map(articles.map((a) => [a.id, a]))
+  // Les exceptions d'entrée ne sont pas des types du groupe : elles reprennent
+  // une part du relevé général, qui en est d'autant réduit.
   const groupes = groupesDuReleve(
-    items.map((it) => ({
+    items.filter((it) => !it.entreeId).map((it) => ({
       id: it.id, cfcLabel: it.cfcLabel, sharePct: it.sharePct, etapeNumero: it.etapeNumero ?? null,
       cleArticle: it.articleId && it.etapeNumero != null ? cleDuReleve(it.articleId, it.etapeNumero) : null,
     })),

@@ -219,7 +219,7 @@ export const BASES_EN_CLAIR: Record<BaseQuantite, string> = {
   facade_moins_fenetres: 'façade hors fenêtres',
   nombre_logements: 'nombre de logements',
   nombre_pieces_eau: "nombre de pièces d'eau",
-  nombre_etages: "nombre d'étages",
+  nombre_etages: "étages, cage par cage",
   nombre_cages: "nombre de cages d'escalier",
   nombre_portes_entree: "nombre de portes d'entrée",
   perimetre_batiment: 'périmètre du bâtiment',

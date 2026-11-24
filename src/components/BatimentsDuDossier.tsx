@@ -44,17 +44,18 @@ export function BatimentsDuDossier({ batiments, onChange }: {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Bâtiments du dossier</CardTitle>
+        <CardTitle>Entrées du bâtiment</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Une adresse par bâtiment. Leurs surfaces, logements et cages s'additionnent pour
-          le devis. Le périmètre et la façade restent ci-dessous : des bâtiments mitoyens
-          les partagent.
+          Une adresse par entrée. Leurs surfaces, logements et cages s'additionnent pour
+          le devis. Le bâtiment se relève une fois ; une entrée qui diffère reçoit son
+          exception pendant la visite. Le périmètre et la façade restent ci-dessous :
+          ils se mesurent sur l'ensemble.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
         {batiments.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            Aucun : le dossier décrit un seul bâtiment, par les champs ci-dessous.
+            Aucune : le bâtiment a une seule entrée, décrite par les champs ci-dessous.
           </p>
         )}
 
@@ -102,11 +103,11 @@ export function BatimentsDuDossier({ batiments, onChange }: {
           type="button"
           onClick={() => onChange([...batiments, batimentNeuf()])}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed py-2 text-sm text-muted-foreground hover:bg-muted/50"
-        ><Plus className="h-4 w-4" />Ajouter un bâtiment</button>
+        ><Plus className="h-4 w-4" />Ajouter une entrée</button>
 
         {cumul && (
           <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
-            <span className="font-semibold">{cumul.nombre} bâtiments</span>
+            <span className="font-semibold">{cumul.nombre} entrées</span>
             <span className="text-muted-foreground">
               {' · '}{cumul.floorArea ?? 'n.c.'} m² plancher
               {' · '}{cumul.builtArea ?? 'n.c.'} m² bâti

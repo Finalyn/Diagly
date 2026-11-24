@@ -223,7 +223,7 @@ export function ProjectEdit() {
           {cumul && (
             <p className="text-sm text-muted-foreground">
               Le plancher, l'emprise, les logements, les cages et les étages viennent des
-              {' '}{cumul.nombre} bâtiments ci-dessus. Le périmètre et la façade se mesurent
+              {' '}{cumul.nombre} entrées ci-dessus. Le périmètre et la façade se mesurent
               sur l'ensemble.
             </p>
           )}

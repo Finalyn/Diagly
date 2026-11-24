@@ -163,7 +163,7 @@ describe('les états d’un article', () => {
 
 describe('suiteDeLaLigne', () => {
   const ligne = (c: string): LigneDeVisite => ({
-    cle: c, article: article({ id: c }), etapeNumero: 1, zone: 'Extérieur', ordreDansEtape: 0, releve: null,
+    cle: c, article: article({ id: c }), etapeNumero: 1, zone: 'Extérieur', ordreDansEtape: 0, releve: null, exceptions: [],
   })
   const domaine = (nom: string, cles: string[]) => ({ nom, lignes: cles.map(ligne), attendus: cles.length, faits: 0 })
   const etapes: EtapeDuDiagnostic[] = [

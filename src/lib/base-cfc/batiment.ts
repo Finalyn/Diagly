@@ -22,6 +22,7 @@ import {
   type DonneesBatiment, type RepartitionLogements,
 } from './quantites'
 import { comptagesDuDossier } from './comptages'
+import { entreesDuDossier } from './entrees'
 
 /** Les champs de la fiche du dossier qui servent aux quantités. */
 export interface FicheDuBatiment {
@@ -130,11 +131,14 @@ export function donneesDuBatiment(fiche: FicheDuBatiment): DonneesBatiment {
     logementsParTypologie: repartitionDesLogements(typologies),
     nombrePiecesEau: logements === null ? null : logements * PIECES_DEAU_PAR_LOGEMENT,
     nombreEtages: etages,
+    // Sans entrées, les étages de la fiche dans chacune de ses cages.
+    etagesDesCages: cumul ? cumul.etagesDesCages : etages === null ? null : etages * (cages ?? 1),
     nombreCages: cages,
     nombrePortesEntree: cages === null ? null : cages * ENTREES_PAR_CAGE,
     hauteur: etages === null ? null : etages * hauteurEtage,
     surfaceParking: valeur(fiche.parkingArea),
     comptages: comptagesDuDossier(fiche.comptages),
+    entrees: entreesDuDossier(fiche.batiments),
   }
 }
 
@@ -157,11 +161,13 @@ export const LIBELLES_DU_BATIMENT: Record<keyof DonneesBatiment, string> = {
   logementsParTypologie: 'répartition des logements par typologie',
   nombrePiecesEau: "nombre de pièces d'eau",
   nombreEtages: "nombre d'étages",
+  etagesDesCages: "étages des cages d'escalier",
   nombreCages: "nombre de cages d'escalier",
   nombrePortesEntree: "nombre de portes d'entrée",
   hauteur: 'hauteur du bâtiment',
   surfaceParking: 'surface de parking',
   comptages: 'éléments comptés',
+  entrees: 'entrées du bâtiment',
 }
 
 /**
@@ -172,7 +178,7 @@ export const LIBELLES_DU_BATIMENT: Record<keyof DonneesBatiment, string> = {
  * apprend au diagnostiqueur à ignorer les avertissements.
  */
 export function donneesManquantes(d: DonneesBatiment): string[] {
-  const facultatives = new Set<keyof DonneesBatiment>(['surfaceParking', 'comptages'])
+  const facultatives = new Set<keyof DonneesBatiment>(['surfaceParking', 'comptages', 'entrees', 'etagesDesCages'])
   return (Object.keys(LIBELLES_DU_BATIMENT) as (keyof DonneesBatiment)[])
     .filter((c) => !facultatives.has(c))
     .filter((c) => d[c] === null || d[c] === undefined)

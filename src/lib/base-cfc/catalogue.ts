@@ -63,6 +63,8 @@ export interface LigneDeVisite {
   ordreDansEtape: number
   /** Le relevé existant, ou null s'il reste à faire. */
   releve: ApiDiagnosticItem | null
+  /** Les exceptions d'entrée du même ouvrage, dans un bâtiment à plusieurs entrées. */
+  exceptions: ApiDiagnosticItem[]
 }
 
 export interface DomaineDEtape {
@@ -109,9 +111,15 @@ export function parcoursDuDiagnostic(
   releves: ApiDiagnosticItem[],
   type?: BuildingType | null,
 ): ParcoursDuDiagnostic {
+  // Le relevé général d'un ouvrage tient la ligne ; ses exceptions d'entrée
+  // l'accompagnent sans la remplacer.
   const parCle = new Map<string, ApiDiagnosticItem>()
+  const exceptionsParCle = new Map<string, ApiDiagnosticItem[]>()
   for (const r of releves) {
-    if (r.articleId && r.etapeNumero != null) parCle.set(cleDuReleve(r.articleId, r.etapeNumero), r)
+    if (!r.articleId || r.etapeNumero == null) continue
+    const cle = cleDuReleve(r.articleId, r.etapeNumero)
+    if (r.entreeId) exceptionsParCle.set(cle, [...(exceptionsParCle.get(cle) ?? []), r])
+    else parCle.set(cle, r)
   }
 
   const utilises = new Set(releves.map((r) => r.articleId).filter((v): v is string => !!v))
@@ -127,10 +135,12 @@ export function parcoursDuDiagnostic(
         if (!article.actif && !utilises.has(article.id)) continue
         const cle = cleDuReleve(article.id, etape.numero)
         const releve = parCle.get(cle) ?? null
+        const exceptions = exceptionsParCle.get(cle) ?? []
         if (releve) places.add(releve.id)
+        for (const x of exceptions) places.add(x.id)
         lignes.push({
           cle, article, etapeNumero: etape.numero, zone: etape.zone,
-          ordreDansEtape: lien.ordreDansEtape, releve,
+          ordreDansEtape: lien.ordreDansEtape, releve, exceptions,
         })
       }
       lignes.sort((a, b) => a.ordreDansEtape - b.ordreDansEtape || a.article.id.localeCompare(b.article.id))

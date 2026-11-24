@@ -52,7 +52,7 @@ describe('cumul des bâtiments', () => {
 
   it('nomme un bâtiment par son adresse, ou par son rang', () => {
     expect(nomDuBatiment(CHAMPRILLY[1], 1)).toBe('Avenue de Champrilly 18')
-    expect(nomDuBatiment(bat({ id: 'x', floorArea: 100 }), 2)).toBe('Bâtiment 3')
+    expect(nomDuBatiment(bat({ id: 'x', floorArea: 100 }), 2)).toBe('Entrée 3')
   })
 })
 

@@ -20,6 +20,7 @@ import type { ApiArticle, ApiDiagnosticItem } from '../api-types'
 import { computeCost, computeCostFromPrice, etatChiffre, getMarketCoeff, uniteDeLEtat } from '../diagnostic-auto'
 import { groupesDuReleve, partEffective, quantiteDuType } from '../groupes-surface'
 import { cleDuReleve } from './etapes'
+import { partDuReleve } from './entrees'
 import { ouvrageDuReleve, resolutionDeQuantite, type OuvrageSaisi } from './pont'
 import type { DonneesBatiment } from './quantites'
 import {
@@ -101,13 +102,24 @@ export function calculateurDesQuantites(
   batiment: DonneesBatiment,
 ): (it: ApiDiagnosticItem) => { ouvrage: OuvrageSaisi; quantite: number | undefined } | null {
   const comptages = batiment.comptages ?? {}
-  const repartitions = repartitionsDuDossier(comptages, items, articles)
+  // Une exception d'entrée n'est pas un type de plus : elle reprend une part
+  // du relevé général, et ne compte ni dans un comptage ni dans un groupe.
+  const generaux = items.filter((it) => !it.entreeId)
+  const repartitions = repartitionsDuDossier(comptages, generaux, articles)
   const parId = new Map(articles.map((a) => [a.id, a]))
+  const exceptionsDe = new Map<string, ApiDiagnosticItem[]>()
+  for (const it of items) {
+    if (!it.entreeId || !it.articleId || it.etapeNumero == null) continue
+    const cle = cleDuReleve(it.articleId, it.etapeNumero)
+    exceptionsDe.set(cle, [...(exceptionsDe.get(cle) ?? []), it])
+  }
+  const generalDe = new Map(generaux.flatMap((it) =>
+    it.articleId && it.etapeNumero != null ? [[cleDuReleve(it.articleId, it.etapeNumero), it] as const] : []))
 
   // Les groupes de surface, sans les types dont la catégorie est comptée : le
   // pourcentage ne s'applique plus à eux, leurs unités le remplacent.
   const groupes = groupesDuReleve(
-    items.map((it) => ({
+    generaux.map((it) => ({
       id: it.id,
       cfcLabel: it.cfcLabel,
       sharePct: it.sharePct,
@@ -115,7 +127,7 @@ export function calculateurDesQuantites(
       cleArticle: it.articleId && it.etapeNumero != null ? cleDuReleve(it.articleId, it.etapeNumero) : null,
       catalogItemId: it.catalogItemId,
     })),
-    items.flatMap((it) => {
+    generaux.flatMap((it) => {
       const a = it.articleId ? parId.get(it.articleId) : undefined
       if (!a || it.etapeNumero == null) return []
       const cat = categorieDeLArticle(a)
@@ -127,16 +139,29 @@ export function calculateurDesQuantites(
   return (it) => {
     const ouvrage = ouvrageDuReleve(it, articles)
     if (!ouvrage) return null
-    const categorie = categorieDuReleve(it, articles)
-    const groupe = groupes.find((g) => g.membres.some((m) => m.id === it.id))
-    return {
-      ouvrage,
-      quantite: quantiteAutomatique(it, ouvrage, batiment, {
-        repartition: categorie ? repartitions.find((r) => r.categorie === categorie) ?? null : null,
-        groupe: groupe ? { membres: groupe.membres.length, sharePct: it.sharePct ?? null } : null,
-      }),
-    }
+    const cle = it.articleId && it.etapeNumero != null ? cleDuReleve(it.articleId, it.etapeNumero) : null
+    // Une exception se calcule comme son relevé général (même part de groupe,
+    // mêmes unités comptées), puis ne garde que la part de son entrée.
+    const reference = (it.entreeId && cle ? generalDe.get(cle) : undefined) ?? it
+    const categorie = categorieDuReleve(reference, articles)
+    const groupe = groupes.find((g) => g.membres.some((m) => m.id === reference.id))
+    const entiere = quantiteAutomatique(reference, ouvrage, batiment, {
+      repartition: categorie ? repartitions.find((r) => r.categorie === categorie) ?? null : null,
+      groupe: groupe ? { membres: groupe.membres.length, sharePct: reference.sharePct ?? null } : null,
+    })
+    const part = partDuReleve(it, ouvrage.baseQuantite, batiment.entrees ?? null, cle ? exceptionsDe.get(cle) ?? [] : [])
+    return { ouvrage, quantite: partager(entiere, part, ouvrage.unit) }
   }
+}
+
+/**
+ * La part d'une quantité qui revient à un relevé. Une pièce ne se coupe pas :
+ * en pièces, la part s'arrondit à l'unité.
+ */
+function partager(quantite: number | undefined, part: number, unite: string): number | undefined {
+  if (quantite == null || part === 1) return quantite
+  const v = quantite * part
+  return unite === 'pce' ? Math.round(v) : Math.round(v * 100) / 100
 }
 
 /** Une quantité reprise à la main qui diffère vraiment du calcul. */
